@@ -10,6 +10,8 @@ import ChatInput from './ChatInput';
 import ChatHistorySidebar from './ChatHistorySidebar';
 import StellarFiatModal from './StellarFiatModal';
 import { TransactionData } from '@/types';
+import SkeletonChat from "@/components/ui/skeleton/SkeletonChat";
+import SkeletonSidebar from "@/components/ui/skeleton/SkeletonSidebar";
 
 export default function StellarChatInterface() {
     const { connection, connect, disconnect } = useStellarWallet();
@@ -71,11 +73,19 @@ export default function StellarChatInterface() {
         <div className={`flex h-screen w-screen overflow-hidden transition-colors duration-300 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
             {/* Sidebar */}
             {showSidebar && (
-                <div className="flex-shrink-0 w-72">
-                    <ChatHistorySidebar onLoadSession={(id) => { loadChatSession(id); setShowSidebar(false); }} />
-                </div>
-            )}
-
+    <div className="flex-shrink-0 w-72">
+        {isLoading ? (
+            <SkeletonSidebar />
+        ) : (
+            <ChatHistorySidebar 
+                onLoadSession={(id) => { 
+                    loadChatSession(id); 
+                    setShowSidebar(false); 
+                }} 
+            />
+        )}
+    </div>
+)}
             {/* Main */}
             <div className="flex flex-col flex-1 min-w-0">
                 {/* Header */}
@@ -163,11 +173,15 @@ export default function StellarChatInterface() {
 
                 {/* Messages */}
                 <div className="flex-1 min-h-0 flex flex-col">
-                    <ChatMessages
-                        messages={messages}
-                        onActionClick={handleActionClick}
-                        isLoading={isLoading}
-                    />
+                    {isLoading && messages.length === 0 ? (
+    <SkeletonChat />
+) : (
+    <ChatMessages
+        messages={messages}
+        onActionClick={handleActionClick}
+        isLoading={isLoading}
+    />
+)}
                     <ChatInput
                         onSendMessage={sendMessage}
                         isLoading={isLoading}

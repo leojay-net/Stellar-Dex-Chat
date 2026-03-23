@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState,useEffect  } from 'react';
 import { useChatHistory } from '@/hooks/useChatHistory';
 import { useTheme } from '@/contexts/ThemeContext';
 import {
@@ -12,6 +12,7 @@ import {
     Plus,
     Download
 } from 'lucide-react';
+import SkeletonSidebar from "@/components/ui/skeleton/SkeletonSidebar";
 
 interface ChatHistorySidebarProps {
     onLoadSession: (sessionId: string) => void;
@@ -31,6 +32,12 @@ export default function ChatHistorySidebar({ onLoadSession }: ChatHistorySidebar
     const { isDarkMode } = useTheme();
     const [searchQuery, setSearchQuery] = useState('');
     const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 800);
+    return () => clearTimeout(timer);
+    }, []);
 
     const filteredSessions = searchQuery
         ? searchSessions(searchQuery)
@@ -121,25 +128,22 @@ export default function ChatHistorySidebar({ onLoadSession }: ChatHistorySidebar
 
             {/* Sessions List */}
             <div className="flex-1 overflow-y-auto">
-                {!hasHistory ? (
-                    <div className={`p-4 text-center transition-colors duration-300 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                        }`}>
-                        <MessageSquare className={`w-8 h-8 mx-auto mb-2 transition-colors duration-300 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'
-                            }`} />
-                        <p className="text-sm">No conversations yet</p>
-                        <p className={`text-xs mt-1 transition-colors duration-300 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'
-                            }`}>
-                            Start chatting to see your history here
-                        </p>
-                    </div>
-                ) : filteredSessions.length === 0 ? (
-                    <div className={`p-4 text-center transition-colors duration-300 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                        }`}>
-                        <Search className={`w-6 h-6 mx-auto mb-2 transition-colors duration-300 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'
-                            }`} />
-                        <p className="text-sm">No conversations found</p>
-                    </div>
-                ) : (
+                {isLoading ? (
+    <SkeletonSidebar />
+) : !hasHistory ? (
+    <div className={`p-4 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+        <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
+        <p className="text-sm">No conversations yet</p>
+        <p className="text-xs mt-1 opacity-70">
+            Start chatting to see your history here
+        </p>
+    </div>
+) : filteredSessions.length === 0 ? (
+    <div className={`p-4 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+        <Search className="w-6 h-6 mx-auto mb-2 opacity-50" />
+        <p className="text-sm">No conversations found</p>
+    </div>
+) : (
                     <div className="p-2">
                         {filteredSessions.map((session) => (
                             <div
