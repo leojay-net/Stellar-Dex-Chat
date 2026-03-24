@@ -73,6 +73,9 @@ const MAX_BATCH_SIZE: u32 = 25;
 pub enum DataKey {
     Admin,
     Token,
+    BridgeLimit,
+    TotalDeposited,
+    UserDeposited(Address),
     LockPeriod,
     WithdrawQueue(u64),
     NextRequestID,
@@ -183,13 +186,18 @@ impl FiatBridge {
             .persistent()
             .set(&DataKey::TokenRegistry(token.clone()), &config);
 
+        let user_key = DataKey::UserDeposited(from.clone());
+        let user_total: i128 = env.storage().instance().get(&user_key).unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&user_key, &(user_total + amount));
         // ── Events ────────────────────────────────────────────────────
         env.events()
             .publish((Symbol::new(&env, "deposit"), from), amount);
         env.events()
             .publish((Symbol::new(&env, "receipt_issued"),), receipt_id);
 
-        Ok(receipt_id)
+        Ok(())
     }
 
     /// Withdraw tokens from the bridge. Caller must authorise.
@@ -536,6 +544,16 @@ impl FiatBridge {
             .ok_or(Error::NotInitialized)?;
         Ok(config.total_deposited)
     }
+    /// Running total of historical deposits for a specific user.
+    pub fn get_user_deposited(env: Env, user: Address) -> Result<i128, Error> {
+        if !env.storage().instance().has(&DataKey::Admin) {
+            return Err(Error::NotInitialized);
+        }
+        Ok(env
+            .storage()
+            .instance()
+            .get(&DataKey::UserDeposited(user))
+            .unwrap_or(0))
 
 
     /// Get details of a withdrawal request.

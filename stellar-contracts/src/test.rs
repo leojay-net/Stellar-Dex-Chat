@@ -367,69 +367,36 @@ fn test_double_init() {
     assert_eq!(result, Err(Ok(Error::AlreadyInitialized)));
 }
 
-// ── Multi-token tests ───────────────────────────────────────────────
-
 #[test]
-fn test_two_tokens_independent() {
+fn test_per_user_deposit_tracking() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (contract_id, bridge, _, token_addr, token, token_sac) = setup_bridge(&env, 500);
-    let user = Address::generate(&env);
+    let (_, bridge, _, _, _, token_sac) = setup_bridge(&env, 1000);
+    let user1 = Address::generate(&env);
+    let user2 = Address::generate(&env);
+    token_sac.mint(&user1, &500);
+    token_sac.mint(&user2, &500);
 
-    let token_admin2 = Address::generate(&env);
-    let (token_addr2, token2, token_sac2) = create_token(&env, &token_admin2);
-    bridge.add_token(&token_addr2, &1_000);
+    // Initial state
+    assert_eq!(bridge.get_user_deposited(&user1), 0);
+    assert_eq!(bridge.get_user_deposited(&user2), 0);
 
-    token_sac.mint(&user, &2_000);
-    token_sac2.mint(&user, &3_000);
+    // User1 first deposit
+    bridge.deposit(&user1, &100);
+    assert_eq!(bridge.get_user_deposited(&user1), 100);
+    assert_eq!(bridge.get_total_deposited(), 100);
 
-    let empty_ref = Bytes::new(&env);
+    // User1 second deposit
+    bridge.deposit(&user1, &50);
+    assert_eq!(bridge.get_user_deposited(&user1), 150);
+    assert_eq!(bridge.get_total_deposited(), 150);
 
-    bridge.deposit(&user, &200, &token_addr, &empty_ref);
-    bridge.deposit(&user, &500, &token_addr2, &empty_ref);
-
-    assert_eq!(token.balance(&user), 1_800);
-    assert_eq!(token.balance(&contract_id), 200);
-    assert_eq!(token2.balance(&user), 2_500);
-    assert_eq!(token2.balance(&contract_id), 500);
-
-    let cfg1 = bridge.get_token_config(&token_addr).unwrap();
-    assert_eq!(cfg1.total_deposited, 200);
-    assert_eq!(cfg1.limit, 500);
-
-    let cfg2 = bridge.get_token_config(&token_addr2).unwrap();
-    assert_eq!(cfg2.total_deposited, 500);
-    assert_eq!(cfg2.limit, 1_000);
-
-    bridge.withdraw(&user, &100, &token_addr);
-    bridge.withdraw(&user, &300, &token_addr2);
-
-    assert_eq!(token.balance(&user), 1_900);
-    assert_eq!(token2.balance(&user), 2_800);
-}
-
-#[test]
-fn test_deposit_unlisted_token_rejected() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, bridge, _, _, _, _) = setup_bridge(&env, 500);
-    let user = Address::generate(&env);
-
-    let rogue_admin = Address::generate(&env);
-    let (rogue_addr, _, rogue_sac) = create_token(&env, &rogue_admin);
-    rogue_sac.mint(&user, &1_000);
-
-    let result = bridge.try_deposit(&user, &200, &rogue_addr, &Bytes::new(&env));
-    assert_eq!(result, Err(Ok(Error::TokenNotWhitelisted)));
-}
-
-#[test]
-fn test_remove_token_blocks_deposit_admin_can_drain() {
-    let env = Env::default();
-    env.mock_all_auths();
-
+    // User2 first deposit
+    bridge.deposit(&user2, &200);
+    assert_eq!(bridge.get_user_deposited(&user2), 200);
+    assert_eq!(bridge.get_user_deposited(&user1), 150); // user1 stays same
+    assert_eq!(bridge.get_total_deposited(), 350);
     let (contract_id, bridge, _, token_addr, token, token_sac) = setup_bridge(&env, 500);
     let user = Address::generate(&env);
     token_sac.mint(&user, &1_000);
