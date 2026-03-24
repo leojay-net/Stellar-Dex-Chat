@@ -93,7 +93,7 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
     [getInitialSuggestedActions, connection.isConnected],
   );
 
-  const [messages, setMessages] = useState<ChatMessage[]>([initialMessage]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const aiAssistant = useMemo(() => new AIAssistant(), []);
@@ -103,8 +103,8 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
       if (currentSession && currentSession.messages.length > 0) {
         setMessages(currentSession.messages);
       } else if (!currentSessionId) {
-        setMessages([initialMessage]);
-        createNewSession([initialMessage]);
+        setMessages([]);
+        createNewSession([]);
       }
       setIsInitialized(true);
     }
@@ -295,15 +295,15 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
   );
 
   const clearChat = useCallback(() => {
-    setMessages([initialMessage]);
+    setMessages([]);
     setConversationState({
       messageCount: 0,
       hasUserCancelled: false,
       pendingTransactionData: null,
       shouldTriggerTransaction: false,
     });
-    createNewSession([initialMessage]);
-  }, [initialMessage, createNewSession]);
+    createNewSession([]);
+  }, [createNewSession]);
 
   const loadChatSession = useCallback(
     (sessionId: string) => {

@@ -173,13 +173,18 @@ export default function StellarChatInterface() {
   }, [handleTransactionReady, setTransactionReadyCallback]);
 
   const handleActionClick = useCallback(
-    (actionId: string, actionType: string) => {
+    (actionId: string, actionType: string, data?: Record<string, unknown>) => {
       switch (actionType) {
         case 'connect_wallet':
           connect();
           break;
         case 'confirm_fiat':
           setShowModal(true);
+          break;
+        case 'query':
+          if (data?.query) {
+            sendMessage(data.query as string);
+          }
           break;
         case 'check_portfolio':
           sendMessage('Show me my XLM portfolio and balance');
