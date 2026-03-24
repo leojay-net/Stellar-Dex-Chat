@@ -1,6 +1,7 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, token, Address, Bytes, Env, Symbol, Vec,
+    contract, contracterror, contractevent, contractimpl, contracttype, token, Address, Bytes, Env,
+    Symbol, Vec,
 };
 
 // ── Error codes ───────────────────────────────────────────────────────────
@@ -19,6 +20,8 @@ pub enum Error {
     ReferenceTooLong = 9,
     DailyLimitExceeded = 10,
     BatchTooLarge = 11,
+    CooldownActive = 9,
+    NotAllowed = 9,
 }
 
 // ── Models ────────────────────────────────────────────────────────────────
@@ -61,6 +64,8 @@ pub enum DataKey {
     BridgeLimit,
     TotalDeposited,
     LockPeriod,
+    CooldownLedgers,
+    LastDeposit(Address),
     WithdrawQueue(u64),
     NextRequestID,
     ReceiptCounter,
@@ -68,6 +73,29 @@ pub enum DataKey {
     DailyWithdrawLimit,
     WindowStart,
     WindowWithdrawn,
+    AllowlistEnabled,
+    Allowed(Address),
+}
+
+// ── Events ────────────────────────────────────────────────────────────────
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AllowlistToggled {
+    pub enabled: bool,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AllowlistAddrAdded {
+    #[topic]
+    pub addr: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AllowlistAddrRemoved {
+    #[topic]
+    pub addr: Address,
 }
 
 /// Approximate number of ledgers in a 24-hour window (5-second close time).
@@ -109,9 +137,44 @@ impl FiatBridge {
         if reference.len() > MAX_REFERENCE_LEN {
             return Err(Error::ReferenceTooLong);
         }
+        // Allowlist gate: when enabled, only approved addresses may deposit.
+        let allowlist_on: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::AllowlistEnabled)
+            .unwrap_or(false);
+        if allowlist_on {
+            if !env
+                .storage()
+                .persistent()
+                .has(&DataKey::Allowed(from.clone()))
+            {
+                return Err(Error::NotAllowed);
+            }
+        }
+
         if amount <= 0 {
             return Err(Error::ZeroAmount);
         }
+
+        // ── Cooldown check ────────────────────────────────────────────
+        let cooldown: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::CooldownLedgers)
+            .unwrap_or(0);
+        if cooldown > 0 {
+            if let Some(last) = env
+                .storage()
+                .temporary()
+                .get::<DataKey, u32>(&DataKey::LastDeposit(from.clone()))
+            {
+                if env.ledger().sequence() < last.saturating_add(cooldown) {
+                    return Err(Error::CooldownActive);
+                }
+            }
+        }
+
         let limit: i128 = env
             .storage()
             .instance()
@@ -161,6 +224,15 @@ impl FiatBridge {
             .instance()
             .set(&DataKey::TotalDeposited, &(total + amount));
 
+        // ── Record last deposit ledger in temporary storage ───────────
+        if cooldown > 0 {
+            let key = DataKey::LastDeposit(from);
+            env.storage()
+                .temporary()
+                .set(&key, &env.ledger().sequence());
+            env.storage()
+                .temporary()
+                .extend_ttl(&key, cooldown, cooldown);
         // ── Events ────────────────────────────────────────────────────
         env.events()
             .publish((Symbol::new(&env, "deposit"), from), amount);
@@ -370,6 +442,21 @@ impl FiatBridge {
         Ok(())
     }
 
+    /// Set per-address deposit cooldown (in ledgers). Admin only.
+    /// A value of 0 disables cooldown checks.
+    pub fn set_cooldown(env: Env, ledgers: u32) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::CooldownLedgers, &ledgers);
+        Ok(())
+    }
+
     /// Update the per-deposit limit. Admin only.
     pub fn set_limit(env: Env, new_limit: i128) -> Result<(), Error> {
         if new_limit <= 0 {
@@ -541,6 +628,75 @@ impl FiatBridge {
     /// balance, the entire call reverts. Batches larger than MAX_BATCH_SIZE are
     /// rejected immediately.
     pub fn batch_withdraw(env: Env, entries: Vec<WithdrawEntry>) -> Result<(), Error> {
+
+    /// Get the current per-address cooldown in ledgers.
+    pub fn get_cooldown(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::CooldownLedgers)
+            .unwrap_or(0)
+    }
+
+    /// Get the last deposit ledger sequence for an address, if still live.
+    pub fn get_last_deposit_ledger(env: Env, address: Address) -> Option<u32> {
+        env.storage()
+            .temporary()
+            .get(&DataKey::LastDeposit(address))
+    // ── Allowlist management (admin-only) ─────────────────────────────
+
+    /// Enable or disable the deposit allowlist. Admin only.
+    pub fn set_allowlist_enabled(env: Env, enabled: bool) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+
+        env.storage()
+            .instance()
+            .set(&DataKey::AllowlistEnabled, &enabled);
+
+        AllowlistToggled { enabled }.publish(&env);
+        Ok(())
+    }
+
+    /// Add a single address to the deposit allowlist. Admin only.
+    pub fn allowlist_add(env: Env, addr: Address) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Allowed(addr.clone()), &true);
+
+        AllowlistAddrAdded { addr }.publish(&env);
+        Ok(())
+    }
+
+    /// Remove a single address from the deposit allowlist. Admin only.
+    pub fn allowlist_remove(env: Env, addr: Address) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+
+        env.storage()
+            .persistent()
+            .remove(&DataKey::Allowed(addr.clone()));
+
+        AllowlistAddrRemoved { addr }.publish(&env);
+        Ok(())
+    }
+
+    /// Bulk-add addresses to the deposit allowlist. Admin only.
+    pub fn allowlist_add_batch(env: Env, addrs: Vec<Address>) -> Result<(), Error> {
         let admin: Address = env
             .storage()
             .instance()
@@ -591,6 +747,48 @@ impl FiatBridge {
             .publish((Symbol::new(&env, "batch_complete"),), total);
 
         Ok(())
+        for addr in addrs.iter() {
+            env.storage()
+                .persistent()
+                .set(&DataKey::Allowed(addr.clone()), &true);
+            AllowlistAddrAdded { addr }.publish(&env);
+        }
+        Ok(())
+    }
+
+    /// Bulk-remove addresses from the deposit allowlist. Admin only.
+    pub fn allowlist_remove_batch(env: Env, addrs: Vec<Address>) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+
+        for addr in addrs.iter() {
+            env.storage()
+                .persistent()
+                .remove(&DataKey::Allowed(addr.clone()));
+            AllowlistAddrRemoved { addr }.publish(&env);
+        }
+        Ok(())
+    }
+
+    // ── Allowlist view functions ───────────────────────────────────────
+
+    /// Check whether a given address is on the allowlist.
+    pub fn is_allowed(env: Env, addr: Address) -> bool {
+        env.storage()
+            .persistent()
+            .has(&DataKey::Allowed(addr))
+    }
+
+    /// Check whether the deposit allowlist is currently enabled.
+    pub fn get_allowlist_enabled(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::AllowlistEnabled)
+            .unwrap_or(false)
     }
 }
 

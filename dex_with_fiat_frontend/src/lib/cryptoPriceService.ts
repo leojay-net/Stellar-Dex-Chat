@@ -17,14 +17,14 @@ export interface TokenPriceData {
 
 // Token ID mapping for CoinGecko API
 const TOKEN_IDS: Record<string, string> = {
+  XLM: 'stellar',
   ETH: 'ethereum',
   USDC: 'usd-coin',
   USDT: 'tether',
-  XLM: 'stellar',
 };
 
-// Supported fiat currencies
-const SUPPORTED_CURRENCIES = ['usd', 'eur', 'gbp', 'ngn', 'cad', 'aud', 'jpy'];
+// Supported fiat currencies — exported so UI can reference the same list
+export const SUPPORTED_CURRENCIES = ['usd', 'eur', 'gbp', 'ngn', 'cad', 'aud', 'jpy'];
 
 // Cache for prices to avoid excessive API calls
 const priceCache: Map<string, TokenPriceData> = new Map();
@@ -99,11 +99,11 @@ function getFallbackPrices(
   vsCurrencies: string[],
 ): CryptoPrice {
   const fallbackPrices: CryptoPrice = {
-    ETH: { usd: 4000, eur: 3700, gbp: 3200, ngn: 6500000 },
-    STRK: { usd: 0.8, eur: 0.74, gbp: 0.64, ngn: 1300 },
-    USDC: { usd: 1, eur: 0.92, gbp: 0.8, ngn: 1650 },
-    USDT: { usd: 1, eur: 0.92, gbp: 0.8, ngn: 1650 },
-    XLM: { usd: 0.12, eur: 0.11, gbp: 0.095, ngn: 200 },
+    XLM:  { usd: 0.11, eur: 0.10, gbp: 0.087, ngn: 180,    cad: 0.15, aud: 0.17, jpy: 16.5  },
+    ETH:  { usd: 4000, eur: 3700, gbp: 3200,  ngn: 6500000, cad: 5400, aud: 6200, jpy: 600000 },
+    STRK: { usd: 0.8,  eur: 0.74, gbp: 0.64,  ngn: 1300,    cad: 1.08, aud: 1.24, jpy: 120   },
+    USDC: { usd: 1,    eur: 0.92, gbp: 0.8,   ngn: 1650,    cad: 1.35, aud: 1.55, jpy: 150   },
+    USDT: { usd: 1,    eur: 0.92, gbp: 0.8,   ngn: 1650,    cad: 1.35, aud: 1.55, jpy: 150   },
   };
 
   const result: CryptoPrice = {};
@@ -218,4 +218,21 @@ export async function getMultipleTokenPrices(
  */
 export function clearPriceCache(): void {
   priceCache.clear();
+}
+
+/**
+ * Format a fiat amount with the correct locale and currency symbol.
+ * Falls back to a plain number string if Intl is unavailable.
+ */
+export function formatFiatAmount(amount: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: currency.toUpperCase(),
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${currency.toUpperCase()} ${amount.toFixed(2)}`;
+  }
 }

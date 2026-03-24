@@ -23,6 +23,8 @@ export const XLM_SAC_ID =
 // Stellar Testnet passphrase — switch to Networks.PUBLIC for mainnet
 const NETWORK_PASSPHRASE = Networks.TESTNET;
 
+export const BRIDGE_LIMIT_WARNING_PERCENT = 80;
+
 const server = new rpc.Server(RPC_URL, { allowHttp: false });
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -81,6 +83,7 @@ export async function depositToContract(
   amount: bigint,
   signTx: (xdr: string) => Promise<string>,
 ): Promise<string> {
+  await validateBridgeAmountLimit(amount);
   const contract = new Contract(CONTRACT_ID);
   const op = contract.call(
     'deposit',
@@ -119,7 +122,7 @@ export async function withdrawFromContract(
 async function viewCall<T>(functionName: string): Promise<T> {
   // Use a dummy account (Stellar Foundation's well-known testnet account) for simulation
   const DUMMY_SOURCE =
-    'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
+    'GBEFLW6RTALNHCL7HW2INWB4ASHZ7E6MF6E2IOIIMBVEAU2B2B4XLRQW';
   const contract = new Contract(CONTRACT_ID);
 
   // We don't need a funded account — just a valid one for building the tx
@@ -158,6 +161,18 @@ export async function getContractBalance(): Promise<bigint> {
 /** Returns the per-deposit limit set by the admin. */
 export async function getBridgeLimit(): Promise<bigint> {
   return viewCall<bigint>('get_limit');
+}
+
+export async function validateBridgeAmountLimit(amount: bigint): Promise<bigint> {
+  const limit = await getBridgeLimit();
+
+  if (amount > limit) {
+    throw new Error(
+      `Requested amount exceeds the current bridge limit of ${stroopsToDisplay(limit)} XLM.`,
+    );
+  }
+
+  return limit;
 }
 
 /** Returns the running total of all deposits ever made. */

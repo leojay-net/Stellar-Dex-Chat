@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Wallet, LogOut, Moon, Sun, Menu, X, Plus, Star } from 'lucide-react';
+import { Wallet, LogOut, Moon, Sun, Menu, X, Plus, Star, Settings } from 'lucide-react';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import useChat from '@/hooks/useChat';
@@ -10,15 +10,19 @@ import ChatInput from './ChatInput';
 import ChatHistorySidebar from './ChatHistorySidebar';
 import StellarFiatModal from './StellarFiatModal';
 import BankDetailsModal from './BankDetailsModal';
+import UserSettings from './UserSettings';
 import { TransactionData } from '@/types';
 import SkeletonChat from '@/components/ui/skeleton/SkeletonChat';
 import SkeletonSidebar from '@/components/ui/skeleton/SkeletonSidebar';
+import { useUserPreferences } from '@/contexts/UserPreferencesContext';
 
 export default function StellarChatInterface() {
   const { connection, connect, disconnect } = useStellarWallet();
   const { isDarkMode, toggleDarkMode } = useTheme();
+  const { fiatCurrency } = useUserPreferences();
 
   const [showSidebar, setShowSidebar] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [defaultAmount, setDefaultAmount] = useState('');
   const [showBankDetails, setShowBankDetails] = useState(false);
@@ -163,10 +167,10 @@ export default function StellarChatInterface() {
     setShowBankDetails(true);
   }, []);
 
-  // Register the callback once
-  useState(() => {
+  // Register the callback in useEffect to ensure it runs reliably
+  useEffect(() => {
     setTransactionReadyCallback(handleTransactionReady);
-  });
+  }, [handleTransactionReady, setTransactionReadyCallback]);
 
   const handleActionClick = useCallback(
     (actionId: string, actionType: string) => {
@@ -259,6 +263,15 @@ export default function StellarChatInterface() {
               className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
             >
               <Plus className="w-5 h-5" />
+            </button>
+
+            <button
+              onClick={() => setShowSettings(true)}
+              title="Settings"
+              aria-label="Open settings"
+              className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
+            >
+              <Settings className="w-5 h-5" />
             </button>
 
             <button
@@ -396,6 +409,7 @@ export default function StellarChatInterface() {
           setDefaultAmount('');
         }}
         defaultAmount={defaultAmount}
+        fiatCurrency={fiatCurrency}
         onDepositSuccess={handleDepositSuccess}
       />
 
@@ -404,6 +418,12 @@ export default function StellarChatInterface() {
         isOpen={showBankDetails}
         onClose={() => setShowBankDetails(false)}
         xlmAmount={bankDetailsXlmAmount}
+      />
+
+      {/* Settings panel */}
+      <UserSettings
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
       />
     </div>
   );
