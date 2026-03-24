@@ -9,6 +9,7 @@ import ChatMessages from './ChatMessages';
 import ChatInput from './ChatInput';
 import ChatHistorySidebar from './ChatHistorySidebar';
 import StellarFiatModal from './StellarFiatModal';
+import BankDetailsModal from './BankDetailsModal';
 import { TransactionData } from '@/types';
 import SkeletonChat from '@/components/ui/skeleton/SkeletonChat';
 import SkeletonSidebar from '@/components/ui/skeleton/SkeletonSidebar';
@@ -20,6 +21,8 @@ export default function StellarChatInterface() {
   const [showSidebar, setShowSidebar] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [defaultAmount, setDefaultAmount] = useState('');
+  const [showBankDetails, setShowBankDetails] = useState(false);
+  const [bankDetailsXlmAmount, setBankDetailsXlmAmount] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
   const [isSheetMounted, setIsSheetMounted] = useState(false);
 
@@ -150,6 +153,14 @@ export default function StellarChatInterface() {
   const handleTransactionReady = useCallback((data: TransactionData) => {
     if (data.amountIn) setDefaultAmount(data.amountIn);
     setShowModal(true);
+  }, []);
+
+  // After a successful deposit, close the deposit modal and open bank details
+  const handleDepositSuccess = useCallback((xlmAmount: number) => {
+    setShowModal(false);
+    setDefaultAmount('');
+    setBankDetailsXlmAmount(xlmAmount);
+    setShowBankDetails(true);
   }, []);
 
   // Register the callback once
@@ -385,6 +396,14 @@ export default function StellarChatInterface() {
           setDefaultAmount('');
         }}
         defaultAmount={defaultAmount}
+        onDepositSuccess={handleDepositSuccess}
+      />
+
+      {/* Bank details & fiat payout modal */}
+      <BankDetailsModal
+        isOpen={showBankDetails}
+        onClose={() => setShowBankDetails(false)}
+        xlmAmount={bankDetailsXlmAmount}
       />
     </div>
   );

@@ -20,6 +20,7 @@ const TOKEN_IDS: Record<string, string> = {
   ETH: 'ethereum',
   USDC: 'usd-coin',
   USDT: 'tether',
+  XLM: 'stellar',
 };
 
 // Supported fiat currencies
@@ -102,6 +103,7 @@ function getFallbackPrices(
     STRK: { usd: 0.8, eur: 0.74, gbp: 0.64, ngn: 1300 },
     USDC: { usd: 1, eur: 0.92, gbp: 0.8, ngn: 1650 },
     USDT: { usd: 1, eur: 0.92, gbp: 0.8, ngn: 1650 },
+    XLM: { usd: 0.12, eur: 0.11, gbp: 0.095, ngn: 200 },
   };
 
   const result: CryptoPrice = {};

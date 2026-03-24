@@ -3,7 +3,7 @@ extern crate std;
 
 use super::*;
 use soroban_sdk::{
-    testutils::Address as _,
+    testutils::{Address as _, Events, Ledger},
     token::{Client as TokenClient, StellarAssetClient},
     Address, Env,
 };
@@ -96,7 +96,7 @@ fn test_time_locked_withdrawal() {
 
     // Advance ledger
     env.ledger().with_mut(|li| {
-        li.sequence = start_ledger + 100;
+        li.sequence_number = start_ledger + 100;
     });
 
     bridge.execute_withdrawal(&req_id);
@@ -269,6 +269,26 @@ fn test_transfer_admin() {
     let new_admin = Address::generate(&env);
     bridge.transfer_admin(&new_admin);
     assert_eq!(bridge.get_admin(), new_admin);
+}
+
+#[test]
+fn test_deposit_and_withdraw_events() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, token_sac) = setup_bridge(&env, 500);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &1_000);
+
+    bridge.deposit(&user, &200);
+    let deposit_events = std::format!("{:?}", env.events().all());
+    assert!(deposit_events.contains("deposit"));
+    assert!(deposit_events.contains("lo: 200"));
+
+    bridge.withdraw(&user, &100);
+    let withdraw_events = std::format!("{:?}", env.events().all());
+    assert!(withdraw_events.contains("withdraw"));
+    assert!(withdraw_events.contains("lo: 100"));
 }
 
 // ── error-case tests ──────────────────────────────────────────────────
