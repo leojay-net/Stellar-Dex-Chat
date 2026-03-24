@@ -60,69 +60,9 @@ fn test_deposit_and_withdraw() {
     assert_eq!(token.balance(&user), 800);
     assert_eq!(token.balance(&contract_id), 200);
 
-    // Default lock period is 0
-    let req_id = bridge.request_withdrawal(&user, &100);
-    bridge.execute_withdrawal(&req_id);
-
+    bridge.withdraw(&user, &100);
     assert_eq!(token.balance(&user), 900);
     assert_eq!(token.balance(&contract_id), 100);
-}
-
-#[test]
-fn test_time_locked_withdrawal() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (contract_id, bridge, _, _, token, token_sac) = setup_bridge(&env, 500);
-    let user = Address::generate(&env);
-    token_sac.mint(&user, &1_000);
-    bridge.deposit(&user, &200);
-
-    bridge.set_lock_period(&100);
-    assert_eq!(bridge.get_lock_period(), 100);
-
-    let start_ledger = env.ledger().sequence();
-    let req_id = bridge.request_withdrawal(&user, &100);
-
-    // Check request details
-    let req = bridge.get_withdrawal_request(&req_id).unwrap();
-    assert_eq!(req.to, user);
-    assert_eq!(req.amount, 100);
-    assert_eq!(req.unlock_ledger, start_ledger + 100);
-
-    // Try to execute too early
-    let result = bridge.try_execute_withdrawal(&req_id);
-    assert_eq!(result, Err(Ok(Error::WithdrawalLocked)));
-
-    // Advance ledger
-    env.ledger().with_mut(|li| {
-        li.sequence = start_ledger + 100;
-    });
-
-    bridge.execute_withdrawal(&req_id);
-    assert_eq!(token.balance(&user), 900);
-    assert_eq!(token.balance(&contract_id), 100);
-    assert_eq!(bridge.get_withdrawal_request(&req_id), None);
-}
-
-#[test]
-fn test_cancel_withdrawal() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, bridge, _, _, _, token_sac) = setup_bridge(&env, 500);
-    let user = Address::generate(&env);
-    token_sac.mint(&user, &1_000);
-    bridge.deposit(&user, &200);
-
-    let req_id = bridge.request_withdrawal(&user, &100);
-    assert!(bridge.get_withdrawal_request(&req_id).is_some());
-
-    bridge.cancel_withdrawal(&req_id);
-    assert!(bridge.get_withdrawal_request(&req_id).is_none());
-
-    let result = bridge.try_execute_withdrawal(&req_id);
-    assert_eq!(result, Err(Ok(Error::RequestNotFound)));
 }
 
 #[test]
@@ -208,8 +148,7 @@ fn test_insufficient_funds_withdraw() {
     token_sac.mint(&user, &1_000);
     bridge.deposit(&user, &100);
 
-    let req_id = bridge.request_withdrawal(&user, &200);
-    let result = bridge.try_execute_withdrawal(&req_id);
+    let result = bridge.try_withdraw(&user, &200);
     assert_eq!(result, Err(Ok(Error::InsufficientFunds)));
 }
 

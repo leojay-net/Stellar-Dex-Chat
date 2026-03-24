@@ -12,17 +12,6 @@ pub enum Error {
     ZeroAmount = 4,
     ExceedsLimit = 5,
     InsufficientFunds = 6,
-    WithdrawalLocked = 7,
-    RequestNotFound = 8,
-}
-
-// ── Models ────────────────────────────────────────────────────────────────
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct WithdrawRequest {
-    pub to: Address,
-    pub amount: i128,
-    pub unlock_ledger: u32,
 }
 
 // ── Storage keys ──────────────────────────────────────────────────────────
@@ -32,9 +21,6 @@ pub enum DataKey {
     Token,
     BridgeLimit,
     TotalDeposited,
-    LockPeriod,
-    WithdrawQueue(u64),
-    NextRequestID,
 }
 
 // ── Contract ──────────────────────────────────────────────────────────────
@@ -96,55 +82,17 @@ impl FiatBridge {
         Ok(())
     }
 
-    /// Register a withdrawal request that matures after the lock period. Admin only.
-    pub fn request_withdrawal(env: Env, to: Address, amount: i128) -> Result<u64, Error> {
+    /// Release tokens to `to`. Only the admin may call this.
+    pub fn withdraw(env: Env, to: Address, amount: i128) -> Result<(), Error> {
+        if amount <= 0 {
+            return Err(Error::ZeroAmount);
+        }
         let admin: Address = env
             .storage()
             .instance()
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
-
-        if amount <= 0 {
-            return Err(Error::ZeroAmount);
-        }
-
-        let lock_period: u32 = env.storage().instance().get(&DataKey::LockPeriod).unwrap_or(0);
-        let unlock_ledger = env.ledger().sequence() + lock_period;
-
-        let request_id: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::NextRequestID)
-            .unwrap_or(0);
-
-        let request = WithdrawRequest {
-            to,
-            amount,
-            unlock_ledger,
-        };
-
-        env.storage()
-            .persistent()
-            .set(&DataKey::WithdrawQueue(request_id), &request);
-        env.storage()
-            .instance()
-            .set(&DataKey::NextRequestID, &(request_id + 1));
-
-        Ok(request_id)
-    }
-
-    /// Execute a matured withdrawal request.
-    pub fn execute_withdrawal(env: Env, request_id: u64) -> Result<(), Error> {
-        let request: WithdrawRequest = env
-            .storage()
-            .persistent()
-            .get(&DataKey::WithdrawQueue(request_id))
-            .ok_or(Error::RequestNotFound)?;
-
-        if env.ledger().sequence() < request.unlock_ledger {
-            return Err(Error::WithdrawalLocked);
-        }
 
         let token_id: Address = env
             .storage()
@@ -152,53 +100,11 @@ impl FiatBridge {
             .get(&DataKey::Token)
             .ok_or(Error::NotInitialized)?;
         let token_client = token::Client::new(&env, &token_id);
-
         let balance = token_client.balance(&env.current_contract_address());
-        if request.amount > balance {
+        if amount > balance {
             return Err(Error::InsufficientFunds);
         }
-
-        token_client.transfer(&env.current_contract_address(), &request.to, &request.amount);
-
-        env.storage()
-            .persistent()
-            .remove(&DataKey::WithdrawQueue(request_id));
-
-        Ok(())
-    }
-
-    /// Cancel a pending withdrawal request. Admin only.
-    pub fn cancel_withdrawal(env: Env, request_id: u64) -> Result<(), Error> {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(Error::NotInitialized)?;
-        admin.require_auth();
-
-        if !env
-            .storage()
-            .persistent()
-            .has(&DataKey::WithdrawQueue(request_id))
-        {
-            return Err(Error::RequestNotFound);
-        }
-
-        env.storage()
-            .persistent()
-            .remove(&DataKey::WithdrawQueue(request_id));
-        Ok(())
-    }
-
-    /// Set the mandatory delay period for withdrawals (in ledgers). Admin only.
-    pub fn set_lock_period(env: Env, ledgers: u32) -> Result<(), Error> {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(Error::NotInitialized)?;
-        admin.require_auth();
-        env.storage().instance().set(&DataKey::LockPeriod, &ledgers);
+        token_client.transfer(&env.current_contract_address(), &to, &amount);
         Ok(())
     }
 
@@ -265,16 +171,6 @@ impl FiatBridge {
             .instance()
             .get(&DataKey::TotalDeposited)
             .ok_or(Error::NotInitialized)
-    }
-    /// Get details of a withdrawal request.
-    pub fn get_withdrawal_request(env: Env, request_id: u64) -> Option<WithdrawRequest> {
-        env.storage()
-            .persistent()
-            .get(&DataKey::WithdrawQueue(request_id))
-    }
-    /// Get the current lock period in ledgers.
-    pub fn get_lock_period(env: Env) -> u32 {
-        env.storage().instance().get(&DataKey::LockPeriod).unwrap_or(0)
     }
 }
 
