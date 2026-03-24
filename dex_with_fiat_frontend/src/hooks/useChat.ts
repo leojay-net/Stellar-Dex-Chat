@@ -5,12 +5,14 @@ import { ChatMessage, AIAnalysisResult, TransactionData } from '@/types';
 import { AIAssistant } from '@/lib/aiAssistant';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
 import { useChatHistory } from './useChatHistory';
+import { perf } from '@/lib/perf';
 
 interface ConversationState {
   messageCount: number;
   hasUserCancelled: boolean;
   pendingTransactionData: TransactionData | null;
   shouldTriggerTransaction: boolean;
+  isAdmin: boolean;
 }
 
 const useChat = () => {
@@ -30,6 +32,7 @@ const useChat = () => {
       hasUserCancelled: false,
       pendingTransactionData: null,
       shouldTriggerTransaction: false,
+      isAdmin: false,
     },
   );
 
@@ -128,7 +131,7 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
         content,
       );
       if (isCancellation) {
-        setConversationState((prev) => ({
+        setConversationState((prev: ConversationState) => ({
           ...prev,
           hasUserCancelled: true,
           pendingTransactionData: null,
@@ -143,7 +146,7 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
         timestamp: new Date(),
       };
 
-      setMessages((prev) => [...prev, userMessage]);
+      setMessages((prev: ChatMessage[]) => [...prev, userMessage]);
       setIsLoading(true);
 
       try {
@@ -152,15 +155,17 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
           walletAddress: connection.address,
           previousMessages: messages
             .slice(-3)
-            .map((m) => ({ role: m.role, content: m.content })),
+            .map((m: ChatMessage) => ({ role: m.role, content: m.content })),
           messageCount: conversationState.messageCount,
           hasTransactionData: !!conversationState.pendingTransactionData,
         };
 
+        perf.mark('AI: Response');
         const analysis = await aiAssistant.analyzeUserMessage(
           content,
           conversationContext,
         );
+        perf.measure('AI: Response');
 
         const newMessageCount = conversationState.messageCount + 1;
         let shouldTriggerTransaction = false;
@@ -230,7 +235,8 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
             "**Conversion Cancelled**\\n\\nNo problem! I've cancelled the transaction process. Feel free to start fresh whenever you're ready to convert crypto to fiat. I'm here to help whenever you need assistance.\\n\\nIs there anything else I can help you with today?";
         }
 
-        setConversationState((prev) => ({
+        setConversationState((prev: ConversationState) => ({
+          ...prev,
           messageCount: newMessageCount,
           hasUserCancelled: isCancellation ? true : prev.hasUserCancelled,
           pendingTransactionData,
@@ -258,6 +264,7 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
               messageCount: newMessageCount,
               hasTransactionData: !!pendingTransactionData,
               shouldAutoTrigger: !!shouldAutoTrigger,
+              isAdmin: conversationState.isAdmin,
             }),
             confirmationRequired:
               analysis.intent === 'fiat_conversion' || shouldTriggerTransaction,
@@ -266,7 +273,7 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
           },
         };
 
-        setMessages((prev) => [...prev, assistantMessage]);
+        setMessages((prev: ChatMessage[]) => [...prev, assistantMessage]);
 
         if (
           shouldTriggerTransaction &&
@@ -286,7 +293,7 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
             'Sorry, I encountered an error processing your request. Please try again.',
           timestamp: new Date(),
         };
-        setMessages((prev) => [...prev, errorMessage]);
+        setMessages((prev: ChatMessage[]) => [...prev, errorMessage]);
       } finally {
         setIsLoading(false);
       }
@@ -296,12 +303,13 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
 
   const clearChat = useCallback(() => {
     setMessages([]);
-    setConversationState({
+    setConversationState((prev: ConversationState) => ({
       messageCount: 0,
       hasUserCancelled: false,
       pendingTransactionData: null,
       shouldTriggerTransaction: false,
-    });
+      isAdmin: prev.isAdmin,
+    }));
     createNewSession([]);
   }, [createNewSession]);
 
@@ -312,12 +320,13 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
         setMessages(
           sessionMessages.length > 0 ? sessionMessages : [initialMessage],
         );
-        setConversationState({
+        setConversationState((prev: ConversationState) => ({
           messageCount: 0,
           hasUserCancelled: false,
           pendingTransactionData: null,
           shouldTriggerTransaction: false,
-        });
+          isAdmin: prev.isAdmin,
+        }));
       }
     },
     [loadSession, initialMessage],
@@ -332,7 +341,7 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
 
   useEffect(() => {
     if (isInitialized) {
-      setMessages((prevMessages) => {
+      setMessages((prevMessages: ChatMessage[]) => {
         if (prevMessages.length > 0 && prevMessages[0]?.id === '1') {
           const updatedMessages = [...prevMessages];
           updatedMessages[0] = {
@@ -358,9 +367,12 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
     currentSessionId,
     conversationState,
     setTransactionReadyCallback,
+    setIsAdmin: (isAdmin: boolean) => {
+      setConversationState((prev: ConversationState) => ({ ...prev, isAdmin }));
+    },
     addMessage: (message: ChatMessage) => {
       const newMessages = [...messages, message];
-      setMessages(newMessages);
+      setMessages((prev: ChatMessage[]) => [...prev, message]);
       // Update session with new messages
       updateCurrentSession(newMessages);
     },
@@ -374,6 +386,7 @@ function generateSuggestedActions(
     messageCount?: number;
     hasTransactionData?: boolean;
     shouldAutoTrigger?: boolean;
+    isAdmin?: boolean;
   },
 ) {
   const actions = [];
@@ -381,6 +394,7 @@ function generateSuggestedActions(
   const messageCount = context?.messageCount || 0;
   const hasTransactionData = context?.hasTransactionData || false;
   const shouldAutoTrigger = context?.shouldAutoTrigger || false;
+  const isAdmin = context?.isAdmin || false;
 
   if (shouldAutoTrigger && hasTransactionData) {
     actions.push({
@@ -458,6 +472,16 @@ function generateSuggestedActions(
         },
       );
     }
+  }
+
+  // Admin-only actions
+  if (isAdmin) {
+    actions.push({
+      id: 'admin_withdraw',
+      type: 'confirm_fiat' as const,
+      label: '💰 Admin: Withdraw Funds',
+      data: { isWithdraw: true },
+    });
   }
 
   if (analysis.intent === 'query') {

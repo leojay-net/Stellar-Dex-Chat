@@ -19,6 +19,7 @@ import {
   simulateWithdraw,
   FeeEstimate,
 } from '@/lib/stellarContract';
+import { perf } from '@/lib/perf';
 import {
   getTokenPrice,
   formatFiatAmount,
@@ -165,6 +166,7 @@ export default function StellarFiatModal({
     const simulateTransaction = async () => {
       try {
         let estimate: FeeEstimate | null;
+        perf.mark('Tx: Simulation');
         if (isAdminMode) {
           const to = recipient || connection.publicKey;
           estimate = await simulateWithdraw(connection.publicKey, to, currentStroops);
@@ -173,6 +175,7 @@ export default function StellarFiatModal({
         }
         if (!cancelled) {
           setFeeEstimate(estimate);
+          perf.measure('Tx: Simulation');
         }
       } catch {
         if (!cancelled) {
@@ -272,6 +275,7 @@ export default function StellarFiatModal({
 
     setStatus('loading');
     setErrorMsg('');
+    perf.mark('Tx: Submission');
     try {
       let hash: string;
       if (isAdminMode) {
@@ -290,6 +294,7 @@ export default function StellarFiatModal({
         );
       }
       setTxHash(hash);
+      perf.measure('Tx: Submission');
       setStatus('success');
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Transaction failed');
@@ -415,85 +420,94 @@ export default function StellarFiatModal({
         </p>
       )}
 
-      {/* Fee estimate */}
+      {/* Simulation Details Panel */}
       {(isLoadingFee || feeEstimate) && (
-        <div className="flex items-center justify-between text-xs text-gray-400 mb-4">
-          <span>Est. transaction fee</span>
-          <span>
-            {isLoadingFee ? (
-              'Calculating...'
-            ) : feeEstimate ? (
-              `~${feeEstimate.fee.toFixed(7)} XLM`
-            ) : (
-              'Unavailable'
+        <div className="mb-4 rounded-xl border border-gray-700 bg-gray-800/40 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+              Simulation Results
+            </h3>
+            {isLoadingFee && (
+              <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />
             )}
-          </span>
+          </div>
+          
+          <div className="space-y-2">
+            <div className="flex justify-between text-[11px]">
+              <span className="text-gray-500">Base Fee</span>
+              <span className="text-gray-300 font-mono">
+                {isLoadingFee ? '...' : feeEstimate ? `${feeEstimate.baseFee.toFixed(7)} XLM` : '0.0000100 XLM'}
+              </span>
+            </div>
+            <div className="flex justify-between text-[11px]">
+              <span className="text-gray-500">Resource Fee</span>
+              <span className="text-gray-300 font-mono">
+                {isLoadingFee ? '...' : feeEstimate ? `${feeEstimate.resourceFee.toFixed(7)} XLM` : '0.0000000 XLM'}
+              </span>
+            </div>
+            <div className="pt-2 mt-1 border-t border-gray-700/50 flex justify-between text-xs font-semibold">
+              <span className="text-gray-400">Total Network Fee</span>
+              <span className="text-blue-400 font-mono">
+                {isLoadingFee ? 'Calculating...' : feeEstimate ? `${feeEstimate.fee.toFixed(7)} XLM` : 'N/A'}
+              </span>
+            </div>
+          </div>
         </div>
       )}
 
       {isDepositFlow && (
-              <div className="mb-4 rounded-xl border border-gray-700 bg-gray-800/60 px-4 py-3">
-                <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
-                  <span>On-chain per-deposit limit</span>
-                  <span>
-                    {isLoadingBridgeLimit
-                      ? 'Loading...'
-                      : bridgeLimit !== null
-                        ? `${stroopsToDisplay(bridgeLimit)} XLM`
-                        : 'Unavailable'}
-                  </span>
-                </div>
+        <div className="mb-4 rounded-xl border border-gray-700 bg-gray-800/60 px-4 py-3">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+              Bridge Capacity
+            </h3>
+            <div className={`w-2 h-2 rounded-full ${isOverLimit ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : isHighLimitUsage ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)]' : 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]'}`} />
+          </div>
 
-                <div className="flex items-center justify-between text-sm text-gray-200 mb-2">
-                  <span>Requested amount</span>
-                  <span>
-                    {hasValidAmount && stroopsAmount !== null
-                      ? `${stroopsToDisplay(stroopsAmount)} XLM`
-                      : 'Enter an amount'}
-                  </span>
-                </div>
+          <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
+            <span>On-chain per-deposit limit</span>
+            <span className="text-gray-200 font-mono">
+              {isLoadingBridgeLimit
+                ? 'Loading...'
+                : bridgeLimit !== null
+                  ? `${stroopsToDisplay(bridgeLimit)} XLM`
+                  : 'Unavailable'}
+            </span>
+          </div>
 
-                <div className="h-2 w-full rounded-full bg-gray-700 overflow-hidden mb-2">
-                  <div
-                    className={`h-full rounded-full transition-all ${isOverLimit ? 'bg-red-500' : isHighLimitUsage ? 'bg-amber-400' : 'bg-blue-500'}`}
-                    style={{ width: `${Math.min(usagePercent, 100)}%` }}
-                  />
-                </div>
+          <div className="h-1.5 w-full rounded-full bg-gray-700 overflow-hidden mb-2">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${isOverLimit ? 'bg-red-500' : isHighLimitUsage ? 'bg-amber-400' : 'bg-blue-500'}`}
+              style={{ width: `${Math.min(usagePercent, 100)}%` }}
+            />
+          </div>
 
-                <div className="flex items-center justify-between text-xs text-gray-400">
-                  <span>
-                    {hasValidAmount && bridgeLimit !== null
-                      ? `${usagePercent.toFixed(2)}% of limit`
-                      : `High-usage warning at ${BRIDGE_LIMIT_WARNING_PERCENT}%`}
-                  </span>
-                  <span>
-                    {hasValidAmount && bridgeLimit !== null
-                      ? `${stroopsToDisplay(remainingLimit)} XLM remaining`
-                      : 'Awaiting input'}
-                  </span>
-                </div>
+          <div className="flex items-center justify-between text-[10px] text-gray-500">
+            <span>
+              {hasValidAmount && bridgeLimit !== null
+                ? `${usagePercent.toFixed(1)}% used`
+                : 'Limit utilized per transaction'}
+            </span>
+            <span>
+              {hasValidAmount && bridgeLimit !== null
+                ? `${stroopsToDisplay(remainingLimit)} XLM available`
+                : ''}
+            </span>
+          </div>
 
-                {bridgeLimitError && (
-                  <div className="mt-3 rounded-lg border border-red-800 bg-red-900/20 px-3 py-2 text-sm text-red-300">
-                    {bridgeLimitError}
-                  </div>
-                )}
+          {bridgeLimitError && (
+            <div className="mt-3 rounded-lg border border-red-800 bg-red-900/20 px-3 py-2 text-[11px] text-red-300">
+              {bridgeLimitError}
+            </div>
+          )}
 
-                {isHighLimitUsage && bridgeLimit !== null && (
-                  <div className="mt-3 rounded-lg border border-amber-700 bg-amber-900/20 px-3 py-2 text-sm text-amber-200">
-                    This request uses {usagePercent.toFixed(2)}% of the current on-chain limit of{' '}
-                    {stroopsToDisplay(bridgeLimit)} XLM.
-                  </div>
-                )}
-
-                {isOverLimit && bridgeLimit !== null && stroopsAmount !== null && (
-                  <div className="mt-3 rounded-lg border border-red-800 bg-red-900/20 px-3 py-2 text-sm text-red-300">
-                    Requested {stroopsToDisplay(stroopsAmount)} XLM exceeds the current on-chain limit of{' '}
-                    {stroopsToDisplay(bridgeLimit)} XLM.
-                  </div>
-                )}
-              </div>
-            )}
+          {isOverLimit && bridgeLimit !== null && stroopsAmount !== null && (
+            <div className="mt-3 rounded-lg border border-red-800 bg-red-900/20 px-3 py-2 text-[11px] text-red-300 leading-tight">
+              Error: Amount exceeds the current bridge limit.
+            </div>
+          )}
+        </div>
+      )}
 
             {/* Recipient */}
             {isAdminMode && (

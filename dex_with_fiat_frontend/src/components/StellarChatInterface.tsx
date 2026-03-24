@@ -15,6 +15,7 @@ import { TransactionData } from '@/types';
 import SkeletonChat from '@/components/ui/skeleton/SkeletonChat';
 import SkeletonSidebar from '@/components/ui/skeleton/SkeletonSidebar';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
+import { getAdmin } from '@/lib/stellarContract';
 
 export default function StellarChatInterface() {
   const { connection, connect, disconnect, accounts, selectedAccountIndex, selectAccount, sessionExpired, clearSessionExpired } = useStellarWallet();
@@ -29,7 +30,9 @@ export default function StellarChatInterface() {
   const [bankDetailsXlmAmount, setBankDetailsXlmAmount] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
   const [isSheetMounted, setIsSheetMounted] = useState(false);
-  const [showAccountDropdown, setShowAccountDropdown] = useState(false);
+   const [showAccountDropdown, setShowAccountDropdown] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdminMode, setIsAdminMode] = useState(false);
   const accountDropdownRef = useRef<HTMLDivElement>(null);
 
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -45,15 +48,39 @@ export default function StellarChatInterface() {
     clearChat,
     loadChatSession,
     setTransactionReadyCallback,
+    setIsAdmin: setChatIsAdmin,
   } = useChat();
 
-  // Track viewport width to switch between sidebar and bottom-sheet
+   // Track viewport width to switch between sidebar and bottom-sheet
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  // Check if current user is admin
+  useEffect(() => {
+    const checkAdmin = async () => {
+      if (connection.isConnected && connection.address) {
+        try {
+          const adminAddr = await getAdmin();
+          setIsAdmin(adminAddr === connection.address);
+        } catch (err: unknown) {
+          console.error('Failed to check admin role:', err instanceof Error ? err.message : 'Unknown error');
+          setIsAdmin(false);
+        }
+      } else {
+        setIsAdmin(false);
+      }
+    };
+    checkAdmin();
+  }, [connection.isConnected, connection.address]);
+
+  // Sync admin state to chat hook
+  useEffect(() => {
+    setChatIsAdmin(isAdmin);
+  }, [isAdmin, setChatIsAdmin]);
 
   // On viewport change, close whichever panel is open to avoid stale state
   useEffect(() => {
@@ -168,9 +195,10 @@ export default function StellarChatInterface() {
     dragDelta.current = 0;
   }, [closeSheet]);
 
-  // When the AI decides a transaction is ready, open the modal
+   // When the AI decides a transaction is ready, open the modal
   const handleTransactionReady = useCallback((data: TransactionData) => {
     if (data.amountIn) setDefaultAmount(data.amountIn);
+    setIsAdminMode(false); // AI flow currently defaults to deposit
     setShowModal(true);
   }, []);
 
@@ -193,7 +221,8 @@ export default function StellarChatInterface() {
         case 'connect_wallet':
           connect();
           break;
-        case 'confirm_fiat':
+         case 'confirm_fiat':
+          setIsAdminMode(false);
           setShowModal(true);
           break;
         case 'query':
@@ -381,9 +410,26 @@ export default function StellarChatInterface() {
               <span className="font-medium text-blue-400">
                 {connection.network || 'TESTNET'}
               </span>
-              {' · '}
+               {' · '}
+              {isAdmin && (
+                <>
+                  <button
+                    onClick={() => {
+                      setIsAdminMode(true);
+                      setShowModal(true);
+                    }}
+                    className="text-blue-400 hover:text-blue-300 underline"
+                  >
+                    Withdraw XLM
+                  </button>
+                  {' · '}
+                </>
+              )}
               <button
-                onClick={() => setShowModal(true)}
+                onClick={() => {
+                  setIsAdminMode(false);
+                  setShowModal(true);
+                }}
                 className="text-blue-400 hover:text-blue-300 underline"
               >
                 Deposit XLM
@@ -457,12 +503,14 @@ export default function StellarChatInterface() {
       )}
 
       {/* Deposit / Withdraw Modal */}
-      <StellarFiatModal
+       <StellarFiatModal
         isOpen={showModal}
         onClose={() => {
           setShowModal(false);
           setDefaultAmount('');
+          setIsAdminMode(false);
         }}
+        isAdminMode={isAdminMode}
         defaultAmount={defaultAmount}
         fiatCurrency={fiatCurrency}
         onDepositSuccess={handleDepositSuccess}

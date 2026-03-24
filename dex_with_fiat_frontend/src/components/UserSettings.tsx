@@ -16,7 +16,14 @@ interface UserSettingsProps {
 
 export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
   const { isDarkMode } = useTheme();
-  const { fiatCurrency, setFiatCurrency } = useUserPreferences();
+  const {
+    fiatCurrency,
+    setFiatCurrency,
+    remindersEnabled,
+    setRemindersEnabled,
+    reminderFrequency,
+    setReminderFrequency,
+  } = useUserPreferences();
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Close on Escape
@@ -155,6 +162,77 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                 );
               })}
             </ul>
+          </section>
+          {/* Reminders section */}
+          <section className={`pt-6 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-100'}`}>
+            <h3
+              className={`text-xs font-semibold uppercase tracking-wider mb-3 ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-500'
+              }`}
+            >
+              Conversion Reminders
+            </h3>
+            <p
+              className={`text-xs mb-4 ${
+                isDarkMode ? 'text-gray-500' : 'text-gray-400'
+              }`}
+            >
+              Get notified when it&apos;s time to check your XLM balance and consider
+              converting to fiat.
+            </p>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span
+                  className={`text-sm ${
+                    isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                  }`}
+                >
+                  Enable Reminders
+                </span>
+                <button
+                  onClick={() => setRemindersEnabled(!remindersEnabled)}
+                  className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors focus:outline-none ${
+                    remindersEnabled ? 'bg-blue-600' : 'bg-gray-700'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                      remindersEnabled ? 'translate-x-5.5' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {remindersEnabled && (
+                <div className="space-y-2">
+                  <label
+                    className={`text-[10px] font-bold uppercase tracking-widest ${
+                      isDarkMode ? 'text-gray-500' : 'text-gray-400'
+                    }`}
+                  >
+                    Frequency
+                  </label>
+                  <div className="flex gap-2">
+                    {(['weekly', 'monthly'] as const).map((freq) => (
+                      <button
+                        key={freq}
+                        onClick={() => setReminderFrequency(freq)}
+                        className={`flex-1 py-2 rounded-lg text-xs font-medium border transition-all ${
+                          reminderFrequency === freq
+                            ? 'bg-blue-600/20 border-blue-500 text-blue-400'
+                            : isDarkMode
+                              ? 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
+                              : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                        }`}
+                      >
+                        {freq.charAt(0).toUpperCase() + freq.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </section>
         </div>
       </div>

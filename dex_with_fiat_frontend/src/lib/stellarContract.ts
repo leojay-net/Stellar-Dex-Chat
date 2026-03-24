@@ -32,6 +32,8 @@ const server = new rpc.Server(RPC_URL, { allowHttp: false });
 export interface FeeEstimate {
   minFee: string;
   fee: number;
+  baseFee: number;
+  resourceFee: number;
 }
 
 /** Build, simulate, and assemble a transaction. Returns the assembled XDR and fee estimate. */
@@ -56,10 +58,15 @@ async function buildAndSimulate(
   let feeEstimate: FeeEstimate | null = null;
   const successSim = sim as rpc.Api.SimulateTransactionSuccessResponse;
   if (successSim.minResourceFee !== undefined) {
-    const feeInStroops = BigInt(successSim.minResourceFee);
+    const resourceFeeInStroops = BigInt(successSim.minResourceFee);
+    const baseFeeInStroops = BigInt(BASE_FEE);
+    const totalFeeInStroops = resourceFeeInStroops + baseFeeInStroops;
+
     feeEstimate = {
-      minFee: successSim.minResourceFee,
-      fee: Number(feeInStroops) / 10_000_000,
+      minFee: totalFeeInStroops.toString(),
+      fee: Number(totalFeeInStroops) / 10_000_000,
+      baseFee: Number(baseFeeInStroops) / 10_000_000,
+      resourceFee: Number(resourceFeeInStroops) / 10_000_000,
     };
   }
 
@@ -216,6 +223,11 @@ async function viewCall<T>(functionName: string): Promise<T> {
 /** Returns the current token balance (in stroops) held by the bridge contract. */
 export async function getContractBalance(): Promise<bigint> {
   return viewCall<bigint>('get_balance');
+}
+
+/** Returns the authorized admin address of the contract. */
+export async function getAdmin(): Promise<string> {
+  return viewCall<string>('get_admin');
 }
 
 /** Returns the per-deposit limit set by the admin. */
