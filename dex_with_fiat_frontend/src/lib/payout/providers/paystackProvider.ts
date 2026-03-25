@@ -8,6 +8,8 @@ import type {
   PayoutProvider,
   TransferStatusInput,
   TransferStatusResult,
+  CancelTransferInput,
+  CancelTransferResult,
   VerifyAccountInput,
   VerifyAccountResult,
 } from './types';
@@ -193,5 +195,74 @@ export const paystackProvider: PayoutProvider = {
     throw new Error(
       response.data?.message || 'Failed to fetch transfer status',
     );
+  },
+
+  async cancelTransfer(input: CancelTransferInput): Promise<CancelTransferResult> {
+    const { reference, reason } = input;
+
+    if (!env.PAYSTACK_SECRET_KEY) {
+      console.warn('Paystack secret key not found, using mock cancellation');
+
+      // Mock cancellation when API key is missing
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      const mockCancellation = {
+        reference,
+        status: 'cancelled',
+        cancellationReason: reason || 'User requested cancellation',
+        cancelledAt: new Date().toISOString(),
+        message: 'Transfer cancelled successfully (mock)',
+      };
+
+      return mockCancellation;
+    }
+
+    try {
+      // First check if transfer can be cancelled (within 2 minutes window)
+      const statusResponse = await axios.get(
+        `https://api.paystack.co/transfer/verify/${reference}`,
+        { headers: paystackHeaders() }
+      );
+
+      if (!statusResponse.data?.data) {
+        throw new Error('Transfer not found');
+      }
+
+      const transferData = statusResponse.data.data;
+      const createdAt = new Date(transferData.createdAt);
+      const now = new Date();
+      const timeDiff = now.getTime() - createdAt.getTime();
+      const twoMinutesInMs = 2 * 60 * 1000;
+
+      if (timeDiff > twoMinutesInMs) {
+        throw new Error('Transfer can only be cancelled within 2 minutes of initiation');
+      }
+
+      if (transferData.status !== 'pending') {
+        throw new Error(`Cannot cancel transfer in ${transferData.status} status`);
+      }
+
+      // Cancel the transfer
+      const response = await axios.post(
+        `https://api.paystack.co/transfer/cancel`,
+        { reference, reason: reason || 'User requested cancellation' },
+        { headers: paystackHeaders() }
+      );
+
+      if (response.data?.status && response.data?.data) {
+        return {
+          ...response.data.data,
+          cancelledAt: new Date().toISOString(),
+          cancellationReason: reason || 'User requested cancellation',
+        };
+      }
+
+      throw new Error(response.data?.message || 'Failed to cancel transfer');
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Failed to cancel transfer');
+    }
   },
 };
