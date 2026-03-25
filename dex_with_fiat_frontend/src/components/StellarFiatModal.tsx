@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { pollTransaction } from '@/lib/stellarContract';
 import {
   X,
   Loader2,
@@ -142,8 +143,8 @@ export default function StellarFiatModal({
 
     let cancelled = false;
     // pollTransaction is exported from stellarContract
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { pollTransaction } = require('../lib/stellarContract');
+   
+   
     pollTransaction(pending.hash)
       .then((h: string) => {
         if (cancelled) return;

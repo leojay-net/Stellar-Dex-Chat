@@ -8,7 +8,6 @@ import {
   scValToNative,
   rpc,
 } from '@stellar/stellar-sdk';
-import { withNetworkReadQueue } from './networkQueue';
 
 const RPC_URL =
   process.env.NEXT_PUBLIC_STELLAR_RPC_URL ||
@@ -76,12 +75,21 @@ export function clearCache() {
 }
 
 // Expose debug helpers on window in browser for manual testing (dev only)
+declare global {
+  interface Window {
+    clearBridgeCache: typeof clearCache;
+    getBridgeLimit: () => Promise<bigint>;
+    getContractBalance: () => Promise<bigint>;
+    getTotalDeposited: () => Promise<bigint>;
+  }
+}
+
 try {
   if (typeof window !== 'undefined') {
-    (window as any).clearBridgeCache = clearCache;
-    (window as any).getBridgeLimit = async () => getBridgeLimit();
-    (window as any).getContractBalance = async () => getContractBalance();
-    (window as any).getTotalDeposited = async () => getTotalDeposited();
+    window.clearBridgeCache = clearCache;
+    window.getBridgeLimit = async () => getBridgeLimit();
+    window.getContractBalance = async () => getContractBalance();
+    window.getTotalDeposited = async () => getTotalDeposited();
   }
 } catch {
   // ignore
