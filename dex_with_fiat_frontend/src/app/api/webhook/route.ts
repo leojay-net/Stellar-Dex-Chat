@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { telemetry } from '@/lib/telemetry';
-
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
+import { env } from '@/lib/env';
 
 export async function POST(request: NextRequest) {
   const traceContext = telemetry.extractTraceFromHeaders(request.headers);
@@ -25,7 +24,7 @@ export async function POST(request: NextRequest) {
       payloadLength: payload.length,
     });
 
-    if (!PAYSTACK_SECRET_KEY) {
+    if (!env.PAYSTACK_SECRET_KEY) {
       telemetry.addLog(
         span.spanId,
         'warn',
@@ -62,7 +61,7 @@ export async function POST(request: NextRequest) {
     });
 
     const hash = crypto
-      .createHmac('sha512', PAYSTACK_SECRET_KEY)
+      .createHmac('sha512', env.PAYSTACK_SECRET_KEY)
       .update(payload)
       .digest('hex');
 
