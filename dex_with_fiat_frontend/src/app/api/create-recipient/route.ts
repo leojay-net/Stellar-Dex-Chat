@@ -3,8 +3,8 @@ import { getPayoutProvider } from '@/lib/payout/providers/registry';
 import axios from 'axios';
 import { telemetry } from '@/lib/telemetry';
 import { applyRateLimit, getClientIp } from '@/lib/rateLimit';
+import { env } from '@/lib/env';
 
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
 const RATE_LIMIT = { maxRequests: 5, windowMs: 60_000 };
 
 export async function POST(request: NextRequest) {
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
       success: true,
       data,
     });
-    if (!PAYSTACK_SECRET_KEY) {
+    if (!env.PAYSTACK_SECRET_KEY) {
       telemetry.addLog(
         span.spanId,
         'warn',
@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
       },
       {
         headers: {
-          Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+          Authorization: `Bearer ${env.PAYSTACK_SECRET_KEY}`,
           'Content-Type': 'application/json',
         },
       },

@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
 import { telemetry } from '@/lib/telemetry';
-
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
+import { env } from '@/lib/env';
 
 export async function GET(request: Request) {
   const traceContext = telemetry.extractTraceFromHeaders(
@@ -19,7 +18,7 @@ export async function GET(request: Request) {
       endpoint: '/api/banks',
     });
 
-    if (!PAYSTACK_SECRET_KEY) {
+    if (!env.PAYSTACK_SECRET_KEY) {
       telemetry.addLog(
         span.spanId,
         'warn',
@@ -110,7 +109,7 @@ export async function GET(request: Request) {
       'https://api.paystack.co/bank?country=nigeria',
       {
         headers: {
-          Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+          Authorization: `Bearer ${env.PAYSTACK_SECRET_KEY}`,
           'Content-Type': 'application/json',
         },
       },
