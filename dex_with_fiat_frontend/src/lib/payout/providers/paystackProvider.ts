@@ -11,12 +11,11 @@ import type {
   VerifyAccountInput,
   VerifyAccountResult,
 } from './types';
-
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
+import { env } from '@/lib/env';
 
 function paystackHeaders() {
   return {
-    Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+    Authorization: `Bearer ${env.PAYSTACK_SECRET_KEY}`,
     'Content-Type': 'application/json',
   };
 }
@@ -27,7 +26,7 @@ export const paystackProvider: PayoutProvider = {
   async verifyAccount(input: VerifyAccountInput): Promise<VerifyAccountResult> {
     const { accountNumber, bankCode } = input;
 
-    if (!PAYSTACK_SECRET_KEY) {
+    if (!env.PAYSTACK_SECRET_KEY) {
       console.warn('Paystack secret key not found, using mock verification');
 
       const mockVerification: VerifyAccountResult = {
@@ -59,7 +58,7 @@ export const paystackProvider: PayoutProvider = {
   async createRecipient(
     input: CreateRecipientInput,
   ): Promise<CreateRecipientResult> {
-    if (!PAYSTACK_SECRET_KEY) {
+    if (!env.PAYSTACK_SECRET_KEY) {
       console.warn(
         'Paystack secret key not found, using mock recipient creation',
       );
@@ -107,7 +106,7 @@ export const paystackProvider: PayoutProvider = {
   async initiateTransfer(
     input: InitiateTransferInput,
   ): Promise<InitiateTransferResult> {
-    if (!PAYSTACK_SECRET_KEY) {
+    if (!env.PAYSTACK_SECRET_KEY) {
       console.warn(
         'Paystack secret key not found, using mock transfer initiation',
       );
@@ -164,7 +163,7 @@ export const paystackProvider: PayoutProvider = {
   ): Promise<TransferStatusResult> {
     const { reference } = input;
 
-    if (!PAYSTACK_SECRET_KEY) {
+    if (!env.PAYSTACK_SECRET_KEY) {
       console.warn('Paystack secret key not found, using mock transfer status');
 
       const mockStatus = {

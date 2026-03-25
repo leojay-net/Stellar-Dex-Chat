@@ -9,17 +9,12 @@ import {
   rpc,
 } from '@stellar/stellar-sdk';
 import { withNetworkReadQueue } from './networkQueue';
+import { env } from './env';
 
-const RPC_URL =
-  process.env.NEXT_PUBLIC_STELLAR_RPC_URL ||
-  'https://soroban-testnet.stellar.org';
-const CONTRACT_ID =
-  process.env.NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT ||
-  'CAWYXBN4PSVXD7NIYEWVFFIIIEUCC6PUN3IMG3J2WHKDB4NVIISMXBPR';
+const RPC_URL = env.NEXT_PUBLIC_STELLAR_RPC_URL;
+const CONTRACT_ID = env.NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT;
 // XLM SAC address — the token used by the bridge (stored on-chain after init)
-export const XLM_SAC_ID =
-  process.env.NEXT_PUBLIC_XLM_SAC_CONTRACT ||
-  'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC';
+export const XLM_SAC_ID = env.NEXT_PUBLIC_XLM_SAC_CONTRACT;
 
 // Stellar Testnet passphrase — switch to Networks.PUBLIC for mainnet
 const NETWORK_PASSPHRASE = Networks.TESTNET;
