@@ -8,15 +8,16 @@ import type {
   PayoutProvider,
   TransferStatusInput,
   TransferStatusResult,
+  CancelTransferInput,
+  CancelTransferResult,
   VerifyAccountInput,
   VerifyAccountResult,
 } from './types';
-
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
+import { env } from '@/lib/env';
 
 function paystackHeaders() {
   return {
-    Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+    Authorization: `Bearer ${env.PAYSTACK_SECRET_KEY}`,
     'Content-Type': 'application/json',
   };
 }
@@ -27,7 +28,7 @@ export const paystackProvider: PayoutProvider = {
   async verifyAccount(input: VerifyAccountInput): Promise<VerifyAccountResult> {
     const { accountNumber, bankCode } = input;
 
-    if (!PAYSTACK_SECRET_KEY) {
+    if (!env.PAYSTACK_SECRET_KEY) {
       console.warn('Paystack secret key not found, using mock verification');
 
       const mockVerification: VerifyAccountResult = {
@@ -59,7 +60,7 @@ export const paystackProvider: PayoutProvider = {
   async createRecipient(
     input: CreateRecipientInput,
   ): Promise<CreateRecipientResult> {
-    if (!PAYSTACK_SECRET_KEY) {
+    if (!env.PAYSTACK_SECRET_KEY) {
       console.warn(
         'Paystack secret key not found, using mock recipient creation',
       );
@@ -107,7 +108,7 @@ export const paystackProvider: PayoutProvider = {
   async initiateTransfer(
     input: InitiateTransferInput,
   ): Promise<InitiateTransferResult> {
-    if (!PAYSTACK_SECRET_KEY) {
+    if (!env.PAYSTACK_SECRET_KEY) {
       console.warn(
         'Paystack secret key not found, using mock transfer initiation',
       );
@@ -164,7 +165,7 @@ export const paystackProvider: PayoutProvider = {
   ): Promise<TransferStatusResult> {
     const { reference } = input;
 
-    if (!PAYSTACK_SECRET_KEY) {
+    if (!env.PAYSTACK_SECRET_KEY) {
       console.warn('Paystack secret key not found, using mock transfer status');
 
       const mockStatus = {
@@ -194,5 +195,74 @@ export const paystackProvider: PayoutProvider = {
     throw new Error(
       response.data?.message || 'Failed to fetch transfer status',
     );
+  },
+
+  async cancelTransfer(input: CancelTransferInput): Promise<CancelTransferResult> {
+    const { reference, reason } = input;
+
+    if (!env.PAYSTACK_SECRET_KEY) {
+      console.warn('Paystack secret key not found, using mock cancellation');
+
+      // Mock cancellation when API key is missing
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      const mockCancellation = {
+        reference,
+        status: 'cancelled',
+        cancellationReason: reason || 'User requested cancellation',
+        cancelledAt: new Date().toISOString(),
+        message: 'Transfer cancelled successfully (mock)',
+      };
+
+      return mockCancellation;
+    }
+
+    try {
+      // First check if transfer can be cancelled (within 2 minutes window)
+      const statusResponse = await axios.get(
+        `https://api.paystack.co/transfer/verify/${reference}`,
+        { headers: paystackHeaders() }
+      );
+
+      if (!statusResponse.data?.data) {
+        throw new Error('Transfer not found');
+      }
+
+      const transferData = statusResponse.data.data;
+      const createdAt = new Date(transferData.createdAt);
+      const now = new Date();
+      const timeDiff = now.getTime() - createdAt.getTime();
+      const twoMinutesInMs = 2 * 60 * 1000;
+
+      if (timeDiff > twoMinutesInMs) {
+        throw new Error('Transfer can only be cancelled within 2 minutes of initiation');
+      }
+
+      if (transferData.status !== 'pending') {
+        throw new Error(`Cannot cancel transfer in ${transferData.status} status`);
+      }
+
+      // Cancel the transfer
+      const response = await axios.post(
+        `https://api.paystack.co/transfer/cancel`,
+        { reference, reason: reason || 'User requested cancellation' },
+        { headers: paystackHeaders() }
+      );
+
+      if (response.data?.status && response.data?.data) {
+        return {
+          ...response.data.data,
+          cancelledAt: new Date().toISOString(),
+          cancellationReason: reason || 'User requested cancellation',
+        };
+      }
+
+      throw new Error(response.data?.message || 'Failed to cancel transfer');
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Failed to cancel transfer');
+    }
   },
 };

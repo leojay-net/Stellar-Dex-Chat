@@ -37,6 +37,13 @@ export interface TransferStatusInput {
 
 export type TransferStatusResult = Record<string, unknown>;
 
+export interface CancelTransferInput {
+  reference: string;
+  reason?: string;
+}
+
+export type CancelTransferResult = Record<string, unknown>;
+
 export interface PayoutProvider {
   name: PayoutProviderName;
 
@@ -48,4 +55,7 @@ export interface PayoutProvider {
   checkTransferStatus(
     input: TransferStatusInput,
   ): Promise<TransferStatusResult>;
+  cancelTransfer(
+    input: CancelTransferInput,
+  ): Promise<CancelTransferResult>;
 }
