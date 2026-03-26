@@ -48,6 +48,8 @@ pub enum Error {
     NoEmergencyRecoveryAddress = 18,
     /// The recipient address is invalid (e.g., contract address itself).
     InvalidRecipient = 19,
+    /// Arithmetic overflow while updating cumulative totals.
+    ArithmeticOverflow = 20,
 }
 
 // ── Models ────────────────────────────────────────────────────────────────
@@ -118,6 +120,8 @@ pub enum DataKey {
     BridgeLimit,
     /// Legacy key — superseded by `TokenRegistry`; kept for compatibility.
     TotalDeposited,
+    /// Cumulative withdrawn amount across successful withdraw calls.
+    TotalWithdrawn,
     /// Cumulative amount deposited by a specific user address.
     UserDeposited(Address),
     /// Mandatory lock period (in ledgers) for queued withdrawal requests.
@@ -169,6 +173,21 @@ pub struct FiatBridge;
 
 #[contractimpl]
 impl FiatBridge {
+    fn increment_total_withdrawn(env: &Env, amount: i128) -> Result<i128, Error> {
+        let total_withdrawn: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::TotalWithdrawn)
+            .unwrap_or(0);
+        let updated_total = total_withdrawn
+            .checked_add(amount)
+            .ok_or(Error::ArithmeticOverflow)?;
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalWithdrawn, &updated_total);
+        Ok(updated_total)
+    }
+
     /// Allow a third-party payer to deposit tokens on behalf of a beneficiary.
     /// All checks and per-user tracking apply to the beneficiary.
     /// Returns the unique receipt ID on success.
@@ -299,11 +318,12 @@ impl FiatBridge {
         }
 
         token_client.transfer(&contract_addr, &recipient, &balance);
+        let total_withdrawn = Self::increment_total_withdrawn(&env, balance)?;
 
-        env.events()
-            .publish((Symbol::new(&env, "emg_drain"), recipient.clone()), balance);
-
-        // If get_total_withdrawn exists, increment it here (not implemented in this codebase)
+        env.events().publish(
+            (Symbol::new(&env, "emg_drain"), recipient.clone()),
+            (balance, total_withdrawn),
+        );
 
         Ok(())
     }
@@ -318,6 +338,7 @@ impl FiatBridge {
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Token, &token);
+        env.storage().instance().set(&DataKey::TotalWithdrawn, &0_i128);
         let config = TokenConfig {
             limit,
             total_deposited: 0,
@@ -500,9 +521,10 @@ impl FiatBridge {
             return Err(Error::InsufficientFunds);
         }
         token_client.transfer(&contract_addr, &to, &amount);
+        let total_withdrawn = Self::increment_total_withdrawn(&env, amount)?;
 
         env.events()
-            .publish((Symbol::new(&env, "withdraw"), to), amount);
+            .publish((Symbol::new(&env, "withdraw"), to), (amount, total_withdrawn));
 
         Ok(())
     }
@@ -576,12 +598,6 @@ impl FiatBridge {
         let token_client = token::Client::new(&env, &request.token);
         let contract_addr = env.current_contract_address();
         let balance = token_client.balance(&contract_addr);
-        if request.amount > balance {
-            return Err(Error::InsufficientFunds);
-        }
-        token_client.transfer(&contract_addr, &request.to, &request.amount);
-        let balance = token_client.balance(&env.current_contract_address());
-
         let execute_amount = match partial_amount {
             Some(amount) => {
                 if amount <= 0 || amount > request.amount {
@@ -600,14 +616,11 @@ impl FiatBridge {
             }
         };
 
-        token_client.transfer(
-            &env.current_contract_address(),
-            &request.to,
-            &execute_amount,
-        );
+        token_client.transfer(&contract_addr, &request.to, &execute_amount);
+        let total_withdrawn = Self::increment_total_withdrawn(&env, execute_amount)?;
 
-        if let Some(partial) = partial_amount {
-            let remaining = request.amount - partial;
+        if partial_amount.is_some() {
+            let remaining = request.amount - execute_amount;
 
             if remaining <= 0 {
                 env.storage()
@@ -622,12 +635,16 @@ impl FiatBridge {
 
             env.events().publish(
                 (Symbol::new(&env, "partial_withdrawal_executed"), request_id),
-                (execute_amount, remaining),
+                (execute_amount, remaining, total_withdrawn),
             );
         } else {
             env.storage()
                 .persistent()
                 .remove(&DataKey::WithdrawQueue(request_id));
+            env.events().publish(
+                (Symbol::new(&env, "withdrawal_executed"), request_id),
+                (execute_amount, total_withdrawn),
+            );
         }
 
         Ok(())
@@ -691,6 +708,7 @@ impl FiatBridge {
             &receipt.depositor,
             &receipt.amount,
         );
+        let total_withdrawn = Self::increment_total_withdrawn(&env, receipt.amount)?;
 
         receipt.refunded = true;
         env.storage()
@@ -701,7 +719,7 @@ impl FiatBridge {
 
         env.events().publish(
             (Symbol::new(&env, "refund"), receipt_id),
-            receipt.depositor.clone(),
+            (receipt.depositor.clone(), receipt.amount, total_withdrawn),
         );
 
         Ok(())
@@ -1151,6 +1169,18 @@ impl FiatBridge {
             .get(&DataKey::TokenRegistry(tok))
             .ok_or(Error::NotInitialized)?;
         Ok(config.total_deposited)
+    }
+
+    /// Cumulative withdrawal total tracked by successful `withdraw` calls.
+    pub fn get_total_withdrawn(env: Env) -> Result<i128, Error> {
+        if !env.storage().instance().has(&DataKey::Admin) {
+            return Err(Error::NotInitialized);
+        }
+        Ok(env
+            .storage()
+            .instance()
+            .get(&DataKey::TotalWithdrawn)
+            .unwrap_or(0))
     }
     /// Running total of historical deposits for a specific user.
     ///

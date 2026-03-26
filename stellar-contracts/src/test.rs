@@ -206,11 +206,14 @@ mod tests {
         token_sac.mint(&user, &500);
         assert_eq!(bridge.get_balance(), 0);
         assert_eq!(bridge.get_total_deposited(), 0);
+        assert_eq!(bridge.get_total_withdrawn(), 0);
         bridge.deposit(&user, &200, &token_addr, &Bytes::new(&env));
         assert_eq!(bridge.get_balance(), 200);
         assert_eq!(bridge.get_total_deposited(), 200);
         bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env));
         assert_eq!(bridge.get_total_deposited(), 300);
+        bridge.withdraw(&user, &100, &token_addr);
+        assert_eq!(bridge.get_total_withdrawn(), 100);
     }
 
     #[test]
@@ -370,6 +373,23 @@ mod tests {
     }
 
     #[test]
+    fn test_execute_withdrawal_increments_total_withdrawn() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1_000);
+        let user = Address::generate(&env);
+        token_sac.mint(&user, &1_000);
+        bridge.deposit(&user, &300, &token_addr, &Bytes::new(&env));
+
+        let req_id = bridge.request_withdrawal(&user, &120, &token_addr);
+        bridge.execute_withdrawal(&req_id, &None);
+
+        assert_eq!(bridge.get_total_withdrawn(), 120);
+        assert_eq!(bridge.get_balance(), 180);
+        assert_eq!(bridge.get_withdrawal_request(&req_id), None);
+    }
+
+    #[test]
     fn test_over_limit_deposit() {
         let env = Env::default();
         env.mock_all_auths();
@@ -432,6 +452,24 @@ mod tests {
         assert_eq!(bridge.get_user_deposited(&user2), 200);
         assert_eq!(bridge.get_user_deposited(&user1), 150);
         assert_eq!(bridge.get_total_deposited(), 350);
+    }
+
+    #[test]
+    fn test_total_withdrawn_accumulates_across_multiple_withdrawals() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1000);
+        let user = Address::generate(&env);
+        token_sac.mint(&user, &1_000);
+
+        bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env));
+        bridge.withdraw(&user, &120, &token_addr);
+        bridge.withdraw(&user, &80, &token_addr);
+        bridge.withdraw(&user, &50, &token_addr);
+
+        assert_eq!(bridge.get_total_deposited(), 500);
+        assert_eq!(bridge.get_total_withdrawn(), 250);
+        assert_eq!(bridge.get_balance(), 250);
     }
 
     #[test]
@@ -583,6 +621,21 @@ mod tests {
     }
 
     #[test]
+    fn test_refund_increments_total_withdrawn() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (_contract_id, bridge, admin, token_addr, token, token_sac) = setup_bridge(&env, 500);
+        token_sac.mint(&admin, &500);
+
+        let receipt_id = bridge.deposit(&admin, &200, &token_addr, &Bytes::new(&env));
+        assert_eq!(bridge.get_total_withdrawn(), 0);
+        bridge.refund_deposit(&receipt_id);
+
+        assert_eq!(bridge.get_total_withdrawn(), 200);
+        assert_eq!(token.balance(&admin), 500);
+    }
+
+    #[test]
     fn test_get_nonexistent_receipt() {
         let env = Env::default();
         env.mock_all_auths();
@@ -620,8 +673,7 @@ mod tests {
         bridge.emergency_drain(&recipient);
         assert_eq!(token.balance(&contract_id), 0);
         assert_eq!(token.balance(&recipient), 500);
-        // let events = std::format!("{:?}", env.events().all());
-        // assert!(events.contains("emg_drain"));
+        assert_eq!(bridge.get_total_withdrawn(), 500);
     }
 
     #[test]
