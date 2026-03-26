@@ -399,6 +399,18 @@
                       "key": {
                         "vec": [
                           {
+                            "symbol": "TotalWithdrawn"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "i128": "200"
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
                             "symbol": "UserDeposited"
                           },
                           {
