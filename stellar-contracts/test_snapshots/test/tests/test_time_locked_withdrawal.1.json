@@ -116,7 +116,6 @@
         }
       ]
     ],
-    [],
     [
       [
         "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
@@ -142,9 +141,6 @@
         }
       ]
     ],
-    [],
-    [],
-    [],
     [],
     [],
     []
@@ -259,6 +255,14 @@
                     "val": {
                       "bytes": ""
                     }
+                  },
+                  {
+                    "key": {
+                      "symbol": "refunded"
+                    },
+                    "val": {
+                      "bool": false
+                    }
                   }
                 ]
               }
@@ -303,6 +307,14 @@
                     "val": {
                       "i128": "200"
                     }
+                  },
+                  {
+                    "key": {
+                      "symbol": "total_withdrawn"
+                    },
+                    "val": {
+                      "i128": "100"
+                    }
                   }
                 ]
               }
@@ -343,12 +355,48 @@
                       "key": {
                         "vec": [
                           {
+                            "symbol": "InactivityThreshold"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "u32": 1555200
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
+                            "symbol": "LastAdminActionLedger"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
                             "symbol": "LockPeriod"
                           }
                         ]
                       },
                       "val": {
                         "u32": 100
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
+                            "symbol": "NextActionID"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "u64": "0"
                       }
                     },
                     {
