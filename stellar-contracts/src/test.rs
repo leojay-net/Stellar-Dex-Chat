@@ -1193,3 +1193,4 @@ fn test_per_user_deposit_tracking() {
     assert_eq!(bridge.get_user_deposited(&user1), 150);
     assert_eq!(bridge.get_total_deposited(), 350);
 }
+} // end mod tests
