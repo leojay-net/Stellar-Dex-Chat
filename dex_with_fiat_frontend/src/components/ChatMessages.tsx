@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { ChatMessage } from '@/types';
 import { useTheme } from '@/contexts/ThemeContext';
 import {
@@ -10,11 +10,14 @@ import {
   X,
   Sparkles,
   ChevronRight,
+  Loader2,
 } from 'lucide-react';
 import Message from './Message';
+import { useChatPagination } from '@/hooks/useChatPagination';
 
 interface ChatMessagesProps {
   messages: ChatMessage[];
+  sessionId: string | null;
   onActionClick: (
     actionId: string,
     actionType: string,
@@ -109,17 +112,23 @@ function HelpCard({
 
 export default function ChatMessages({
   messages,
+  sessionId,
   onActionClick,
   isLoading = false,
 }: ChatMessagesProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const prevScrollHeightRef = useRef<number>(0);
   const { isDarkMode } = useTheme();
 
   const [dismissedCards, setDismissedCards] = useState<string[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load dismissed cards from localStorage
+  // Pagination: only load the latest PAGE_SIZE messages initially
+  const { displayedMessages, hasMore, isLoadingMore, loadMore } =
+    useChatPagination({ messages, sessionId });
+
+  // ── Load dismissed cards from localStorage ─────────────────────────────────
   useEffect(() => {
     const saved = localStorage.getItem('dexfiat_dismissed_help_cards');
     if (saved) {
@@ -141,6 +150,7 @@ export default function ChatMessages({
     );
   };
 
+  // ── Auto-scroll to bottom when new messages arrive ─────────────────────────
   const scrollToBottom = () => {
     if (containerRef.current) {
       containerRef.current.scrollTo({
@@ -159,6 +169,48 @@ export default function ChatMessages({
     }
   }, [messages, isLoading]);
 
+  // ── Preserve scroll position after older messages are prepended ────────────
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !isLoadingMore) return;
+
+    // Record the scrollHeight BEFORE the new messages are added
+    prevScrollHeightRef.current = container.scrollHeight;
+  }, [isLoadingMore]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || prevScrollHeightRef.current === 0) return;
+
+    // After new messages have been rendered, nudge scrollTop so the
+    // previously-topmost visible message stays in place.
+    const newScrollHeight = container.scrollHeight;
+    const delta = newScrollHeight - prevScrollHeightRef.current;
+    if (delta > 0) {
+      container.scrollTop += delta;
+    }
+    prevScrollHeightRef.current = 0;
+  }, [displayedMessages.length]);
+
+  // ── Scroll listener: trigger loadMore when user reaches the top ────────────
+  const handleScroll = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    if (container.scrollTop === 0 && hasMore && !isLoadingMore) {
+      // Snapshot scrollHeight before loadMore kicks in so the position can be restored
+      prevScrollHeightRef.current = container.scrollHeight;
+      loadMore();
+    }
+  }, [hasMore, isLoadingMore, loadMore]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [handleScroll]);
+
+  // ── Help cards ─────────────────────────────────────────────────────────────
   const helpCards = [
     {
       id: 'wallet',
@@ -208,7 +260,38 @@ export default function ChatMessages({
         maxHeight: '100%',
       }}
     >
-      {messages.length === 0 ? (
+      {/* Loading older messages indicator ───────────────────────────────────── */}
+      {isLoadingMore && (
+        <div
+          className={`flex items-center justify-center gap-2 py-3 text-sm ${
+            isDarkMode ? 'text-gray-400' : 'text-gray-500'
+          }`}
+          aria-live="polite"
+          aria-label="Loading older messages"
+        >
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Loading older messages…
+        </div>
+      )}
+
+      {/* Load-more hint when there are older messages but not currently loading */}
+      {hasMore && !isLoadingMore && (
+        <div className="flex justify-center py-2">
+          <button
+            onClick={loadMore}
+            className={`text-xs px-3 py-1 rounded-full transition-colors ${
+              isDarkMode
+                ? 'text-gray-400 hover:text-gray-200 bg-gray-800 hover:bg-gray-700'
+                : 'text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200'
+            }`}
+          >
+            ↑ Load older messages
+          </button>
+        </div>
+      )}
+
+      {/* Main content ─────────────────────────────────────────────────────── */}
+      {displayedMessages.length === 0 ? (
         <div className="max-w-4xl mx-auto h-full flex flex-col items-center justify-center py-12">
           {/* Welcome Header */}
           <div className="text-center mb-12">
@@ -264,7 +347,7 @@ export default function ChatMessages({
         </div>
       ) : (
         <div className="space-y-6 pb-6 max-w-4xl mx-auto">
-          {messages.map((message) => (
+          {displayedMessages.map((message) => (
             <Message
               key={message.id}
               message={message}

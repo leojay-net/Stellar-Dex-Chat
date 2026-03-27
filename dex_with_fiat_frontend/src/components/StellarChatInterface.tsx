@@ -82,6 +82,7 @@ export default function StellarChatInterface() {
     cancelPendingRequest,
     clearChat,
     loadChatSession,
+    currentSessionId,
     setTransactionReadyCallback,
     setIsAdmin: setChatIsAdmin,
   } = useChat();
@@ -623,6 +624,7 @@ export default function StellarChatInterface() {
           ) : (
             <ChatMessages
               messages={messages}
+              sessionId={currentSessionId}
               onActionClick={handleActionClick}
               isLoading={isLoading}
             />
