@@ -1061,10 +1061,10 @@ fn test_deposit_cooldown_is_per_address_only() {
 
     bridge.set_cooldown(&10);
     bridge.deposit(&user_a, &50, &token_addr, &Bytes::new(&env));
-    
+
     // user_b not blocked
     bridge.deposit(&user_b, &50, &token_addr, &Bytes::new(&env));
-    
+
     // user_a still blocked
     let result = bridge.try_deposit(&user_a, &50, &token_addr, &Bytes::new(&env));
     assert_eq!(result, Err(Ok(Error::CooldownActive)));
@@ -1191,4 +1191,24 @@ fn test_per_user_deposit_tracking() {
     assert_eq!(bridge.get_user_deposited(&user2), 200);
     assert_eq!(bridge.get_user_deposited(&user1), 150);
     assert_eq!(bridge.get_total_deposited(), 350);
+}
+
+#[test]
+fn test_get_config_snapshot() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, bridge, admin, token_addr, _, _) = setup_bridge(&env, 1000);
+
+    bridge.set_cooldown(&12);
+
+    let oracle_addr = Address::generate(&env);
+    bridge.set_oracle(&oracle_addr);
+
+    let config = bridge.get_config_snapshot();
+    assert_eq!(config.admin, admin);
+    assert_eq!(config.token, token_addr);
+    assert_eq!(config.cooldown_ledgers, 12);
+    assert_eq!(config.fiat_limit, None);
+    assert_eq!(config.oracle, Some(oracle_addr));
+    assert_eq!(config.allowlist_enabled, false);
 }
