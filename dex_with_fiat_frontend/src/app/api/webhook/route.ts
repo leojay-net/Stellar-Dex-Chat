@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { telemetry } from '@/lib/telemetry';
+import { isReplayEvent, replayCacheStats } from '@/lib/transferStore';
 import { transferStore } from '@/lib/transferStore';
 import { env } from '@/lib/env';
 
@@ -86,9 +87,32 @@ export async function POST(request: NextRequest) {
     }
 
     const event = JSON.parse(payload);
+    const payloadHash = crypto.createHash('sha256').update(payload).digest('hex');
+    const replayKey = String(event?.data?.id || event?.data?.reference || payloadHash);
+
+    if (isReplayEvent(replayKey)) {
+      const cache = replayCacheStats();
+      telemetry.addLog(span.spanId, 'warn', 'Webhook replay detected, ignoring event', {
+        replayKey,
+        eventType: event.event,
+        cacheSize: cache.size,
+        cacheTtlMs: cache.ttlMs,
+        cacheMaxSize: cache.maxSize,
+      });
+      console.warn('Webhook replay detected and ignored', {
+        replayKey,
+        eventType: event.event,
+      });
+
+      const response = NextResponse.json({ received: true, duplicate: true });
+      telemetry.setTraceHeaders(response.headers, traceContext);
+      return response;
+    }
+
     telemetry.addLog(span.spanId, 'info', 'Webhook signature verified', {
       eventType: event.event,
       reference: event.data?.reference,
+      replayKey,
     });
 
     console.log('Received Paystack webhook:', event.event);
