@@ -233,3 +233,23 @@ mod tests {
         }
     }
 }
+
+#[test]
+fn test_get_config_snapshot() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, bridge, admin, token_addr, _, _) = setup_bridge(&env, 1000);
+
+    bridge.set_cooldown(&12);
+
+    let oracle_addr = Address::generate(&env);
+    bridge.set_oracle(&oracle_addr);
+
+    let config = bridge.get_config_snapshot();
+    assert_eq!(config.admin, admin);
+    assert_eq!(config.token, token_addr);
+    assert_eq!(config.cooldown_ledgers, 12);
+    assert_eq!(config.fiat_limit, None);
+    assert_eq!(config.oracle, Some(oracle_addr));
+    assert_eq!(config.allowlist_enabled, false);
+}
