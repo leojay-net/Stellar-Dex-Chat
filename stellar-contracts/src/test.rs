@@ -1233,3 +1233,4 @@ fn test_invariant_preservation_randomized() {
         // The internal check_invariants() is also called inside these methods
     }
 }
+}
