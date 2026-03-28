@@ -1050,7 +1050,7 @@ impl FiatBridge {
             slippage_bps as u32,
         );
 
-        if slippage_bps > max_slippage_bps as i128 {
+        if slippage_bps >= max_slippage_bps as i128 {
             return Err(Error::SlippageTooHigh);
         }
 
