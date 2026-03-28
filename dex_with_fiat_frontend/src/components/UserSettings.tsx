@@ -10,6 +10,7 @@ import {
 } from '@/contexts/UserPreferencesContext';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { useAccessibleModal } from '@/hooks/useAccessibleModal';
+import { useChatTelemetry } from '@/hooks/useChatTelemetry';
 
 interface UserSettingsProps {
   isOpen: boolean;
@@ -27,6 +28,7 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
     reminderFrequency,
     setReminderFrequency,
   } = useUserPreferences();
+  const { consented: telemetryConsented, setConsent: setTelemetryConsent } = useChatTelemetry();
   const panelRef = useRef<HTMLDivElement>(null);
   useAccessibleModal(isOpen, panelRef, onClose);
 
@@ -158,6 +160,50 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
               })}
             </ul>
           </section>
+          {/* Analytics consent section */}
+          <section
+            className={`pt-6 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-100'}`}
+          >
+            <h3
+              className={`text-xs font-semibold uppercase tracking-wider mb-3 ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-500'
+              }`}
+            >
+              Analytics
+            </h3>
+            <p
+              className={`text-xs mb-4 ${
+                isDarkMode ? 'text-gray-500' : 'text-gray-400'
+              }`}
+            >
+              Allow anonymous usage data to be collected for product improvements.
+              No personally identifiable information is ever sent.
+            </p>
+            <div className="flex items-center justify-between">
+              <span
+                className={`text-sm ${
+                  isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                }`}
+              >
+                Enable analytics
+              </span>
+              <button
+                onClick={() => setTelemetryConsent(!telemetryConsented)}
+                aria-pressed={telemetryConsented}
+                aria-label="Toggle analytics consent"
+                className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors focus:outline-none ${
+                  telemetryConsented ? 'bg-blue-600' : 'bg-gray-700'
+                }`}
+              >
+                <span
+                  className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                    telemetryConsented ? 'translate-x-5.5' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </section>
+
           {enableConversionReminders && (
             <section
               className={`pt-6 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-100'}`}

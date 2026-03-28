@@ -192,24 +192,24 @@
                       "key": {
                         "vec": [
                           {
-                            "symbol": "InactivityThreshold"
+                            "symbol": "AntiSandwichDelay"
                           }
                         ]
                       },
                       "val": {
-                        "u32": 1555200
+                        "u32": 0
                       }
                     },
                     {
                       "key": {
                         "vec": [
                           {
-                            "symbol": "LastAdminActionLedger"
+                            "symbol": "InactivityThreshold"
                           }
                         ]
                       },
                       "val": {
-                        "u32": 0
+                        "u32": 1555200
                       }
                     },
                     {

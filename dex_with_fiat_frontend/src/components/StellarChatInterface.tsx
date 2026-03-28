@@ -58,6 +58,7 @@ export default function StellarChatInterface() {
     sessionExpired,
     clearSessionExpired,
     isNetworkMismatch,
+    error: walletError,
   } = useStellarWallet();
   const { isDarkMode, toggleDarkMode } = useTheme();
   const { fiatCurrency } = useUserPreferences();
@@ -506,6 +507,16 @@ export default function StellarChatInterface() {
             )}
           </div>
         </header>
+
+        {walletError && (
+          <div
+            className="flex-shrink-0 justify-center py-2 px-4 text-sm font-medium text-red-100 bg-red-500/90"
+            role="alert"
+            aria-live="polite"
+          >
+            {walletError}
+          </div>
+        )}
 
         {/* Network status */}
         {(!isOnline || queuedReadables > 0) && (

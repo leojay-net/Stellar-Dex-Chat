@@ -208,6 +208,18 @@
                       "key": {
                         "vec": [
                           {
+                            "symbol": "AntiSandwichDelay"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
                             "symbol": "CooldownLedgers"
                           }
                         ]
@@ -226,18 +238,6 @@
                       },
                       "val": {
                         "u32": 1555200
-                      }
-                    },
-                    {
-                      "key": {
-                        "vec": [
-                          {
-                            "symbol": "LastAdminActionLedger"
-                          }
-                        ]
-                      },
-                      "val": {
-                        "u32": 0
                       }
                     },
                     {

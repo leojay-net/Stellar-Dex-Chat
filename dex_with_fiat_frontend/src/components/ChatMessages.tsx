@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import Message from './Message';
 import { useChatPagination } from '@/hooks/useChatPagination';
-import { Loader2 } from 'lucide-react';
+import Skeleton from '@/components/ui/skeleton/Skeleton';
 
 interface ChatMessagesProps {
   messages: ChatMessage[];
@@ -323,9 +323,16 @@ export default function ChatMessages({
               className="flex justify-center py-4 text-gray-500"
             >
               {isLoadingMore ? (
-                <div className="flex items-center gap-2 text-sm animate-in fade-in">
-                  <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
-                  <span>Loading older messages...</span>
+                <div className="w-full space-y-3 px-2 animate-in fade-in" aria-label="Loading older messages">
+                  {[...Array(3)].map((_, i) => (
+                    <div key={i} className="flex gap-3">
+                      <Skeleton className="h-8 w-8 rounded-full flex-shrink-0" />
+                      <div className="flex-1 space-y-1.5">
+                        <Skeleton className="h-3 w-1/4" />
+                        <Skeleton className="h-3 w-2/3" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <span className="text-xs opacity-0">Scroll up to load more</span>

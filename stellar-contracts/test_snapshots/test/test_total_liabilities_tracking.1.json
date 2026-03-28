@@ -68,6 +68,12 @@
                 },
                 {
                   "bytes": ""
+                },
+                {
+                  "i128": "0"
+                },
+                {
+                  "u32": 0
                 }
               ]
             }
@@ -223,6 +229,33 @@
           "ext": "v0"
         },
         "live_until": 6311999
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "key": {
+                "vec": [
+                  {
+                    "symbol": "LastDeposit"
+                  },
+                  {
+                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
+                  }
+                ]
+              },
+              "durability": "temporary",
+              "val": {
+                "u32": 0
+              }
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 15
       },
       {
         "entry": {
@@ -391,24 +424,24 @@
                       "key": {
                         "vec": [
                           {
-                            "symbol": "InactivityThreshold"
+                            "symbol": "AntiSandwichDelay"
                           }
                         ]
                       },
                       "val": {
-                        "u32": 1555200
+                        "u32": 0
                       }
                     },
                     {
                       "key": {
                         "vec": [
                           {
-                            "symbol": "LastAdminActionLedger"
+                            "symbol": "InactivityThreshold"
                           }
                         ]
                       },
                       "val": {
-                        "u32": 0
+                        "u32": 1555200
                       }
                     },
                     {
@@ -484,28 +517,6 @@
                       },
                       "val": {
                         "i128": "500"
-                      }
-                    },
-                    {
-                      "key": {
-                        "vec": [
-                          {
-                            "symbol": "WithdrawQueueHead"
-                          }
-                        ]
-                      },
-                      "val": "void"
-                    },
-                    {
-                      "key": {
-                        "vec": [
-                          {
-                            "symbol": "WithdrawQueueLen"
-                          }
-                        ]
-                      },
-                      "val": {
-                        "u64": "0"
                       }
                     }
                   ]
