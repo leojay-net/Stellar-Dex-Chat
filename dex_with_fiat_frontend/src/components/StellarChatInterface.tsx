@@ -380,7 +380,7 @@ export default function StellarChatInterface() {
     },
   }[healthStatus];
   // ───────────────────────────────────────────────────────────────────────────
-
+//fhj
   return (
     <div className="theme-app flex h-screen w-screen overflow-hidden transition-colors duration-300">
       {/* Desktop sidebar - only rendered on md+ viewports */}
