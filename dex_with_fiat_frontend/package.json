@@ -46,6 +46,7 @@
     "@types/uuid": "^10.0.0",
     "eslint": "^9",
     "eslint-config-next": "15.3.5",
+    "jsdom": "^29.0.1",
     "prettier": "^3.8.1",
     "tailwindcss": "^4",
     "typescript": "^5",

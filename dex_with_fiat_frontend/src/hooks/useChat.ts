@@ -38,7 +38,7 @@ const useChat = () => {
 
   // State machine for chat lifecycle
   const machineRef = useRef<ReturnType<typeof createChatStateMachine>>(createChatStateMachine());
-  const [, setStateUpdateTrigger] = useState(0);
+  const [stateUpdateTrigger, setStateUpdateTrigger] = useState(0);
 
   // Additional state for admin and transaction callback
   const [isAdmin, setIsAdminState] = useState(false);
@@ -286,6 +286,11 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
         // Transition through analysis
         machine.transition(ChatEvent.ANALYSIS_COMPLETE);
 
+        // If we need clarification, transition the state machine accordingly
+        if (needsClarification) {
+          machine.transition(ChatEvent.RECEIVE_CLARIFICATION);
+        }
+
         // Determine if we should auto-trigger transaction
         const shouldAutoTrigger =
           !needsClarification &&
@@ -301,6 +306,14 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
         if (shouldAutoTrigger && hasMinimalTransactionData) {
           machine.updateContext({ pendingTransactionData });
           machine.transition(ChatEvent.TRIGGER_TRANSACTION);
+        }
+
+        // If we didn't enter a terminal/transaction/clarification state, return to awaiting input
+        if (
+          machine.getState().state === ChatState.ANALYZING &&
+          machine.canTransition(ChatEvent.ANALYSIS_COMPLETE)
+        ) {
+          machine.transition(ChatEvent.ANALYSIS_COMPLETE);
         }
 
         // Build response message
@@ -496,7 +509,7 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
       awaitingClarification: machineState.state === ChatState.AWAITING_CLARIFICATION,
       clarificationQuestion: machineState.context.clarificationQuestion,
     };
-  }, [isAdmin]);
+  }, [isAdmin, stateUpdateTrigger]);
 
   return {
     messages,
