@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Send, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from '@/contexts/TranslationContext';
+import { saveDraft, getDraft, clearDraft } from '@/lib/draftUtils';
 
 interface ChatInputProps {
   onSendMessage: (message: string) => void;
@@ -12,6 +14,7 @@ interface ChatInputProps {
   onOpenBridgeModal?: () => void;
   isLoading: boolean;
   placeholder?: string;
+  sessionId?: string | null;
 }
 
 export default function ChatInput({
@@ -21,8 +24,11 @@ export default function ChatInput({
   onOpenHistory,
   onOpenBridgeModal,
   isLoading,
-  placeholder = 'Type your message...',
+  placeholder,
+  sessionId,
 }: ChatInputProps) {
+  const { t } = useTranslation();
+  const activePlaceholder = placeholder || t('chat.placeholder');
   const [message, setMessage] = useState('');
   const [showCommands, setShowCommands] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -31,10 +37,10 @@ export default function ChatInput({
   const [paletteIndex, setPaletteIndex] = useState(0);
 
   const commands = [
-    { cmd: '/deposit', desc: 'Add funds to your Stellar account' },
-    { cmd: '/rates', desc: 'Check current market conversion rates' },
-    { cmd: '/portfolio', desc: 'View your asset balance and value' },
-    { cmd: '/help', desc: 'Get assistance with platform features' },
+    { cmd: '/deposit', desc: t('common.deposit_desc') || 'Add funds to your Stellar account' },
+    { cmd: '/rates', desc: t('common.rates_desc') || 'Check current market conversion rates' },
+    { cmd: '/portfolio', desc: t('common.portfolio_desc') || 'View your asset balance and value' },
+    { cmd: '/help', desc: t('common.help_desc') || 'Get assistance with platform features' },
   ];
 
   const handleInputChange = (val: string) => {
@@ -57,6 +63,7 @@ export default function ChatInput({
     if (message.trim() && !isLoading) {
       onSendMessage(message.trim());
       setMessage('');
+      if (sessionId) clearDraft(sessionId);
       setShowCommands(false);
     }
   };
@@ -65,11 +72,11 @@ export default function ChatInput({
     if (showCommands) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setSelectedIndex((prev) => (prev + 1) % commands.length);
+        setSelectedIndex((prev: number) => (prev + 1) % commands.length);
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         setSelectedIndex(
-          (prev) => (prev - 1 + commands.length) % commands.length,
+          (prev: number) => (prev - 1 + commands.length) % commands.length,
         );
       } else if (e.key === 'Enter') {
         e.preventDefault();
@@ -89,7 +96,7 @@ export default function ChatInput({
   const paletteCommands = [
     {
       id: 'new_chat',
-      label: 'New Chat',
+      label: t('chat.new_chat'),
       keywords: 'new chat clear',
       run: () => onNewChat?.(),
     },
@@ -139,12 +146,29 @@ export default function ChatInput({
     const handler = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
-        setShowPalette((prev) => !prev);
+        setShowPalette((prev: boolean) => !prev);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+
+  // Load draft when session changes
+  useEffect(() => {
+    if (sessionId) {
+      const draft = getDraft(sessionId);
+      setMessage(draft || '');
+    }
+  }, [sessionId]);
+
+  // Save draft when message changes
+  useEffect(() => {
+    if (sessionId && message.trim()) {
+      saveDraft(sessionId, message);
+    } else if (sessionId && !message.trim()) {
+      clearDraft(sessionId);
+    }
+  }, [message, sessionId]);
 
   return (
     <form
@@ -156,21 +180,21 @@ export default function ChatInput({
           <div className="p-3 border-b">
             <input
               value={paletteQuery}
-              onChange={(e) => {
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                 setPaletteQuery(e.target.value);
                 setPaletteIndex(0);
               }}
-              onKeyDown={(e) => {
+              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                 if (e.key === 'ArrowDown') {
                   e.preventDefault();
-                  setPaletteIndex((prev) =>
+                  setPaletteIndex((prev: number) =>
                     filteredPalette.length > 0
                       ? (prev + 1) % filteredPalette.length
                       : 0,
                   );
                 } else if (e.key === 'ArrowUp') {
                   e.preventDefault();
-                  setPaletteIndex((prev) =>
+                  setPaletteIndex((prev: number) =>
                     filteredPalette.length > 0
                       ? (prev - 1 + filteredPalette.length) %
                         filteredPalette.length
@@ -214,7 +238,7 @@ export default function ChatInput({
           >
             <div className="p-2 border-b bg-gray-50/50">
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-2">
-                Commands
+                {t('chat.commands')}
               </span>
             </div>
             {commands.map((c, i) => (
@@ -241,9 +265,9 @@ export default function ChatInput({
         <div className="flex-1 relative">
           <textarea
             value={message}
-            onChange={(e) => handleInputChange(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={placeholder}
+            placeholder={activePlaceholder}
             disabled={isLoading}
             className="theme-input w-full resize-none border rounded-lg px-4 py-3 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             rows={1}
@@ -252,7 +276,7 @@ export default function ChatInput({
               maxHeight: '120px',
               height: 'auto',
             }}
-            onInput={(e) => {
+            onInput={(e: React.FormEvent<HTMLTextAreaElement>) => {
               const target = e.target as HTMLTextAreaElement;
               target.style.height = 'auto';
               target.style.height = `${Math.min(target.scrollHeight, 120)}px`;
@@ -276,9 +300,9 @@ export default function ChatInput({
       {/* Quick suggestions */}
       <div className="flex flex-wrap gap-2 mt-4">
         {[
-          'Convert 100 USDC to USD',
-          'Check conversion rates',
-          'View transaction history',
+          t('chat.suggestions.convert'),
+          t('chat.suggestions.rates'),
+          t('chat.suggestions.portfolio'),
         ].map((suggestion, index) => (
           <button
             key={index}

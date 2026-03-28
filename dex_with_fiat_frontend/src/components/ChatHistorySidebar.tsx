@@ -12,8 +12,88 @@ import {
   Plus,
   Download,
   Coins,
+  Pin,
+  PinOff,
 } from 'lucide-react';
 import SkeletonSidebar from '@/components/ui/skeleton/SkeletonSidebar';
+import EmptyState from '@/components/ui/EmptyState';
+
+import { ChatSession } from '@/types';
+
+interface SessionRowProps {
+  session: ChatSession;
+  isActive: boolean;
+  onLoad: (id: string) => void;
+  onExport: (id: string) => void;
+  onDelete: (id: string) => void;
+  onTogglePin: (id: string) => void;
+  formatDate: (d: Date) => string;
+}
+
+function SessionRow({
+  session,
+  isActive,
+  onLoad,
+  onExport,
+  onDelete,
+  onTogglePin,
+  formatDate,
+}: SessionRowProps) {
+  return (
+    <div
+      className={`group relative p-3 mb-2 rounded-lg cursor-pointer transition-all duration-200 border ${
+        isActive
+          ? 'bg-[var(--color-primary-soft)] border-[var(--color-primary)] shadow-md'
+          : 'border-transparent hover:border-[var(--color-border)] hover:bg-[var(--color-surface-muted)]'
+      }`}
+      onClick={() => onLoad(session.id)}
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex-1 min-w-0">
+          <h3 className="theme-text-primary text-sm font-medium truncate">
+            {session.title || 'New Conversation'}
+          </h3>
+          <div className="theme-text-muted flex items-center mt-1 text-xs">
+            <Clock className="w-3 h-3 mr-1" />
+            <span>
+              {formatDate(session.lastUpdated || session.createdAt || new Date())}
+            </span>
+            <span className="ml-2">{session.messages?.length || 0} messages</span>
+          </div>
+          {session.messages && session.messages.length > 0 && (
+            <p className="theme-text-secondary text-xs mt-1 truncate">
+              {session.messages[session.messages.length - 1]?.content?.substring(0, 50)}...
+            </p>
+          )}
+        </div>
+
+        <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={(e) => { e.stopPropagation(); onTogglePin(session.id); }}
+            className="theme-text-muted hover:bg-[var(--color-primary-soft)] p-1 rounded transition-all hover:scale-110"
+            title={session.pinned ? 'Unpin conversation' : 'Pin conversation'}
+          >
+            {session.pinned ? <PinOff className="w-3 h-3" /> : <Pin className="w-3 h-3" />}
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onExport(session.id); }}
+            className="theme-text-muted hover:bg-[var(--color-primary-soft)] p-1 rounded transition-all hover:scale-110"
+            title="Export conversation"
+          >
+            <Download className="w-3 h-3" />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(session.id); }}
+            className="theme-text-muted hover:bg-[var(--color-danger-soft)] p-1 rounded transition-all hover:scale-110"
+            title="Delete conversation"
+          >
+            <Trash2 className="w-3 h-3" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface ChatHistorySidebarProps {
   onLoadSession: (sessionId: string) => void;
@@ -25,12 +105,14 @@ export default function ChatHistorySidebar({
   onClose,
 }: ChatHistorySidebarProps) {
   const {
-    sessions,
+    pinnedSessions,
+    unpinnedSessions,
     currentSessionId,
     deleteSession,
     clearAllHistory,
     exportSession,
     searchSessions,
+    togglePin,
     hasHistory,
   } = useChatHistory();
   const { entries, exportEntries, clearEntries, updateEntry } = useTxHistory();
@@ -46,7 +128,10 @@ export default function ChatHistorySidebar({
     return () => clearTimeout(timer);
   }, []);
 
-  const filteredSessions = searchQuery ? searchSessions(searchQuery) : sessions;
+  const allSessions = [...pinnedSessions, ...unpinnedSessions];
+  const filteredSessions = searchQuery ? searchSessions(searchQuery) : allSessions;
+  const filteredPinned = filteredSessions.filter((s) => s.pinned);
+  const filteredUnpinned = filteredSessions.filter((s) => !s.pinned);
 
   const handleDeleteSession = (sessionId: string) => {
     deleteSession(sessionId);
@@ -151,82 +236,56 @@ export default function ChatHistorySidebar({
         {isLoading ? (
           <SkeletonSidebar />
         ) : !hasHistory ? (
-          <div className="theme-text-muted p-4 text-center">
-            <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">No conversations yet</p>
-            <p className="text-xs mt-1 opacity-70">
-              Start chatting to see your history here
-            </p>
-          </div>
+          <EmptyState
+            icon={MessageSquare}
+            title="No conversations yet"
+            description="Start chatting to see your history here"
+            cta={{ label: 'New Conversation', onClick: () => window.location.reload() }}
+          />
         ) : filteredSessions.length === 0 ? (
-          <div className="theme-text-muted p-4 text-center">
-            <Search className="w-6 h-6 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">No conversations found</p>
-          </div>
+          <EmptyState
+            icon={Search}
+            title="No conversations found"
+            description={`No results for "${searchQuery}"`}
+            cta={{ label: 'Clear search', onClick: () => setSearchQuery('') }}
+          />
         ) : (
           <div className="p-2">
-            {filteredSessions.map((session) => (
-              <div
+            {filteredPinned.length > 0 && (
+              <>
+                <p className="theme-text-muted text-xs font-semibold uppercase tracking-wider px-1 py-1 mt-1">
+                  Pinned
+                </p>
+                {filteredPinned.map((session) => (
+                  <SessionRow
+                    key={session.id}
+                    session={session}
+                    isActive={currentSessionId === session.id}
+                    onLoad={onLoadSession}
+                    onExport={handleExportSession}
+                    onDelete={(id) => setShowDeleteConfirm(id)}
+                    onTogglePin={togglePin}
+                    formatDate={formatDate}
+                  />
+                ))}
+                {filteredUnpinned.length > 0 && (
+                  <p className="theme-text-muted text-xs font-semibold uppercase tracking-wider px-1 py-1 mt-3">
+                    Recent
+                  </p>
+                )}
+              </>
+            )}
+            {filteredUnpinned.map((session) => (
+              <SessionRow
                 key={session.id}
-                className={`group relative p-3 mb-2 rounded-lg cursor-pointer transition-all duration-200 border ${
-                  currentSessionId === session.id
-                    ? 'bg-[var(--color-primary-soft)] border-[var(--color-primary)] shadow-md'
-                    : 'border-transparent hover:border-[var(--color-border)] hover:bg-[var(--color-surface-muted)]'
-                }`}
-                onClick={() => onLoadSession(session.id)}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="theme-text-primary text-sm font-medium truncate">
-                      {session.title || 'New Conversation'}
-                    </h3>
-                    <div className="theme-text-muted flex items-center mt-1 text-xs">
-                      <Clock className="w-3 h-3 mr-1" />
-                      <span>
-                        {formatDate(
-                          session.lastUpdated ||
-                            session.createdAt ||
-                            new Date(),
-                        )}
-                      </span>
-                      <span className="ml-2">
-                        {session.messages?.length || 0} messages
-                      </span>
-                    </div>
-                    {session.messages && session.messages.length > 0 && (
-                      <p className="theme-text-secondary text-xs mt-1 truncate">
-                        {session.messages[
-                          session.messages.length - 1
-                        ]?.content?.substring(0, 50)}
-                        ...
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleExportSession(session.id);
-                      }}
-                      className="theme-text-muted hover:bg-[var(--color-primary-soft)] p-1 rounded transition-all hover:scale-110"
-                      title="Export conversation"
-                    >
-                      <Download className="w-3 h-3" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowDeleteConfirm(session.id);
-                      }}
-                      className="theme-text-muted hover:bg-[var(--color-danger-soft)] p-1 rounded transition-all hover:scale-110"
-                      title="Delete conversation"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-              </div>
+                session={session}
+                isActive={currentSessionId === session.id}
+                onLoad={onLoadSession}
+                onExport={handleExportSession}
+                onDelete={(id) => setShowDeleteConfirm(id)}
+                onTogglePin={togglePin}
+                formatDate={formatDate}
+              />
             ))}
           </div>
         )}
@@ -261,9 +320,12 @@ export default function ChatHistorySidebar({
         </div>
 
         {entries.length === 0 ? (
-          <p className="theme-text-muted text-xs">
-            Deposits, payouts, risk checks, and notes will appear here.
-          </p>
+          <EmptyState
+            icon={Coins}
+            title="No transactions yet"
+            description="Deposits, payouts, risk checks, and notes will appear here."
+            className="py-3"
+          />
         ) : (
           <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
             {entries.slice(0, 8).map((entry) => (

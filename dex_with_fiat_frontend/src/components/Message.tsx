@@ -1,10 +1,13 @@
 'use client';
 
-import { ChatMessage } from '@/types';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Bot, User, AlertTriangle, Link, Clock, Coins } from 'lucide-react';
+import { useUserPreferences } from '@/contexts/UserPreferencesContext';
+import { useMasking } from '@/hooks/useMasking';
+import { ChatMessage } from '@/types';
+import { AlertTriangle, Bot, Clock, Coins, Link, RotateCcw, User, Loader2, RefreshCcw, XCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { useTranslation } from '@/contexts/TranslationContext';
 
 interface MessageProps {
   message: ChatMessage;
@@ -13,12 +16,24 @@ interface MessageProps {
     actionType: string,
     data?: Record<string, unknown>,
   ) => void;
+  onRetry?: (messageId: string) => void;
 }
 
-export default function Message({ message, onActionClick }: MessageProps) {
+export default function Message({ message, onActionClick, onRetry }: MessageProps) {
   const { connection } = useStellarWallet();
   const { isDarkMode } = useTheme();
+  const { maskingEnabled, maskingStyle } = useUserPreferences();
   const isUser = message.role === 'user';
+  const hasError = !!message.error;
+
+  // Apply masking to message content
+  const maskedContent = useMasking(message.content, {
+    enabled: maskingEnabled,
+    style: maskingStyle,
+  });
+  const { t } = useTranslation();
+  const isPending = message.metadata?.status === 'pending';
+  const isFailed = message.metadata?.status === 'failed';
 
   return (
     <div
@@ -51,13 +66,20 @@ export default function Message({ message, onActionClick }: MessageProps) {
               className={`inline-block px-4 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 ${
                 isUser
                   ? 'bg-blue-600 text-white'
-                  : isDarkMode
-                    ? 'bg-gray-800 text-gray-100 border border-gray-700'
-                    : 'bg-gray-100 text-gray-900 border border-gray-200'
-              }`}
+                  : isFailed
+                    ? 'bg-red-50 border-red-200 text-red-900 shadow-red-100'
+                    : isDarkMode
+                      ? 'bg-gray-800 text-gray-100 border border-gray-700'
+                      : 'bg-gray-100 text-gray-900 border border-gray-200'
+              } ${isPending ? 'animate-pulse opacity-70' : ''}`}
             >
-              <div className="whitespace-pre-wrap break-words">
-                {isUser ? (
+              <div className="whitespace-pre-wrap break-words min-h-[20px] flex items-center">
+                {isPending ? (
+                  <div className="flex items-center space-x-2 text-gray-400">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span className="text-sm italic">{t('common.loading')}</span>
+                  </div>
+                ) : isUser ? (
                   message.content
                 ) : (
                   <ReactMarkdown
@@ -102,7 +124,7 @@ export default function Message({ message, onActionClick }: MessageProps) {
                       ),
                     }}
                   >
-                    {message.content}
+                    {maskedContent}
                   </ReactMarkdown>
                 )}
               </div>
@@ -113,11 +135,47 @@ export default function Message({ message, onActionClick }: MessageProps) {
               className={`flex items-center mt-2 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'} ${isUser ? 'justify-end' : 'justify-start'}`}
             >
               <Clock className="w-3 h-3 mr-1" />
-              {message.timestamp.toLocaleTimeString([], {
+              {new Date(message.timestamp).toLocaleTimeString([], {
                 hour: '2-digit',
                 minute: '2-digit',
               })}
             </div>
+
+            {/* Error State */}
+            {hasError && (
+              <div
+                className={`mt-3 inline-flex flex-col gap-2 rounded-lg border px-3 py-2 text-xs ${
+                  isDarkMode
+                    ? 'border-red-700 bg-red-950/40 text-red-200'
+                    : 'border-red-200 bg-red-50 text-red-800'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  <span>
+                    {message.error?.message || 'Failed to send message'}
+                  </span>
+                </div>
+                {message.error?.retryAttempts && message.error.retryAttempts > 0 && (
+                  <div className="text-xs opacity-75">
+                    Retry attempts: {message.error.retryAttempts}
+                  </div>
+                )}
+                {onRetry && (
+                  <button
+                    onClick={() => onRetry(message.id)}
+                    className={`mt-2 flex items-center justify-center gap-2 px-3 py-1 rounded-lg text-xs font-medium transition-all transform hover:scale-105 active:scale-95 ${
+                      isDarkMode
+                        ? 'bg-red-700/40 hover:bg-red-700/60 border border-red-600'
+                        : 'bg-red-100 hover:bg-red-200 border border-red-300'
+                    }`}
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    Retry
+                  </button>
+                )}
+              </div>
+            )}
             {message.metadata?.guardrail?.triggered && (
               <div
                 className={`mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${
@@ -133,6 +191,25 @@ export default function Message({ message, onActionClick }: MessageProps) {
                 </span>
               </div>
             )}
+            {isFailed && (
+              <div
+                className={`mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${
+                  isDarkMode
+                    ? 'border-red-700 bg-red-950/40 text-red-200'
+                    : 'border-red-200 bg-red-50 text-red-800'
+                }`}
+              >
+                <XCircle className="h-4 w-4" />
+                <span>{t('chat.error_message')}</span>
+                <button 
+                  onClick={() => window.location.reload()} 
+                  className="ml-2 underline flex items-center gap-1"
+                >
+                  <RefreshCcw className="w-3 h-3" />
+                  {t('common.retry')}
+                </button>
+              </div>
+            )}
             {message.metadata?.requestStatus === 'cancelled' && (
               <div
                 className={`mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${
@@ -142,7 +219,7 @@ export default function Message({ message, onActionClick }: MessageProps) {
                 }`}
               >
                 <AlertTriangle className="h-4 w-4" />
-                <span>Request cancelled by user.</span>
+                <span>{t('chat.cancelled_message')}</span>
               </div>
             )}
             {message.metadata?.suggestedActions &&

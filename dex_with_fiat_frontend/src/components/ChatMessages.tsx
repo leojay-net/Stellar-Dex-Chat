@@ -12,6 +12,8 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import Message from './Message';
+import { useChatPagination } from '@/hooks/useChatPagination';
+import Skeleton from '@/components/ui/skeleton/Skeleton';
 
 interface ChatMessagesProps {
   messages: ChatMessage[];
@@ -108,16 +110,22 @@ function HelpCard({
 }
 
 export default function ChatMessages({
-  messages,
+  messages: allMessages,
   onActionClick,
   isLoading = false,
 }: ChatMessagesProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const loaderRef = useRef<HTMLDivElement>(null);
   const { isDarkMode } = useTheme();
+
+  const { visibleMessages, hasMore, isLoadingMore, loadMore } =
+    useChatPagination(allMessages);
 
   const [dismissedCards, setDismissedCards] = useState<string[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [prevScrollHeight, setPrevScrollHeight] = useState(0);
+  const [shouldPreserveScroll, setShouldPreserveScroll] = useState(false);
 
   // Load dismissed cards from localStorage
   useEffect(() => {
@@ -151,13 +159,57 @@ export default function ChatMessages({
   };
 
   useEffect(() => {
-    if (isLoading || messages.length > 0) {
-      const timer = setTimeout(() => {
-        scrollToBottom();
-      }, 100);
-      return () => clearTimeout(timer);
+    if (isLoading || allMessages.length > 0) {
+      // Only auto-scroll to bottom if we are NOT loading more previous messages
+      if (!isLoadingMore && !shouldPreserveScroll) {
+        const timer = setTimeout(() => {
+          scrollToBottom();
+        }, 100);
+        return () => clearTimeout(timer);
+      }
     }
-  }, [messages, isLoading]);
+  }, [allMessages.length, isLoading, isLoadingMore, shouldPreserveScroll]);
+
+  // Handle scroll preservation when loading more
+  useEffect(() => {
+    if (isLoadingMore) {
+      if (containerRef.current) {
+        setPrevScrollHeight(containerRef.current.scrollHeight);
+        setShouldPreserveScroll(true);
+      }
+    }
+  }, [isLoadingMore]);
+
+  useEffect(() => {
+    if (shouldPreserveScroll && !isLoadingMore && containerRef.current) {
+      const newHeight = containerRef.current.scrollHeight;
+      const heightDiff = newHeight - prevScrollHeight;
+      if (heightDiff > 0) {
+        containerRef.current.scrollTop = heightDiff;
+      }
+      setShouldPreserveScroll(false);
+    }
+  }, [visibleMessages.length, isLoadingMore, shouldPreserveScroll, prevScrollHeight]);
+
+  // Intersection Observer for Infinite Scroll
+  useEffect(() => {
+    if (!hasMore || isLoadingMore) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          loadMore();
+        }
+      },
+      { threshold: 0.5 }
+    );
+
+    if (loaderRef.current) {
+      observer.observe(loaderRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [hasMore, isLoadingMore, loadMore]);
 
   const helpCards = [
     {
@@ -208,7 +260,7 @@ export default function ChatMessages({
         maxHeight: '100%',
       }}
     >
-      {messages.length === 0 ? (
+      {visibleMessages.length === 0 ? (
         <div className="max-w-4xl mx-auto h-full flex flex-col items-center justify-center py-12">
           {/* Welcome Header */}
           <div className="text-center mb-12">
@@ -264,7 +316,31 @@ export default function ChatMessages({
         </div>
       ) : (
         <div className="space-y-6 pb-6 max-w-4xl mx-auto">
-          {messages.map((message) => (
+          {/* Loading indicator for pagination */}
+          {hasMore && (
+            <div
+              ref={loaderRef}
+              className="flex justify-center py-4 text-gray-500"
+            >
+              {isLoadingMore ? (
+                <div className="w-full space-y-3 px-2 animate-in fade-in" aria-label="Loading older messages">
+                  {[...Array(3)].map((_, i) => (
+                    <div key={i} className="flex gap-3">
+                      <Skeleton className="h-8 w-8 rounded-full flex-shrink-0" />
+                      <div className="flex-1 space-y-1.5">
+                        <Skeleton className="h-3 w-1/4" />
+                        <Skeleton className="h-3 w-2/3" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <span className="text-xs opacity-0">Scroll up to load more</span>
+              )}
+            </div>
+          )}
+
+          {visibleMessages.map((message: ChatMessage) => (
             <Message
               key={message.id}
               message={message}

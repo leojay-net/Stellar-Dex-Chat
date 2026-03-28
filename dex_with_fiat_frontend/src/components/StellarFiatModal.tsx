@@ -12,7 +12,9 @@ import {
   Copy,
   Check,
   Download,
+  WifiOff,
 } from 'lucide-react';
+import EmptyState from '@/components/ui/EmptyState';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
 import {
   BRIDGE_LIMIT_WARNING_PERCENT,
@@ -815,58 +817,64 @@ export default function StellarFiatModal({
                   />
                 </div>
 
-                <div className="flex items-center justify-between text-xs mb-2">
-                  <span className="theme-text-secondary">
-                    On-chain per-deposit limit
-                  </span>
-                  <span className="theme-text-primary font-mono">
-                    {isLoadingBridgeLimit
-                      ? 'Loading...'
-                      : bridgeLimit !== null
-                        ? `${stroopsToDisplay(bridgeLimit)} XLM`
-                        : 'Unavailable'}
-                  </span>
-                </div>
-
-                <div className="h-1.5 w-full rounded-full bg-[var(--color-surface-elevated)] overflow-hidden mb-2">
-                  <div
-                    className={`h-full rounded-full transition-all duration-500 ${
-                      isOverLimit
-                        ? 'bg-red-500'
-                        : isHighLimitUsage
-                          ? 'bg-amber-400'
-                          : 'bg-blue-500'
-                    }`}
-                    style={{ width: `${Math.min(usagePercent, 100)}%` }}
+                {isLimitUnavailable ? (
+                  <EmptyState
+                    icon={WifiOff}
+                    title="Bridge data unavailable"
+                    description={bridgeLimitError ?? 'Could not fetch the current bridge limit. Please retry.'}
+                    cta={{ label: 'Retry', onClick: () => void refetchStats() }}
+                    className="py-2"
                   />
-                </div>
-
-                <div className="theme-text-muted flex items-center justify-between text-[10px]">
-                  <span>
-                    {hasValidAmount && bridgeLimit !== null
-                      ? `${usagePercent.toFixed(1)}% used`
-                      : 'Limit utilized per transaction'}
-                  </span>
-                  <span>
-                    {hasValidAmount && bridgeLimit !== null
-                      ? `${stroopsToDisplay(remainingLimit)} XLM available`
-                      : ''}
-                  </span>
-                </div>
-
-                {bridgeLimitError && (
-                  <div className="theme-soft-danger mt-3 rounded-lg border px-3 py-2 text-[11px]">
-                    {bridgeLimitError}
-                  </div>
-                )}
-
-                {isOverLimit &&
-                  bridgeLimit !== null &&
-                  stroopsAmount !== null && (
-                    <div className="theme-soft-danger mt-3 rounded-lg border px-3 py-2 text-[11px] leading-tight">
-                      Error: Amount exceeds the current bridge limit.
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between text-xs mb-2">
+                      <span className="theme-text-secondary">
+                        On-chain per-deposit limit
+                      </span>
+                      <span className="theme-text-primary font-mono">
+                        {isLoadingBridgeLimit
+                          ? 'Loading...'
+                          : bridgeLimit !== null
+                            ? `${stroopsToDisplay(bridgeLimit)} XLM`
+                            : 'Unavailable'}
+                      </span>
                     </div>
-                  )}
+
+                    <div className="h-1.5 w-full rounded-full bg-[var(--color-surface-elevated)] overflow-hidden mb-2">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          isOverLimit
+                            ? 'bg-red-500'
+                            : isHighLimitUsage
+                              ? 'bg-amber-400'
+                              : 'bg-blue-500'
+                        }`}
+                        style={{ width: `${Math.min(usagePercent, 100)}%` }}
+                      />
+                    </div>
+
+                    <div className="theme-text-muted flex items-center justify-between text-[10px]">
+                      <span>
+                        {hasValidAmount && bridgeLimit !== null
+                          ? `${usagePercent.toFixed(1)}% used`
+                          : 'Limit utilized per transaction'}
+                      </span>
+                      <span>
+                        {hasValidAmount && bridgeLimit !== null
+                          ? `${stroopsToDisplay(remainingLimit)} XLM available`
+                          : ''}
+                      </span>
+                    </div>
+
+                    {isOverLimit &&
+                      bridgeLimit !== null &&
+                      stroopsAmount !== null && (
+                        <div className="theme-soft-danger mt-3 rounded-lg border px-3 py-2 text-[11px] leading-tight">
+                          Error: Amount exceeds the current bridge limit.
+                        </div>
+                      )}
+                  </>
+                )}
               </div>
             )}
 

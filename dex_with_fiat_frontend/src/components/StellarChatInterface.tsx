@@ -1,5 +1,7 @@
 'use client';
 
+import SkeletonChat from '@/components/ui/skeleton/SkeletonChat';
+import SkeletonSidebar from '@/components/ui/skeleton/SkeletonSidebar';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Wallet,
@@ -14,28 +16,36 @@ import {
   ChevronDown,
   User,
   AlertCircle,
+  RefreshCcw,
+  Receipt,
 } from 'lucide-react';
 import {
-  useStellarWallet,
-  EXPECTED_NETWORK,
+    EXPECTED_NETWORK,
+    useStellarWallet,
 } from '@/contexts/StellarWalletContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import useChat from '@/hooks/useChat';
-import ChatMessages from './ChatMessages';
-import ChatInput from './ChatInput';
-import ChatHistorySidebar from './ChatHistorySidebar';
-import StellarFiatModal from './StellarFiatModal';
-import BankDetailsModal from './BankDetailsModal';
-import UserSettings from './UserSettings';
-import NotificationsCenter from './NotificationsCenter';
-import { TransactionData } from '@/types';
-import SkeletonChat from '@/components/ui/skeleton/SkeletonChat';
-import SkeletonSidebar from '@/components/ui/skeleton/SkeletonSidebar';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
-import { getAdmin, stroopsToDisplay } from '@/lib/stellarContract';
-import { getQueuedReadRequestsCount } from '@/lib/networkQueue';
 import useBridgeStats from '@/hooks/useBridgeStats';
+import useChat from '@/hooks/useChat';
+import { getQueuedReadRequestsCount } from '@/lib/networkQueue';
+import { getAdmin, stroopsToDisplay } from '@/lib/stellarContract';
+import { TransactionData } from '@/types';
+import BankDetailsModal from './BankDetailsModal';
+import ChatHistorySidebar from './ChatHistorySidebar';
+import ChatInput from './ChatInput';
+import ChatMessages from './ChatMessages';
+import NotificationsCenter from './NotificationsCenter';
+import StellarFiatModal from './StellarFiatModal';
+import UserSettings from './UserSettings';
 import WalletConnectionTimeline from './WalletConnectionTimeline';
+import { clearExpiredDrafts } from '@/lib/draftUtils';
+import { useTranslation } from '@/contexts/TranslationContext';
+import ReceiptDrawer from './ReceiptDrawer';
+import { useTxHistory } from '@/hooks/useTxHistory';
+import {
+  subscribeToQueue,
+  processQueue,
+} from '@/lib/networkQueue';
 
 /** Possible states for the API health badge */
 type HealthStatus = 'checking' | 'ok' | 'degraded';
@@ -43,6 +53,7 @@ type HealthStatus = 'checking' | 'ok' | 'degraded';
 const HEALTH_POLL_INTERVAL_MS = 60_000;
 
 export default function StellarChatInterface() {
+  const { t } = useTranslation();
   const {
     connection,
     connect,
@@ -53,6 +64,7 @@ export default function StellarChatInterface() {
     sessionExpired,
     clearSessionExpired,
     isNetworkMismatch,
+    error: walletError,
   } = useStellarWallet();
   const { isDarkMode, toggleDarkMode } = useTheme();
   const { fiatCurrency } = useUserPreferences();
@@ -93,6 +105,7 @@ export default function StellarChatInterface() {
     cancelPendingRequest,
     clearChat,
     loadChatSession,
+    currentSessionId,
     setTransactionReadyCallback,
     setIsAdmin: setChatIsAdmin,
   } = useChat();
@@ -114,28 +127,25 @@ export default function StellarChatInterface() {
   }, []);
 
   useEffect(() => {
-    const onOnline = () => {
+    if (typeof window === 'undefined') return;
+
+    const handleOnline = () => {
       setIsOnline(true);
-      setQueuedReadables(getQueuedReadRequestsCount());
+      void processQueue();
     };
-    const onOffline = () => {
-      setIsOnline(false);
-      setQueuedReadables(getQueuedReadRequestsCount());
-    };
+    const handleOffline = () => setIsOnline(false);
 
-    if (typeof window !== 'undefined') {
-      window.addEventListener('online', onOnline);
-      window.addEventListener('offline', onOffline);
-    }
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
 
-    // initial count
-    setQueuedReadables(getQueuedReadRequestsCount());
+    const unsubscribe = subscribeToQueue((count) => {
+      setQueuedReadables(count);
+    });
 
     return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('online', onOnline);
-        window.removeEventListener('offline', onOffline);
-      }
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      unsubscribe();
     };
   }, []);
 
@@ -419,13 +429,13 @@ export default function StellarChatInterface() {
                 <Star className="w-4 h-4 text-white" />
               </div>
               <div>
-                <p className="font-semibold text-sm leading-none">
-                  DexFiat · Stellar
-                </p>
+                <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                  {t('header.title')}
+                </h1>
                 <p
                   className={`text-xs leading-none mt-0.5 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
                 >
-                  AI-Powered XLM-to-Fiat
+                  {t('header.subtitle')}
                 </p>
               </div>
             </div>
@@ -450,7 +460,7 @@ export default function StellarChatInterface() {
           <div className="flex items-center gap-2">
             <button
               onClick={clearChat}
-              title="New chat"
+              title={t('header.new_chat_title')}
               className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
             >
               <Plus className="w-5 h-5" />
@@ -459,9 +469,17 @@ export default function StellarChatInterface() {
             <NotificationsCenter />
 
             <button
+              onClick={() => setIsReceiptDrawerOpen(true)}
+              title={t('header.receipts')}
+              className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
+            >
+              <Receipt className="w-5 h-5" />
+            </button>
+
+            <button
               onClick={() => setShowSettings(true)}
-              title="Settings"
-              aria-label="Open settings"
+              title={t('header.settings_title')}
+              aria-label={t('header.settings_aria_label')}
               className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
             >
               <Settings className="w-5 h-5" />
@@ -506,7 +524,7 @@ export default function StellarChatInterface() {
                       <div
                         className={`px-3 py-2 text-xs font-semibold border-b ${isDarkMode ? 'text-gray-400 border-gray-700' : 'text-gray-500 border-gray-200'}`}
                       >
-                        Switch Account
+                        {t('header.switch_account')}
                       </div>
                       {accounts.map((account, idx) => (
                         <button
@@ -526,7 +544,7 @@ export default function StellarChatInterface() {
                             <span
                               className={`ml-auto text-[10px] px-1.5 py-0.5 rounded ${isDarkMode ? 'bg-blue-900/50' : 'bg-blue-100'}`}
                             >
-                              Active
+                              {t('header.active_account')}
                             </span>
                           )}
                         </button>
@@ -536,7 +554,7 @@ export default function StellarChatInterface() {
                 </div>
                 <button
                   onClick={disconnect}
-                  title="Disconnect"
+                  title={t('header.disconnect_title')}
                   className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
                 >
                   <LogOut className="w-4 h-4" />
@@ -548,22 +566,53 @@ export default function StellarChatInterface() {
                 className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white text-sm font-medium rounded-lg transition-all"
               >
                 <Wallet className="w-4 h-4" />
-                Connect Freighter
+                {t('header.connect_freighter')}
               </button>
             )}
           </div>
         </header>
 
-        {/* Network status */}
-        {!isOnline && (
+        {walletError && (
           <div
-            className="flex-shrink-0 justify-center py-1 text-xs font-medium text-red-100 bg-red-500/90"
+            className="flex-shrink-0 justify-center py-2 px-4 text-sm font-medium text-red-100 bg-red-500/90"
+            role="alert"
+            aria-live="polite"
+          >
+            {walletError}
+          </div>
+        )}
+
+        {/* Network status */}
+        {(!isOnline || queuedReadables > 0) && (
+          <div
+            className={`flex items-center justify-between gap-3 px-4 py-2 text-xs border-b transition-all duration-300 ${
+              !isOnline
+                ? 'bg-amber-100 border-amber-200 text-amber-800'
+                : 'bg-blue-50 border-blue-100 text-blue-800'
+            }`}
             role="status"
             aria-live="polite"
           >
-            Offline detected. Read-only operations are queued and will retry
-            when online.
-            {queuedReadables > 0 ? ` (${queuedReadables} queued)` : ''}
+            <div className="flex items-center gap-2">
+              {!isOnline ? (
+                <AlertCircle className="w-4 h-4 animate-pulse" />
+              ) : (
+                <RefreshCcw className="w-4 h-4 animate-spin" />
+              )}
+              <span>
+                {!isOnline ? t('common.offline_detected') : t('common.online')}
+                {queuedReadables > 0 &&
+                  ` (${queuedReadables} ${t('common.queued')})`}
+              </span>
+            </div>
+            {queuedReadables > 0 && isOnline && (
+              <button
+                onClick={() => void processQueue()}
+                className="px-2 py-1 bg-white/50 hover:bg-white/80 rounded border border-current font-medium transition-colors"
+              >
+                {t('common.retry_now')}
+              </button>
+            )}
           </div>
         )}
 
@@ -586,17 +635,17 @@ export default function StellarChatInterface() {
                   isNetworkMismatch ? 'bg-red-500' : 'bg-green-500'
                 }`}
               />
-              Network:{' '}
+              {t('common.network')}:{' '}
               <span
                 className={`font-medium ${
                   isNetworkMismatch ? 'text-red-400' : 'text-blue-400'
                 }`}
               >
-                {connection.network || 'Unknown'}
+                {connection.network || t('common.unknown')}
               </span>
               {isNetworkMismatch && (
                 <span className="font-semibold">
-                  (expected {EXPECTED_NETWORK})
+                  ({t('common.expected')} {EXPECTED_NETWORK})
                 </span>
               )}
               {!isNetworkMismatch && (
@@ -611,7 +660,7 @@ export default function StellarChatInterface() {
                         }}
                         className="text-blue-400 hover:text-blue-300 underline"
                       >
-                        Withdraw XLM
+                        {t('common.withdraw_xlm')}
                       </button>
                       {' · '}
                     </>
@@ -623,7 +672,7 @@ export default function StellarChatInterface() {
                     }}
                     className="text-blue-400 hover:text-blue-300 underline"
                   >
-                    Deposit XLM
+                    {t('common.deposit_xlm')}
                   </button>
                 </>
               )}
@@ -631,9 +680,7 @@ export default function StellarChatInterface() {
             {isNetworkMismatch && (
               <span className="flex items-center gap-1 text-[11px]">
                 <AlertCircle className="w-3.5 h-3.5" />
-                Deposits and withdrawals are disabled. Switch to{' '}
-                {EXPECTED_NETWORK} in Freighter: Settings → Network →{' '}
-                {EXPECTED_NETWORK}.
+                {t('common.network_mismatch_warning', { expectedNetwork: EXPECTED_NETWORK })}
               </span>
             )}
           </div>
@@ -653,17 +700,17 @@ export default function StellarChatInterface() {
             {statsError ? (
               <span className="text-red-400">{statsError}</span>
             ) : statsLoading ? (
-              <span className="text-gray-500">Loading stats…</span>
+              <span className="text-gray-500">{t('common.loading_stats')}</span>
             ) : (
               <div className="flex flex-col gap-1 sm:flex-row sm:gap-4 sm:items-center">
                 <span className="font-medium">
-                  Bridge Balance:{' '}
+                  {t('common.bridge_balance')}:{' '}
                   <span className="text-blue-400">
                     {balance !== null ? stroopsToDisplay(balance) : '—'} XLM
                   </span>
                 </span>
                 <span className="font-medium">
-                  Deposit Limit:{' '}
+                  {t('common.deposit_limit')}:{' '}
                   <span className="text-blue-400">
                     {limit !== null ? stroopsToDisplay(limit) : '—'} XLM
                   </span>
@@ -703,6 +750,7 @@ export default function StellarChatInterface() {
               setShowModal(true);
             }}
             isLoading={isLoading}
+            sessionId={currentSessionId}
             placeholder="Ask about XLM rates, deposit, or anything Stellar…"
           />
           <div className="px-6 pb-4">
@@ -788,6 +836,14 @@ export default function StellarChatInterface() {
       <UserSettings
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
+      />
+
+      {/* Receipt Drawer */}
+      <ReceiptDrawer
+        isOpen={isReceiptDrawerOpen}
+        onClose={() => setIsReceiptDrawerOpen(false)}
+        transactions={txHistory}
+        onClearHistory={clearTxHistory}
       />
 
       {/* Session expired banner */}

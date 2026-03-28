@@ -35,6 +35,7 @@ jobs:
           cache-dependency-path: dex_with_fiat_frontend/package-lock.json
 
       - name: Install dependencies
+        working-directory: dex_with_fiat_frontend
         run: npm ci
 
       - name: Build
