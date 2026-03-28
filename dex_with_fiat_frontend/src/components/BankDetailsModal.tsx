@@ -18,6 +18,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { fetchLockedQuote, type LockedQuote } from '@/lib/cryptoPriceService';
+import SkeletonWallet from '@/components/ui/skeleton/SkeletonWallet';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useBeneficiaries, Beneficiary } from '@/hooks/useBeneficiaries';
 import { useTxHistory } from '@/hooks/useTxHistory';
@@ -26,6 +27,7 @@ import TransferTimeline, {
   TransferStatus,
 } from '@/components/TransferTimeline';
 import { useAccessibleModal } from '@/hooks/useAccessibleModal';
+import { useIdempotentAction } from '@/hooks/useIdempotentAction';
 
 interface Bank {
   id: number;
@@ -77,6 +79,11 @@ export default function BankDetailsModal({
 
   const { addNotification } = useNotifications();
   const { addEntry } = useTxHistory();
+  
+  const { execute: executePayoutConfirm, isProcessing: isPayoutProcessing } = useIdempotentAction({
+    cooldownMs: 3000,
+    logSuppressed: true,
+  });
 
   const [step, setStep] = useState<Step>(1);
 
@@ -250,100 +257,110 @@ export default function BankDetailsModal({
       !selectedBank ||
       !verifiedAccount ||
       !lockedQuote ||
-      quoteSecondsLeft === 0
+      quoteSecondsLeft === 0 ||
+      isPayoutProcessing
     )
       return;
-    setPayoutLoading(true);
-    setPayoutError('');
-    setStatusEvents([]);
-    pushStatusEvent('initiated', 'Transfer initiated');
-    addNotification('payout_pending', 'Fiat payout request is pending...');
-    try {
-      // 1. Create Paystack transfer recipient
-      const recipientRes = await fetch('/api/create-recipient', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'nuban',
-          name: verifiedAccount.account_name,
-          account_number: accountNumber,
-          bank_code: selectedBank.code,
-          currency: 'NGN',
-        }),
-      });
-      const recipientJson: {
-        success: boolean;
-        data: CreateRecipientData;
-        message?: string;
-      } = await recipientRes.json();
-      if (!recipientJson.success) {
-        throw new Error(
-          recipientJson.message ?? 'Failed to create transfer recipient',
-        );
-      }
+    
+    await executePayoutConfirm(async (idempotencyKey) => {
+      setPayoutLoading(true);
+      setPayoutError('');
+      setStatusEvents([]);
+      pushStatusEvent('initiated', 'Transfer initiated');
+      addNotification('payout_pending', 'Fiat payout request is pending...');
+      try {
+        // 1. Create Paystack transfer recipient
+        const recipientRes = await fetch('/api/create-recipient', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'X-Idempotency-Key': idempotencyKey,
+          },
+          body: JSON.stringify({
+            type: 'nuban',
+            name: verifiedAccount.account_name,
+            account_number: accountNumber,
+            bank_code: selectedBank.code,
+            currency: 'NGN',
+          }),
+        });
+        const recipientJson: {
+          success: boolean;
+          data: CreateRecipientData;
+          message?: string;
+        } = await recipientRes.json();
+        if (!recipientJson.success) {
+          throw new Error(
+            recipientJson.message ?? 'Failed to create transfer recipient',
+          );
+        }
 
-      pushStatusEvent('pending', 'Submitted to bank — awaiting confirmation');
-      setIsPollingStatus(true);
+        pushStatusEvent('pending', 'Submitted to bank — awaiting confirmation');
+        setIsPollingStatus(true);
 
-      // 2. Initiate the NGN bank transfer
-      // The route handler multiplies the amount by 100 before calling Paystack,
-      // so we send the NGN value directly (not kobo).
-      const ngnValue = lockedQuote.ngnAmount;
-      const transferRes = await fetch('/api/initiate-transfer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          source: 'balance',
-          reason: `XLM to NGN - ${xlmAmount} XLM`,
-          amount: ngnValue,
-          recipient: recipientJson.data.recipient_code,
-        }),
-      });
-      const transferJson: {
-        success: boolean;
-        data: InitiateTransferData;
-        message?: string;
-      } = await transferRes.json();
-      if (!transferJson.success) {
-        throw new Error(
-          transferJson.message ?? 'Failed to initiate bank transfer',
-        );
-      }
+        // 2. Initiate the NGN bank transfer
+        // The route handler multiplies the amount by 100 before calling Paystack,
+        // so we send the NGN value directly (not kobo).
+        const ngnValue = lockedQuote.ngnAmount;
+        const transferRes = await fetch('/api/initiate-transfer', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'X-Idempotency-Key': idempotencyKey,
+          },
+          body: JSON.stringify({
+            source: 'balance',
+            reason: `XLM to NGN - ${xlmAmount} XLM`,
+            amount: ngnValue,
+            recipient: recipientJson.data.recipient_code,
+          }),
+        });
+        const transferJson: {
+          success: boolean;
+          data: InitiateTransferData;
+          message?: string;
+        } = await transferRes.json();
+        if (!transferJson.success) {
+          throw new Error(
+            transferJson.message ?? 'Failed to initiate bank transfer',
+          );
+        }
 
-      setTransferReference(
-        transferJson.data.reference || transferJson.data.transfer_code || '',
-      );
-      addEntry({
-        kind: 'payout',
-        status: 'completed',
-        amount: String(xlmAmount),
-        asset: 'XLM',
-        fiatAmount: lockedQuote.ngnAmount.toLocaleString('en-NG', {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        }),
-        fiatCurrency: 'NGN',
-        note: payoutNote.trim() || undefined,
-        reference:
+        setTransferReference(
           transferJson.data.reference || transferJson.data.transfer_code || '',
-        message: `Fiat payout initiated to ${selectedBank.name}.`,
-      });
-      // Simulation block
-      await new Promise((resolve) => setTimeout(resolve, 2500));
-      setIsPollingStatus(false);
-      pushStatusEvent('success', 'Bank transfer confirmed');
-      setStep(4);
-      addNotification('payout_success', 'Fiat payout successfully completed!');
-    } catch (err) {
-      const errorMsg =
-        err instanceof Error ? err.message : 'Payout failed. Please try again.';
-      setPayoutError(errorMsg);
-      setIsPollingStatus(false);
-      pushStatusEvent('failed', `Transfer failed: ${errorMsg}`);
-      addNotification('payout_fail', `Payout failed: ${errorMsg}`);
-    } finally {
-      setPayoutLoading(false);
-    }
+        );
+        addEntry({
+          kind: 'payout',
+          status: 'completed',
+          amount: String(xlmAmount),
+          asset: 'XLM',
+          fiatAmount: lockedQuote.ngnAmount.toLocaleString('en-NG', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }),
+          fiatCurrency: 'NGN',
+          note: payoutNote.trim() || undefined,
+          reference:
+            transferJson.data.reference || transferJson.data.transfer_code || '',
+          message: `Fiat payout initiated to ${selectedBank.name}.`,
+        });
+        // Simulation block
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        setIsPollingStatus(false);
+        pushStatusEvent('success', 'Bank transfer confirmed');
+        setStep(4);
+        addNotification('payout_success', 'Fiat payout successfully completed!');
+      } catch (err) {
+        const errorMsg =
+          err instanceof Error ? err.message : 'Payout failed. Please try again.';
+        setPayoutError(errorMsg);
+        setIsPollingStatus(false);
+        pushStatusEvent('failed', `Transfer failed: ${errorMsg}`);
+        addNotification('payout_fail', `Payout failed: ${errorMsg}`);
+      } finally {
+        setPayoutLoading(false);
+      }
+    }, 'payout_confirm');
   };
 
   const handleClose = () => {
@@ -568,9 +585,7 @@ export default function BankDetailsModal({
             <p className="text-sm text-gray-400 mb-4">Select your bank</p>
 
             {banksLoading ? (
-              <div className="flex justify-center py-8">
-                <Loader2 className="w-8 h-8 text-blue-400 animate-spin" />
-              </div>
+              <SkeletonWallet />
             ) : banksError ? (
               <div className="flex items-center gap-2 text-red-400 text-sm py-4">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -889,13 +904,14 @@ export default function BankDetailsModal({
                 onClick={handleConfirmPayout}
                 disabled={
                   payoutLoading ||
+                  isPayoutProcessing ||
                   quoteLoading ||
                   !lockedQuote ||
                   quoteSecondsLeft === 0
                 }
                 className="theme-primary-button flex-1 flex items-center justify-center gap-2 disabled:bg-blue-800 disabled:opacity-70 text-white py-3 rounded-lg font-medium transition-colors"
               >
-                {payoutLoading ? (
+                {payoutLoading || isPayoutProcessing ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Processing…

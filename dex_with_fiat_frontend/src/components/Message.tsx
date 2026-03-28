@@ -1,11 +1,15 @@
 'use client';
 
-import { ChatMessage } from '@/types';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Bot, User, AlertTriangle, Link, Clock, Coins, Loader2, RefreshCcw, XCircle } from 'lucide-react';
+import { useUserPreferences } from '@/contexts/UserPreferencesContext';
+import { useMasking } from '@/hooks/useMasking';
+import { ChatMessage } from '@/types';
+import { AlertTriangle, Bot, Clock, Coins, Copy, Check, Link, RotateCcw, User, Loader2, RefreshCcw, XCircle } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useTranslation } from '@/contexts/TranslationContext';
+import { motion, useReducedMotion } from 'framer-motion';
 
 interface MessageProps {
   message: ChatMessage;
@@ -14,19 +18,60 @@ interface MessageProps {
     actionType: string,
     data?: Record<string, unknown>,
   ) => void;
+  onRetry?: (messageId: string) => void;
+  shouldAnimate?: boolean;
 }
 
-export default function Message({ message, onActionClick }: MessageProps) {
+export default function Message({ message, onActionClick, onRetry, shouldAnimate = false }: MessageProps) {
   const { connection } = useStellarWallet();
   const { isDarkMode } = useTheme();
-  const { t } = useTranslation();
+  const { maskingEnabled, maskingStyle } = useUserPreferences();
   const isUser = message.role === 'user';
+  const hasError = !!message.error;
+  const shouldReduceMotion = useReducedMotion();
+
+  // Apply masking to message content
+  const maskedContent = useMasking(message.content, {
+    enabled: maskingEnabled,
+    style: maskingStyle,
+  });
+  const { t } = useTranslation();
   const isPending = message.metadata?.status === 'pending';
   const isFailed = message.metadata?.status === 'failed';
+  const [receiptCopied, setReceiptCopied] = useState(false);
+
+  const handleCopyReceiptId = useCallback((receiptId: string) => {
+    navigator.clipboard?.writeText(receiptId).then(() => {
+      setReceiptCopied(true);
+      setTimeout(() => setReceiptCopied(false), 2000);
+    }).catch(() => {
+      /* clipboard unavailable */
+    });
+  }, []);
+
+  const variants = {
+    initial: { 
+      opacity: 0, 
+      y: shouldReduceMotion ? 0 : 20,
+      scale: shouldReduceMotion ? 1 : 0.95
+    },
+    animate: { 
+      opacity: 1, 
+      y: 0,
+      scale: 1,
+      transition: {
+        duration: 0.4,
+        ease: [0.23, 1, 0.32, 1] as const // Custom cubic-bezier for premium feel
+      }
+    }
+  };
 
   return (
-    <div
-      className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-8 animate-fadeIn`}
+    <motion.div
+      initial={shouldAnimate ? "initial" : false}
+      animate="animate"
+      variants={variants}
+      className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-8`}
     >
       <div className={`max-w-[80%] ${isUser ? 'order-2' : 'order-1'}`}>
         {/* Avatar */}
@@ -113,7 +158,7 @@ export default function Message({ message, onActionClick }: MessageProps) {
                       ),
                     }}
                   >
-                    {message.content}
+                    {maskedContent}
                   </ReactMarkdown>
                 )}
               </div>
@@ -129,6 +174,42 @@ export default function Message({ message, onActionClick }: MessageProps) {
                 minute: '2-digit',
               })}
             </div>
+
+            {/* Error State */}
+            {hasError && (
+              <div
+                className={`mt-3 inline-flex flex-col gap-2 rounded-lg border px-3 py-2 text-xs ${
+                  isDarkMode
+                    ? 'border-red-700 bg-red-950/40 text-red-200'
+                    : 'border-red-200 bg-red-50 text-red-800'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  <span>
+                    {message.error?.message || 'Failed to send message'}
+                  </span>
+                </div>
+                {message.error?.retryAttempts && message.error.retryAttempts > 0 && (
+                  <div className="text-xs opacity-75">
+                    Retry attempts: {message.error.retryAttempts}
+                  </div>
+                )}
+                {onRetry && (
+                  <button
+                    onClick={() => onRetry(message.id)}
+                    className={`mt-2 flex items-center justify-center gap-2 px-3 py-1 rounded-lg text-xs font-medium transition-all transform hover:scale-105 active:scale-95 ${
+                      isDarkMode
+                        ? 'bg-red-700/40 hover:bg-red-700/60 border border-red-600'
+                        : 'bg-red-100 hover:bg-red-200 border border-red-300'
+                    }`}
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    Retry
+                  </button>
+                )}
+              </div>
+            )}
             {message.metadata?.guardrail?.triggered && (
               <div
                 className={`mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${
@@ -265,6 +346,34 @@ export default function Message({ message, onActionClick }: MessageProps) {
                       </span>
                     </div>
                   )}
+                  {message.metadata.transactionData.receiptId && (
+                    <div className="flex justify-between items-center gap-2">
+                      <span>Receipt ID:</span>
+                      <div className="flex items-center gap-1">
+                        <span className="theme-text-primary font-mono text-xs">
+                          {message.metadata.transactionData.receiptId.slice(0, 6)}
+                          ...
+                          {message.metadata.transactionData.receiptId.slice(-4)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleCopyReceiptId(
+                              message.metadata!.transactionData!.receiptId!,
+                            )
+                          }
+                          className="flex-shrink-0 p-0.5 rounded text-gray-400 hover:text-blue-400 transition-colors"
+                          title="Copy receipt ID"
+                        >
+                          {receiptCopied ? (
+                            <Check className="w-3 h-3 text-green-400" />
+                          ) : (
+                            <Copy className="w-3 h-3" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {message.metadata.confirmationRequired && (
@@ -299,6 +408,6 @@ export default function Message({ message, onActionClick }: MessageProps) {
           </div>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

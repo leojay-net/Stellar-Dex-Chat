@@ -5,6 +5,8 @@ import { X, Receipt, ExternalLink, Clock, CheckCircle2, AlertCircle, Trash2 } fr
 import { TransactionHistoryEntry } from '@/types';
 import { useTranslation } from '@/contexts/TranslationContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useTransactionFilters } from '@/hooks/useTransactionFilters';
+import { FilterChipBar } from './filters/FilterChipBar';
 
 interface ReceiptDrawerProps {
   isOpen: boolean;
@@ -21,6 +23,18 @@ export default function ReceiptDrawer({
 }: ReceiptDrawerProps) {
   const { t } = useTranslation();
   const { isDarkMode } = useTheme();
+
+  // Use transaction filters hook
+  const {
+    filterState,
+    filteredTransactions,
+    filterStats,
+    toggleFilter,
+    clearAllFilters,
+  } = useTransactionFilters(transactions);
+
+  // Determine which transactions to display
+  const displayTransactions = filteredTransactions;
 
   return (
     <>
@@ -66,15 +80,35 @@ export default function ReceiptDrawer({
             </div>
           </div>
 
+          {/* Filter Chips */}
+          <FilterChipBar
+            filterState={filterState}
+            filterStats={filterStats}
+            onFilterChange={toggleFilter}
+            onClearAll={clearAllFilters}
+          />
+
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {transactions.length === 0 ? (
+            {displayTransactions.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 text-gray-500">
                 <Receipt className="w-12 h-12 mb-4 opacity-20" />
-                <p>{t('receipt.no_receipts')}</p>
+                {transactions.length === 0 ? (
+                  <p>{t('receipt.no_receipts')}</p>
+                ) : (
+                  <div className="text-center space-y-2">
+                    <p className="font-medium">No transactions match your filters</p>
+                    <button
+                      onClick={clearAllFilters}
+                      className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                    >
+                      Clear Filters
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
-              transactions.map((tx) => (
+              displayTransactions.map((tx) => (
                 <div
                   key={tx.id}
                   className={`p-4 rounded-xl border transition-all hover:shadow-md ${

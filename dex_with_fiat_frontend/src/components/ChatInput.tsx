@@ -1,9 +1,12 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Send, Loader2 } from 'lucide-react';
+import { Send, Loader2, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from '@/contexts/TranslationContext';
+import { useStellarWallet } from '@/contexts/StellarWalletContext';
+import { saveDraft, getDraft, clearDraft } from '@/lib/draftUtils';
+import { useIdempotentAction } from '@/hooks/useIdempotentAction';
 
 interface ChatInputProps {
   onSendMessage: (message: string) => void;
@@ -13,6 +16,7 @@ interface ChatInputProps {
   onOpenBridgeModal?: () => void;
   isLoading: boolean;
   placeholder?: string;
+  sessionId?: string | null;
 }
 
 export default function ChatInput({
@@ -23,8 +27,10 @@ export default function ChatInput({
   onOpenBridgeModal,
   isLoading,
   placeholder,
+  sessionId,
 }: ChatInputProps) {
   const { t } = useTranslation();
+  const { connection } = useStellarWallet();
   const activePlaceholder = placeholder || t('chat.placeholder');
   const [message, setMessage] = useState('');
   const [showCommands, setShowCommands] = useState(false);
@@ -32,6 +38,11 @@ export default function ChatInput({
   const [showPalette, setShowPalette] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
   const [paletteIndex, setPaletteIndex] = useState(0);
+  
+  const { execute: executeSubmit, isProcessing: isSubmitting } = useIdempotentAction({
+    cooldownMs: 1000,
+    logSuppressed: true,
+  });
 
   const commands = [
     { cmd: '/deposit', desc: t('common.deposit_desc') || 'Add funds to your Stellar account' },
@@ -55,14 +66,30 @@ export default function ChatInput({
     setShowCommands(false);
   };
 
+  const [walletWarning, setWalletWarning] = useState(false);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (message.trim() && !isLoading) {
-      onSendMessage(message.trim());
-      setMessage('');
-      setShowCommands(false);
+    if (!connection.isConnected) {
+      setWalletWarning(true);
+      return;
+    }
+    setWalletWarning(false);
+    if (message.trim() && !isLoading && !isSubmitting) {
+      executeSubmit(async () => {
+        onSendMessage(message.trim());
+        setMessage('');
+        if (sessionId) clearDraft(sessionId);
+        setShowCommands(false);
+      }, 'chat_message_submit');
     }
   };
+
+  useEffect(() => {
+    if (connection.isConnected) {
+      setWalletWarning(false);
+    }
+  }, [connection.isConnected]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (showCommands) {
@@ -148,6 +175,23 @@ export default function ChatInput({
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+
+  // Load draft when session changes
+  useEffect(() => {
+    if (sessionId) {
+      const draft = getDraft(sessionId);
+      setMessage(draft || '');
+    }
+  }, [sessionId]);
+
+  // Save draft when message changes
+  useEffect(() => {
+    if (sessionId && message.trim()) {
+      saveDraft(sessionId, message);
+    } else if (sessionId && !message.trim()) {
+      clearDraft(sessionId);
+    }
+  }, [message, sessionId]);
 
   return (
     <form
@@ -265,16 +309,23 @@ export default function ChatInput({
 
         <button
           type="submit"
-          disabled={!message.trim() || isLoading}
+          disabled={!message.trim() || isLoading || isSubmitting}
           className="theme-primary-button flex items-center justify-center w-12 h-12 disabled:bg-gray-300 text-white rounded-lg transition-all duration-200 disabled:cursor-not-allowed transform hover:scale-105 disabled:hover:scale-100 shadow-lg"
         >
-          {isLoading ? (
+          {isLoading || isSubmitting ? (
             <Loader2 className="w-5 h-5 animate-spin" />
           ) : (
             <Send className="w-5 h-5" />
           )}
         </button>
       </div>
+
+      {walletWarning && (
+        <div className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-700 text-amber-800 dark:text-amber-200 text-xs">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          <span>Wallet disconnected. Reconnect to continue.</span>
+        </div>
+      )}
 
       {/* Quick suggestions */}
       <div className="flex flex-wrap gap-2 mt-4">

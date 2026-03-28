@@ -35,7 +35,16 @@ jobs:
           cache-dependency-path: dex_with_fiat_frontend/package-lock.json
 
       - name: Install dependencies
+        working-directory: dex_with_fiat_frontend
         run: npm ci
+
+      - name: Cache Next.js build artifacts
+        uses: actions/cache@v4
+        with:
+          path: dex_with_fiat_frontend/.next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('dex_with_fiat_frontend/package-lock.json') }}-${{ hashFiles('dex_with_fiat_frontend/src/**/*.{ts,tsx,js,jsx}') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ hashFiles('dex_with_fiat_frontend/package-lock.json') }}-
 
       - name: Build
         run: npm run build
