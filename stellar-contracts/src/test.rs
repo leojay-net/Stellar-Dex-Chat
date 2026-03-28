@@ -2060,3 +2060,51 @@ fn test_get_receipt_by_index_nonexistent_index() {
     assert_eq!(bridge.get_receipt_by_index(&50), None);
     assert_eq!(bridge.get_receipt_by_index(&u64::MAX), None);
 }
+
+// ── Property-based tests (proptest) ──────────────────────────────────────────
+
+#[cfg(test)]
+mod proptest_deposit {
+    use super::*;
+    use proptest::prelude::*;
+
+    /// Deposit invariants that must hold for every positive amount ≤ limit:
+    ///   1. deposit() succeeds
+    ///   2. contract balance increases by exactly `amount`
+    ///   3. user balance decreases by exactly `amount`
+    ///   4. get_user_deposited() returns `amount`
+    proptest! {
+        #[test]
+        fn deposit_invariants_hold_for_all_valid_amounts(amount in 1i128..=500i128) {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let (contract_id, bridge, _, token_addr, token, token_sac) = setup_bridge(&env, 500);
+            let user = Address::generate(&env);
+            token_sac.mint(&user, &1_000);
+
+            let user_before = token.balance(&user);
+            let contract_before = token.balance(&contract_id);
+
+            bridge.deposit(&user, &amount, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+            prop_assert_eq!(token.balance(&user), user_before - amount);
+            prop_assert_eq!(token.balance(&contract_id), contract_before + amount);
+            prop_assert_eq!(bridge.get_user_deposited(&user), amount);
+        }
+
+        /// Amounts above the configured limit must be rejected with ExceedsLimit.
+        #[test]
+        fn deposit_above_limit_is_rejected(amount in 501i128..=10_000i128) {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 500);
+            let user = Address::generate(&env);
+            token_sac.mint(&user, &amount);
+
+            let result = bridge.try_deposit(&user, &amount, &token_addr, &Bytes::new(&env), &0, &0, &None);
+            prop_assert_eq!(result, Err(Ok(Error::ExceedsLimit)));
+        }
+    }
+}
