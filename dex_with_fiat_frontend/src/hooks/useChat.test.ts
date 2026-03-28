@@ -1,5 +1,157 @@
 import { ChatMessage } from '@/types';
-import { describe, expect, it } from 'vitest';
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { act } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+type UseChatHook = typeof import('./useChat').default;
+
+type AnalyzeResult = {
+  intent: string;
+  confidence: number;
+  extractedData?: Record<string, unknown>;
+  requiredQuestions?: string[];
+  suggestedResponse: string;
+  guardrail?: unknown;
+};
+
+let analyzeQueue: Array<AnalyzeResult | Promise<AnalyzeResult>> = [];
+
+class MockAIAssistant {
+  static readonly LOW_CONFIDENCE_THRESHOLD = 0.7;
+
+  analyzeUserMessage(): Promise<AnalyzeResult> {
+    const next = analyzeQueue.shift();
+    if (!next) {
+      return Promise.resolve({
+        intent: 'query',
+        confidence: 0.99,
+        extractedData: {},
+        requiredQuestions: [],
+        suggestedResponse: 'ok',
+      });
+    }
+    return Promise.resolve(next as AnalyzeResult);
+  }
+
+  getClarificationQuestion(analysis: AnalyzeResult): string {
+    return analysis.requiredQuestions?.[0] || 'clarify';
+  }
+}
+
+vi.mock('@/lib/aiAssistant', () => ({
+  AIAssistant: MockAIAssistant,
+}));
+
+vi.mock('@/contexts/StellarWalletContext', () => ({
+  useStellarWallet: () => ({
+    connection: { isConnected: true, address: 'GTESTADDRESS' },
+  }),
+}));
+
+vi.mock('./chatStateMachine', async () => {
+  const actual = await vi.importActual<typeof import('./chatStateMachine')>(
+    './chatStateMachine',
+  );
+
+  return {
+    ...actual,
+    createChatStateMachine: () => {
+      const machine = actual.createChatStateMachine();
+      // Ensure the machine is ready to accept SEND_MESSAGE immediately in tests.
+      if (machine.getState().state === actual.ChatState.UNINITIALIZED) {
+        machine.transition(actual.ChatEvent.INITIALIZE_SESSION);
+        machine.setState(actual.ChatState.AWAITING_USER_INPUT);
+      }
+      return machine;
+    },
+  };
+});
+
+async function flushEffects(ticks: number = 1) {
+  for (let i = 0; i < ticks; i += 1) {
+    await act(async () => {
+      await Promise.resolve();
+    });
+  }
+}
+
+vi.mock('./useChatHistory', () => ({
+  useChatHistory: () => ({
+    createNewSession: vi.fn(() => 'session-1'),
+    updateCurrentSession: vi.fn(),
+    loadSession: vi.fn(() => null),
+    currentSessionId: 'session-1',
+    currentSession: {
+      id: 'session-1',
+      messages: [
+        {
+          id: 'seed',
+          role: 'assistant',
+          content: 'seed',
+          timestamp: new Date(),
+        },
+      ],
+    },
+  }),
+}));
+
+async function setupHook() {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+
+  const { default: useChat } = await import('./useChat');
+
+  let api: ReturnType<UseChatHook> | null = null;
+  let renderError: unknown = null;
+  const capturedConsoleErrors: unknown[][] = [];
+  const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...args) => {
+    capturedConsoleErrors.push(args);
+  });
+
+  function Harness() {
+    const value = useChat();
+    api = value;
+    return null;
+  }
+
+  const root = createRoot(container);
+
+  try {
+    act(() => {
+      root.render(React.createElement(Harness));
+    });
+  } catch (e) {
+    renderError = e;
+  }
+
+  // Allow initial useEffect hooks inside useChat to run (session init, subscriptions)
+  await flushEffects(2);
+
+  consoleErrorSpy.mockRestore();
+
+  if (!api) {
+    throw new Error(
+      `Failed to mount useChat harness. Render error: ${String(
+        (renderError as Error | null)?.message ?? renderError,
+      )}. Console errors: ${capturedConsoleErrors
+        .map((e) => e.map((v) => String(v)).join(' '))
+        .join(' | ')}`,
+    );
+  }
+
+  return {
+    get api() {
+      return api!;
+    },
+    cleanup: () => {
+      act(() => root.unmount());
+      container.remove();
+    },
+  };
+}
 
 describe('Message Retry UX', () => {
   describe('Error State Tracking', () => {
@@ -485,5 +637,169 @@ describe('Message Retry UX', () => {
       expect(transitions[2].role).toBe('assistant');
       expect(transitions[2].error).toBeUndefined();
     });
+  });
+});
+
+describe('useChat flow state transitions', () => {
+  beforeEach(() => {
+    analyzeQueue = [];
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('cancellation: cancelPendingRequest aborts and appends cancelled assistant message', async () => {
+    const deferred = new Promise<AnalyzeResult>(() => {
+      // never resolves
+    });
+    analyzeQueue = [deferred];
+
+    const harness = await setupHook();
+
+    await flushEffects(1);
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    act(() => {
+      void harness.api.sendMessage('Start conversion');
+    });
+
+    // Let the synchronous state updates from sendMessage commit
+    for (let i = 0; i < 5 && !harness.api.isLoading; i += 1) {
+      await flushEffects(1);
+    }
+
+    const bailed = warnSpy.mock.calls.some((c) =>
+      String(c[0]).includes('Cannot send message in current state'),
+    );
+    warnSpy.mockRestore();
+
+    expect(bailed).toBe(false);
+    expect(harness.api.isLoading).toBe(true);
+
+    act(() => {
+      harness.api.cancelPendingRequest();
+    });
+
+    expect(harness.api.isLoading).toBe(false);
+    expect(
+      harness.api.messages[harness.api.messages.length - 1]?.metadata?.requestStatus,
+    ).toBe(
+      'cancelled',
+    );
+
+    harness.cleanup();
+  });
+
+  it('pending data merge: extractedData is accumulated into pendingTransactionData', async () => {
+    analyzeQueue = [
+      {
+        intent: 'fiat_conversion',
+        confidence: 0.95,
+        extractedData: { tokenIn: 'XLM' },
+        requiredQuestions: [],
+        suggestedResponse: 'step 1',
+      },
+      {
+        intent: 'fiat_conversion',
+        confidence: 0.95,
+        extractedData: { amountIn: '10' },
+        requiredQuestions: [],
+        suggestedResponse: 'step 2',
+      },
+    ];
+
+    const harness = await setupHook();
+
+    await flushEffects(1);
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await act(async () => {
+      await harness.api.sendMessage('I want to deposit XLM');
+    });
+
+    await flushEffects(2);
+
+    await act(async () => {
+      await harness.api.sendMessage('Make it 10 XLM');
+    });
+
+    await flushEffects(2);
+
+    const bailed = warnSpy.mock.calls.some((c) =>
+      String(c[0]).includes('Cannot send message in current state'),
+    );
+    warnSpy.mockRestore();
+
+    expect(bailed).toBe(false);
+    expect(harness.api.conversationState.pendingTransactionData?.tokenIn).toBe('XLM');
+    expect(harness.api.conversationState.pendingTransactionData?.amountIn).toBe('10');
+
+    harness.cleanup();
+  });
+
+  it('auto-trigger: after sufficient messages with minimal data, it schedules onTransactionReady', async () => {
+    analyzeQueue = [
+      {
+        intent: 'fiat_conversion',
+        confidence: 0.95,
+        extractedData: { tokenIn: 'XLM' },
+        requiredQuestions: [],
+        suggestedResponse: 'ok',
+      },
+      {
+        intent: 'fiat_conversion',
+        confidence: 0.95,
+        extractedData: { fiatCurrency: 'NGN' },
+        requiredQuestions: [],
+        suggestedResponse: 'ok',
+      },
+      {
+        intent: 'fiat_conversion',
+        confidence: 0.95,
+        extractedData: { amountIn: '10' },
+        requiredQuestions: [],
+        suggestedResponse: 'ok',
+      },
+    ];
+
+    const harness = await setupHook();
+
+    vi.useFakeTimers();
+
+    const onReady = vi.fn();
+    act(() => {
+      harness.api.setTransactionReadyCallback(onReady);
+    });
+
+    await flushEffects(1);
+
+    await act(async () => {
+      await harness.api.sendMessage('deposit');
+    });
+    await flushEffects(1);
+    await act(async () => {
+      await harness.api.sendMessage('to NGN');
+    });
+    await flushEffects(1);
+    await act(async () => {
+      await harness.api.sendMessage('10');
+    });
+    await flushEffects(1);
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(onReady).toHaveBeenCalledTimes(1);
+    expect(onReady.mock.calls[0]?.[0]).toMatchObject({
+      tokenIn: 'XLM',
+      fiatCurrency: 'NGN',
+      amountIn: '10',
+    });
+
+    harness.cleanup();
   });
 });

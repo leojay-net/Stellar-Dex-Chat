@@ -29,6 +29,7 @@
     "next": "15.3.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-is": "^19.2.4",
     "react-markdown": "^9.0.1",
     "react-window": "^1.8.10",
     "recharts": "^3.8.1",

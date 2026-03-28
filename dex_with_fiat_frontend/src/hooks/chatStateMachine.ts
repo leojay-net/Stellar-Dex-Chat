@@ -166,9 +166,15 @@ export function createChatStateMachine(): StateMachine<ChatState, ChatEvent, Cha
       },
 
       [ChatState.SENDING_MESSAGE]: {
-        [ChatEvent.ANALYSIS_COMPLETE]: {
-          target: ChatState.ANALYZING,
+        [ChatEvent.ANALYSIS_COMPLETE]: ChatState.ANALYZING,
+        [ChatEvent.CANCEL_FLOW]: {
+          target: ChatState.CANCELLED,
+          action: (context) => {
+            context.hasUserCancelled = true;
+            context.pendingTransactionData = null;
+          },
         },
+        [ChatEvent.ENCOUNTER_ERROR]: ChatState.ERROR,
       },
 
       [ChatState.ANALYZING]: {
@@ -185,6 +191,13 @@ export function createChatStateMachine(): StateMachine<ChatState, ChatEvent, Cha
         // Otherwise, go back to awaiting input
         [ChatEvent.ANALYSIS_COMPLETE]: ChatState.AWAITING_USER_INPUT,
         [ChatEvent.ENCOUNTER_ERROR]: ChatState.ERROR,
+        [ChatEvent.CANCEL_FLOW]: {
+          target: ChatState.CANCELLED,
+          action: (context) => {
+            context.hasUserCancelled = true;
+            context.pendingTransactionData = null;
+          },
+        },
       },
 
       [ChatState.AWAITING_CLARIFICATION]: {

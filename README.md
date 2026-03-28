@@ -30,6 +30,22 @@ The project consists of two main components:
 - **Language**: Rust
 - **Framework**: Soroban SDK
 
+#### On-chain operational metrics (read-only)
+
+The `FiatBridge` contract exposes read-only views intended for operational dashboards.
+
+- `get_wq_depth() -> u64`
+  Returns the current number of withdrawal requests present in the withdrawal request queue.
+
+- `get_wq_oldest_queued_ledger() -> Option<u32>`
+  Returns the ledger sequence when the oldest currently-pending withdrawal request was queued.
+  Returns `None` when the queue is empty.
+
+- `get_wq_oldest_age_ledgers() -> Option<u32>`
+  Returns the age of the oldest currently-pending withdrawal request in units of ledgers, computed as:
+  `current_ledger_sequence - oldest_queued_ledger`.
+  Returns `None` when the queue is empty.
+
 ### 2. Frontend Application (`/dex_with_fiat_frontend`)
 - **Framework**: Next.js 15 with TypeScript
 - **Styling**: Tailwind CSS

@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Send, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from '@/contexts/TranslationContext';
+import { saveDraft, getDraft, clearDraft } from '@/lib/draftUtils';
 
 interface ChatInputProps {
   onSendMessage: (message: string) => void;
@@ -13,6 +14,7 @@ interface ChatInputProps {
   onOpenBridgeModal?: () => void;
   isLoading: boolean;
   placeholder?: string;
+  sessionId?: string | null;
 }
 
 export default function ChatInput({
@@ -23,6 +25,7 @@ export default function ChatInput({
   onOpenBridgeModal,
   isLoading,
   placeholder,
+  sessionId,
 }: ChatInputProps) {
   const { t } = useTranslation();
   const activePlaceholder = placeholder || t('chat.placeholder');
@@ -60,6 +63,7 @@ export default function ChatInput({
     if (message.trim() && !isLoading) {
       onSendMessage(message.trim());
       setMessage('');
+      if (sessionId) clearDraft(sessionId);
       setShowCommands(false);
     }
   };
@@ -148,6 +152,23 @@ export default function ChatInput({
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+
+  // Load draft when session changes
+  useEffect(() => {
+    if (sessionId) {
+      const draft = getDraft(sessionId);
+      setMessage(draft || '');
+    }
+  }, [sessionId]);
+
+  // Save draft when message changes
+  useEffect(() => {
+    if (sessionId && message.trim()) {
+      saveDraft(sessionId, message);
+    } else if (sessionId && !message.trim()) {
+      clearDraft(sessionId);
+    }
+  }, [message, sessionId]);
 
   return (
     <form

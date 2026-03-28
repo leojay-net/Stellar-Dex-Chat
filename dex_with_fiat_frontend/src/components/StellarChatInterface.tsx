@@ -38,6 +38,7 @@ import NotificationsCenter from './NotificationsCenter';
 import StellarFiatModal from './StellarFiatModal';
 import UserSettings from './UserSettings';
 import WalletConnectionTimeline from './WalletConnectionTimeline';
+import { clearExpiredDrafts } from '@/lib/draftUtils';
 import { useTranslation } from '@/contexts/TranslationContext';
 import ReceiptDrawer from './ReceiptDrawer';
 import { useTxHistory } from '@/hooks/useTxHistory';
@@ -97,6 +98,7 @@ export default function StellarChatInterface() {
     cancelPendingRequest,
     clearChat,
     loadChatSession,
+    currentSessionId,
     setTransactionReadyCallback,
     setIsAdmin: setChatIsAdmin,
   } = useChat();
@@ -138,6 +140,11 @@ export default function StellarChatInterface() {
       window.removeEventListener('offline', handleOffline);
       unsubscribe();
     };
+  }, []);
+
+  // Clear expired drafts on initial mount
+  useEffect(() => {
+    clearExpiredDrafts();
   }, []);
 
   // Check if current user is admin
@@ -686,6 +693,7 @@ export default function StellarChatInterface() {
               setShowModal(true);
             }}
             isLoading={isLoading}
+            sessionId={currentSessionId}
             placeholder="Ask about XLM rates, deposit, or anything Stellar…"
           />
           <div className="px-6 pb-4">
