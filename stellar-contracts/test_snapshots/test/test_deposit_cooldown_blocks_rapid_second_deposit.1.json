@@ -88,6 +88,12 @@
                 },
                 {
                   "bytes": ""
+                },
+                {
+                  "i128": "0"
+                },
+                {
+                  "u32": 0
                 }
               ]
             }
@@ -308,6 +314,22 @@
                     "val": {
                       "i128": "100"
                     }
+                  },
+                  {
+                    "key": {
+                      "symbol": "total_liabilities"
+                    },
+                    "val": {
+                      "i128": "0"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "total_withdrawn"
+                    },
+                    "val": {
+                      "i128": "0"
+                    }
                   }
                 ]
               }
@@ -348,6 +370,18 @@
                       "key": {
                         "vec": [
                           {
+                            "symbol": "AntiSandwichDelay"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
                             "symbol": "CooldownLedgers"
                           }
                         ]
@@ -366,18 +400,6 @@
                       },
                       "val": {
                         "u32": 1555200
-                      }
-                    },
-                    {
-                      "key": {
-                        "vec": [
-                          {
-                            "symbol": "LastAdminActionLedger"
-                          }
-                        ]
-                      },
-                      "val": {
-                        "u32": 0
                       }
                     },
                     {

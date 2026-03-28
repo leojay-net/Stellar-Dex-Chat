@@ -1,9 +1,11 @@
 'use client';
 
-import { ChatMessage } from '@/types';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Bot, User, AlertTriangle, Link, Clock, Coins, Loader2, RefreshCcw, XCircle } from 'lucide-react';
+import { useUserPreferences } from '@/contexts/UserPreferencesContext';
+import { useMasking } from '@/hooks/useMasking';
+import { ChatMessage } from '@/types';
+import { AlertTriangle, Bot, Clock, Coins, Link, RotateCcw, User, Loader2, RefreshCcw, XCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useTranslation } from '@/contexts/TranslationContext';
 
@@ -14,13 +16,22 @@ interface MessageProps {
     actionType: string,
     data?: Record<string, unknown>,
   ) => void;
+  onRetry?: (messageId: string) => void;
 }
 
-export default function Message({ message, onActionClick }: MessageProps) {
+export default function Message({ message, onActionClick, onRetry }: MessageProps) {
   const { connection } = useStellarWallet();
   const { isDarkMode } = useTheme();
-  const { t } = useTranslation();
+  const { maskingEnabled, maskingStyle } = useUserPreferences();
   const isUser = message.role === 'user';
+  const hasError = !!message.error;
+
+  // Apply masking to message content
+  const maskedContent = useMasking(message.content, {
+    enabled: maskingEnabled,
+    style: maskingStyle,
+  });
+  const { t } = useTranslation();
   const isPending = message.metadata?.status === 'pending';
   const isFailed = message.metadata?.status === 'failed';
 
@@ -113,7 +124,7 @@ export default function Message({ message, onActionClick }: MessageProps) {
                       ),
                     }}
                   >
-                    {message.content}
+                    {maskedContent}
                   </ReactMarkdown>
                 )}
               </div>
@@ -129,6 +140,42 @@ export default function Message({ message, onActionClick }: MessageProps) {
                 minute: '2-digit',
               })}
             </div>
+
+            {/* Error State */}
+            {hasError && (
+              <div
+                className={`mt-3 inline-flex flex-col gap-2 rounded-lg border px-3 py-2 text-xs ${
+                  isDarkMode
+                    ? 'border-red-700 bg-red-950/40 text-red-200'
+                    : 'border-red-200 bg-red-50 text-red-800'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  <span>
+                    {message.error?.message || 'Failed to send message'}
+                  </span>
+                </div>
+                {message.error?.retryAttempts && message.error.retryAttempts > 0 && (
+                  <div className="text-xs opacity-75">
+                    Retry attempts: {message.error.retryAttempts}
+                  </div>
+                )}
+                {onRetry && (
+                  <button
+                    onClick={() => onRetry(message.id)}
+                    className={`mt-2 flex items-center justify-center gap-2 px-3 py-1 rounded-lg text-xs font-medium transition-all transform hover:scale-105 active:scale-95 ${
+                      isDarkMode
+                        ? 'bg-red-700/40 hover:bg-red-700/60 border border-red-600'
+                        : 'bg-red-100 hover:bg-red-200 border border-red-300'
+                    }`}
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    Retry
+                  </button>
+                )}
+              </div>
+            )}
             {message.metadata?.guardrail?.triggered && (
               <div
                 className={`mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${

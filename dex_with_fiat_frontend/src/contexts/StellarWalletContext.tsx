@@ -16,6 +16,7 @@ import {
   requestAccess,
   setAllowed,
 } from '@stellar/freighter-api';
+import { Networks } from '@stellar/stellar-sdk';
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const STORAGE_KEY_ADDRESS = 'stellar_address';
@@ -193,6 +194,15 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
       const netResult = await getNetwork();
       const accountsResult = await getFreighterAccounts();
 
+      const passphrase = netResult.networkPassphrase || '';
+      if (passphrase !== Networks.TESTNET) {
+        setError('Please switch Freighter to Testnet');
+        setConnection(defaultConnection);
+        setAccounts([]);
+        setSelectedAccountIndex(0);
+        return;
+      }
+
       const addr = addrResult.address;
       const now = Date.now();
       localStorage.setItem(STORAGE_KEY_ADDRESS, addr);
@@ -219,7 +229,7 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
         publicKey: addr,
         isConnected: true,
         network: netResult.network || 'TESTNET',
-        networkPassphrase: netResult.networkPassphrase || '',
+        networkPassphrase: passphrase,
       });
     } catch (err) {
       setError(

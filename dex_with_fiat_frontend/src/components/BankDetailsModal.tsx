@@ -18,6 +18,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { fetchLockedQuote, type LockedQuote } from '@/lib/cryptoPriceService';
+import SkeletonWallet from '@/components/ui/skeleton/SkeletonWallet';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useBeneficiaries, Beneficiary } from '@/hooks/useBeneficiaries';
 import { useTxHistory } from '@/hooks/useTxHistory';
@@ -568,9 +569,7 @@ export default function BankDetailsModal({
             <p className="text-sm text-gray-400 mb-4">Select your bank</p>
 
             {banksLoading ? (
-              <div className="flex justify-center py-8">
-                <Loader2 className="w-8 h-8 text-blue-400 animate-spin" />
-              </div>
+              <SkeletonWallet />
             ) : banksError ? (
               <div className="flex items-center gap-2 text-red-400 text-sm py-4">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />

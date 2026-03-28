@@ -1,5 +1,7 @@
 'use client';
 
+import SkeletonChat from '@/components/ui/skeleton/SkeletonChat';
+import SkeletonSidebar from '@/components/ui/skeleton/SkeletonSidebar';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Wallet,
@@ -18,34 +20,32 @@ import {
   Receipt,
 } from 'lucide-react';
 import {
-  useStellarWallet,
-  EXPECTED_NETWORK,
+    EXPECTED_NETWORK,
+    useStellarWallet,
 } from '@/contexts/StellarWalletContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import useChat from '@/hooks/useChat';
-import ChatMessages from './ChatMessages';
-import ChatInput from './ChatInput';
-import ChatHistorySidebar from './ChatHistorySidebar';
-import StellarFiatModal from './StellarFiatModal';
-import BankDetailsModal from './BankDetailsModal';
-import UserSettings from './UserSettings';
-import NotificationsCenter from './NotificationsCenter';
-import { TransactionData } from '@/types';
-import SkeletonChat from '@/components/ui/skeleton/SkeletonChat';
-import SkeletonSidebar from '@/components/ui/skeleton/SkeletonSidebar';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
-import { getAdmin, stroopsToDisplay } from '@/lib/stellarContract';
-import {
-  getQueuedReadRequestsCount,
-  subscribeToQueue,
-  processQueue,
-} from '@/lib/networkQueue';
 import useBridgeStats from '@/hooks/useBridgeStats';
+import useChat from '@/hooks/useChat';
+import { getQueuedReadRequestsCount } from '@/lib/networkQueue';
+import { getAdmin, stroopsToDisplay } from '@/lib/stellarContract';
+import { TransactionData } from '@/types';
+import BankDetailsModal from './BankDetailsModal';
+import ChatHistorySidebar from './ChatHistorySidebar';
+import ChatInput from './ChatInput';
+import ChatMessages from './ChatMessages';
+import NotificationsCenter from './NotificationsCenter';
+import StellarFiatModal from './StellarFiatModal';
+import UserSettings from './UserSettings';
 import WalletConnectionTimeline from './WalletConnectionTimeline';
 import { clearExpiredDrafts } from '@/lib/draftUtils';
 import { useTranslation } from '@/contexts/TranslationContext';
 import ReceiptDrawer from './ReceiptDrawer';
 import { useTxHistory } from '@/hooks/useTxHistory';
+import {
+  subscribeToQueue,
+  processQueue,
+} from '@/lib/networkQueue';
 
 export default function StellarChatInterface() {
   const { t } = useTranslation();
@@ -59,6 +59,7 @@ export default function StellarChatInterface() {
     sessionExpired,
     clearSessionExpired,
     isNetworkMismatch,
+    error: walletError,
   } = useStellarWallet();
   const { isDarkMode, toggleDarkMode } = useTheme();
   const { fiatCurrency } = useUserPreferences();
@@ -513,6 +514,16 @@ export default function StellarChatInterface() {
             )}
           </div>
         </header>
+
+        {walletError && (
+          <div
+            className="flex-shrink-0 justify-center py-2 px-4 text-sm font-medium text-red-100 bg-red-500/90"
+            role="alert"
+            aria-live="polite"
+          >
+            {walletError}
+          </div>
+        )}
 
         {/* Network status */}
         {(!isOnline || queuedReadables > 0) && (

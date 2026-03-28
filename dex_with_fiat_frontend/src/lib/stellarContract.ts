@@ -138,10 +138,20 @@ async function buildAndSimulate(
   };
 }
 
-export async function pollTransaction(hash: string): Promise<string> {
+export async function pollTransaction(
+  hash: string,
+  maxRetries: number = 20,
+): Promise<string> {
   let getResult = await server.getTransaction(hash);
+  let retries = 0;
   while (getResult.status === rpc.Api.GetTransactionStatus.NOT_FOUND) {
+    if (retries >= maxRetries) {
+      throw new Error(
+        `Transaction confirmation timed out after ${maxRetries} attempts`,
+      );
+    }
     await new Promise((r) => setTimeout(r, 1500));
+    retries += 1;
     getResult = await server.getTransaction(hash);
   }
   if (getResult.status === rpc.Api.GetTransactionStatus.FAILED) {
@@ -154,6 +164,7 @@ export async function pollTransaction(hash: string): Promise<string> {
 async function submitAndWait(
   signedXdr: string,
   onHashKnown?: (hash: string) => void,
+  maxRetries: number = 20,
 ): Promise<string> {
   const tx = TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE);
   const sendResult = await server.sendTransaction(tx);
@@ -163,7 +174,7 @@ async function submitAndWait(
     );
   }
   onHashKnown?.(sendResult.hash);
-  return pollTransaction(sendResult.hash);
+  return pollTransaction(sendResult.hash, maxRetries);
 }
 
 // ── Write functions (require wallet signature) ────────────────────────────
