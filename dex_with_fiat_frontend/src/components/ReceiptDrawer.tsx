@@ -1,9 +1,20 @@
 import React from 'react';
-import { X, Receipt, ExternalLink, Clock, CheckCircle2, AlertCircle, Trash2 } from 'lucide-react';
+import {
+  X,
+  Receipt,
+  ExternalLink,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  Trash2,
+  Download,
+} from 'lucide-react';
 import { TransactionHistoryEntry } from '@/types';
 import { useTranslation } from '@/contexts/TranslationContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useTransactionFilters } from '@/hooks/useTransactionFilters';
+import { FilterChipBar } from './filters/FilterChipBar';
+import TransactionAmountDisplay from './TransactionAmountDisplay';
 import { TransactionAmountDisplay } from './TransactionAmountDisplay';
 import { FilterChipBar } from './filters/FilterChipBar';
 
@@ -34,6 +45,56 @@ export default function ReceiptDrawer({
 
   // Determine which transactions to display
   const displayTransactions = filteredTransactions;
+
+  // CSV export function
+  const exportToCSV = (transaction: TransactionHistoryEntry) => {
+    const idPrefix = transaction.id.substring(0, 8);
+    const fileName = `receipt-${idPrefix}.csv`;
+
+    // CSV headers and data
+    const headers = [
+      'Receipt ID (hex)',
+      'Depositor',
+      'Amount',
+      'Token',
+      'Ledger',
+      'Reference',
+      'Refunded',
+      'Memo Hash',
+    ];
+    const row = [
+      transaction.id,
+      transaction.from || 'N/A',
+      transaction.amount,
+      transaction.asset,
+      transaction.ledger || 'N/A',
+      transaction.reference || 'N/A',
+      transaction.refunded ? 'true' : 'false',
+      transaction.memoHash || 'N/A',
+    ];
+
+    // Escape CSV values
+    const escapeCsvValue = (value: string) => {
+      if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+        return `"${value.replace(/"/g, '""')}"`;
+      }
+      return value;
+    };
+
+    const csvContent = [
+      headers.join(','),
+      row.map((v) => escapeCsvValue(String(v))).join(','),
+    ].join('\n');
+
+    // Create and download
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <>
@@ -96,7 +157,9 @@ export default function ReceiptDrawer({
                   <p>{t('receipt.no_receipts')}</p>
                 ) : (
                   <div className="text-center space-y-2">
-                    <p className="font-medium">No transactions match your filters</p>
+                    <p className="font-medium">
+                      No transactions match your filters
+                    </p>
                     <button
                       onClick={clearAllFilters}
                       className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
@@ -129,22 +192,34 @@ export default function ReceiptDrawer({
                         {tx.kind}
                       </span>
                     </div>
-                    <span
-                      className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                        tx.status === 'completed'
-                          ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200'
-                          : tx.status === 'failed'
-                            ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200'
-                            : 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-200'
-                      }`}
-                    >
-                      {tx.status}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                          tx.status === 'completed'
+                            ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200'
+                            : tx.status === 'failed'
+                              ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200'
+                              : 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-200'
+                        }`}
+                      >
+                        {tx.status}
+                      </span>
+                      <button
+                        onClick={() => exportToCSV(tx)}
+                        className="p-1 text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
+                        title="Download CSV"
+                        aria-label={`Download CSV for receipt ${tx.id.substring(0, 8)}`}
+                      >
+                        <Download className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-500">{t('receipt.amount')}</span>
+                      <span className="text-gray-500">
+                        {t('receipt.amount')}
+                      </span>
                       <TransactionAmountDisplay
                         amount={tx.amount}
                         asset={tx.asset}
@@ -162,7 +237,9 @@ export default function ReceiptDrawer({
                     )}
                     {tx.txHash && (
                       <div className="flex justify-between items-center gap-2">
-                        <span className="text-gray-500">{t('receipt.hash')}</span>
+                        <span className="text-gray-500">
+                          {t('receipt.hash')}
+                        </span>
                         <a
                           href={`https://stellar.expert/explorer/testnet/tx/${tx.txHash}`}
                           target="_blank"

@@ -38,10 +38,14 @@ export const useChatHistory = () => {
       newSession.messages = [...initialMessages]; // Clone to prevent reference issues
 
       setHistoryState((prev) => {
-        const updatedSessions = ChatHistoryManager.cleanupOldSessions([
+        // Deduplicate before adding new session
+        const dedupedSessions = ChatHistoryManager.deduplicateSessions([
           newSession,
           ...prev.sessions,
         ]);
+
+        const updatedSessions =
+          ChatHistoryManager.cleanupOldSessions(dedupedSessions);
 
         return {
           currentSessionId: newSession.id,
@@ -174,7 +178,9 @@ export const useChatHistory = () => {
     if (a.pinned && b.pinned) {
       return (b.pinnedAt?.getTime() ?? 0) - (a.pinnedAt?.getTime() ?? 0);
     }
-    return new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime();
+    return (
+      new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()
+    );
   });
 
   const pinnedSessions = sortedSessions.filter((s) => s.pinned);

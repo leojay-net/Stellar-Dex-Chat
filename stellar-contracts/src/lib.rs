@@ -809,8 +809,6 @@ impl FiatBridge {
             }
         }
 
-
-
         let token_client = token::Client::new(&env, &request.token);
         let balance = token_client.balance(&env.current_contract_address());
 
@@ -1248,12 +1246,12 @@ impl FiatBridge {
             let diff = expected_price - actual_price;
             let numerator = diff * 10_000;
             let quotient = numerator / expected_price;
-            
+
             // Reject if quotient exceeds max
             if quotient > (max_slippage_bps as i128) {
                 return Err(Error::SlippageTooHigh);
             }
-            
+
             // Also reject if quotient equals max but remainder indicates ceiling would exceed
             if quotient == (max_slippage_bps as i128) {
                 let remainder = numerator % expected_price;
@@ -1463,7 +1461,7 @@ impl FiatBridge {
             .set(&DataKey::Operator(operator.clone()), &active);
         if active {
             if !was_active {
-                operators.push_back(operator);
+                operators.push_back(operator.clone());
             }
         } else if was_active {
             operators = Self::remove_operator_from_list(&env, &operators, &operator);
@@ -1474,6 +1472,13 @@ impl FiatBridge {
         env.storage()
             .instance()
             .set(&DataKey::OperatorCount, &operators.len());
+
+        // Emit event for off-chain monitoring
+        env.events().publish(
+            (EVENT_VERSION, Symbol::new(&env, "set_op"), operator),
+            active,
+        );
+
         Ok(())
     }
 

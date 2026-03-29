@@ -746,7 +746,7 @@ fn test_slippage_boundary_exact() {
         // We derive: expected = actual * 10_000 / (10_000 - max_slippage_bps)
         // BUT we must use ceiling division here so the resulting ceil-computed
         // slippage does not exceed max_slippage_bps.
-        
+
         // Calculate expected_price such that actual slippage equals max_slippage_bps
         // MockOracle returns 9_500_000 (0.95 USD)
         // We want: (expected - 9_500_000) / expected * 10_000 = max_slippage_bps
@@ -1059,8 +1059,24 @@ fn test_withdrawal_quota_window_reset_isolated_per_user() {
     token_sac.mint(&user_a, &5_000);
     token_sac.mint(&user_b, &5_000);
 
-    bridge.deposit(&user_a, &2_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    bridge.deposit(&user_b, &2_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.deposit(
+        &user_a,
+        &2_000,
+        &token_addr,
+        &Bytes::new(&env),
+        &0,
+        &0,
+        &None,
+    );
+    bridge.deposit(
+        &user_b,
+        &2_000,
+        &token_addr,
+        &Bytes::new(&env),
+        &0,
+        &0,
+        &None,
+    );
     bridge.set_withdrawal_quota(&500);
 
     let start_ledger = env.ledger().sequence();
@@ -2927,7 +2943,9 @@ fn test_escrow_accounting_invariant_after_full_migration() {
     // Sum all EscrowRecord amounts and assert equal to deposit total
     let mut escrow_total: i128 = 0;
     for i in 0..(deposit_amounts.len() as u64) {
-        let record = bridge.get_escrow_record(&i).expect("escrow record must exist");
+        let record = bridge
+            .get_escrow_record(&i)
+            .expect("escrow record must exist");
         assert!(record.migrated);
         assert_eq!(record.version, ESCROW_STORAGE_VERSION);
         escrow_total += record.amount;
@@ -2973,7 +2991,9 @@ fn test_escrow_partial_migration_preserves_count() {
     // All records now exist and totals match
     let mut escrow_total: i128 = 0;
     for i in 0..4u64 {
-        let record = bridge.get_escrow_record(&i).expect("escrow record must exist");
+        let record = bridge
+            .get_escrow_record(&i)
+            .expect("escrow record must exist");
         assert!(record.migrated);
         escrow_total += record.amount;
     }
