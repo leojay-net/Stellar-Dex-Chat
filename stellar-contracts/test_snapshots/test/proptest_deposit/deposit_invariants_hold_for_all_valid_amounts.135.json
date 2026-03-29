@@ -63,7 +63,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
                 },
                 {
-                  "i128": "410"
+                  "i128": "57"
                 },
                 {
                   "address": "CCABDO7UZXYE4W6GVSEGSNNZTKSLFQGKXXQTH6OX7M7GKZ4Z6CUJNGZN"
@@ -95,7 +95,7 @@
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                     },
                     {
-                      "i128": "410"
+                      "i128": "57"
                     }
                   ]
                 }
@@ -225,7 +225,7 @@
                     "symbol": "Receipt"
                   },
                   {
-                    "bytes": "64e66f8cf1fd0e1e518a0822aca0d21a059ae591ec243650912772178534a734"
+                    "bytes": "1e270e22c248feb05b702aae8b71bd1703a3545853ff49e560fbe7509de83238"
                   }
                 ]
               },
@@ -237,7 +237,7 @@
                       "symbol": "amount"
                     },
                     "val": {
-                      "i128": "410"
+                      "i128": "57"
                     }
                   },
                   {
@@ -253,7 +253,7 @@
                       "symbol": "id"
                     },
                     "val": {
-                      "bytes": "64e66f8cf1fd0e1e518a0822aca0d21a059ae591ec243650912772178534a734"
+                      "bytes": "1e270e22c248feb05b702aae8b71bd1703a3545853ff49e560fbe7509de83238"
                     }
                   },
                   {
@@ -313,7 +313,7 @@
               },
               "durability": "persistent",
               "val": {
-                "bytes": "64e66f8cf1fd0e1e518a0822aca0d21a059ae591ec243650912772178534a734"
+                "bytes": "1e270e22c248feb05b702aae8b71bd1703a3545853ff49e560fbe7509de83238"
               }
             }
           },
@@ -362,7 +362,7 @@
                       "symbol": "total_deposited"
                     },
                     "val": {
-                      "i128": "410"
+                      "i128": "57"
                     }
                   },
                   {
@@ -512,7 +512,7 @@
                         ]
                       },
                       "val": {
-                        "i128": "410"
+                        "i128": "57"
                       }
                     },
                     {
@@ -611,7 +611,7 @@
                       "symbol": "amount"
                     },
                     "val": {
-                      "i128": "410"
+                      "i128": "57"
                     }
                   },
                   {
@@ -663,7 +663,7 @@
                       "symbol": "amount"
                     },
                     "val": {
-                      "i128": "590"
+                      "i128": "943"
                     }
                   },
                   {
