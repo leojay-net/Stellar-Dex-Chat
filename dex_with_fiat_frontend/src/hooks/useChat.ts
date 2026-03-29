@@ -10,7 +10,12 @@ import {
     TransactionData,
 } from '@/types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChatEvent, ChatState, createChatStateMachine } from './chatStateMachine';
+import {
+  ChatEvent,
+  ChatMachineContext,
+  ChatState,
+  createChatStateMachine,
+} from './chatStateMachine';
 import { useChatHistory } from './useChatHistory';
 
 /**
@@ -25,6 +30,15 @@ interface ConversationState {
   awaitingClarification: boolean;
   clarificationQuestion: string | null;
 }
+
+type QueuedSend = {
+  content: string;
+  pendingAssistantId: string;
+  machineSnapshot: {
+    state: ChatState;
+    context: ChatMachineContext;
+  };
+};
 
 const useChat = () => {
   const { connection } = useStellarWallet();
@@ -105,6 +119,13 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
   const [isLoading, setIsLoading] = useState(false);
   const aiAssistant = useMemo(() => new AIAssistant(), []);
   const activeRequestControllerRef = useRef<AbortController | null>(null);
+  const messagesRef = useRef<ChatMessage[]>([]);
+  const queuedSendsRef = useRef<QueuedSend[]>([]);
+  const replayingQueueRef = useRef(false);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   const appendCancelledMessage = useCallback((content: string) => {
     const cancelledMessage: ChatMessage = {
@@ -163,6 +184,320 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
     }
   }, [messages, currentSessionId, updateCurrentSession]);
 
+  const isLikelyNetworkError = useCallback((error: unknown): boolean => {
+    if (typeof window !== 'undefined' && !window.navigator.onLine) {
+      return true;
+    }
+
+    if (error instanceof Error) {
+      const msg = error.message.toLowerCase();
+      return (
+        msg.includes('failed to fetch') ||
+        msg.includes('network') ||
+        msg.includes('offline') ||
+        msg.includes('timed out')
+      );
+    }
+
+    return false;
+  }, []);
+
+  const markMessageFailed = useCallback((pendingAssistantId: string) => {
+    setMessages((prev: ChatMessage[]) =>
+      prev.map((m) =>
+        m.id === pendingAssistantId
+          ? {
+              ...m,
+              content:
+                'Sorry, I encountered an error processing your request. Please try again.',
+              metadata: {
+                ...m.metadata,
+                status: 'failed',
+              },
+            }
+          : m,
+      ),
+    );
+  }, []);
+
+  const analyzeAndRespond = useCallback(
+    async (
+      content: string,
+      pendingAssistantId: string,
+      machineSnapshot: QueuedSend['machineSnapshot'],
+      requestController: AbortController,
+    ) => {
+      const machine = machineRef.current;
+      const isCancellation = /cancel|stop|no thanks|nevermind|abort/i.test(
+        content,
+      );
+
+      const conversationContext = {
+        isWalletConnected: connection.isConnected,
+        walletAddress: connection.address,
+        previousMessages: messagesRef.current
+          .slice(-3)
+          .map((m: ChatMessage) => ({ role: m.role, content: m.content })),
+        messageCount: machineSnapshot.context.messageCount,
+        hasTransactionData: !!machineSnapshot.context.pendingTransactionData,
+      };
+
+      perf.mark('AI: Response');
+      const abortPromise = new Promise<never>((_, reject) => {
+        requestController.signal.addEventListener(
+          'abort',
+          () => reject(new DOMException('Request aborted', 'AbortError')),
+          { once: true },
+        );
+      });
+
+      const analysis = await Promise.race([
+        aiAssistant.analyzeUserMessage(content, conversationContext),
+        abortPromise,
+      ]);
+      perf.measure('AI: Response');
+
+      // Update context with new message count
+      const newMessageCount = machineSnapshot.context.messageCount + 1;
+      machine.updateContext({ messageCount: newMessageCount });
+
+      // Handle cancellation
+      if (isCancellation) {
+        machine.transition(ChatEvent.CANCEL_FLOW);
+      }
+
+      // Extract and accumulate transaction data
+      let pendingTransactionData: TransactionData | null =
+        machineSnapshot.context.pendingTransactionData;
+      if (analysis.intent === 'fiat_conversion' && analysis.extractedData) {
+        pendingTransactionData = {
+          type: 'fiat_conversion',
+          ...pendingTransactionData,
+          ...analysis.extractedData,
+        } as TransactionData;
+      }
+
+      // Check if we have minimal transaction data
+      const hasMinimalTransactionData =
+        !!(pendingTransactionData &&
+          (pendingTransactionData.tokenIn ||
+            pendingTransactionData.amountIn ||
+            pendingTransactionData.fiatAmount));
+
+      // Determine if clarification is needed
+      const needsClarification =
+        analysis.intent === 'fiat_conversion' &&
+        analysis.confidence < AIAssistant.LOW_CONFIDENCE_THRESHOLD;
+
+      const clarificationQuestion = needsClarification
+        ? aiAssistant.getClarificationQuestion(analysis)
+        : null;
+
+      // Update machine context with analysis results
+      machine.updateContext({
+        pendingTransactionData,
+        needsClarification,
+        clarificationQuestion,
+      });
+
+      // Transition through analysis
+      machine.transition(ChatEvent.ANALYSIS_COMPLETE);
+
+      // If we need clarification, transition the state machine accordingly
+      if (needsClarification) {
+        machine.transition(ChatEvent.RECEIVE_CLARIFICATION);
+      }
+
+      // Determine if we should auto-trigger transaction
+      const shouldAutoTrigger =
+        !needsClarification &&
+        !machineSnapshot.context.hasUserCancelled &&
+        (newMessageCount >= 5 ||
+          (hasMinimalTransactionData &&
+            newMessageCount >= 3 &&
+            analysis.intent === 'fiat_conversion'));
+
+      const shouldTriggerTransaction =
+        shouldAutoTrigger && hasMinimalTransactionData;
+
+      // If ready for transaction, attempt transition
+      if (shouldAutoTrigger && hasMinimalTransactionData) {
+        machine.updateContext({ pendingTransactionData });
+        machine.transition(ChatEvent.TRIGGER_TRANSACTION);
+      }
+
+      // If we didn't enter a terminal/transaction/clarification state, return to awaiting input
+      if (
+        machine.getState().state === ChatState.ANALYZING &&
+        machine.canTransition(ChatEvent.ANALYSIS_COMPLETE)
+      ) {
+        machine.transition(ChatEvent.ANALYSIS_COMPLETE);
+      }
+
+      // Build response message
+      let enhancedResponse = analysis.suggestedResponse;
+
+      if (needsClarification && clarificationQuestion) {
+        enhancedResponse = `**One quick clarification**: ${clarificationQuestion}`;
+      }
+
+      if (
+        !needsClarification &&
+        newMessageCount >= 3 &&
+        hasMinimalTransactionData &&
+        !machineSnapshot.context.hasUserCancelled
+      ) {
+        enhancedResponse += `
+
+**Ready to Proceed**: I have the details needed for your conversion. Let me set this up for you to review and sign.`;
+      } else if (
+        !needsClarification &&
+        newMessageCount >= 4 &&
+        !hasMinimalTransactionData &&
+        !machineSnapshot.context.hasUserCancelled
+      ) {
+        enhancedResponse += `
+
+**Let's Complete This**: To proceed with your conversion, I'll need either the token amount you want to convert or your desired fiat amount. Once I have that, we can proceed to the secure signing process.`;
+      }
+
+      if (!connection.isConnected && analysis.intent === 'fiat_conversion') {
+        enhancedResponse +=
+          "\\n\\n**Quick Setup**: I notice your wallet isn't connected yet. I'll help you connect it first for a seamless conversion experience.";
+      }
+
+      if (
+        analysis.intent === 'fiat_conversion' &&
+        analysis.extractedData?.tokenIn
+      ) {
+        const tokenSymbol = analysis.extractedData.tokenIn;
+        enhancedResponse += `
+
+**Market Context**: I'll check current ${tokenSymbol} rates to ensure you get the best conversion value.`;
+      }
+
+      if (isCancellation) {
+        enhancedResponse =
+          "**Conversion Cancelled**\\n\\nNo problem! I've cancelled the transaction process. Feel free to start fresh whenever you're ready to convert crypto to fiat. I'm here to help whenever you need assistance.\\n\\nIs there anything else I can help you with today?";
+      }
+
+      const shouldShowTransactionData =
+        analysis.intent === 'fiat_conversion' &&
+        analysis.extractedData &&
+        (analysis.extractedData.tokenIn ||
+          analysis.extractedData.amountIn ||
+          analysis.extractedData.fiatAmount);
+
+      setMessages((prev: ChatMessage[]) =>
+        prev.map((m) =>
+          m.id === pendingAssistantId
+            ? {
+                ...m,
+                content: enhancedResponse,
+                metadata: {
+                  ...m.metadata,
+                  status: 'sent',
+                  guardrail: analysis.guardrail,
+                  transactionData: shouldShowTransactionData
+                    ? (analysis.extractedData as TransactionData)
+                    : undefined,
+                  suggestedActions: generateSuggestedActions(analysis, {
+                    isWalletConnected: connection.isConnected,
+                    messageCount: newMessageCount,
+                    hasTransactionData: !!pendingTransactionData,
+                    shouldAutoTrigger: !!shouldAutoTrigger,
+                    isAdmin: isAdmin,
+                    lowConfidence: needsClarification,
+                  }),
+                  confirmationRequired:
+                    analysis.intent === 'fiat_conversion' ||
+                    shouldTriggerTransaction,
+                  autoTriggerTransaction: shouldTriggerTransaction,
+                  conversationCount: newMessageCount,
+                  lowConfidence: needsClarification,
+                  clarificationQuestion: clarificationQuestion || undefined,
+                },
+              }
+            : m,
+        ),
+      );
+
+      // Trigger transaction callback if needed
+      if (shouldAutoTrigger && pendingTransactionData && onTransactionReady) {
+        setTimeout(() => {
+          onTransactionReady(pendingTransactionData);
+        }, 1000);
+      }
+    },
+    [aiAssistant, connection, isAdmin, onTransactionReady],
+  );
+
+  const replayQueuedSends = useCallback(async () => {
+    if (replayingQueueRef.current || queuedSendsRef.current.length === 0) {
+      return;
+    }
+    if (typeof window !== 'undefined' && !window.navigator.onLine) {
+      return;
+    }
+
+    replayingQueueRef.current = true;
+
+    while (queuedSendsRef.current.length > 0) {
+      const queued = queuedSendsRef.current.shift();
+      if (!queued) {
+        break;
+      }
+
+      const requestController = new AbortController();
+      activeRequestControllerRef.current = requestController;
+      setIsLoading(true);
+
+      try {
+        await analyzeAndRespond(
+          queued.content,
+          queued.pendingAssistantId,
+          queued.machineSnapshot,
+          requestController,
+        );
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          break;
+        }
+
+        if (isLikelyNetworkError(error)) {
+          queuedSendsRef.current.unshift(queued);
+          break;
+        }
+
+        console.error('Chat replay error:', error);
+        markMessageFailed(queued.pendingAssistantId);
+        if (machineRef.current.canTransition(ChatEvent.ENCOUNTER_ERROR)) {
+          machineRef.current.transition(ChatEvent.ENCOUNTER_ERROR);
+        }
+      } finally {
+        if (activeRequestControllerRef.current === requestController) {
+          activeRequestControllerRef.current = null;
+          setIsLoading(false);
+        }
+      }
+    }
+
+    replayingQueueRef.current = false;
+  }, [analyzeAndRespond, isLikelyNetworkError, markMessageFailed]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const handleOnline = () => {
+      void replayQueuedSends();
+    };
+
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [replayQueuedSends]);
+
   const sendMessage = useCallback(
     async (content: string) => {
       const machine = machineRef.current;
@@ -179,10 +514,6 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
         activeRequestControllerRef.current.abort();
         activeRequestControllerRef.current = null;
       }
-
-      const isCancellation = /cancel|stop|no thanks|nevermind|abort/i.test(
-        content,
-      );
 
       // Add user message
       const userMessage: ChatMessage = {
@@ -209,231 +540,60 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
         pendingAssistantMessage,
       ]);
       setIsLoading(true);
-      const requestController = new AbortController();
-      activeRequestControllerRef.current = requestController;
 
       // Transition to SENDING_MESSAGE
       machine.transition(ChatEvent.SEND_MESSAGE);
 
+      const machineSnapshot: QueuedSend['machineSnapshot'] = {
+        state: machineState.state,
+        context: {
+          ...machineState.context,
+          pendingTransactionData: machineState.context.pendingTransactionData
+            ? { ...machineState.context.pendingTransactionData }
+            : null,
+        },
+      };
+
+      // If offline at send time, queue and replay on reconnect.
+      if (typeof window !== 'undefined' && !window.navigator.onLine) {
+        queuedSendsRef.current.push({
+          content,
+          pendingAssistantId,
+          machineSnapshot,
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      const requestController = new AbortController();
+      activeRequestControllerRef.current = requestController;
+
       try {
-        const conversationContext = {
-          isWalletConnected: connection.isConnected,
-          walletAddress: connection.address,
-          previousMessages: messages
-            .slice(-3)
-            .map((m: ChatMessage) => ({ role: m.role, content: m.content })),
-          messageCount: machineState.context.messageCount,
-          hasTransactionData: !!machineState.context.pendingTransactionData,
-        };
-
-        perf.mark('AI: Response');
-        const abortPromise = new Promise<never>((_, reject) => {
-          requestController.signal.addEventListener(
-            'abort',
-            () => reject(new DOMException('Request aborted', 'AbortError')),
-            { once: true },
-          );
-        });
-
-        const analysis = await Promise.race([
-          aiAssistant.analyzeUserMessage(content, conversationContext),
-          abortPromise,
-        ]);
-        perf.measure('AI: Response');
-
-        // Update context with new message count
-        const newMessageCount = machineState.context.messageCount + 1;
-        machine.updateContext({ messageCount: newMessageCount });
-
-        // Handle cancellation
-        if (isCancellation) {
-          machine.transition(ChatEvent.CANCEL_FLOW);
-        }
-
-        // Extract and accumulate transaction data
-        let pendingTransactionData: TransactionData | null = machineState.context.pendingTransactionData;
-        if (analysis.intent === 'fiat_conversion' && analysis.extractedData) {
-          pendingTransactionData = {
-            type: 'fiat_conversion',
-            ...pendingTransactionData,
-            ...analysis.extractedData,
-          } as TransactionData;
-        }
-
-        // Check if we have minimal transaction data
-        const hasMinimalTransactionData =
-          !!(pendingTransactionData &&
-            (pendingTransactionData.tokenIn ||
-              pendingTransactionData.amountIn ||
-              pendingTransactionData.fiatAmount));
-
-        // Determine if clarification is needed
-        const needsClarification =
-          analysis.intent === 'fiat_conversion' &&
-          analysis.confidence < AIAssistant.LOW_CONFIDENCE_THRESHOLD;
-
-        const clarificationQuestion = needsClarification
-          ? aiAssistant.getClarificationQuestion(analysis)
-          : null;
-
-        // Update machine context with analysis results
-        machine.updateContext({
-          pendingTransactionData,
-          needsClarification,
-          clarificationQuestion,
-        });
-
-        // Transition through analysis
-        machine.transition(ChatEvent.ANALYSIS_COMPLETE);
-
-        // If we need clarification, transition the state machine accordingly
-        if (needsClarification) {
-          machine.transition(ChatEvent.RECEIVE_CLARIFICATION);
-        }
-
-        // Determine if we should auto-trigger transaction
-        const shouldAutoTrigger =
-          !needsClarification &&
-          !machineState.context.hasUserCancelled &&
-          (newMessageCount >= 5 ||
-            (hasMinimalTransactionData &&
-              newMessageCount >= 3 &&
-              analysis.intent === 'fiat_conversion'));
-
-        const shouldTriggerTransaction = shouldAutoTrigger && hasMinimalTransactionData;
-
-        // If ready for transaction, attempt transition
-        if (shouldAutoTrigger && hasMinimalTransactionData) {
-          machine.updateContext({ pendingTransactionData });
-          machine.transition(ChatEvent.TRIGGER_TRANSACTION);
-        }
-
-        // If we didn't enter a terminal/transaction/clarification state, return to awaiting input
-        if (
-          machine.getState().state === ChatState.ANALYZING &&
-          machine.canTransition(ChatEvent.ANALYSIS_COMPLETE)
-        ) {
-          machine.transition(ChatEvent.ANALYSIS_COMPLETE);
-        }
-
-        // Build response message
-        let enhancedResponse = analysis.suggestedResponse;
-
-        if (needsClarification && clarificationQuestion) {
-          enhancedResponse = `**One quick clarification**: ${clarificationQuestion}`;
-        }
-
-        if (
-          !needsClarification &&
-          newMessageCount >= 3 &&
-          hasMinimalTransactionData &&
-          !machineState.context.hasUserCancelled
-        ) {
-          enhancedResponse += `
-
-**Ready to Proceed**: I have the details needed for your conversion. Let me set this up for you to review and sign.`;
-        } else if (
-          !needsClarification &&
-          newMessageCount >= 4 &&
-          !hasMinimalTransactionData &&
-          !machineState.context.hasUserCancelled
-        ) {
-          enhancedResponse += `
-
-**Let's Complete This**: To proceed with your conversion, I'll need either the token amount you want to convert or your desired fiat amount. Once I have that, we can proceed to the secure signing process.`;
-        }
-
-        if (!connection.isConnected && analysis.intent === 'fiat_conversion') {
-          enhancedResponse +=
-            "\\n\\n**Quick Setup**: I notice your wallet isn't connected yet. I'll help you connect it first for a seamless conversion experience.";
-        }
-
-        if (
-          analysis.intent === 'fiat_conversion' &&
-          analysis.extractedData?.tokenIn
-        ) {
-          const tokenSymbol = analysis.extractedData.tokenIn;
-          enhancedResponse += `
-
-**Market Context**: I'll check current ${tokenSymbol} rates to ensure you get the best conversion value.`;
-        }
-
-        if (isCancellation) {
-          enhancedResponse =
-            "**Conversion Cancelled**\\n\\nNo problem! I've cancelled the transaction process. Feel free to start fresh whenever you're ready to convert crypto to fiat. I'm here to help whenever you need assistance.\\n\\nIs there anything else I can help you with today?";
-        }
-
-        const shouldShowTransactionData =
-          analysis.intent === 'fiat_conversion' &&
-          analysis.extractedData &&
-          (analysis.extractedData.tokenIn ||
-            analysis.extractedData.amountIn ||
-            analysis.extractedData.fiatAmount);
-
-        setMessages((prev: ChatMessage[]) =>
-          prev.map((m) =>
-            m.id === pendingAssistantId
-              ? {
-                  ...m,
-                  content: enhancedResponse,
-                  metadata: {
-                    ...m.metadata,
-                    status: 'sent',
-                    guardrail: analysis.guardrail,
-                    transactionData: shouldShowTransactionData
-                      ? (analysis.extractedData as TransactionData)
-                      : undefined,
-                    suggestedActions: generateSuggestedActions(analysis, {
-                      isWalletConnected: connection.isConnected,
-                      messageCount: newMessageCount,
-                      hasTransactionData: !!pendingTransactionData,
-                      shouldAutoTrigger: !!shouldAutoTrigger,
-                      isAdmin: isAdmin,
-                      lowConfidence: needsClarification,
-                    }),
-                    confirmationRequired:
-                      analysis.intent === 'fiat_conversion' ||
-                      shouldTriggerTransaction,
-                    autoTriggerTransaction: shouldTriggerTransaction,
-                    conversationCount: newMessageCount,
-                    lowConfidence: needsClarification,
-                    clarificationQuestion: clarificationQuestion || undefined,
-                  },
-                }
-              : m,
-          ),
+        await analyzeAndRespond(
+          content,
+          pendingAssistantId,
+          machineSnapshot,
+          requestController,
         );
-
-        // Trigger transaction callback if needed
-        if (
-          shouldAutoTrigger &&
-          pendingTransactionData &&
-          onTransactionReady
-        ) {
-          setTimeout(() => {
-            onTransactionReady(pendingTransactionData);
-          }, 1000);
-        }
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') {
           return;
         }
+
+        if (isLikelyNetworkError(error)) {
+          queuedSendsRef.current.push({
+            content,
+            pendingAssistantId,
+            machineSnapshot,
+          });
+          return;
+        }
+
         console.error('Chat error:', error);
-        setMessages((prev: ChatMessage[]) =>
-          prev.map((m) =>
-            m.id === pendingAssistantId
-              ? {
-                  ...m,
-                  content:
-                    'Sorry, I encountered an error processing your request. Please try again.',
-                  metadata: {
-                    ...m.metadata,
-                    status: 'failed',
-                  },
-                }
-              : m,
-          ),
-        );
+        markMessageFailed(pendingAssistantId);
+        if (machine.canTransition(ChatEvent.ENCOUNTER_ERROR)) {
+          machine.transition(ChatEvent.ENCOUNTER_ERROR);
+        }
       } finally {
         if (activeRequestControllerRef.current === requestController) {
           activeRequestControllerRef.current = null;
@@ -442,12 +602,10 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
       }
     },
     [
-      aiAssistant,
-      connection,
-      isAdmin,
+      analyzeAndRespond,
+      isLikelyNetworkError,
       isLoading,
-      messages,
-      onTransactionReady,
+      markMessageFailed,
     ],
   );
 

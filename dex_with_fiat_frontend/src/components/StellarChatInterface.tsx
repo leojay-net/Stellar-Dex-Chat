@@ -78,12 +78,16 @@ export default function StellarChatInterface() {
   const [isOnline, setIsOnline] = useState(
     typeof window !== 'undefined' ? window.navigator.onLine : true,
   );
+  const [showReconnectedNotice, setShowReconnectedNotice] = useState(false);
   const [queuedReadables, setQueuedReadables] = useState(
     getQueuedReadRequestsCount(),
   );
   const [isReceiptDrawerOpen, setIsReceiptDrawerOpen] = useState(false);
   const { entries: txHistory, clearEntries: clearTxHistory } = useTxHistory();
   const accountDropdownRef = useRef<HTMLDivElement>(null);
+  const reconnectNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const sheetRef = useRef<HTMLDivElement>(null);
   const dragStartY = useRef(0);
@@ -124,9 +128,23 @@ export default function StellarChatInterface() {
 
     const handleOnline = () => {
       setIsOnline(true);
+      setShowReconnectedNotice(true);
+      if (reconnectNoticeTimerRef.current) {
+        clearTimeout(reconnectNoticeTimerRef.current);
+      }
+      reconnectNoticeTimerRef.current = setTimeout(() => {
+        setShowReconnectedNotice(false);
+      }, 3000);
       void processQueue();
     };
-    const handleOffline = () => setIsOnline(false);
+    const handleOffline = () => {
+      setIsOnline(false);
+      setShowReconnectedNotice(false);
+      if (reconnectNoticeTimerRef.current) {
+        clearTimeout(reconnectNoticeTimerRef.current);
+        reconnectNoticeTimerRef.current = null;
+      }
+    };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
@@ -138,6 +156,9 @@ export default function StellarChatInterface() {
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      if (reconnectNoticeTimerRef.current) {
+        clearTimeout(reconnectNoticeTimerRef.current);
+      }
       unsubscribe();
     };
   }, []);
@@ -526,7 +547,7 @@ export default function StellarChatInterface() {
         )}
 
         {/* Network status */}
-        {(!isOnline || queuedReadables > 0) && (
+        {(!isOnline || queuedReadables > 0 || showReconnectedNotice) && (
           <div
             className={`flex items-center justify-between gap-3 px-4 py-2 text-xs border-b transition-all duration-300 ${
               !isOnline
