@@ -329,6 +329,21 @@ fn test_transfer_admin() {
 }
 
 #[test]
+fn test_transfer_admin_to_self_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, _, _, _) = setup_bridge(&env, 100);
+
+    // Attempting to transfer to self should fail with InvalidRecipient
+    let result = bridge.try_transfer_admin(&admin);
+    assert_eq!(result, Err(Ok(Error::SameAdmin)));
+    
+    // Admin should remain the same
+    assert_eq!(bridge.get_admin(), admin);
+}
+
+#[test]
 fn test_set_limit() {
     let env = Env::default();
     env.mock_all_auths();
@@ -746,7 +761,7 @@ fn test_slippage_boundary_exact() {
         // We derive: expected = actual * 10_000 / (10_000 - max_slippage_bps)
         // BUT we must use ceiling division here so the resulting ceil-computed
         // slippage does not exceed max_slippage_bps.
-        
+
         // Calculate expected_price such that actual slippage equals max_slippage_bps
         // MockOracle returns 9_500_000 (0.95 USD)
         // We want: (expected - 9_500_000) / expected * 10_000 = max_slippage_bps
@@ -1059,8 +1074,24 @@ fn test_withdrawal_quota_window_reset_isolated_per_user() {
     token_sac.mint(&user_a, &5_000);
     token_sac.mint(&user_b, &5_000);
 
-    bridge.deposit(&user_a, &2_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    bridge.deposit(&user_b, &2_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.deposit(
+        &user_a,
+        &2_000,
+        &token_addr,
+        &Bytes::new(&env),
+        &0,
+        &0,
+        &None,
+    );
+    bridge.deposit(
+        &user_b,
+        &2_000,
+        &token_addr,
+        &Bytes::new(&env),
+        &0,
+        &0,
+        &None,
+    );
     bridge.set_withdrawal_quota(&500);
 
     let start_ledger = env.ledger().sequence();
@@ -2927,7 +2958,9 @@ fn test_escrow_accounting_invariant_after_full_migration() {
     // Sum all EscrowRecord amounts and assert equal to deposit total
     let mut escrow_total: i128 = 0;
     for i in 0..(deposit_amounts.len() as u64) {
-        let record = bridge.get_escrow_record(&i).expect("escrow record must exist");
+        let record = bridge
+            .get_escrow_record(&i)
+            .expect("escrow record must exist");
         assert!(record.migrated);
         assert_eq!(record.version, ESCROW_STORAGE_VERSION);
         escrow_total += record.amount;
@@ -2973,7 +3006,9 @@ fn test_escrow_partial_migration_preserves_count() {
     // All records now exist and totals match
     let mut escrow_total: i128 = 0;
     for i in 0..4u64 {
-        let record = bridge.get_escrow_record(&i).expect("escrow record must exist");
+        let record = bridge
+            .get_escrow_record(&i)
+            .expect("escrow record must exist");
         assert!(record.migrated);
         escrow_total += record.amount;
     }
@@ -3025,6 +3060,7 @@ fn test_withdraw_operator_role() {
     let result = bridge.try_withdraw(&operator, &user, &100, &token_addr);
     assert_eq!(result, Err(Ok(Error::Unauthorized)));
 }
+
 // ── Issue #109: withdraw self-address guard tests ─────────────────────────
 
 #[test]
@@ -3040,6 +3076,8 @@ fn test_withdraw_to_self_address_rejected() {
     bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
 
     // Attempt to withdraw to the contract's own address — should be rejected
+    // Order: caller, to, amount, token
+
     let result = bridge.try_withdraw(&admin, &contract_id, &100, &token_addr);
     assert_eq!(result, Err(Ok(Error::InvalidRecipient)));
 
@@ -3082,6 +3120,7 @@ fn test_deposit_overflow_guard() {
     let result = bridge.try_deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
     assert_eq!(result, Err(Ok(Error::Overflow)));
 }
+
 // ── Issue #113: minimum deposit floor tests ───────────────────────────────
 
 #[test]
@@ -3159,3 +3198,4 @@ fn test_set_min_deposit_admin_only() {
     let result = bridge.try_set_min_deposit(&0);
     assert_eq!(result, Err(Ok(Error::BelowMinimum)));
 }
+

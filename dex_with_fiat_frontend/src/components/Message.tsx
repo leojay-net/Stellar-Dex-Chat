@@ -9,6 +9,7 @@ import { ChatMessage } from '@/types';
 import { AlertTriangle, Bot, Clock, Coins, Link, RotateCcw, User, Loader2, RefreshCcw, XCircle } from 'lucide-react';
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
+import { sanitizeUrl } from '@/lib/markdownSanitizer';
 import { useTranslation } from '@/contexts/TranslationContext';
 import { motion, useReducedMotion } from 'framer-motion';
 import CopyButton from '@/components/ui/CopyButton';
@@ -161,6 +162,34 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
                       h3: ({ children }) => (
                         <h3 className="text-sm font-bold mb-1">{children}</h3>
                       ),
+                      a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
+                        const safeHref = sanitizeUrl(href);
+                        return (
+                          <a
+                            href={safeHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline text-blue-400 hover:text-blue-300"
+                          >
+                            {children}
+                          </a>
+                        );
+                      },
+                      img: (props: React.ImgHTMLAttributes<HTMLImageElement> & { src?: string | Blob }) => {
+                        const { src, alt, ...rest } = props;
+                        const srcStr = typeof src === 'string' ? src : undefined;
+                        const safeSrc = sanitizeUrl(srcStr);
+                        void rest;
+                        if (safeSrc === '#blocked') return null;
+                        return (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={safeSrc}
+                            alt={alt ?? ''}
+                            className="max-w-full rounded"
+                          />
+                        );
+                      },
                     }}
                   >
                     {maskedContent}
