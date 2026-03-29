@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import SkeletonSidebar from '@/components/ui/skeleton/SkeletonSidebar';
 import EmptyState from '@/components/ui/EmptyState';
+import PriceTicker from '@/components/PriceTicker';
 
 import { ChatSession } from '@/types';
 
@@ -98,11 +99,13 @@ function SessionRow({
 interface ChatHistorySidebarProps {
   onLoadSession: (sessionId: string) => void;
   onClose?: () => void;
+  isCollapsed?: boolean;
 }
 
 export default function ChatHistorySidebar({
   onLoadSession,
   onClose,
+  isCollapsed = false,
 }: ChatHistorySidebarProps) {
   const {
     pinnedSessions,
@@ -187,11 +190,11 @@ export default function ChatHistorySidebar({
   };
 
   return (
-    <div className="theme-surface h-full flex flex-col transition-colors duration-300">
-      <div className="theme-border p-4 border-b transition-colors duration-300">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="theme-text-primary text-lg font-semibold">Activity</h2>
-          <div className="flex items-center gap-1">
+    <div className={`theme-surface h-full flex flex-col transition-all duration-300 border-r ${isCollapsed ? 'w-20' : 'w-full'} transition-colors duration-300`}>
+      <div className={`theme-border border-b transition-colors duration-300 ${isCollapsed ? 'p-4 flex flex-col items-center' : 'p-4'}`}>
+        <div className={`flex items-center justify-between mb-4 w-full ${isCollapsed ? 'flex-col gap-4' : ''}`}>
+          {!isCollapsed && <h2 className="theme-text-primary text-lg font-semibold">Activity</h2>}
+          <div className={`flex items-center gap-1 ${isCollapsed ? 'flex-col' : ''}`}>
             <button
               onClick={clearAllHistory}
               className="theme-text-muted hover:bg-[var(--color-danger-soft)] p-2 rounded-lg transition-all duration-200 hover:scale-110"
@@ -202,7 +205,7 @@ export default function ChatHistorySidebar({
             {onClose && (
               <button
                 onClick={onClose}
-                className="theme-text-muted hover:bg-[var(--color-surface-muted)] p-2 rounded-lg transition-all duration-200 hover:scale-110"
+                className="theme-text-muted hover:bg-[var(--color-surface-muted)] p-2 rounded-lg transition-all duration-200 hover:scale-110 sm:hidden"
                 title="Close"
                 aria-label="Close chat history"
               >
@@ -212,24 +215,26 @@ export default function ChatHistorySidebar({
           </div>
         </div>
 
-        <div className="relative">
-          <Search className="theme-text-muted absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4" />
-          <input
-            type="text"
-            placeholder="Search conversations..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="theme-input w-full pl-10 pr-4 py-2 rounded-lg text-sm border transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="theme-text-muted hover:theme-text-primary absolute right-3 top-1/2 transform -translate-y-1/2 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
-        </div>
+        {!isCollapsed && (
+          <div className="relative">
+            <Search className="theme-text-muted absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4" />
+            <input
+              type="text"
+              placeholder="Search conversations..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="theme-input w-full pl-10 pr-4 py-2 rounded-lg text-sm border transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="theme-text-muted hover:theme-text-primary absolute right-3 top-1/2 transform -translate-y-1/2 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -250,12 +255,14 @@ export default function ChatHistorySidebar({
             cta={{ label: 'Clear search', onClick: () => setSearchQuery('') }}
           />
         ) : (
-          <div className="p-2">
+          <div className={`p-2 ${isCollapsed ? 'flex flex-col items-center' : ''}`}>
             {filteredPinned.length > 0 && (
               <>
-                <p className="theme-text-muted text-xs font-semibold uppercase tracking-wider px-1 py-1 mt-1">
-                  Pinned
-                </p>
+                {!isCollapsed && (
+                  <p className="theme-text-muted text-xs font-semibold uppercase tracking-wider px-1 py-1 mt-1">
+                    Pinned
+                  </p>
+                )}
                 {filteredPinned.map((session) => (
                   <SessionRow
                     key={session.id}
@@ -268,7 +275,7 @@ export default function ChatHistorySidebar({
                     formatDate={formatDate}
                   />
                 ))}
-                {filteredUnpinned.length > 0 && (
+                {!isCollapsed && filteredUnpinned.length > 0 && (
                   <p className="theme-text-muted text-xs font-semibold uppercase tracking-wider px-1 py-1 mt-3">
                     Recent
                   </p>
@@ -291,35 +298,49 @@ export default function ChatHistorySidebar({
         )}
       </div>
 
-      <div className="theme-border border-t p-4">
+      <div className="theme-border border-t p-4 space-y-4">
+        <PriceTicker symbols={['XLM', 'ETH', 'BTC']} currency="usd" />
+
         <div className="flex items-center justify-between mb-3">
+      <div className={`theme-border border-t p-4 ${isCollapsed ? 'flex flex-col items-center' : ''}`}>
+        <div className={`flex items-center justify-between mb-3 w-full ${isCollapsed ? 'flex-col gap-3' : ''}`}>
           <div className="flex items-center gap-2">
             <Coins className="w-4 h-4 text-[var(--color-primary)]" />
-            <h3 className="theme-text-primary text-sm font-semibold">
-              Transaction History
-            </h3>
+            {!isCollapsed && (
+              <h3 className="theme-text-primary text-sm font-semibold">
+                Transaction History
+              </h3>
+            )}
           </div>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={handleExportTransactions}
-              className="theme-text-muted hover:bg-[var(--color-surface-muted)] p-1.5 rounded-md transition-colors"
-              title="Export transaction history"
-            >
-              <Download className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={clearEntries}
-              className="theme-text-muted hover:bg-[var(--color-danger-soft)] p-1.5 rounded-md transition-colors"
-              title="Clear transaction history"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
+          {!isCollapsed && (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={handleExportTransactions}
+                className="theme-text-muted hover:bg-[var(--color-surface-muted)] p-1.5 rounded-md transition-colors"
+                title="Export transaction history"
+              >
+                <Download className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={clearEntries}
+                className="theme-text-muted hover:bg-[var(--color-danger-soft)] p-1.5 rounded-md transition-colors"
+                title="Clear transaction history"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
 
-        {entries.length === 0 ? (
+        {isCollapsed ? (
+          <div className="flex justify-center">
+             <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs">
+               {entries.length}
+             </div>
+          </div>
+        ) : entries.length === 0 ? (
           <EmptyState
             icon={Coins}
             title="No transactions yet"
@@ -401,15 +422,16 @@ export default function ChatHistorySidebar({
       <div className="theme-border p-4 border-t transition-colors duration-300">
         <button
           onClick={() => window.location.reload()}
-          className="theme-primary-button w-full flex items-center justify-center px-4 py-3 rounded-lg transition-all duration-200 font-medium hover:scale-[1.02]"
+          className={`theme-primary-button w-full flex items-center justify-center rounded-lg transition-all duration-200 font-medium hover:scale-[1.02] ${isCollapsed ? 'p-2' : 'px-4 py-3'}`}
+          title="New Conversation"
         >
-          <Plus className="w-4 h-4 mr-2" />
-          New Conversation
+          <Plus className={`w-4 h-4 ${isCollapsed ? '' : 'mr-2'}`} />
+          {!isCollapsed && "New Conversation"}
         </button>
       </div>
 
       {showDeleteConfirm && (
-        <div className="theme-overlay fixed inset-0 flex items-center justify-center z-50 backdrop-blur-sm">
+        <div className="theme-overlay fixed inset-0 flex items-center justify-center z-[100] backdrop-blur-sm">
           <div className="theme-surface theme-border rounded-lg p-6 max-w-sm mx-4 shadow-2xl border">
             <h3 className="theme-text-primary text-lg font-semibold mb-2">
               Delete Conversation
@@ -426,7 +448,7 @@ export default function ChatHistorySidebar({
                 Cancel
               </button>
               <button
-                onClick={() => handleDeleteSession(showDeleteConfirm)}
+                onClick={() => showDeleteConfirm && handleDeleteSession(showDeleteConfirm)}
                 className="flex-1 px-4 py-2 text-white bg-red-600 hover:bg-red-700 rounded-lg transition-all duration-200 font-medium"
               >
                 Delete

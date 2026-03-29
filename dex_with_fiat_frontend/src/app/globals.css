@@ -59,8 +59,8 @@ body {
   position: fixed;
   width: 100%;
   transition:
-    background-color 0.3s ease,
-    color 0.3s ease;
+    background-color 200ms ease,
+    color 200ms ease;
   color-scheme: light;
 }
 

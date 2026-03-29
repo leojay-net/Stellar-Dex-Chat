@@ -196,7 +196,7 @@ export default function ChatInput({
   return (
     <form
       onSubmit={handleSubmit}
-      className="theme-surface p-6 transition-colors duration-300 relative"
+      className="theme-surface p-4 sm:p-6 transition-colors duration-300 relative border-t sm:border-none"
     >
       {showPalette && (
         <div className="absolute inset-x-6 bottom-full mb-3 rounded-xl border theme-surface shadow-2xl z-50">
@@ -328,7 +328,7 @@ export default function ChatInput({
       )}
 
       {/* Quick suggestions */}
-      <div className="flex flex-wrap gap-2 mt-4">
+      <div className="flex flex-wrap gap-2 mt-3 sm:mt-4 overflow-x-auto pb-1 no-scrollbar">
         {[
           t('chat.suggestions.convert'),
           t('chat.suggestions.rates'),
@@ -338,7 +338,7 @@ export default function ChatInput({
             key={index}
             type="button"
             onClick={() => setMessage(suggestion)}
-            className="theme-secondary-button px-3 py-2 text-sm rounded-lg transition-all duration-200 transform hover:scale-105"
+            className="theme-secondary-button px-3 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg transition-all duration-200 transform hover:scale-105 whitespace-nowrap"
           >
             {suggestion}
           </button>

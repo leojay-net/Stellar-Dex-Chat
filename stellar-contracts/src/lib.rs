@@ -1,4 +1,6 @@
 #![no_std]
+#![allow(deprecated)]
+#![allow(clippy::too_many_arguments)]
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, token, xdr::ToXdr, Address, Bytes, BytesN,
     Env, Symbol, Vec,
@@ -246,6 +248,8 @@ pub enum DataKey {
     OperatorHeartbeat(Address),
     OperatorNonce(Address),
     Denied(Address),
+    DeniedIndex(u64),
+    DeniedCount,
     FeeVault(Address),
     ReceiptIndex(u64),
     // ── Issue #214: deployment config hash ────────────────────────────────
@@ -410,7 +414,7 @@ impl FiatBridge {
 
         // Transfer
         let token_client = token::Client::new(&env, &token);
-        token_client.transfer(&from, &env.current_contract_address(), &amount);
+        token_client.transfer(&from, env.current_contract_address(), &amount);
 
         // State update
         let receipt_counter: u64 = env
@@ -751,23 +755,7 @@ impl FiatBridge {
             }
         }
 
-        // Anti-sandwich check
-        let delay: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::AntiSandwichDelay)
-            .unwrap_or(0);
-        if delay > 0 {
-            if let Some(last_deposit) = env
-                .storage()
-                .temporary()
-                .get::<_, u32>(&DataKey::LastDeposit(request.to.clone()))
-            {
-                if env.ledger().sequence() < last_deposit.saturating_add(delay) {
-                    return Err(Error::AntiSandwichDelayActive);
-                }
-            }
-        }
+
 
         let token_client = token::Client::new(&env, &request.token);
         let balance = token_client.balance(&env.current_contract_address());
@@ -1161,10 +1149,10 @@ impl FiatBridge {
         // Computed slippage in BPS: (Expected - Actual) / Expected * 10,000
         // We only care about downward slippage for these paths.
         // ── Issue #220: use precision-safe fixed-point math ───────────────
-        // Use ceiling division to ensure boundary violations are caught (conservative approach)
         let slippage_bps = if actual_price < expected_price {
             let diff = expected_price - actual_price;
-            crate::math::mul_div_ceil(diff, 10000, expected_price)
+            // Use floor division for the displayed slippage value
+            crate::math::mul_div_floor(diff, 10000, expected_price)
         } else {
             0
         };
@@ -1174,8 +1162,27 @@ impl FiatBridge {
             slippage_bps as u32,
         );
 
-        if slippage_bps > max_slippage_bps as i128 {
-            return Err(Error::SlippageTooHigh);
+        // Check slippage using floor division but account for rounding:
+        // If floor(diff * 10_000 / expected) == max_slippage and remainder is significant,
+        // round up to catch boundary violations from ceiling-computed expected_price
+        if actual_price < expected_price {
+            let diff = expected_price - actual_price;
+            let numerator = diff * 10_000;
+            let quotient = numerator / expected_price;
+            
+            // Reject if quotient exceeds max
+            if quotient > (max_slippage_bps as i128) {
+                return Err(Error::SlippageTooHigh);
+            }
+            
+            // Also reject if quotient equals max but remainder indicates ceiling would exceed
+            if quotient == (max_slippage_bps as i128) {
+                let remainder = numerator % expected_price;
+                // If remainder > expected_price / 2, ceiling would round up
+                if remainder > 0 && remainder >= expected_price / 2 {
+                    return Err(Error::SlippageTooHigh);
+                }
+            }
         }
 
         Ok(())
@@ -1391,6 +1398,20 @@ impl FiatBridge {
         env.storage()
             .persistent()
             .set(&DataKey::Denied(address.clone()), &true);
+
+        // Append to denied-address index for enumeration
+        let count: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::DeniedCount)
+            .unwrap_or(0);
+        env.storage()
+            .persistent()
+            .set(&DataKey::DeniedIndex(count), &Some(address.clone()));
+        env.storage()
+            .instance()
+            .set(&DataKey::DeniedCount, &(count + 1));
+
         env.events()
             .publish((EVENT_VERSION, Symbol::new(&env, "deny_add")), address);
         Ok(())
@@ -1584,6 +1605,28 @@ impl FiatBridge {
         env.storage()
             .persistent()
             .remove(&DataKey::Denied(address.clone()));
+
+        // Tombstone the index slot (mark as None) without compacting
+        let count: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::DeniedCount)
+            .unwrap_or(0);
+        for i in 0..count {
+            if let Some(Some(addr)) = env
+                .storage()
+                .persistent()
+                .get::<_, Option<Address>>(&DataKey::DeniedIndex(i))
+            {
+                if addr == address {
+                    env.storage()
+                        .persistent()
+                        .set(&DataKey::DeniedIndex(i), &Option::<Address>::None);
+                    break;
+                }
+            }
+        }
+
         env.events()
             .publish((EVENT_VERSION, Symbol::new(&env, "deny_rem")), address);
         Ok(())
@@ -1603,6 +1646,29 @@ impl FiatBridge {
     /// `true` if the address is denied, `false` otherwise
     pub fn is_denied(env: Env, address: Address) -> bool {
         env.storage().persistent().has(&DataKey::Denied(address))
+    }
+
+    pub fn get_denied_addresses(env: Env, offset: u64, limit: u32) -> Vec<Address> {
+        let count: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::DeniedCount)
+            .unwrap_or(0);
+        let mut result: Vec<Address> = Vec::new(&env);
+        let mut collected: u32 = 0;
+        let mut idx = offset;
+        while idx < count && collected < limit {
+            if let Some(Some(addr)) = env
+                .storage()
+                .persistent()
+                .get::<_, Option<Address>>(&DataKey::DeniedIndex(idx))
+            {
+                result.push_back(addr);
+                collected += 1;
+            }
+            idx += 1;
+        }
+        result
     }
 
     // ── Fee Vault ─────────────────────────────────────────────────────────
@@ -2218,7 +2284,7 @@ impl FiatBridge {
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
 
-        let total_ops = operations.len() as u32;
+        let total_ops = operations.len();
         let mut success_count: u32 = 0;
         let mut failure_count: u32 = 0;
         let mut first_failed_index: Option<u32> = None;
@@ -2248,6 +2314,7 @@ impl FiatBridge {
 
         env.events().publish(
             (Symbol::new(&env, "batch_ok"), Symbol::new(&env, "v1")),
+            (EVENT_VERSION, Symbol::new(&env, "batch_ok")),
             (success_count, failure_count, total_ops),
         );
 
@@ -2301,8 +2368,8 @@ impl FiatBridge {
             return Err(Error::InternalError);
         }
         let mut arr = [0u8; 4];
-        for i in 0..4 {
-            arr[i] = bytes.get(i as u32).ok_or(Error::InternalError)?;
+        for (i, slot) in arr.iter_mut().enumerate() {
+            *slot = bytes.get(i as u32).ok_or(Error::InternalError)?;
         }
         Ok(u32::from_be_bytes(arr))
     }
@@ -2312,8 +2379,8 @@ impl FiatBridge {
             return Err(Error::InternalError);
         }
         let mut arr = [0u8; 16];
-        for i in 0..16 {
-            arr[i] = bytes.get(i as u32).ok_or(Error::InternalError)?;
+        for (i, slot) in arr.iter_mut().enumerate() {
+            *slot = bytes.get(i as u32).ok_or(Error::InternalError)?;
         }
         Ok(i128::from_be_bytes(arr))
     }

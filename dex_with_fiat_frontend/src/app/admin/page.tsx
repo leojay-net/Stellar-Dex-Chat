@@ -1,7 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { ReconciliationRecord } from '@/types';
+import { useState, useEffect, useCallback } from 'react';
+import {
+  AdminAuditActionType,
+  AdminAuditLogEntry,
+  ReconciliationRecord,
+} from '@/types';
 import { aggregateDailyVolume, DailyMetric } from '@/lib/analytics';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import {
@@ -15,14 +19,96 @@ import {
 } from 'recharts';
 import Link from 'next/link';
 
+type AuditLogResponse = {
+  entries: AdminAuditLogEntry[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  actions: AdminAuditActionType[];
+};
+
+const ACTION_LABELS: Record<AdminAuditActionType, string> = {
+  withdrawal_approved: 'Withdrawal Approved',
+  withdrawal_rejected: 'Withdrawal Rejected',
+  reconciliation_adjustment: 'Reconciliation Adjustment',
+  operator_added: 'Operator Added',
+  operator_removed: 'Operator Removed',
+  bridge_paused: 'Bridge Paused',
+  bridge_unpaused: 'Bridge Unpaused',
+};
+
+function formatActionLabel(action: AdminAuditActionType): string {
+  return ACTION_LABELS[action] ?? action;
+}
+
+function formatParameters(
+  parameters: Record<string, string | number | boolean | null>,
+): string {
+  return Object.entries(parameters)
+    .map(([key, value]) => `${key}: ${value === null ? 'null' : String(value)}`)
+    .join(' | ');
+}
+
+function escapeCsvValue(value: string): string {
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
 export default function AdminDashboard() {
   const [metrics, setMetrics] = useState<DailyMetric[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingMetrics, setLoadingMetrics] = useState(true);
+  const [auditEntries, setAuditEntries] = useState<AdminAuditLogEntry[]>([]);
+  const [auditActions, setAuditActions] = useState<AdminAuditActionType[]>([]);
+  const [auditLoading, setAuditLoading] = useState(true);
+  const [auditError, setAuditError] = useState<string | null>(null);
+  const [actionFilter, setActionFilter] = useState<string>('all');
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditPageSize, setAuditPageSize] = useState(20);
+  const [auditTotal, setAuditTotal] = useState(0);
+  const [auditTotalPages, setAuditTotalPages] = useState(1);
+  const [exportingCsv, setExportingCsv] = useState(false);
   const enableAdminReconciliation = useFeatureFlag('enableAdminReconciliation');
 
   useEffect(() => {
     fetchMetrics();
   }, []);
+
+  const fetchAuditLogs = useCallback(async (page: number, action: string) => {
+    setAuditLoading(true);
+    setAuditError(null);
+
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        action,
+      });
+      const response = await fetch(`/api/admin/audit-log?${params.toString()}`);
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch admin audit logs (${response.status})`);
+      }
+
+      const payload: AuditLogResponse = await response.json();
+      setAuditEntries(payload.entries);
+      setAuditActions(payload.actions);
+      setAuditPage(payload.page);
+      setAuditPageSize(payload.pageSize);
+      setAuditTotal(payload.total);
+      setAuditTotalPages(payload.totalPages);
+    } catch (error) {
+      setAuditError(
+        error instanceof Error
+          ? error.message
+          : 'Failed to fetch admin audit logs',
+      );
+    } finally {
+      setAuditLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAuditLogs(auditPage, actionFilter);
+  }, [fetchAuditLogs, auditPage, actionFilter]);
 
   const fetchMetrics = async () => {
     try {
@@ -35,7 +121,66 @@ export default function AdminDashboard() {
     } catch (error) {
       console.error('Failed to fetch metrics:', error);
     } finally {
-      setLoading(false);
+      setLoadingMetrics(false);
+    }
+  };
+
+  const exportAuditToCSV = async () => {
+    try {
+      setExportingCsv(true);
+      const allEntries: AdminAuditLogEntry[] = [];
+
+      for (let page = 1; page <= auditTotalPages; page += 1) {
+        const params = new URLSearchParams({
+          page: String(page),
+          action: actionFilter,
+        });
+        const response = await fetch(`/api/admin/audit-log?${params.toString()}`);
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch audit page ${page}`);
+        }
+
+        const payload: AuditLogResponse = await response.json();
+        allEntries.push(...payload.entries);
+      }
+
+      const headers = [
+        'Timestamp',
+        'Action',
+        'Admin Address',
+        'Parameters',
+        'Result',
+      ];
+
+      const csvRows = allEntries.map((entry) =>
+        [
+          entry.timestamp,
+          formatActionLabel(entry.action),
+          entry.adminAddress,
+          formatParameters(entry.parameters),
+          entry.result,
+        ]
+          .map((value) => escapeCsvValue(String(value)))
+          .join(','),
+      );
+
+      const csvContent = [headers.join(','), ...csvRows].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `admin_audit_log_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setAuditError(
+        error instanceof Error ? error.message : 'Failed to export audit log CSV',
+      );
+    } finally {
+      setExportingCsv(false);
     }
   };
 
@@ -44,7 +189,7 @@ export default function AdminDashboard() {
     ? Math.max(...metrics.map((d) => d.volume))
     : 0;
 
-  if (loading) {
+  if (loadingMetrics) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
         <div className="max-w-7xl mx-auto">
@@ -174,6 +319,164 @@ export default function AdminDashboard() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow mt-8 overflow-hidden">
+          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                  Admin Audit Log
+                </h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Append-only timeline of administrative actions.
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+                <div>
+                  <label
+                    htmlFor="audit-action-filter"
+                    className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1"
+                  >
+                    Action Type
+                  </label>
+                  <select
+                    id="audit-action-filter"
+                    value={actionFilter}
+                    onChange={(event) => {
+                      setActionFilter(event.target.value);
+                      setAuditPage(1);
+                    }}
+                    className="w-full sm:w-64 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white"
+                  >
+                    <option value="all">All Actions</option>
+                    {auditActions.map((action) => (
+                      <option key={action} value={action}>
+                        {formatActionLabel(action)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={exportAuditToCSV}
+                  disabled={exportingCsv || auditLoading || auditTotal === 0}
+                  className="h-10 mt-0 sm:mt-5 px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:bg-emerald-300 disabled:cursor-not-allowed"
+                >
+                  {exportingCsv ? 'Exporting...' : 'Export CSV'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {auditError && (
+            <div className="px-6 py-4 text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800">
+              {auditError}
+            </div>
+          )}
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead className="bg-gray-50 dark:bg-gray-700">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    Timestamp
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    Action
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    Admin Address
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    Parameters
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    Result
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                {!auditLoading &&
+                  auditEntries.map((entry) => (
+                    <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-200">
+                        {new Date(entry.timestamp).toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white font-medium">
+                        {formatActionLabel(entry.action)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-700 dark:text-gray-200">
+                        {entry.adminAddress}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-200 max-w-xl">
+                        <span className="inline-block bg-gray-100 dark:bg-gray-700 rounded px-2 py-1 break-all">
+                          {formatParameters(entry.parameters)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <span
+                          className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${
+                            entry.result === 'success'
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
+                              : entry.result === 'failed'
+                                ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                                : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300'
+                          }`}
+                        >
+                          {entry.result}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+
+          {auditLoading && (
+            <div className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+              Loading audit entries...
+            </div>
+          )}
+
+          {!auditLoading && auditEntries.length === 0 && (
+            <div className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+              No audit entries found for the selected action type.
+            </div>
+          )}
+
+          <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              Showing {(auditPage - 1) * auditPageSize + (auditEntries.length ? 1 : 0)}-
+              {(auditPage - 1) * auditPageSize + auditEntries.length} of {auditTotal}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setAuditPage((previous) => Math.max(previous - 1, 1))}
+                disabled={auditPage <= 1 || auditLoading}
+                className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <span className="text-sm text-gray-600 dark:text-gray-300">
+                Page {auditPage} of {auditTotalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  setAuditPage((previous) => Math.min(previous + 1, auditTotalPages))
+                }
+                disabled={auditPage >= auditTotalPages || auditLoading}
+                className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
           </div>
         </div>
       </div>

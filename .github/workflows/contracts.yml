@@ -31,6 +31,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
+          components: clippy
           targets: wasm32-unknown-unknown
 
       - name: Cache Cargo registry
@@ -49,3 +50,6 @@ jobs:
 
       - name: Build WASM release
         run: cargo build --target wasm32-unknown-unknown --release
+
+      - name: Run clippy (deny warnings)
+        run: cargo clippy --all-targets --all-features -- -D warnings

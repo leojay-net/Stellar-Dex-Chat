@@ -24,8 +24,11 @@ import {
   MessageSquare,
   Copy,
   Check,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface FeatureCardProps {
   icon: React.ElementType;
@@ -51,14 +54,14 @@ const FeatureCard: React.FC<FeatureCardProps> = ({
     <div
       className={`transform transition-all duration-700 ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'}`}
     >
-      <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-6 hover:border-blue-500/50 transition-all duration-300 hover:bg-gray-800/70 backdrop-blur-sm">
+      <div className="bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-xl p-6 hover:border-blue-500/50 transition-all duration-300 hover:bg-[var(--color-surface)] backdrop-blur-sm shadow-sm hover:shadow-md">
         <div className="flex items-center space-x-4 mb-4">
-          <div className="w-12 h-12 bg-blue-600/20 rounded-lg flex items-center justify-center">
-            <Icon className="w-6 h-6 text-blue-400" />
+          <div className="w-12 h-12 bg-blue-600/10 rounded-lg flex items-center justify-center">
+            <Icon className="w-6 h-6 text-blue-500" />
           </div>
-          <h3 className="text-xl font-semibold text-white">{title}</h3>
+          <h3 className="text-xl font-semibold text-[var(--color-text-primary)]">{title}</h3>
         </div>
-        <p className="text-gray-300 leading-relaxed">{description}</p>
+        <p className="text-[var(--color-text-secondary)] leading-relaxed">{description}</p>
       </div>
     </div>
   );
@@ -84,12 +87,12 @@ const Step: React.FC<StepProps> = ({ number, title, description, delay }) => {
       className={`transform transition-all duration-700 ${isVisible ? 'translate-x-0 opacity-100' : 'translate-x-8 opacity-0'}`}
     >
       <div className="flex items-start space-x-4">
-        <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0 animate-pulse">
+        <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
           <span className="text-white font-bold">{number}</span>
         </div>
         <div>
-          <h4 className="text-lg font-semibold text-white mb-2">{title}</h4>
-          <p className="text-gray-300">{description}</p>
+          <h4 className="text-lg font-semibold text-[var(--color-text-primary)] mb-2">{title}</h4>
+          <p className="text-[var(--color-text-secondary)]">{description}</p>
         </div>
       </div>
     </div>
@@ -100,6 +103,7 @@ export default function LandingPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const { isDarkMode, toggleDarkMode } = useTheme();
   const [heroVisible, setHeroVisible] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -210,7 +214,22 @@ export default function LandingPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] transition-colors duration-200">
+      {/* Theme Toggle Button */}
+      <div className="fixed top-6 right-6 z-50">
+        <button
+          onClick={toggleDarkMode}
+          className="p-3 rounded-full bg-[var(--color-surface-elevated)] border border-[var(--color-border)] text-[var(--color-text-primary)] hover:bg-[var(--color-surface)] transition-all duration-300 shadow-lg hover:shadow-blue-500/20 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          aria-label={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {isDarkMode ? (
+            <Sun className="w-5 h-5 text-yellow-400" />
+          ) : (
+            <Moon className="w-5 h-5 text-blue-600" />
+          )}
+        </button>
+      </div>
+
       {/* Hero Section */}
       <section className="relative min-h-screen flex items-center justify-center px-4 overflow-hidden">
         {/* Animated Background Elements */}
@@ -229,7 +248,7 @@ export default function LandingPage() {
             Bridge
           </h1>
 
-          <p className="text-xl md:text-2xl text-gray-300 mb-12 max-w-3xl mx-auto leading-relaxed">
+          <p className="text-xl md:text-2xl text-[var(--color-text-secondary)] mb-12 max-w-3xl mx-auto leading-relaxed">
             Convert Stellar Lumens (XLM) to fiat currency instantly through our
             AI-powered chat interface and Soroban smart contracts.
           </p>
@@ -240,10 +259,10 @@ export default function LandingPage() {
               <div className="w-16 h-16 bg-blue-600/20 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-2xl font-bold text-blue-400">1</span>
               </div>
-              <h3 className="text-lg font-semibold text-white mb-2">
+              <h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-2">
                 Connect Freighter
               </h3>
-              <p className="text-gray-400 text-sm">
+              <p className="text-[var(--color-text-muted)] text-sm">
                 Install and connect your Stellar wallet to get started
               </p>
             </div>
@@ -251,10 +270,10 @@ export default function LandingPage() {
               <div className="w-16 h-16 bg-blue-600/20 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-2xl font-bold text-blue-400">2</span>
               </div>
-              <h3 className="text-lg font-semibold text-white mb-2">
+              <h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-2">
                 Deposit XLM
               </h3>
-              <p className="text-gray-400 text-sm">
+              <p className="text-[var(--color-text-muted)] text-sm">
                 Chat with AI to deposit XLM into the smart contract
               </p>
             </div>
@@ -262,10 +281,10 @@ export default function LandingPage() {
               <div className="w-16 h-16 bg-blue-600/20 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-2xl font-bold text-blue-400">3</span>
               </div>
-              <h3 className="text-lg font-semibold text-white mb-2">
+              <h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-2">
                 Receive Fiat
               </h3>
-              <p className="text-gray-400 text-sm">
+              <p className="text-[var(--color-text-muted)] text-sm">
                 Get fiat currency directly to your bank account
               </p>
             </div>
@@ -285,15 +304,15 @@ export default function LandingPage() {
               href="https://stellar.expert/explorer/testnet"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-gray-400 hover:text-blue-400 transition-colors duration-300 text-sm underline"
+              className="text-[var(--color-text-muted)] hover:text-blue-500 transition-colors duration-300 text-sm underline"
             >
               View on Stellar Expert →
             </a>
           </div>
 
           {/* Contract Address */}
-          <div className="bg-gray-800/50 border border-gray-700/50 rounded-lg p-4 max-w-md mx-auto">
-            <p className="text-sm text-gray-400 mb-2">Smart Contract Address</p>
+          <div className="bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-lg p-4 max-w-md mx-auto">
+            <p className="text-sm text-[var(--color-text-muted)] mb-2">Smart Contract Address</p>
             <div className="flex items-center justify-between">
               <code className="text-blue-400 font-mono text-sm break-all flex-1 mr-2">
                 {contractAddress}
@@ -318,10 +337,10 @@ export default function LandingPage() {
       <section className="py-20 px-4">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4">
+            <h2 className="text-4xl font-bold mb-4 text-[var(--color-text-primary)]">
               Why Choose DexFiat on Stellar
             </h2>
-            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
+            <p className="text-xl text-[var(--color-text-secondary)] max-w-3xl mx-auto">
               The most advanced XLM-to-fiat infrastructure powered by Soroban
               smart contracts on the Stellar network
             </p>
@@ -336,47 +355,47 @@ export default function LandingPage() {
       </section>
 
       {/* Technology Stack */}
-      <section className="py-20 px-4 bg-gray-800/20">
+      <section className="py-20 px-4 bg-[var(--color-surface-muted)]">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4">
+            <h2 className="text-4xl font-bold mb-4 text-[var(--color-text-primary)]">
               Powered by Stellar Infrastructure
             </h2>
-            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
+            <p className="text-xl text-[var(--color-text-secondary)] max-w-3xl mx-auto">
               Built on battle-tested Stellar protocols and cutting-edge Soroban
               smart contracts for maximum security and performance
             </p>
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-            <div className="text-center p-6 bg-gray-800/30 rounded-xl border border-gray-700/50 hover:border-blue-500/50 transition-all duration-300">
-              <Network className="w-12 h-12 text-blue-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Soroban</h3>
-              <p className="text-gray-300 text-sm">
+            <div className="text-center p-6 bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] hover:border-blue-500/50 transition-all duration-300">
+              <Network className="w-12 h-12 text-blue-500 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2 text-[var(--color-text-primary)]">Soroban</h3>
+              <p className="text-[var(--color-text-secondary)] text-sm">
                 Stellar&apos;s WebAssembly smart contract platform for secure
                 on-chain logic
               </p>
             </div>
-            <div className="text-center p-6 bg-gray-800/30 rounded-xl border border-gray-700/50 hover:border-purple-500/50 transition-all duration-300">
-              <Shield className="w-12 h-12 text-purple-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Stellar Network</h3>
-              <p className="text-gray-300 text-sm">
+            <div className="text-center p-6 bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] hover:border-purple-500/50 transition-all duration-300">
+              <Shield className="w-12 h-12 text-purple-500 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2 text-[var(--color-text-primary)]">Stellar Network</h3>
+              <p className="text-[var(--color-text-secondary)] text-sm">
                 Fast, low-cost Layer-1 with 5-second finality and $0.001 average
                 fee
               </p>
             </div>
-            <div className="text-center p-6 bg-gray-800/30 rounded-xl border border-gray-700/50 hover:border-green-500/50 transition-all duration-300">
-              <Cpu className="w-12 h-12 text-green-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">AI-Optimized</h3>
-              <p className="text-gray-300 text-sm">
+            <div className="text-center p-6 bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] hover:border-green-500/50 transition-all duration-300">
+              <Cpu className="w-12 h-12 text-green-500 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2 text-[var(--color-text-primary)]">AI-Optimized</h3>
+              <p className="text-[var(--color-text-secondary)] text-sm">
                 Gemini AI for optimal conversion advice, rate analysis, and
                 guided UX
               </p>
             </div>
-            <div className="text-center p-6 bg-gray-800/30 rounded-xl border border-gray-700/50 hover:border-yellow-500/50 transition-all duration-300">
-              <Lock className="w-12 h-12 text-yellow-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Freighter Wallet</h3>
-              <p className="text-gray-300 text-sm">
+            <div className="text-center p-6 bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] hover:border-yellow-500/50 transition-all duration-300">
+              <Lock className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2 text-[var(--color-text-primary)]">Freighter Wallet</h3>
+              <p className="text-[var(--color-text-secondary)] text-sm">
                 Native Stellar browser extension — secure signing with zero seed
                 phrase exposure
               </p>
@@ -389,10 +408,10 @@ export default function LandingPage() {
       <section className="py-20 px-4">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4">
+            <h2 className="text-4xl font-bold mb-4 text-[var(--color-text-primary)]">
               Stellar Assets &amp; Fiat Currencies
             </h2>
-            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
+            <p className="text-xl text-[var(--color-text-secondary)] max-w-3xl mx-auto">
               Deposit native Stellar assets and convert to 50+ fiat currencies
               worldwide
             </p>
@@ -400,8 +419,8 @@ export default function LandingPage() {
 
           <div className="grid md:grid-cols-2 gap-12">
             <div>
-              <h3 className="text-2xl font-semibold mb-6 flex items-center">
-                <Network className="w-6 h-6 mr-3 text-blue-400" />
+              <h3 className="text-2xl font-semibold mb-6 flex items-center text-[var(--color-text-primary)]">
+                <Network className="w-6 h-6 mr-3 text-blue-500" />
                 Stellar Assets
               </h3>
               <div className="grid grid-cols-2 gap-4">
@@ -417,7 +436,7 @@ export default function LandingPage() {
                 ].map((asset) => (
                   <div
                     key={asset}
-                    className="flex items-center space-x-3 p-3 bg-gray-800/30 rounded-lg border border-gray-700/30 hover:border-blue-500/30 transition-all duration-200"
+                    className="flex items-center space-x-3 p-3 bg-[var(--color-surface)] rounded-lg border border-[var(--color-border)] hover:border-blue-500/30 transition-all duration-200 shadow-sm"
                   >
                     <div className="w-8 h-8 bg-gradient-to-r from-blue-600/20 to-purple-600/20 rounded-full flex items-center justify-center">
                       <span className="text-blue-400 font-bold text-sm">
@@ -431,8 +450,8 @@ export default function LandingPage() {
             </div>
 
             <div>
-              <h3 className="text-2xl font-semibold mb-6 flex items-center">
-                <Globe className="w-6 h-6 mr-3 text-green-400" />
+              <h3 className="text-2xl font-semibold mb-6 flex items-center text-[var(--color-text-primary)]">
+                <Globe className="w-6 h-6 mr-3 text-green-500" />
                 Fiat Currencies
               </h3>
               <div className="grid grid-cols-2 gap-4">
@@ -448,12 +467,12 @@ export default function LandingPage() {
                 ].map((currency) => (
                   <div
                     key={currency.code}
-                    className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30 hover:border-green-500/30 transition-all duration-200"
+                    className="p-3 bg-[var(--color-surface)] rounded-lg border border-[var(--color-border)] hover:border-green-500/30 transition-all duration-200 shadow-sm"
                   >
-                    <div className="font-medium text-green-400">
+                    <div className="font-medium text-green-600 dark:text-green-400">
                       {currency.code}
                     </div>
-                    <div className="text-gray-400 text-sm">{currency.name}</div>
+                    <div className="text-[var(--color-text-muted)] text-sm">{currency.name}</div>
                   </div>
                 ))}
               </div>
@@ -463,11 +482,11 @@ export default function LandingPage() {
       </section>
 
       {/* Testimonials */}
-      <section className="py-20 px-4 bg-gray-800/20">
+      <section className="py-20 px-4 bg-[var(--color-surface-muted)]">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4">Trusted by DeFi Leaders</h2>
-            <p className="text-xl text-gray-300">
+            <h2 className="text-4xl font-bold mb-4 text-[var(--color-text-primary)]">Trusted by DeFi Leaders</h2>
+            <p className="text-xl text-[var(--color-text-secondary)]">
               Join thousands of satisfied users who trust our platform
             </p>
           </div>
@@ -498,7 +517,7 @@ export default function LandingPage() {
             ].map((testimonial, index) => (
               <div
                 key={index}
-                className="bg-gray-800/30 p-6 rounded-xl border border-gray-700/50"
+                className="bg-[var(--color-surface)] p-6 rounded-xl border border-[var(--color-border)] shadow-sm"
               >
                 <div className="flex items-center mb-4">
                   {[...Array(testimonial.rating)].map((_, i) => (
@@ -508,12 +527,12 @@ export default function LandingPage() {
                     />
                   ))}
                 </div>
-                <blockquote className="text-gray-300 mb-4 italic">
+                <blockquote className="text-[var(--color-text-secondary)] mb-4 italic">
                   &ldquo;{testimonial.quote}&rdquo;
                 </blockquote>
                 <div>
-                  <div className="font-semibold">{testimonial.author}</div>
-                  <div className="text-gray-400 text-sm">
+                  <div className="font-semibold text-[var(--color-text-primary)]">{testimonial.author}</div>
+                  <div className="text-[var(--color-text-muted)] text-sm">
                     {testimonial.title}
                   </div>
                 </div>
@@ -527,8 +546,8 @@ export default function LandingPage() {
       <section className="py-20 px-4">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4">Why Choose Our Platform</h2>
-            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
+            <h2 className="text-4xl font-bold mb-4 text-[var(--color-text-primary)]">Why Choose Our Platform</h2>
+            <p className="text-xl text-[var(--color-text-secondary)] max-w-3xl mx-auto">
               Built for the future of finance with cutting-edge blockchain
               technology and enterprise-grade security
             </p>
@@ -546,10 +565,10 @@ export default function LandingPage() {
       <section className="py-20 px-4 bg-gray-800/30">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4">
+            <h2 className="text-4xl font-bold mb-4 text-[var(--color-text-primary)]">
               How Stellar FiatBridge Works
             </h2>
-            <p className="text-xl text-gray-300">
+            <p className="text-xl text-[var(--color-text-secondary)]">
               Four simple steps to deposit XLM and convert to fiat seamlessly
             </p>
           </div>
@@ -568,7 +587,7 @@ export default function LandingPage() {
           <h2 className="text-4xl font-bold mb-4">
             Join the Stellar DeFi Revolution
           </h2>
-          <p className="text-xl text-gray-300 mb-8">
+          <p className="text-xl text-[var(--color-text-secondary)] mb-8">
             Experience the future of XLM-to-fiat finance with our
             Soroban-powered platform
           </p>
@@ -583,7 +602,7 @@ export default function LandingPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Enter your email address"
-                className="flex-1 px-4 py-3 rounded-lg bg-gray-800/50 border border-gray-700/50 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-colors duration-300"
+                className="flex-1 px-4 py-3 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:border-blue-500 transition-colors duration-300"
                 required
               />
               <button
@@ -602,14 +621,14 @@ export default function LandingPage() {
             </div>
           )}
 
-          <p className="text-sm text-gray-400 mt-4">
+          <p className="text-sm text-[var(--color-text-muted)] mt-4">
             By signing up, you agree to our Terms of Service and Privacy Policy
           </p>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="bg-gray-900 border-t border-gray-700">
+      <footer className="bg-[var(--color-surface)] border-t border-[var(--color-border)]">
         <div className="max-w-6xl mx-auto px-4 py-16">
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
             {/* Company Info */}
@@ -618,32 +637,32 @@ export default function LandingPage() {
                 <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg"></div>
                 <span className="text-xl font-bold">DexFiat</span>
               </div>
-              <p className="text-gray-400 mb-6 leading-relaxed">
+              <p className="text-[var(--color-text-muted)] mb-6 leading-relaxed">
                 The future of crypto-to-fiat conversion. Secure, fast, and
                 compliant with global financial standards.
               </p>
               <div className="flex space-x-4">
                 <a
                   href="#"
-                  className="text-gray-400 hover:text-blue-400 transition-colors"
+                  className="text-[var(--color-text-muted)] hover:text-blue-500 transition-colors"
                 >
                   <Twitter className="w-5 h-5" />
                 </a>
                 <a
                   href="#"
-                  className="text-gray-400 hover:text-blue-400 transition-colors"
+                  className="text-[var(--color-text-muted)] hover:text-blue-500 transition-colors"
                 >
                   <Github className="w-5 h-5" />
                 </a>
                 <a
                   href="#"
-                  className="text-gray-400 hover:text-blue-400 transition-colors"
+                  className="text-[var(--color-text-muted)] hover:text-blue-500 transition-colors"
                 >
                   <Linkedin className="w-5 h-5" />
                 </a>
                 <a
                   href="#"
-                  className="text-gray-400 hover:text-blue-400 transition-colors"
+                  className="text-[var(--color-text-muted)] hover:text-blue-500 transition-colors"
                 >
                   <MessageSquare className="w-5 h-5" />
                 </a>

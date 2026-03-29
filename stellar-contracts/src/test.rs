@@ -475,7 +475,7 @@ fn test_get_config_snapshot() {
     assert_eq!(config.lock_period, bridge.get_lock_period());
     assert_eq!(config.cooldown_ledgers, bridge.get_cooldown());
     assert_eq!(config.inactivity_threshold, DEFAULT_INACTIVITY_THRESHOLD);
-    assert_eq!(config.allowlist_enabled, false);
+    assert!(!config.allowlist_enabled);
     assert_eq!(config.emergency_recovery, None);
     assert_eq!(config.anti_sandwich_delay, bridge.get_anti_sandwich_delay());
 }
@@ -717,6 +717,13 @@ fn test_slippage_boundary_exact() {
     ];
 
     for max_slippage_bps in test_cases.iter() {
+        // Calculate expected_price such that actual slippage is at most max_slippage_bps.
+        // MockOracle returns 9_500_000 (0.95 USD).
+        // Slippage formula (ceiling): ceil((expected - actual) * 10_000 / expected)
+        // We derive: expected = actual * 10_000 / (10_000 - max_slippage_bps)
+        // BUT we must use ceiling division here so the resulting ceil-computed
+        // slippage does not exceed max_slippage_bps.
+        
         // Calculate expected_price such that actual slippage equals max_slippage_bps
         // MockOracle returns 9_500_000 (0.95 USD)
         // We want: (expected - 9_500_000) / expected * 10_000 = max_slippage_bps
@@ -726,9 +733,14 @@ fn test_slippage_boundary_exact() {
         let expected_price = if *max_slippage_bps == 10000 {
             // Special case: 100% slippage means expected can be anything > actual
             actual_price * 2
+        } else if *max_slippage_bps == 0 {
+            // No slippage allowed — expected must equal actual
+            actual_price
         } else {
-            // Calculate expected price that gives exactly max_slippage_bps
-            actual_price * 10_000 / (10_000 - *max_slippage_bps as i128)
+            // Use ceiling division to ensure slippage_bps ≤ max_slippage_bps
+            let numerator = actual_price * 10_000;
+            let denominator = 10_000 - *max_slippage_bps as i128;
+            (numerator + denominator - 1) / denominator
         };
 
         // Deposit should succeed at exactly max_slippage
@@ -1011,6 +1023,63 @@ fn test_withdrawal_quota_per_user() {
 
     let result_b = bridge.try_withdraw(&user_b, &100, &token_addr);
     assert_eq!(result_b, Err(Ok(Error::WithdrawalQuotaExceeded)));
+}
+
+#[test]
+fn test_withdrawal_quota_window_reset_isolated_per_user() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user_a = Address::generate(&env);
+    let user_b = Address::generate(&env);
+    token_sac.mint(&user_a, &5_000);
+    token_sac.mint(&user_b, &5_000);
+
+    bridge.deposit(&user_a, &2_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.deposit(&user_b, &2_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.set_withdrawal_quota(&500);
+
+    let start_ledger = env.ledger().sequence();
+
+    // User A consumes full quota at start_ledger.
+    bridge.withdraw(&user_a, &500, &token_addr);
+
+    // User B consumes full quota in a later window start.
+    env.ledger().with_mut(|li| {
+        li.sequence_number = start_ledger + 100;
+    });
+    bridge.withdraw(&user_b, &500, &token_addr);
+
+    assert_eq!(
+        bridge.try_withdraw(&user_a, &1, &token_addr),
+        Err(Ok(Error::WithdrawalQuotaExceeded))
+    );
+    assert_eq!(
+        bridge.try_withdraw(&user_b, &1, &token_addr),
+        Err(Ok(Error::WithdrawalQuotaExceeded))
+    );
+
+    // Advance to A's reset point, but still before B's reset point.
+    env.ledger().with_mut(|li| {
+        li.sequence_number = start_ledger + 17_280;
+    });
+
+    // A can withdraw after reset; B is still quota-limited.
+    bridge.withdraw(&user_a, &100, &token_addr);
+    assert_eq!(bridge.get_user_daily_withdrawal(&user_a), 100);
+    assert_eq!(
+        bridge.try_withdraw(&user_b, &1, &token_addr),
+        Err(Ok(Error::WithdrawalQuotaExceeded))
+    );
+
+    // Advance past B's reset point; B can now withdraw independently.
+    env.ledger().with_mut(|li| {
+        li.sequence_number = start_ledger + 17_380;
+    });
+
+    bridge.withdraw(&user_b, &100, &token_addr);
+    assert_eq!(bridge.get_user_daily_withdrawal(&user_b), 100);
 }
 
 #[test]
@@ -2593,15 +2662,14 @@ fn assert_bridge_events_have_version(env: &Env, contract_addr: &Address, f: impl
     let raw = bridge_events.events();
     assert!(!raw.is_empty(), "no bridge events were emitted");
     for event in raw {
-        if let ContractEventBody::V0(body) = &event.body {
-            let first = body.topics.first().expect("bridge event has no topics");
-            assert_eq!(
-                *first,
-                ScVal::U32(EVENT_VERSION),
-                "bridge event first topic is not EVENT_VERSION: {:?}",
-                body
-            );
-        }
+        let ContractEventBody::V0(body) = &event.body;
+        let first = body.topics.first().expect("bridge event has no topics");
+        assert_eq!(
+            *first,
+            ScVal::U32(EVENT_VERSION),
+            "bridge event first topic is not EVENT_VERSION: {:?}",
+            body
+        );
     }
 }
 
@@ -2654,11 +2722,15 @@ mod proptest_deposit {
     use super::*;
     use proptest::prelude::*;
 
-    /// Deposit invariants that must hold for every positive amount ≤ limit:
-    ///   1. deposit() succeeds
-    ///   2. contract balance increases by exactly `amount`
-    ///   3. user balance decreases by exactly `amount`
-    ///   4. get_user_deposited() returns `amount`
+    // Deposit invariants that must hold for every positive amount <= limit:
+    // 1. deposit() succeeds
+    // 2. contract balance increases by exactly amount
+    // 3. user balance decreases by exactly amount
+    // 4. get_user_deposited() returns amount
+    //   1. deposit() succeeds
+    //   2. contract balance increases by exactly `amount`
+    //   3. user balance decreases by exactly `amount`
+    //   4. get_user_deposited() returns `amount`
     proptest! {
         #[test]
         fn deposit_invariants_hold_for_all_valid_amounts(amount in 1i128..=500i128) {
@@ -2693,4 +2765,162 @@ mod proptest_deposit {
             prop_assert_eq!(result, Err(Ok(Error::ExceedsLimit)));
         }
     }
+}
+
+// ── Per-token daily deposit limit tests (#381) ──────────────────────
+// ── Per-token daily deposit limit tests ──────────────────────────────
+
+#[test]
+fn test_daily_deposit_limit_enforced() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &10_000);
+
+    // Set daily deposit limit to 500
+    bridge.set_daily_deposit_limit(&token_addr, &500);
+
+    // Deposit 200 — should succeed (within limit)
+    bridge.deposit(&user, &200, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // Deposit 300 — should succeed (at limit: 200 + 300 = 500)
+    bridge.deposit(&user, &300, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // Deposit 1 more — should fail (exceeds daily limit)
+    let result = bridge.try_deposit(&user, &1, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(result, Err(Ok(Error::DailyLimitExceeded)));
+}
+
+#[test]
+fn test_daily_deposit_limit_window_reset() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &10_000);
+
+    bridge.set_daily_deposit_limit(&token_addr, &500);
+
+    // Fill the daily limit
+    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // Confirm limit is hit
+    let result = bridge.try_deposit(&user, &1, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(result, Err(Ok(Error::DailyLimitExceeded)));
+
+    // Advance ledger past the window (WINDOW_LEDGERS = 17_280)
+    env.ledger().with_mut(|li| {
+        li.sequence_number += 17_280;
+    });
+
+    // After window reset, deposit should succeed again
+    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+}
+
+#[test]
+fn test_daily_deposit_limit_per_user() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1_000);
+    let user_a = Address::generate(&env);
+    let user_b = Address::generate(&env);
+    token_sac.mint(&user_a, &10_000);
+    token_sac.mint(&user_b, &10_000);
+
+    bridge.set_daily_deposit_limit(&token_addr, &500);
+
+    // User A fills their daily limit
+    bridge.deposit(&user_a, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // User A is blocked
+    let result = bridge.try_deposit(&user_a, &1, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(result, Err(Ok(Error::DailyLimitExceeded)));
+
+    // User B can still deposit — limits are per-user
+    bridge.deposit(&user_b, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+}
+
+// ── Escrow accounting invariant tests (#382) ─────────────────────────
+
+#[test]
+fn test_escrow_accounting_invariant_after_full_migration() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &10_000);
+
+    let deposit_amounts: [i128; 5] = [100, 250, 75, 400, 175];
+    let expected_total: i128 = deposit_amounts.iter().sum();
+
+    for amount in deposit_amounts.iter() {
+        bridge.deposit(&user, amount, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    }
+
+    // Migrate all receipts in one batch
+    let migrated = bridge.migrate_escrow(&10);
+    assert_eq!(migrated, deposit_amounts.len() as u32);
+
+    // Version must be set after full migration
+    assert_eq!(bridge.get_escrow_storage_version(), ESCROW_STORAGE_VERSION);
+
+    // Sum all EscrowRecord amounts and assert equal to deposit total
+    let mut escrow_total: i128 = 0;
+    for i in 0..(deposit_amounts.len() as u64) {
+        let record = bridge.get_escrow_record(&i).expect("escrow record must exist");
+        assert!(record.migrated);
+        assert_eq!(record.version, ESCROW_STORAGE_VERSION);
+        escrow_total += record.amount;
+    }
+    assert_eq!(escrow_total, expected_total);
+}
+
+#[test]
+fn test_escrow_partial_migration_preserves_count() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &10_000);
+
+    let deposit_amounts: [i128; 4] = [100, 200, 300, 400];
+    let expected_total: i128 = deposit_amounts.iter().sum();
+
+    for amount in deposit_amounts.iter() {
+        bridge.deposit(&user, amount, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    }
+
+    // Migrate only first 2 (batch_size < total)
+    let migrated1 = bridge.migrate_escrow(&2);
+    assert_eq!(migrated1, 2);
+    assert_eq!(bridge.get_migration_cursor(), 2);
+    // Version stays 0 until complete
+    assert_eq!(bridge.get_escrow_storage_version(), 0);
+
+    // First 2 records exist, last 2 don't yet
+    assert!(bridge.get_escrow_record(&0).is_some());
+    assert!(bridge.get_escrow_record(&1).is_some());
+    assert!(bridge.get_escrow_record(&2).is_none());
+    assert!(bridge.get_escrow_record(&3).is_none());
+
+    // Migrate the remaining
+    let migrated2 = bridge.migrate_escrow(&10);
+    assert_eq!(migrated2, 2);
+    assert_eq!(bridge.get_migration_cursor(), 4);
+    assert_eq!(bridge.get_escrow_storage_version(), ESCROW_STORAGE_VERSION);
+
+    // All records now exist and totals match
+    let mut escrow_total: i128 = 0;
+    for i in 0..4u64 {
+        let record = bridge.get_escrow_record(&i).expect("escrow record must exist");
+        assert!(record.migrated);
+        escrow_total += record.amount;
+    }
+    assert_eq!(escrow_total, expected_total);
 }

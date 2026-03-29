@@ -171,6 +171,26 @@ export interface ReconciliationRecord {
   status: 'matched' | 'unmatched' | 'error';
 }
 
+export type AdminAuditActionType =
+  | 'withdrawal_approved'
+  | 'withdrawal_rejected'
+  | 'reconciliation_adjustment'
+  | 'operator_added'
+  | 'operator_removed'
+  | 'bridge_paused'
+  | 'bridge_unpaused';
+
+export type AdminAuditResult = 'success' | 'failed' | 'pending';
+
+export interface AdminAuditLogEntry {
+  id: string;
+  timestamp: string;
+  action: AdminAuditActionType;
+  adminAddress: string;
+  parameters: Record<string, string | number | boolean | null>;
+  result: AdminAuditResult;
+}
+
 // Stellar Wallet
 export interface StellarWalletConnection {
   address: string;
