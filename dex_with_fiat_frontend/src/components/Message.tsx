@@ -4,10 +4,15 @@ import { useStellarWallet } from '@/contexts/StellarWalletContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
 import { useMasking } from '@/hooks/useMasking';
+import { useCurrencyConversion } from '@/hooks/useCurrencyConversion';
 import { ChatMessage } from '@/types';
 import { AlertTriangle, Bot, Clock, Coins, Link, RotateCcw, User, Loader2, RefreshCcw, XCircle } from 'lucide-react';
+import React from 'react';
 import ReactMarkdown from 'react-markdown';
+import { sanitizeUrl } from '@/lib/markdownSanitizer';
 import { useTranslation } from '@/contexts/TranslationContext';
+import { motion, useReducedMotion } from 'framer-motion';
+import CopyButton from '@/components/ui/CopyButton';
 
 interface MessageProps {
   message: ChatMessage;
@@ -17,14 +22,16 @@ interface MessageProps {
     data?: Record<string, unknown>,
   ) => void;
   onRetry?: (messageId: string) => void;
+  shouldAnimate?: boolean;
 }
 
-export default function Message({ message, onActionClick, onRetry }: MessageProps) {
+export default function Message({ message, onActionClick, onRetry, shouldAnimate = false }: MessageProps) {
   const { connection } = useStellarWallet();
   const { isDarkMode } = useTheme();
   const { maskingEnabled, maskingStyle } = useUserPreferences();
   const isUser = message.role === 'user';
   const hasError = !!message.error;
+  const shouldReduceMotion = useReducedMotion();
 
   // Apply masking to message content
   const maskedContent = useMasking(message.content, {
@@ -35,9 +42,42 @@ export default function Message({ message, onActionClick, onRetry }: MessageProp
   const isPending = message.metadata?.status === 'pending';
   const isFailed = message.metadata?.status === 'failed';
 
+
+  // Currency conversion hook for transaction amounts
+  const amountForConversion = message.metadata?.transactionData?.amountIn 
+    ? parseFloat(String(message.metadata.transactionData.amountIn))
+    : undefined;
+  const tokenForConversion = message.metadata?.transactionData?.tokenIn || 'XLM';
+  const { displayText: conversionDisplayText } = useCurrencyConversion(
+    amountForConversion,
+    tokenForConversion,
+  );
+
+
+
+  const variants = {
+    initial: { 
+      opacity: 0, 
+      y: shouldReduceMotion ? 0 : 20,
+      scale: shouldReduceMotion ? 1 : 0.95
+    },
+    animate: { 
+      opacity: 1, 
+      y: 0,
+      scale: 1,
+      transition: {
+        duration: 0.4,
+        ease: [0.23, 1, 0.32, 1] as const // Custom cubic-bezier for premium feel
+      }
+    }
+  };
+
   return (
-    <div
-      className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-8 animate-fadeIn`}
+    <motion.div
+      initial={shouldAnimate ? "initial" : false}
+      animate="animate"
+      variants={variants}
+      className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-8`}
     >
       <div className={`max-w-[80%] ${isUser ? 'order-2' : 'order-1'}`}>
         {/* Avatar */}
@@ -122,6 +162,34 @@ export default function Message({ message, onActionClick, onRetry }: MessageProp
                       h3: ({ children }) => (
                         <h3 className="text-sm font-bold mb-1">{children}</h3>
                       ),
+                      a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
+                        const safeHref = sanitizeUrl(href);
+                        return (
+                          <a
+                            href={safeHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline text-blue-400 hover:text-blue-300"
+                          >
+                            {children}
+                          </a>
+                        );
+                      },
+                      img: (props: React.ImgHTMLAttributes<HTMLImageElement> & { src?: string | Blob }) => {
+                        const { src, alt, ...rest } = props;
+                        const srcStr = typeof src === 'string' ? src : undefined;
+                        const safeSrc = sanitizeUrl(srcStr);
+                        void rest;
+                        if (safeSrc === '#blocked') return null;
+                        return (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={safeSrc}
+                            alt={alt ?? ''}
+                            className="max-w-full rounded"
+                          />
+                        );
+                      },
                     }}
                   >
                     {maskedContent}
@@ -291,7 +359,7 @@ export default function Message({ message, onActionClick, onRetry }: MessageProp
                     <div className="flex justify-between">
                       <span>Amount:</span>
                       <span className="theme-text-primary font-medium">
-                        {message.metadata.transactionData.amountIn}
+                        {conversionDisplayText || message.metadata.transactionData.amountIn}
                       </span>
                     </div>
                   )}
@@ -310,6 +378,57 @@ export default function Message({ message, onActionClick, onRetry }: MessageProp
                       <span className="theme-text-primary font-medium">
                         {message.metadata.transactionData.note}
                       </span>
+                    </div>
+                  )}
+                  {message.metadata.transactionData.transactionId && (
+                    <div className="flex justify-between items-center gap-2">
+                      <span>Request ID:</span>
+                      <div className="flex items-center gap-1">
+                        <span className="theme-text-primary font-mono text-xs">
+                          {message.metadata.transactionData.transactionId.slice(0, 6)}
+                          ...
+                          {message.metadata.transactionData.transactionId.slice(-4)}
+                        </span>
+                        <CopyButton
+                          value={message.metadata.transactionData.transactionId}
+                          className="flex-shrink-0 p-0.5"
+                          iconClassName="w-3 h-3"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {message.metadata.transactionData.txHash && (
+                    <div className="flex justify-between items-center gap-2">
+                      <span>Tx Hash:</span>
+                      <div className="flex items-center gap-1">
+                        <span className="theme-text-primary font-mono text-xs">
+                          {message.metadata.transactionData.txHash.slice(0, 6)}
+                          ...
+                          {message.metadata.transactionData.txHash.slice(-4)}
+                        </span>
+                        <CopyButton
+                          value={message.metadata.transactionData.txHash}
+                          className="flex-shrink-0 p-0.5"
+                          iconClassName="w-3 h-3"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {message.metadata.transactionData.receiptId && (
+                    <div className="flex justify-between items-center gap-2">
+                      <span>Receipt ID:</span>
+                      <div className="flex items-center gap-1">
+                        <span className="theme-text-primary font-mono text-xs">
+                          {message.metadata.transactionData.receiptId.slice(0, 6)}
+                          ...
+                          {message.metadata.transactionData.receiptId.slice(-4)}
+                        </span>
+                        <CopyButton
+                          value={message.metadata.transactionData.receiptId}
+                          className="flex-shrink-0 p-0.5"
+                          iconClassName="w-3 h-3"
+                        />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -346,6 +465,6 @@ export default function Message({ message, onActionClick, onRetry }: MessageProp
           </div>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

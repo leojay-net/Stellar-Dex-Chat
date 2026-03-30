@@ -59,6 +59,7 @@ export interface TransactionData {
   recipient?: string;
   transactionId?: string;
   txHash?: string; // Transaction hash for completed transactions
+  receiptId?: string; // On-chain receipt ID (hex-encoded BytesN<32>)
   note?: string;
 }
 
@@ -170,6 +171,26 @@ export interface ReconciliationRecord {
   status: 'matched' | 'unmatched' | 'error';
 }
 
+export type AdminAuditActionType =
+  | 'withdrawal_approved'
+  | 'withdrawal_rejected'
+  | 'reconciliation_adjustment'
+  | 'operator_added'
+  | 'operator_removed'
+  | 'bridge_paused'
+  | 'bridge_unpaused';
+
+export type AdminAuditResult = 'success' | 'failed' | 'pending';
+
+export interface AdminAuditLogEntry {
+  id: string;
+  timestamp: string;
+  action: AdminAuditActionType;
+  adminAddress: string;
+  parameters: Record<string, string | number | boolean | null>;
+  result: AdminAuditResult;
+}
+
 // Stellar Wallet
 export interface StellarWalletConnection {
   address: string;
@@ -185,4 +206,34 @@ export interface FiatTransactionParams {
   fiatAmount: string;
   transactionId: string;
   bankAccount?: BankAccount;
+}
+
+// Filter Types for Transaction Views
+export type TransactionStatus =
+  | 'pending'
+  | 'completed'
+  | 'warning'
+  | 'failed'
+  | 'cancelled';
+
+export type FilterCategory = 'status' | 'asset' | 'network';
+
+export interface FilterState {
+  status: TransactionStatus[];
+  asset: string[];
+  network: string[];
+}
+
+export interface FilterOption {
+  value: string;
+  label: string;
+  count: number;
+}
+
+export interface FilterStats {
+  statusOptions: FilterOption[];
+  assetOptions: FilterOption[];
+  networkOptions: FilterOption[];
+  totalCount: number;
+  filteredCount: number;
 }

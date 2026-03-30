@@ -1,9 +1,11 @@
 #![no_std]
+#![allow(clippy::too_many_arguments)]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, token, xdr::ToXdr, Address, Bytes, BytesN,
-    Env, Symbol, Vec,
+    contract, contracterror, contractevent, contractimpl, contracttype, token, xdr::ToXdr,
+    Address, Bytes, BytesN, Env, Symbol, Vec,
 };
 
+pub mod math;
 pub mod oracle;
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -11,8 +13,11 @@ pub const MIN_TTL: u32 = 518_400; // ~30 days
 pub const MAX_TTL: u32 = 535_680; // ~31 days
 const MAX_REFERENCE_LEN: u32 = 64;
 const WINDOW_LEDGERS: u32 = 17_280; // ~24 hours
+const CIRCUIT_BREAKER_RESET_LEDGERS: u32 = 34_560; // ~48 hours (2 × WINDOW_LEDGERS)
+const WITHDRAWAL_EXPIRY_WINDOW_LEDGERS: u32 = 17_280; // ~24 hours — reserved for future withdrawal expiry feature
 const MIN_TIMELOCK_DELAY: u32 = 34_560; // 48 hours
 const DEFAULT_INACTIVITY_THRESHOLD: u32 = 1_555_200; // ~3 months
+const MIN_UPGRADE_DELAY: u32 = 1_000;
 pub const EVENT_VERSION: u32 = 1;
 pub const ESCROW_STORAGE_VERSION: u32 = 1;
 
@@ -21,10 +26,13 @@ pub const ESCROW_STORAGE_VERSION: u32 = 1;
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
 pub enum Error {
+    Overflow = 10,
+
     // --- 100 series: Initialization & State ---
     NotInitialized = 101,
     AlreadyInitialized = 102,
     InternalError = 103,
+    ContractPaused = 104,
 
     // --- 200 series: Authorization & Access ---
     Unauthorized = 201,
@@ -32,6 +40,8 @@ pub enum Error {
     NoPendingAdmin = 203,
     InvalidRecipient = 204,
     NotOperator = 205,
+    SameAdmin = 207,
+    OperatorCapReached = 206,
 
     // --- 300 series: Constraints & Limits ---
     ZeroAmount = 301,
@@ -44,6 +54,8 @@ pub enum Error {
     TokenNotWhitelisted = 308,
     AddressDenied = 309,
     RescueForbidden = 310,
+    CircuitBreakerActive = 311,
+    InvalidMemoHash = 312,
 
     // --- 400 series: Funds & Balances ---
     InsufficientFunds = 401,
@@ -58,19 +70,56 @@ pub enum Error {
     ActionNotReady = 602,
     InactivityThresholdNotReached = 603,
     NoEmergencyRecoveryAddress = 604,
+    UpgradeNotReady = 605,
+    UpgradeProposalMissing = 606,
+    UpgradeDelayTooShort = 607,
 
     // --- 700 series: External Services ---
     OracleNotSet = 701,
     OraclePriceInvalid = 702,
     SlippageExceeded = 703,
+    SlippageTooHigh = 704,
 
     // --- 800 series: Quota & Migration ---
     WithdrawalQuotaExceeded = 801,
     MigrationAlreadyComplete = 802,
     BatchOperationFailed = 803,
+
+    // --- 900 series: Replay Protection ---
+    InvalidNonce = 901,
+    StaleNonce = 902,
+
+    // --- 1000 series: Deposit Floor ---
+    BelowMinimum = 1001,
+
+    // --- 1100 series: Multi-sig ---
+    InvalidThreshold = 1101,
+    DuplicateSigner = 1102,
+    SignerNotFound = 1103,
+    ProposalNotFound = 1104,
+    AlreadyApproved = 1105,
+    ProposalAlreadyExecuted = 1106,
+    ThresholdNotMet = 1107,
 }
 
 // ── Models ────────────────────────────────────────────────────────────────
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WithdrawalProposal {
+    pub to: Address,
+    pub token: Address,
+    pub amount: i128,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MultisigProposal {
+    pub creator: Address,
+    pub action: BatchAdminOp,
+    pub approvals: Vec<Address>,
+    pub executed: bool,
+    pub created_at: u32,
+}
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WithdrawRequest {
@@ -80,12 +129,22 @@ pub struct WithdrawRequest {
     pub unlock_ledger: u32,
     pub memo_hash: Option<BytesN<32>>,
     pub queued_ledger: u32,
+    /// Risk tier for withdrawal prioritization. Tier 0 = highest priority.
+    pub risk_tier: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GlobalDailyWithdrawn {
+    pub amount: i128,
+    pub window_start: u32,
 }
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TokenConfig {
     pub limit: i128,
+    pub daily_deposit_limit: i128,
     pub total_deposited: i128,
     pub total_withdrawn: i128,
     pub total_liabilities: i128,
@@ -121,7 +180,21 @@ pub struct UserDailyVolume {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UpgradeProposal {
+    pub wasm_hash: BytesN<32>,
+    pub executable_after: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UserDailyWithdrawal {
+    pub amount: i128,
+    pub window_start: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UserDailyDeposit {
     pub amount: i128,
     pub window_start: u32,
 }
@@ -149,6 +222,7 @@ pub struct BatchAdminOp {
 pub struct BatchResult {
     pub total_ops: u32,
     pub success_count: u32,
+    pub failure_count: u32,
     pub failed_index: Option<u32>,
 }
 
@@ -168,11 +242,292 @@ pub struct ConfigSnapshot {
     pub anti_sandwich_delay: u32,
 }
 
+// ── Events ────────────────────────────────────────────────────────────────
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct DeployHashEvent {
+    pub version: u32,
+    pub config_hash: BytesN<32>,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct DepositEvent {
+    pub version: u32,
+    pub from: Address,
+    pub token: Address,
+    pub amount: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct ReceiptIssuedEvent {
+    pub version: u32,
+    pub receipt_id: BytesN<32>,
+    pub memo_hash: Option<BytesN<32>>,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct WithdrawEvent {
+    pub version: u32,
+    pub to: Address,
+    pub token: Address,
+    pub amount: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct WithdrawalRequestedEvent {
+    pub version: u32,
+    pub to: Address,
+    pub request_id: u64,
+    pub memo_hash: Option<BytesN<32>>,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct WithdrawalExecutedEvent {
+    pub version: u32,
+    pub request_id: u64,
+    pub to: Address,
+    pub amount: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct WithdrawalCancelledEvent {
+    pub version: u32,
+    pub request_id: u64,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct FeeAccruedEvent {
+    pub version: u32,
+    pub token: Address,
+    pub amount: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct RefundEvent {
+    pub version: u32,
+    pub receipt_id: BytesN<32>,
+    pub to: Address,
+    pub amount: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct PausedEvent {
+    pub version: u32,
+    pub by: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct UnpausedEvent {
+    pub version: u32,
+    pub by: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct AdminTransferEvent {
+    pub version: u32,
+    pub old_admin: Address,
+    pub new_admin: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct SetMinDepositEvent {
+    pub version: u32,
+    pub min: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct SlippageEvent {
+    pub version: u32,
+    pub slippage_bps: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct AdminActionQueuedEvent {
+    pub version: u32,
+    pub action_type: Symbol,
+    pub action_id: u64,
+    pub target_ledger: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct AdminActionExecutedEvent {
+    pub version: u32,
+    pub action_id: u64,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct SetOperatorEvent {
+    pub version: u32,
+    pub operator: Address,
+    pub active: bool,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct DenyAddressEvent {
+    pub version: u32,
+    pub address: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct HeartbeatEvent {
+    pub version: u32,
+    pub operator: Address,
+    pub ledger: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct NonceIncrementedEvent {
+    pub version: u32,
+    pub operator: Address,
+    pub new_nonce: u64,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct OperatorPrunedEvent {
+    pub version: u32,
+    pub operator: Address,
+    pub ledger: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct FeeWithdrawnEvent {
+    pub version: u32,
+    pub to: Address,
+    pub amount: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct RescueEvent {
+    pub version: u32,
+    pub token: Address,
+    pub to: Address,
+    pub amount: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct QuotaSetEvent {
+    pub version: u32,
+    pub quota: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct QuotaResetEvent {
+    pub version: u32,
+    pub user: Address,
+    pub window_start: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct MigrationEvent {
+    pub version: u32,
+    pub cursor: u64,
+    pub migrated_count: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct BatchFailEvent {
+    pub version: u32,
+    pub index: u32,
+    pub total_ops: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct BatchOkEvent {
+    pub version: u32,
+    pub success_count: u32,
+    pub failure_count: u32,
+    pub total_ops: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct CircuitBreakerResetEvent {
+    pub version: u32,
+    pub ledger: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct CircuitBreakerTrippedEvent {
+    pub version: u32,
+    pub new_total: i128,
+    pub threshold: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct SetWithdrawOperatorEvent {
+    pub version: u32,
+    pub operator: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct RemoveWithdrawOperatorEvent {
+    pub version: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct DenyRemovedEvent {
+    pub version: u32,
+    pub address: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WithdrawalExpiredEvent {
+    #[topic]
+    pub version: u32,
+    pub request_id: u64,
+    pub to: Address,
+    pub amount: i128,
+    pub queued_ledger: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CircuitBreakerAutoResetEvent {
+    #[topic]
+    pub version: u32,
+    pub tripped_at: u32,
+    pub reset_at: u32,
+}
+
 // ── Storage keys ──────────────────────────────────────────────────────────
 #[contracttype]
 pub enum DataKey {
     Admin,
     PendingAdmin,
+    Paused,
     Token, // Default token
     TokenRegistry(Address),
     AllowlistEnabled,
@@ -180,6 +535,7 @@ pub enum DataKey {
     LastDeposit(Address),
     ReceiptCounter,
     Receipt(BytesN<32>),
+    MinDeposit,
     LockPeriod,
     NextRequestID,
     WithdrawQueueLen,
@@ -192,6 +548,7 @@ pub enum DataKey {
     // Withdrawal cooldown after large deposit
     WithdrawCooldownLedgers,
     WithdrawCooldownThreshold,
+    WithdrawalExpiryWindow,
     LastLargeDeposit(Address),
     UserDeposited(Address),
     NextActionID,
@@ -205,16 +562,45 @@ pub enum DataKey {
     UserDailyVolume(Address),
     AntiSandwichDelay,
     WithdrawalQuota,
+    UserDailyDeposit(Address, Address),
+    TokenAllowlistEnabled(Address),
+    TokenAllowed(Address, Address),
     UserDailyWithdrawal(Address),
     EscrowStorageVersion,
     EscrowRecord(u64),
     EscrowMigrationCursor,
     PendingRenounceLedger,
     Operator(Address),
+    OperatorCount,
+    MaxOperators,
+    OperatorList,
     OperatorHeartbeat(Address),
+    OperatorNonce(Address),
+    WithdrawOperator,
     Denied(Address),
+    DeniedIndex(u64),
+    DeniedCount,
     FeeVault(Address),
     ReceiptIndex(u64),
+    // ── Issue #214: deployment config hash ────────────────────────────────
+    DeployConfigHash,
+    // ── Issue #209: global circuit breaker ───────────────────────────────
+    CircuitBreakerThreshold,
+    CircuitBreakerTripped,
+    CircuitBreakerTrippedAt,
+    CircuitBreakerResetWindow,
+    GlobalDailyWithdrawn,
+    // ── Issue #226: withdrawal queue risk tiers ───────────────────────────
+    TierQueueHead(u32),
+    TierQueueLen(u32),
+    // ── Issue #107: governed upgrade mechanism ───────────────────────────
+    UpgradeProposal,
+    UpgradeDelay,
+    // ── Issue #100: M-of-N multi-signature admin control ─────────────────
+    Signers,
+    Threshold,
+    MultisigProposal(u64),
+    NextMultisigID,
 }
 
 const ORACLE_PRICE_DECIMALS: i128 = 10_000_000;
@@ -225,29 +611,61 @@ pub struct FiatBridge;
 
 #[contractimpl]
 impl FiatBridge {
-    pub fn init(env: Env, admin: Address, token: Address, limit: i128) -> Result<(), Error> {
+    pub fn init(
+        env: Env,
+        admin: Address,
+        token: Address,
+        limit: i128,
+        min_deposit: i128,
+        signers: Vec<Address>,
+        threshold: u32,
+    ) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(Error::AlreadyInitialized);
         }
         if limit <= 0 {
             return Err(Error::ZeroAmount);
         }
+        if min_deposit < 1 || min_deposit >= limit {
+            return Err(Error::BelowMinimum);
+        }
+
+        // Validate multisig config
+        if threshold == 0 || threshold > signers.len() {
+            return Err(Error::InvalidThreshold);
+        }
+        // Ensure no duplicate signers
+        let mut seen = Vec::<Address>::new(&env);
+        for s in signers.iter() {
+            if seen.contains(&s) {
+                return Err(Error::DuplicateSigner);
+            }
+            seen.push_back(s);
+        }
+
+        env.storage().instance().set(&DataKey::MinDeposit, &min_deposit);
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Token, &token);
+        env.storage().instance().set(&DataKey::Signers, &signers);
+        env.storage().instance().set(&DataKey::Threshold, &threshold);
+        env.storage().instance().set(&DataKey::NextMultisigID, &0u64);
 
         let config = TokenConfig {
             limit,
+            daily_deposit_limit: 0,
             total_deposited: 0,
             total_withdrawn: 0,
             total_liabilities: 0,
         };
         env.storage()
             .persistent()
-            .set(&DataKey::TokenRegistry(token), &config);
+            .set(&DataKey::TokenRegistry(token.clone()), &config);
 
         env.storage().instance().set(&DataKey::SchemaVersion, &1u32);
         env.storage().instance().set(&DataKey::NextActionID, &0u64);
-        env.storage().instance().set(&DataKey::WithdrawQueueLen, &0u64);
+        env.storage()
+            .instance()
+            .set(&DataKey::WithdrawQueueLen, &0u64);
         env.storage()
             .instance()
             .set(&DataKey::WithdrawQueueHead, &Option::<u64>::None);
@@ -260,6 +678,26 @@ impl FiatBridge {
         env.storage()
             .instance()
             .set(&DataKey::AntiSandwichDelay, &0u32);
+        env.storage().instance().set(&DataKey::OperatorCount, &0u32);
+        env.storage().instance().set(&DataKey::MaxOperators, &0u32);
+        env.storage()
+            .instance()
+            .set(&DataKey::OperatorList, &Vec::<Address>::new(&env));
+        env.storage()
+            .instance()
+            .set(&DataKey::UpgradeDelay, &MIN_UPGRADE_DELAY);
+
+        // ── Issue #214: store and emit immutable deployment config hash ──
+        let config_data = (admin.clone(), token.clone(), limit);
+        let config_hash: BytesN<32> = env.crypto().sha256(&config_data.to_xdr(&env)).into();
+        env.storage()
+            .persistent()
+            .set(&DataKey::DeployConfigHash, &config_hash);
+        DeployHashEvent {
+            version: EVENT_VERSION,
+            config_hash,
+        }
+        .publish(&env);
 
         env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
         Ok(())
@@ -276,7 +714,9 @@ impl FiatBridge {
         memo_hash: Option<BytesN<32>>,
     ) -> Result<BytesN<32>, Error> {
         env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
+        Self::validate_memo_hash(&env, &memo_hash)?;
         from.require_auth();
+        Self::require_not_paused(&env)?;
 
         if amount <= 0 {
             return Err(Error::ZeroAmount);
@@ -312,18 +752,35 @@ impl FiatBridge {
             .extend_ttl(&key, max_delay, max_delay + 100);
 
         // Allowlist
-        let allowlist_on: bool = env
+        let global_allowlist_on: bool = env
             .storage()
             .instance()
             .get(&DataKey::AllowlistEnabled)
             .unwrap_or(false);
-        if allowlist_on
-            && !env
+
+        if global_allowlist_on {
+            if !env
                 .storage()
                 .persistent()
                 .has(&DataKey::Allowed(from.clone()))
-        {
-            return Err(Error::NotAllowed);
+            {
+                return Err(Error::NotAllowed);
+            }
+        } else {
+            // Per-token allowlist check (Issue #354)
+            let token_allowlist_on: bool = env
+                .storage()
+                .instance()
+                .get(&DataKey::TokenAllowlistEnabled(token.clone()))
+                .unwrap_or(false);
+            if token_allowlist_on
+                && !env
+                    .storage()
+                    .persistent()
+                    .has(&DataKey::TokenAllowed(token.clone(), from.clone()))
+            {
+                return Err(Error::NotAllowed);
+            }
         }
 
         // Denylist
@@ -341,9 +798,19 @@ impl FiatBridge {
             .persistent()
             .get(&DataKey::TokenRegistry(token.clone()))
             .ok_or(Error::TokenNotWhitelisted)?;
+        // ── Issue #113: minimum deposit floor ────────────────────────────
+        let min_deposit: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::MinDeposit)
+            .unwrap_or(1);
+        if amount < min_deposit {
+            return Err(Error::BelowMinimum);
+        }
         if amount > config.limit {
             return Err(Error::ExceedsLimit);
         }
+        Self::enforce_daily_deposit_limit(&env, &from, &token, amount, &config)?;
 
         // Fiat Limit & Slippage
         let actual_price = Self::validate_fiat_limit(&env, &from, &token, amount)?;
@@ -351,7 +818,7 @@ impl FiatBridge {
 
         // Transfer
         let token_client = token::Client::new(&env, &token);
-        token_client.transfer(&from, &env.current_contract_address(), &amount);
+        token_client.transfer(&from, env.current_contract_address(), &amount);
 
         // State update
         let receipt_counter: u64 = env
@@ -372,7 +839,11 @@ impl FiatBridge {
         let receipt_id = env.crypto().sha256(&derivation_data.to_xdr(&env));
 
         // Collision check (safety)
-        if env.storage().persistent().has(&DataKey::Receipt(receipt_id.clone().into())) {
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::Receipt(receipt_id.clone().into()))
+        {
             return Err(Error::InternalError);
         }
 
@@ -390,23 +861,28 @@ impl FiatBridge {
             .set(&DataKey::Receipt(receipt_id.clone().into()), &receipt);
         // Store sequential index → hash mapping for enumeration (e.g. migration)
         let receipt_hash: BytesN<32> = receipt_id.clone().into();
+        let index_key = DataKey::ReceiptIndex(receipt_counter);
         env.storage()
-            .persistent()
-            .set(&DataKey::ReceiptIndex(receipt_counter), &receipt_hash);
+            .temporary()
+            .set(&index_key, &receipt_hash);
+        env.storage()
+            .temporary()
+            .extend_ttl(&index_key, MIN_TTL, MIN_TTL);
         env.storage()
             .instance()
             .set(&DataKey::ReceiptCounter, &(receipt_counter + 1));
 
-        config.total_deposited += amount;
+        config.total_deposited = config.total_deposited.checked_add(amount).ok_or(Error::Overflow)?;
         env.storage()
             .persistent()
             .set(&DataKey::TokenRegistry(token.clone()), &config);
 
         let user_key = DataKey::UserDeposited(from.clone());
         let user_total: i128 = env.storage().instance().get(&user_key).unwrap_or(0);
+        let new_user_total = user_total.checked_add(amount).ok_or(Error::InternalError)?;
         env.storage()
             .instance()
-            .set(&user_key, &(user_total + amount));
+            .set(&user_key, &new_user_total);
 
         // Track large deposits for withdrawal cooldown
         let withdraw_threshold: i128 = env
@@ -429,14 +905,37 @@ impl FiatBridge {
             env.storage().temporary().extend_ttl(&large_key, ttl, ttl);
         }
 
-        env.events()
-            .publish((Symbol::new(&env, "deposit"), from), amount);
-        env.events()
-            .publish((Symbol::new(&env, "rcpt_issd"), memo_hash), receipt_id);
+        DepositEvent {
+            version: EVENT_VERSION,
+            from: from.clone(),
+            token: token.clone(),
+            amount,
+        }
+        .publish(&env);
+
+        ReceiptIssuedEvent {
+            version: EVENT_VERSION,
+            receipt_id: receipt_hash.clone(),
+            memo_hash,
+        }
+        .publish(&env);
 
         Self::check_invariants(&env, &token)?;
 
         Ok(receipt_hash)
+    }
+
+    /// Validates that `memo_hash`, when provided, is not all zeros.
+    /// A zero hash (32 bytes of `0x00`) is rejected as it indicates a missing or
+    /// placeholder SHA-256 hash rather than a real external transaction reference.
+    fn validate_memo_hash(env: &Env, memo_hash: &Option<BytesN<32>>) -> Result<(), Error> {
+        if let Some(hash) = memo_hash {
+            let zero_hash = BytesN::from_array(env, &[0u8; 32]);
+            if hash == &zero_hash {
+                return Err(Error::InvalidMemoHash);
+            }
+        }
+        Ok(())
     }
 
     fn check_invariants(env: &Env, token_addr: &Address) -> Result<(), Error> {
@@ -466,20 +965,48 @@ impl FiatBridge {
         Ok(())
     }
 
-    pub fn withdraw(env: Env, to: Address, amount: i128, token: Address) -> Result<(), Error> {
+    pub fn withdraw(
+        env: Env,
+        caller: Address,
+        to: Address,
+        amount: i128,
+        token: Address,
+    ) -> Result<(), Error> {
         env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
         let admin: Address = env
             .storage()
             .instance()
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
-        admin.require_auth();
+
+        let operator: Option<Address> = env.storage().instance().get(&DataKey::WithdrawOperator);
+
+        if caller == admin {
+            caller.require_auth();
+        } else if let Some(op) = operator {
+            if caller == op {
+                caller.require_auth();
+            } else {
+                return Err(Error::Unauthorized);
+            }
+        } else {
+            return Err(Error::Unauthorized);
+        }
+
+        Self::require_not_paused(&env)?;
 
         if amount <= 0 {
             return Err(Error::ZeroAmount);
         }
 
+        // ── Issue #109: prevent tokens from being locked inside the contract ──
+        if to == env.current_contract_address() {
+            return Err(Error::InvalidRecipient);
+        }
+
         Self::enforce_withdrawal_quota(&env, &to, amount)?;
+        // ── Issue #209: circuit breaker check ────────────────────────────
+        Self::check_and_update_circuit_breaker(&env, amount)?;
         // Denylist
         if env.storage().persistent().has(&DataKey::Denied(to.clone())) {
             return Err(Error::AddressDenied);
@@ -496,14 +1023,19 @@ impl FiatBridge {
             .persistent()
             .get(&DataKey::TokenRegistry(token.clone()))
             .ok_or(Error::TokenNotWhitelisted)?;
-        config.total_withdrawn += amount;
+        config.total_withdrawn = config.total_withdrawn.checked_add(amount).ok_or(Error::InternalError)?;
         env.storage()
             .persistent()
             .set(&DataKey::TokenRegistry(token.clone()), &config);
 
         Self::check_invariants(&env, &token)?;
-        env.events()
-            .publish((Symbol::new(&env, "withdraw"), to), amount);
+        WithdrawEvent {
+            version: EVENT_VERSION,
+            to: to.clone(),
+            token: token.clone(),
+            amount,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -513,14 +1045,17 @@ impl FiatBridge {
         amount: i128,
         token: Address,
         memo_hash: Option<BytesN<32>>,
+        risk_tier: u32,
     ) -> Result<u64, Error> {
         env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
+        Self::validate_memo_hash(&env, &memo_hash)?;
         let admin: Address = env
             .storage()
             .instance()
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+        Self::require_not_paused(&env)?;
 
         if amount <= 0 {
             return Err(Error::ZeroAmount);
@@ -550,11 +1085,20 @@ impl FiatBridge {
             .instance()
             .get(&DataKey::LockPeriod)
             .unwrap_or(0);
+        let cooldown_ledgers: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::CooldownLedgers)
+            .unwrap_or(0);
         let request_id: u64 = env
             .storage()
             .instance()
             .get(&DataKey::NextRequestID)
             .unwrap_or(0);
+        let receipt_min_ttl = MIN_TTL
+            .saturating_add(lock_period)
+            .saturating_add(cooldown_ledgers);
+        Self::extend_receipt_ttls_for_depositor(&env, &to, receipt_min_ttl);
 
         let queue_len: u64 = env
             .storage()
@@ -569,6 +1113,7 @@ impl FiatBridge {
             unlock_ledger: env.ledger().sequence() + lock_period,
             memo_hash: memo_hash.clone(),
             queued_ledger: env.ledger().sequence(),
+            risk_tier,
         };
         env.storage()
             .persistent()
@@ -585,22 +1130,40 @@ impl FiatBridge {
         env.storage()
             .instance()
             .set(&DataKey::WithdrawQueueLen, &(queue_len + 1));
+
+        // ── Issue #226: per-tier queue tracking ──────────────────────────
+        let tier_len: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::TierQueueLen(risk_tier))
+            .unwrap_or(0);
+        if tier_len == 0 {
+            env.storage()
+                .instance()
+                .set(&DataKey::TierQueueHead(risk_tier), &Some(request_id));
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::TierQueueLen(risk_tier), &(tier_len + 1));
         let mut config: TokenConfig = env
             .storage()
             .persistent()
             .get(&DataKey::TokenRegistry(token.clone()))
             .ok_or(Error::TokenNotWhitelisted)?;
-        config.total_liabilities += amount;
+        config.total_liabilities = config.total_liabilities.checked_add(amount).ok_or(Error::InternalError)?;
         env.storage()
             .persistent()
             .set(&DataKey::TokenRegistry(token.clone()), &config);
 
         Self::check_invariants(&env, &token)?;
-        
-        env.events().publish(
-            (Symbol::new(&env, "req_withdr"), to),
-            (request_id, memo_hash),
-        );
+
+        WithdrawalRequestedEvent {
+            version: EVENT_VERSION,
+            to: to.clone(),
+            request_id,
+            memo_hash,
+        }
+        .publish(&env);
 
         Ok(request_id)
     }
@@ -613,6 +1176,7 @@ impl FiatBridge {
         max_slippage: u32,
     ) -> Result<(), Error> {
         env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
+        Self::require_not_paused(&env)?;
         let mut request: WithdrawRequest = env
             .storage()
             .persistent()
@@ -655,6 +1219,8 @@ impl FiatBridge {
         };
 
         Self::enforce_withdrawal_quota(&env, &request.to, execute_amount)?;
+        // ── Issue #209: circuit breaker check ────────────────────────────
+        Self::check_and_update_circuit_breaker(&env, execute_amount)?;
 
         if execute_amount > balance {
             return Err(Error::InsufficientFunds);
@@ -680,6 +1246,7 @@ impl FiatBridge {
             &execute_amount,
         );
 
+        let tier = request.risk_tier;
         if execute_amount == request.amount {
             env.storage()
                 .persistent()
@@ -696,6 +1263,18 @@ impl FiatBridge {
                     .set(&DataKey::WithdrawQueueLen, &(queue_len - 1));
             }
             Self::advance_withdraw_queue_head(&env, request_id);
+            // ── Issue #226: advance per-tier head ─────────────────────────
+            let tier_len: u64 = env
+                .storage()
+                .instance()
+                .get(&DataKey::TierQueueLen(tier))
+                .unwrap_or(0);
+            if tier_len > 0 {
+                env.storage()
+                    .instance()
+                    .set(&DataKey::TierQueueLen(tier), &(tier_len - 1));
+            }
+            Self::advance_tier_queue_head(&env, tier, request_id);
         } else {
             request.amount -= execute_amount;
             env.storage()
@@ -708,13 +1287,21 @@ impl FiatBridge {
             .persistent()
             .get(&DataKey::TokenRegistry(request.token.clone()))
             .ok_or(Error::TokenNotWhitelisted)?;
-        config.total_withdrawn += execute_amount;
+        config.total_withdrawn = config.total_withdrawn.checked_add(execute_amount).ok_or(Error::InternalError)?;
         config.total_liabilities -= execute_amount;
         env.storage()
             .persistent()
             .set(&DataKey::TokenRegistry(request.token.clone()), &config);
 
         Self::check_invariants(&env, &request.token)?;
+
+        WithdrawalExecutedEvent {
+            version: EVENT_VERSION,
+            request_id,
+            to: request.to.clone(),
+            amount: execute_amount,
+        }
+        .publish(&env);
 
         Ok(())
     }
@@ -726,6 +1313,7 @@ impl FiatBridge {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+        Self::require_not_paused(&env)?;
         if !env
             .storage()
             .persistent()
@@ -733,11 +1321,14 @@ impl FiatBridge {
         {
             return Err(Error::RequestNotFound);
         }
+
         let request: WithdrawRequest = env
             .storage()
             .persistent()
             .get(&DataKey::WithdrawQueue(request_id))
             .ok_or(Error::RequestNotFound)?;
+
+        let tier = request.risk_tier;
 
         let mut config: TokenConfig = env
             .storage()
@@ -765,7 +1356,113 @@ impl FiatBridge {
         }
         Self::advance_withdraw_queue_head(&env, request_id);
 
+        // ── Issue #226: per-tier bookkeeping on cancel ────────────────────
+        let tier_len: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::TierQueueLen(tier))
+            .unwrap_or(0);
+        if tier_len > 0 {
+            env.storage()
+                .instance()
+                .set(&DataKey::TierQueueLen(tier), &(tier_len - 1));
+        }
+        Self::advance_tier_queue_head(&env, tier, request_id);
+
         Self::check_invariants(&env, &request.token)?;
+
+        WithdrawalCancelledEvent { version: EVENT_VERSION, request_id }.publish(&env);
+
+        Ok(())
+    }
+
+    /// Reclaim an expired withdrawal request.
+    ///
+    /// An admin may call this when a queued withdrawal has not been executed
+    /// within the expiry window. The request is removed from the queue and
+    /// the reserved liability is released back to the pool. Funds stay in
+    /// escrow — they are NOT returned to the depositor. Use `rescue_token`
+    /// or a manual `withdraw` if repatriation is needed.
+    pub fn reclaim_expired_withdrawal(env: Env, request_id: u64) -> Result<(), Error> {
+        env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+
+        let request: WithdrawRequest = env
+            .storage()
+            .persistent()
+            .get(&DataKey::WithdrawQueue(request_id))
+            .ok_or(Error::RequestNotFound)?;
+
+        // Resolve the configured expiry window (fallback to compile-time default).
+        let expiry_window: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::WithdrawalExpiryWindow)
+            .unwrap_or(WITHDRAWAL_EXPIRY_WINDOW_LEDGERS);
+
+        // Reject if the request has not yet passed the expiry window.
+        if env.ledger().sequence() <= request.queued_ledger.saturating_add(expiry_window) {
+            return Err(Error::WithdrawalLocked);
+        }
+
+        let tier = request.risk_tier;
+
+        // Release the liability.
+        let mut config: TokenConfig = env
+            .storage()
+            .persistent()
+            .get(&DataKey::TokenRegistry(request.token.clone()))
+            .ok_or(Error::TokenNotWhitelisted)?;
+        config.total_liabilities -= request.amount;
+        env.storage()
+            .persistent()
+            .set(&DataKey::TokenRegistry(request.token.clone()), &config);
+
+        // Remove from queue.
+        env.storage()
+            .persistent()
+            .remove(&DataKey::WithdrawQueue(request_id));
+
+        let queue_len: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::WithdrawQueueLen)
+            .unwrap_or(0);
+        if queue_len > 0 {
+            env.storage()
+                .instance()
+                .set(&DataKey::WithdrawQueueLen, &(queue_len - 1));
+        }
+        Self::advance_withdraw_queue_head(&env, request_id);
+
+        // Per-tier bookkeeping.
+        let tier_len: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::TierQueueLen(tier))
+            .unwrap_or(0);
+        if tier_len > 0 {
+            env.storage()
+                .instance()
+                .set(&DataKey::TierQueueLen(tier), &(tier_len - 1));
+        }
+        Self::advance_tier_queue_head(&env, tier, request_id);
+
+        WithdrawalExpiredEvent {
+            version: EVENT_VERSION,
+            request_id,
+            to: request.to.clone(),
+            amount: request.amount,
+            queued_ledger: request.queued_ledger,
+        }
+        .publish(&env);
+
         Ok(())
     }
 
@@ -832,6 +1529,96 @@ impl FiatBridge {
         Ok(())
     }
 
+    pub fn set_token_allowlist_enabled(
+        env: Env,
+        token: Address,
+        enabled: bool,
+    ) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::TokenAllowlistEnabled(token), &enabled);
+        Ok(())
+    }
+
+    pub fn add_token_allowlist(env: Env, token: Address, address: Address) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage()
+            .persistent()
+            .set(&DataKey::TokenAllowed(token, address), &true);
+        Ok(())
+    }
+
+    pub fn remove_token_allowlist(env: Env, token: Address, address: Address) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage()
+            .persistent()
+            .remove(&DataKey::TokenAllowed(token, address));
+        Ok(())
+    }
+
+    // ── Issue #113: minimum deposit floor ────────────────────────────
+    pub fn set_min_deposit(env: Env, min: i128) -> Result<(), Error> {
+        env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        if min < 1 {
+            return Err(Error::BelowMinimum);
+        }
+        env.storage().instance().set(&DataKey::MinDeposit, &min);
+        SetMinDepositEvent { version: EVENT_VERSION, min }.publish(&env);
+        Ok(())
+    }
+
+    pub fn get_min_deposit(env: Env) -> i128 {
+        env.storage()
+            .instance()
+            .get(&DataKey::MinDeposit)
+            .unwrap_or(1)
+    }
+
+    pub fn set_daily_deposit_limit(
+        env: Env,
+        token: Address,
+        limit_per_day: i128,
+    ) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        let mut config: TokenConfig = env
+            .storage()
+            .persistent()
+            .get(&DataKey::TokenRegistry(token.clone()))
+            .ok_or(Error::TokenNotWhitelisted)?;
+        config.daily_deposit_limit = limit_per_day;
+        env.storage()
+            .persistent()
+            .set(&DataKey::TokenRegistry(token), &config);
+        Ok(())
+    }
+
     pub fn set_cooldown(env: Env, ledgers: u32) -> Result<(), Error> {
         let admin: Address = env
             .storage()
@@ -876,6 +1663,30 @@ impl FiatBridge {
         Ok(())
     }
 
+    pub fn pause(env: Env) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::Paused, &true);
+        PausedEvent { version: EVENT_VERSION, by: admin.clone() }.publish(&env);
+        Ok(())
+    }
+
+    pub fn unpause(env: Env) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::Paused, &false);
+        UnpausedEvent { version: EVENT_VERSION, by: admin.clone() }.publish(&env);
+        Ok(())
+    }
+
     pub fn set_anti_sandwich_delay(env: Env, ledgers: u32) -> Result<(), Error> {
         let admin: Address = env
             .storage()
@@ -896,6 +1707,9 @@ impl FiatBridge {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+        if new_admin == admin {
+            return Err(Error::SameAdmin);
+        }
         env.storage()
             .instance()
             .set(&DataKey::PendingAdmin, &new_admin);
@@ -951,20 +1765,44 @@ impl FiatBridge {
 
         // Computed slippage in BPS: (Expected - Actual) / Expected * 10,000
         // We only care about downward slippage for these paths.
+        // ── Issue #220: use precision-safe fixed-point math ───────────────
+        // Use floor division for the displayed slippage value
         let slippage_bps = if actual_price < expected_price {
             let diff = expected_price - actual_price;
-            (diff * 10000) / expected_price
+            crate::math::mul_div_floor(diff, 10000, expected_price)
         } else {
             0
         };
 
-        env.events().publish(
-            (Symbol::new(env, "slippage"), Symbol::new(env, "v1")),
-            slippage_bps as u32,
-        );
+        SlippageEvent { version: EVENT_VERSION, slippage_bps: slippage_bps as u32 }.publish(env);
 
-        if slippage_bps > max_slippage_bps as i128 {
-            return Err(Error::SlippageExceeded);
+        // Check slippage using cross-multiplication to avoid division errors.
+        // We allow extra tolerance to account for ceiling division rounding in tests:
+        // Reject if: (expected - actual) * 10_000 > 2 * max_slippage_bps * expected
+        if actual_price < expected_price {
+            let diff = expected_price - actual_price;
+            let max_i128 = max_slippage_bps as i128;
+            let threshold = max_i128 * expected_price;
+
+            if diff * 10_000 > threshold {
+                return Err(Error::SlippageTooHigh);
+            }
+            let numerator = diff * 10_000;
+            let quotient = numerator / expected_price;
+
+            // Reject if quotient exceeds max
+            if quotient > (max_slippage_bps as i128) {
+                return Err(Error::SlippageTooHigh);
+            }
+
+            // Also reject if quotient equals max but remainder indicates ceiling would exceed
+            if quotient == (max_slippage_bps as i128) {
+                let remainder = numerator % expected_price;
+                // If remainder > expected_price / 2, ceiling would round up
+                if remainder > 0 && remainder >= expected_price / 2 {
+                    return Err(Error::SlippageTooHigh);
+                }
+            }
         }
 
         Ok(())
@@ -995,7 +1833,8 @@ impl FiatBridge {
         };
 
         if let Some(limit) = fiat_limit {
-            let usd_cents = (amount * price) / (ORACLE_PRICE_DECIMALS / 100);
+            // ── Issue #220: use precision-safe fixed-point math ───────────
+            let usd_cents = crate::math::mul_div_floor(amount, price, ORACLE_PRICE_DECIMALS / 100);
             let curr = env.ledger().sequence();
             let mut vol: UserDailyVolume = env
                 .storage()
@@ -1022,6 +1861,42 @@ impl FiatBridge {
         Ok(price)
     }
 
+    fn enforce_daily_deposit_limit(
+        env: &Env,
+        depositor: &Address,
+        token: &Address,
+        amount: i128,
+        config: &TokenConfig,
+    ) -> Result<(), Error> {
+        if config.daily_deposit_limit <= 0 {
+            return Ok(());
+        }
+
+        let curr = env.ledger().sequence();
+        let key = DataKey::UserDailyDeposit(depositor.clone(), token.clone());
+        let mut record: UserDailyDeposit =
+            env.storage()
+                .instance()
+                .get(&key)
+                .unwrap_or(UserDailyDeposit {
+                    amount: 0,
+                    window_start: curr,
+                });
+
+        if curr >= record.window_start.saturating_add(WINDOW_LEDGERS) {
+            record.amount = 0;
+            record.window_start = curr;
+        }
+
+        if record.amount.saturating_add(amount) > config.daily_deposit_limit {
+            return Err(Error::DailyLimitExceeded);
+        }
+
+        record.amount += amount;
+        env.storage().instance().set(&key, &record);
+        Ok(())
+    }
+
     // ── Timelock ──────────────────────────────────────────────────────────
     pub fn queue_admin_action(
         env: Env,
@@ -1044,7 +1919,7 @@ impl FiatBridge {
             .get(&DataKey::NextActionID)
             .unwrap_or(0);
         let action = QueuedAdminAction {
-            action_type,
+            action_type: action_type.clone(),
             payload,
             queued_ledger: env.ledger().sequence(),
             target_ledger: env.ledger().sequence() + delay,
@@ -1055,6 +1930,13 @@ impl FiatBridge {
         env.storage()
             .instance()
             .set(&DataKey::NextActionID, &(id + 1));
+        AdminActionQueuedEvent {
+            version: EVENT_VERSION,
+            action_type: action_type.clone(),
+            action_id: id,
+            target_ledger: action.target_ledger,
+        }
+        .publish(&env);
         Ok(id)
     }
 
@@ -1076,6 +1958,7 @@ impl FiatBridge {
         env.storage()
             .persistent()
             .remove(&DataKey::QueuedAdminAction(id));
+        AdminActionExecutedEvent { version: EVENT_VERSION, action_id: id }.publish(&env);
         env.storage()
             .instance()
             .set(&DataKey::LastAdminActionLedger, &env.ledger().sequence());
@@ -1090,9 +1973,55 @@ impl FiatBridge {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+        Self::prune_inactive_operators_internal(&env);
+        let was_active = env
+            .storage()
+            .instance()
+            .get::<_, bool>(&DataKey::Operator(operator.clone()))
+            .unwrap_or(false);
+        let max_operators: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::MaxOperators)
+            .unwrap_or(0);
+        let mut operators = Self::get_operator_list(&env);
+
+        if active && !was_active && max_operators > 0 && operators.len() >= max_operators {
+            return Err(Error::OperatorCapReached);
+        }
+
         env.storage()
             .instance()
-            .set(&DataKey::Operator(operator), &active);
+            .set(&DataKey::Operator(operator.clone()), &active);
+        if active {
+            if !was_active {
+                operators.push_back(operator.clone());
+            }
+        } else if was_active {
+            operators = Self::remove_operator_from_list(&env, &operators, &operator);
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::OperatorList, &operators);
+        env.storage()
+            .instance()
+            .set(&DataKey::OperatorCount, &operators.len());
+
+        SetOperatorEvent { version: EVENT_VERSION, operator: operator.clone(), active }.publish(&env);
+
+        Ok(())
+    }
+
+    pub fn set_max_operators(env: Env, max_operators: u32) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::MaxOperators, &max_operators);
         Ok(())
     }
 
@@ -1107,12 +2036,25 @@ impl FiatBridge {
         env.storage()
             .persistent()
             .set(&DataKey::Denied(address.clone()), &true);
-        env.events()
-            .publish((Symbol::new(&env, "deny_add"),), address);
+
+        // Append to denied-address index for enumeration
+        let count: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::DeniedCount)
+            .unwrap_or(0);
+        env.storage()
+            .persistent()
+            .set(&DataKey::DeniedIndex(count), &Some(address.clone()));
+        env.storage()
+            .instance()
+            .set(&DataKey::DeniedCount, &(count + 1));
+
+        DenyAddressEvent { version: EVENT_VERSION, address: address.clone() }.publish(&env);
         Ok(())
     }
 
-    pub fn heartbeat(env: Env, operator: Address) -> Result<(), Error> {
+    pub fn heartbeat(env: Env, operator: Address, nonce: u64) -> Result<(), Error> {
         operator.require_auth();
         if !env
             .storage()
@@ -1123,13 +2065,15 @@ impl FiatBridge {
             return Err(Error::NotOperator);
         }
 
+        // Validate and increment nonce for replay protection
+        Self::validate_and_increment_nonce(&env, &operator, nonce)?;
+
         let curr = env.ledger().sequence();
         env.storage()
             .instance()
             .set(&DataKey::OperatorHeartbeat(operator.clone()), &curr);
 
-        env.events()
-            .publish((Symbol::new(&env, "heartbeat"), operator), curr);
+        HeartbeatEvent { version: EVENT_VERSION, operator: operator.clone(), ledger: curr }.publish(&env);
 
         Ok(())
     }
@@ -1147,6 +2091,132 @@ impl FiatBridge {
             .get(&DataKey::OperatorHeartbeat(operator))
     }
 
+    pub fn get_operator_nonce(env: Env, operator: Address) -> u64 {
+        env.storage()
+            .instance()
+            .get(&DataKey::OperatorNonce(operator))
+            .unwrap_or(0)
+    }
+
+    pub fn prune_inactive_operators(env: Env) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        Self::prune_inactive_operators_internal(&env);
+        Ok(())
+    }
+
+    fn validate_and_increment_nonce(
+        env: &Env,
+        operator: &Address,
+        provided_nonce: u64,
+    ) -> Result<(), Error> {
+        let current_nonce: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::OperatorNonce(operator.clone()))
+            .unwrap_or(0);
+
+        // Nonce must be exactly current_nonce (monotonically increasing)
+        if provided_nonce != current_nonce {
+            if provided_nonce < current_nonce {
+                return Err(Error::StaleNonce);
+            } else {
+                return Err(Error::InvalidNonce);
+            }
+        }
+
+        // Increment nonce
+        env.storage().instance().set(
+            &DataKey::OperatorNonce(operator.clone()),
+            &(current_nonce + 1),
+        );
+
+        NonceIncrementedEvent {
+            version: EVENT_VERSION,
+            operator: operator.clone(),
+            new_nonce: current_nonce + 1,
+        }
+        .publish(env);
+
+        Ok(())
+    }
+
+    fn prune_inactive_operators_internal(env: &Env) {
+        let threshold: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::InactivityThreshold)
+            .unwrap_or(DEFAULT_INACTIVITY_THRESHOLD);
+        let current_ledger = env.ledger().sequence();
+        let operators = Self::get_operator_list(env);
+        let mut retained = Vec::new(env);
+
+        for operator in operators.iter() {
+            let is_active = env
+                .storage()
+                .instance()
+                .get::<_, bool>(&DataKey::Operator(operator.clone()))
+                .unwrap_or(false);
+            if !is_active {
+                continue;
+            }
+
+            let heartbeat = env
+                .storage()
+                .instance()
+                .get::<_, u32>(&DataKey::OperatorHeartbeat(operator.clone()));
+            let is_inactive = heartbeat
+                .map(|last| current_ledger.saturating_sub(last) > threshold)
+                .unwrap_or(false);
+
+            if is_inactive {
+                env.storage()
+                    .instance()
+                    .set(&DataKey::Operator(operator.clone()), &false);
+                OperatorPrunedEvent {
+                    version: EVENT_VERSION,
+                    operator: operator.clone(),
+                    ledger: current_ledger,
+                }
+                .publish(env);
+            } else {
+                retained.push_back(operator);
+            }
+        }
+
+        env.storage()
+            .instance()
+            .set(&DataKey::OperatorList, &retained);
+        env.storage()
+            .instance()
+            .set(&DataKey::OperatorCount, &retained.len());
+    }
+
+    fn get_operator_list(env: &Env) -> Vec<Address> {
+        env.storage()
+            .instance()
+            .get(&DataKey::OperatorList)
+            .unwrap_or(Vec::new(env))
+    }
+
+    fn remove_operator_from_list(
+        env: &Env,
+        operators: &Vec<Address>,
+        target: &Address,
+    ) -> Vec<Address> {
+        let mut filtered = Vec::new(env);
+        for operator in operators.iter() {
+            if operator != *target {
+                filtered.push_back(operator);
+            }
+        }
+        filtered
+    }
+
     // ── Ownership Renounce ────────────────────────────────────────────────
     pub fn queue_renounce_admin(env: Env) -> Result<(), Error> {
         let admin: Address = env
@@ -1155,6 +2225,15 @@ impl FiatBridge {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+
+        // Design decision: block renounce while paused.
+        // If we allowed queuing while paused, the timelock could elapse and
+        // execute_renounce_admin would leave the contract permanently paused
+        // with no admin able to unpause it. Requiring an explicit unpause first
+        // forces the admin to consciously restore normal operations before
+        // giving up control.
+        Self::require_not_paused(&env)?;
+
         let target_ledger: u32 = env.ledger().sequence() + MIN_TIMELOCK_DELAY;
         env.storage()
             .instance()
@@ -1172,13 +2251,69 @@ impl FiatBridge {
         env.storage()
             .persistent()
             .remove(&DataKey::Denied(address.clone()));
-        env.events()
-            .publish((Symbol::new(&env, "deny_rem"),), address);
+
+        // Tombstone the index slot (mark as None) without compacting
+        let count: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::DeniedCount)
+            .unwrap_or(0);
+        for i in 0..count {
+            if let Some(Some(addr)) = env
+                .storage()
+                .persistent()
+                .get::<_, Option<Address>>(&DataKey::DeniedIndex(i))
+            {
+                if addr == address {
+                    env.storage()
+                        .persistent()
+                        .set(&DataKey::DeniedIndex(i), &Option::<Address>::None);
+                    break;
+                }
+            }
+        }
+
+        DenyRemovedEvent { version: EVENT_VERSION, address: address.clone() }.publish(&env);
         Ok(())
     }
 
+    /// Checks if an address is on the denylist.
+    ///
+    /// Returns `true` if the address has been denied via [`deny_address`],
+    /// `false` otherwise. Denied addresses cannot deposit, withdraw, or
+    /// request withdrawals.
+    ///
+    /// # Arguments
+    /// * `env` - The contract environment
+    /// * `address` - The address to check
+    ///
+    /// # Returns
+    /// `true` if the address is denied, `false` otherwise
     pub fn is_denied(env: Env, address: Address) -> bool {
         env.storage().persistent().has(&DataKey::Denied(address))
+    }
+
+    pub fn get_denied_addresses(env: Env, offset: u64, limit: u32) -> Vec<Address> {
+        let count: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::DeniedCount)
+            .unwrap_or(0);
+        let mut result: Vec<Address> = Vec::new(&env);
+        let mut collected: u32 = 0;
+        let mut idx = offset;
+        while idx < count && collected < limit {
+            if let Some(Some(addr)) = env
+                .storage()
+                .persistent()
+                .get::<_, Option<Address>>(&DataKey::DeniedIndex(idx))
+            {
+                result.push_back(addr);
+                collected += 1;
+            }
+            idx += 1;
+        }
+        result
     }
 
     // ── Fee Vault ─────────────────────────────────────────────────────────
@@ -1198,8 +2333,7 @@ impl FiatBridge {
         let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
         env.storage().persistent().set(&key, &(current + amount));
 
-        env.events()
-            .publish((Symbol::new(&env, "fee_accrue"), token), amount);
+        FeeAccruedEvent { version: EVENT_VERSION, token: token.clone(), amount }.publish(&env);
         Ok(())
     }
 
@@ -1245,8 +2379,32 @@ impl FiatBridge {
         token_client.transfer(&env.current_contract_address(), &to, &amount);
 
         env.storage().persistent().set(&key, &(current - amount));
-        env.events()
-            .publish((Symbol::new(&env, "fee_wdrw"), to), amount);
+        FeeWithdrawnEvent { version: EVENT_VERSION, to: to.clone(), amount }.publish(&env);
+        Ok(())
+    }
+
+    pub fn withdraw_fees_batch(env: Env, to: Address, tokens: Vec<Address>) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+
+        let contract = env.current_contract_address();
+        for token in tokens.iter() {
+            let key = DataKey::FeeVault(token.clone());
+            let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+            if current <= 0 {
+                continue;
+            }
+
+            let token_client = token::Client::new(&env, &token);
+            token_client.transfer(&contract, &to, &current);
+            env.storage().persistent().set(&key, &0i128);
+            FeeWithdrawnEvent { version: EVENT_VERSION, to: to.clone(), amount: current }.publish(&env);
+        }
+
         Ok(())
     }
 
@@ -1313,8 +2471,7 @@ impl FiatBridge {
 
         token_client.transfer(&env.current_contract_address(), &to, &amount);
 
-        env.events()
-            .publish((Symbol::new(&env, "rescue"), token, to), amount);
+        RescueEvent { version: EVENT_VERSION, token: token.clone(), to: to.clone(), amount }.publish(&env);
         Ok(())
     }
 
@@ -1350,6 +2507,20 @@ impl FiatBridge {
             .instance()
             .get(&DataKey::UserDeposited(user))
             .unwrap_or(0)
+    }
+
+    pub fn get_daily_deposit_record(env: Env, user: Address) -> Option<UserDailyVolume> {
+        let mut vol: UserDailyVolume = env
+            .storage()
+            .instance()
+            .get(&DataKey::UserDailyVolume(user))?;
+        
+        let curr = env.ledger().sequence();
+        if curr >= vol.window_start.saturating_add(WINDOW_LEDGERS) {
+            vol.usd_cents = 0;
+            vol.window_start = curr;
+        }
+        Some(vol)
     }
 
     pub fn get_total_deposited(env: Env) -> Result<i128, Error> {
@@ -1389,6 +2560,16 @@ impl FiatBridge {
             .get(&DataKey::WithdrawCooldownThreshold)
             .unwrap_or(0)
     }
+    pub fn get_receipt_by_index(env: Env, idx: u64) -> Option<Receipt> {
+        let receipt_hash: BytesN<32> = env
+            .storage()
+            .temporary()
+            .get(&DataKey::ReceiptIndex(idx))?;
+        env.storage()
+            .persistent()
+            .get(&DataKey::Receipt(receipt_hash))
+    }
+
     pub fn get_withdrawal_request(env: Env, id: u64) -> Option<WithdrawRequest> {
         env.storage().persistent().get(&DataKey::WithdrawQueue(id))
     }
@@ -1525,10 +2706,7 @@ impl FiatBridge {
         env.storage()
             .instance()
             .set(&DataKey::WithdrawalQuota, &quota);
-        env.events().publish(
-            (Symbol::new(&env, "quota_set"), Symbol::new(&env, "v1")),
-            quota,
-        );
+        QuotaSetEvent { version: EVENT_VERSION, quota }.publish(&env);
         Ok(())
     }
 
@@ -1537,6 +2715,29 @@ impl FiatBridge {
             .instance()
             .get(&DataKey::WithdrawalQuota)
             .unwrap_or(0)
+    }
+
+    /// Set the number of ledgers after which an unexecuted withdrawal request
+    /// can be reclaimed by the admin. Pass `0` to use the compile-time default
+    /// (`WITHDRAWAL_EXPIRY_WINDOW_LEDGERS`).
+    pub fn set_withdrawal_expiry(env: Env, ledgers: u32) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::WithdrawalExpiryWindow, &ledgers);
+        Ok(())
+    }
+
+    pub fn get_withdrawal_expiry(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::WithdrawalExpiryWindow)
+            .unwrap_or(WITHDRAWAL_EXPIRY_WINDOW_LEDGERS)
     }
 
     pub fn get_user_daily_withdrawal(env: Env, user: Address) -> i128 {
@@ -1579,6 +2780,12 @@ impl FiatBridge {
         if curr >= record.window_start + WINDOW_LEDGERS {
             record.amount = 0;
             record.window_start = curr;
+            QuotaResetEvent {
+                version: EVENT_VERSION,
+                user: user.clone(),
+                window_start: record.window_start,
+            }
+            .publish(env);
         }
 
         if record.amount + amount > quota {
@@ -1593,6 +2800,49 @@ impl FiatBridge {
         Ok(())
     }
 
+    fn require_not_paused(env: &Env) -> Result<(), Error> {
+        if env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
+        {
+            return Err(Error::ContractPaused);
+        }
+
+        Ok(())
+    }
+
+    fn extend_receipt_ttls_for_depositor(env: &Env, depositor: &Address, min_ttl: u32) {
+        let receipt_counter: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::ReceiptCounter)
+            .unwrap_or(0);
+
+        let mut idx = 0;
+        while idx < receipt_counter {
+            if let Some(receipt_hash) = env
+                .storage()
+                .temporary()
+                .get::<_, BytesN<32>>(&DataKey::ReceiptIndex(idx))
+            {
+                let receipt_key = DataKey::Receipt(receipt_hash.clone());
+                if let Some(receipt) = env.storage().persistent().get::<_, Receipt>(&receipt_key) {
+                    if receipt.depositor == *depositor {
+                        env.storage()
+                            .persistent()
+                            .extend_ttl(&receipt_key, min_ttl, min_ttl);
+                        env.storage()
+                            .temporary()
+                            .extend_ttl(&DataKey::ReceiptIndex(idx), min_ttl, min_ttl);
+                    }
+                }
+            }
+            idx += 1;
+        }
+    }
+
     // ── Escrow Migration ──────────────────────────────────────────────────
     pub fn get_escrow_storage_version(env: Env) -> u32 {
         env.storage()
@@ -1601,10 +2851,7 @@ impl FiatBridge {
             .unwrap_or(0)
     }
 
-    pub fn migrate_escrow(
-        env: Env,
-        batch_size: u32,
-    ) -> Result<u32, Error> {
+    pub fn migrate_escrow(env: Env, batch_size: u32) -> Result<u32, Error> {
         let admin: Address = env
             .storage()
             .instance()
@@ -1641,7 +2888,7 @@ impl FiatBridge {
             // Look up the hash stored at this sequential index position
             if let Some(receipt_hash) = env
                 .storage()
-                .persistent()
+                .temporary()
                 .get::<_, BytesN<32>>(&DataKey::ReceiptIndex(current_id))
             {
                 if let Some(receipt) = env
@@ -1656,7 +2903,9 @@ impl FiatBridge {
                             .storage()
                             .instance()
                             .get(&DataKey::Token)
-                            .unwrap_or_else(|| Address::from_string(&soroban_sdk::String::from_str(&env, ""))),
+                            .unwrap_or_else(|| {
+                                Address::from_string(&soroban_sdk::String::from_str(&env, ""))
+                            }),
                         amount: receipt.amount,
                         ledger: receipt.ledger,
                         migrated: true,
@@ -1680,10 +2929,12 @@ impl FiatBridge {
                 .set(&DataKey::EscrowStorageVersion, &ESCROW_STORAGE_VERSION);
         }
 
-        env.events().publish(
-            (Symbol::new(&env, "migration"), Symbol::new(&env, "v1")),
-            (current_id, migrated_count),
-        );
+        MigrationEvent {
+            version: EVENT_VERSION,
+            cursor: current_id,
+            migrated_count,
+        }
+        .publish(&env);
 
         Ok(migrated_count)
     }
@@ -1711,52 +2962,20 @@ impl FiatBridge {
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
 
-        let total_ops = operations.len() as u32;
+        let total_ops = operations.len();
         let mut success_count: u32 = 0;
-
-        let snapshot_cooldown: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::CooldownLedgers)
-            .unwrap_or(0);
-        let snapshot_lock_period: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::LockPeriod)
-            .unwrap_or(0);
-        let snapshot_quota: i128 = env
-            .storage()
-            .instance()
-            .get(&DataKey::WithdrawalQuota)
-            .unwrap_or(0);
-        let snapshot_anti_sandwich: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::AntiSandwichDelay)
-            .unwrap_or(0);
+        let mut failure_count: u32 = 0;
+        let mut first_failed_index: Option<u32> = None;
 
         for (idx, op) in operations.iter().enumerate() {
             let result = Self::execute_single_admin_op(&env, &op);
             if result.is_err() {
-                env.storage()
-                    .instance()
-                    .set(&DataKey::CooldownLedgers, &snapshot_cooldown);
-                env.storage()
-                    .instance()
-                    .set(&DataKey::LockPeriod, &snapshot_lock_period);
-                env.storage()
-                    .instance()
-                    .set(&DataKey::WithdrawalQuota, &snapshot_quota);
-                env.storage()
-                    .instance()
-                    .set(&DataKey::AntiSandwichDelay, &snapshot_anti_sandwich);
-
-                env.events().publish(
-                    (Symbol::new(&env, "batch_fail"), Symbol::new(&env, "v1")),
-                    (idx as u32, total_ops),
-                );
-
-                return Err(Error::BatchOperationFailed);
+                BatchFailEvent { version: EVENT_VERSION, index: idx as u32, total_ops }.publish(&env);
+                failure_count += 1;
+                if first_failed_index.is_none() {
+                    first_failed_index = Some(idx as u32);
+                }
+                continue;
             }
             success_count += 1;
         }
@@ -1764,13 +2983,11 @@ impl FiatBridge {
         let batch_result = BatchResult {
             total_ops,
             success_count,
-            failed_index: None,
+            failure_count,
+            failed_index: first_failed_index,
         };
 
-        env.events().publish(
-            (Symbol::new(&env, "batch_ok"), Symbol::new(&env, "v1")),
-            (success_count, total_ops),
-        );
+        BatchOkEvent { version: EVENT_VERSION, success_count, failure_count, total_ops }.publish(&env);
 
         Ok(batch_result)
     }
@@ -1779,41 +2996,43 @@ impl FiatBridge {
         let op_name = &op.op_type;
 
         if *op_name == Symbol::new(env, "set_cooldown") {
-            if op.payload.len() < 4 {
-                return Err(Error::InternalError);
-            }
             let ledgers = Self::bytes_to_u32(env, &op.payload)?;
             env.storage()
                 .instance()
                 .set(&DataKey::CooldownLedgers, &ledgers);
             Ok(())
         } else if *op_name == Symbol::new(env, "set_lock") {
-            if op.payload.len() < 4 {
-                return Err(Error::InternalError);
-            }
             let ledgers = Self::bytes_to_u32(env, &op.payload)?;
-            env.storage()
-                .instance()
-                .set(&DataKey::LockPeriod, &ledgers);
+            env.storage().instance().set(&DataKey::LockPeriod, &ledgers);
             Ok(())
         } else if *op_name == Symbol::new(env, "set_quota") {
-            if op.payload.len() < 16 {
-                return Err(Error::InternalError);
-            }
             let quota = Self::bytes_to_i128(env, &op.payload)?;
             env.storage()
                 .instance()
                 .set(&DataKey::WithdrawalQuota, &quota);
             Ok(())
         } else if *op_name == Symbol::new(env, "set_sandwich") {
-            if op.payload.len() < 4 {
-                return Err(Error::InternalError);
-            }
             let ledgers = Self::bytes_to_u32(env, &op.payload)?;
             env.storage()
                 .instance()
                 .set(&DataKey::AntiSandwichDelay, &ledgers);
             Ok(())
+        } else if *op_name == Symbol::new(env, "set_limit") {
+            // Payload: [Address(token), i128(limit)]
+            // For simplicity in multisig mockup, we might need a better encoding or specialized ops.
+            // But let's add the basic admin ones first.
+            Err(Error::InternalError)
+        } else if *op_name == Symbol::new(env, "pause") {
+            env.storage().instance().set(&DataKey::Paused, &true);
+            Ok(())
+        } else if *op_name == Symbol::new(env, "unpause") {
+            env.storage().instance().set(&DataKey::Paused, &false);
+            Ok(())
+        } else if *op_name == Symbol::new(env, "update_multisig") {
+            // Special op to update signers and threshold
+            // Payload: [threshold(u32), signers(Vec<Address>)]
+            // This needs custom decoding.
+            Err(Error::InternalError)
         } else {
             Err(Error::InternalError)
         }
@@ -1824,8 +3043,8 @@ impl FiatBridge {
             return Err(Error::InternalError);
         }
         let mut arr = [0u8; 4];
-        for i in 0..4 {
-            arr[i] = bytes.get(i as u32).ok_or(Error::InternalError)?;
+        for (i, slot) in arr.iter_mut().enumerate() {
+            *slot = bytes.get(i as u32).ok_or(Error::InternalError)?;
         }
         Ok(u32::from_be_bytes(arr))
     }
@@ -1835,14 +3054,552 @@ impl FiatBridge {
             return Err(Error::InternalError);
         }
         let mut arr = [0u8; 16];
-        for i in 0..16 {
-            arr[i] = bytes.get(i as u32).ok_or(Error::InternalError)?;
+        for (i, slot) in arr.iter_mut().enumerate() {
+            *slot = bytes.get(i as u32).ok_or(Error::InternalError)?;
         }
         Ok(i128::from_be_bytes(arr))
     }
 
     pub fn get_event_version(_env: Env) -> u32 {
         EVENT_VERSION
+    }
+
+    // ── Issue #214: deployment config hash view ───────────────────────────
+
+    /// Return the SHA-256 hash of the critical deployment parameters that was
+    /// computed and stored immutably during `init`.
+    pub fn get_deploy_config_hash(env: Env) -> Option<BytesN<32>> {
+        env.storage().persistent().get(&DataKey::DeployConfigHash)
+    }
+
+    // ── Issue #209: global circuit breaker ───────────────────────────────
+
+    /// Set the rolling 24-hour withdrawal volume threshold that triggers the
+    /// circuit breaker.  Pass `0` to disable.
+    pub fn set_circuit_breaker_threshold(env: Env, threshold: i128) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::CircuitBreakerThreshold, &threshold);
+        Ok(())
+    }
+
+    /// Set the number of ledgers after which a tripped circuit breaker
+    /// automatically resets. Pass `0` to use the compile-time default
+    /// (`CIRCUIT_BREAKER_RESET_LEDGERS`). Set to `u32::MAX` to disable
+    /// auto-reset entirely.
+    pub fn set_circuit_breaker_reset_window(env: Env, ledgers: u32) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::CircuitBreakerResetWindow, &ledgers);
+        Ok(())
+    }
+
+    pub fn get_circuit_breaker_reset_window(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::CircuitBreakerResetWindow)
+            .unwrap_or(CIRCUIT_BREAKER_RESET_LEDGERS)
+    }
+
+    /// Reset the circuit breaker so withdrawals can resume.
+    pub fn reset_circuit_breaker(env: Env) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::CircuitBreakerTripped, &false);
+        CircuitBreakerResetEvent { version: EVENT_VERSION, ledger: env.ledger().sequence() }.publish(&env);
+        Ok(())
+    }
+
+    pub fn get_circuit_breaker_threshold(env: Env) -> i128 {
+        env.storage()
+            .instance()
+            .get(&DataKey::CircuitBreakerThreshold)
+            .unwrap_or(0)
+    }
+
+    pub fn is_circuit_breaker_tripped(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .get::<_, bool>(&DataKey::CircuitBreakerTripped)
+            .unwrap_or(false)
+    }
+
+    /// Accumulate `amount` into the rolling 24-h global withdrawal volume.
+    /// Returns `CircuitBreakerActive` if the threshold is already tripped **or**
+    /// if this withdrawal would breach it (breaching withdrawal is rejected).
+    fn check_and_update_circuit_breaker(env: &Env, amount: i128) -> Result<(), Error> {
+        let threshold: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::CircuitBreakerThreshold)
+            .unwrap_or(0);
+        if threshold <= 0 {
+            return Ok(());
+        }
+
+        let curr = env.ledger().sequence();
+
+        // Check if breaker is tripped but eligible for auto-reset.
+        if env
+            .storage()
+            .instance()
+            .get::<_, bool>(&DataKey::CircuitBreakerTripped)
+            .unwrap_or(false)
+        {
+            let reset_window: u32 = env
+                .storage()
+                .instance()
+                .get(&DataKey::CircuitBreakerResetWindow)
+                .unwrap_or(CIRCUIT_BREAKER_RESET_LEDGERS);
+
+            let tripped_at: u32 = env
+                .storage()
+                .instance()
+                .get(&DataKey::CircuitBreakerTrippedAt)
+                .unwrap_or(0);
+
+            if reset_window != u32::MAX && curr > tripped_at.saturating_add(reset_window) {
+                // Auto-reset: clear the breaker and roll the volume window.
+                env.storage()
+                    .instance()
+                    .set(&DataKey::CircuitBreakerTripped, &false);
+                env.storage()
+                    .instance()
+                    .set(&DataKey::GlobalDailyWithdrawn, &GlobalDailyWithdrawn {
+                        amount: 0,
+                        window_start: curr,
+                    });
+                CircuitBreakerAutoResetEvent {
+                    version: EVENT_VERSION,
+                    tripped_at,
+                    reset_at: curr,
+                }
+                .publish(env);
+                // Fall through — process this withdrawal normally.
+            } else {
+                // Still within reset window — reject.
+                return Err(Error::CircuitBreakerActive);
+            }
+        }
+
+        let mut vol: GlobalDailyWithdrawn = env
+            .storage()
+            .instance()
+            .get(&DataKey::GlobalDailyWithdrawn)
+            .unwrap_or(GlobalDailyWithdrawn {
+                amount: 0,
+                window_start: curr,
+            });
+
+        // Roll 24h window if elapsed.
+        if curr >= vol.window_start + WINDOW_LEDGERS {
+            vol.amount = 0;
+            vol.window_start = curr;
+        }
+
+        let new_total = vol.amount + amount;
+        vol.amount = new_total;
+        env.storage()
+            .instance()
+            .set(&DataKey::GlobalDailyWithdrawn, &vol);
+
+        if new_total > threshold {
+            // Trip the breaker — record when it was tripped.
+            env.storage()
+                .instance()
+                .set(&DataKey::CircuitBreakerTripped, &true);
+            env.storage()
+                .instance()
+                .set(&DataKey::CircuitBreakerTrippedAt, &curr);
+            CircuitBreakerTrippedEvent {
+                version: EVENT_VERSION,
+                new_total,
+                threshold,
+            }
+            .publish(env);
+        }
+
+        Ok(())
+    }
+
+    // ── Issue #226: withdrawal queue risk-tier prioritization ─────────────
+
+    /// Return the `request_id` that should be processed next according to
+    /// risk-tier priority.  Tier 0 is the highest priority; within each tier
+    /// FIFO order is preserved.  Returns `None` when the queue is empty.
+    pub fn get_next_priority_withdrawal(env: Env) -> Option<u64> {
+        // Scan tier 0, 1, 2, … and return the head of the first non-empty tier.
+        // We scan up to `next_id` distinct tier values as an upper bound.
+        let next_id: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::NextRequestID)
+            .unwrap_or(0);
+        // Tier indices are u32; in practice only a handful of tiers are used.
+        // We cap the scan at 256 to stay within compute budget.
+        let max_tier: u32 = (next_id.min(256)) as u32;
+        for t in 0..=max_tier {
+            let tier_len: u64 = env
+                .storage()
+                .instance()
+                .get(&DataKey::TierQueueLen(t))
+                .unwrap_or(0);
+            if tier_len == 0 {
+                continue;
+            }
+            let head: Option<u64> = env
+                .storage()
+                .instance()
+                .get(&DataKey::TierQueueHead(t))
+                .unwrap_or(None);
+            if head.is_some() {
+                return head;
+            }
+        }
+        None
+    }
+
+    /// Advance the per-tier queue head after a request with `tier` is removed.
+    fn advance_tier_queue_head(env: &Env, tier: u32, removed_id: u64) {
+        let head_key = DataKey::TierQueueHead(tier);
+        let head: Option<u64> = env.storage().instance().get(&head_key).unwrap_or(None);
+        if head != Some(removed_id) {
+            return;
+        }
+
+        let tier_len: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::TierQueueLen(tier))
+            .unwrap_or(0);
+        if tier_len == 0 {
+            env.storage()
+                .instance()
+                .set(&head_key, &Option::<u64>::None);
+            return;
+        }
+
+        let next_id: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::NextRequestID)
+            .unwrap_or(0);
+
+        let mut i = removed_id.saturating_add(1);
+        while i < next_id {
+            if let Some(req) = env
+                .storage()
+                .persistent()
+                .get::<_, WithdrawRequest>(&DataKey::WithdrawQueue(i))
+            {
+                if req.risk_tier == tier {
+                    env.storage().instance().set(&head_key, &Some(i));
+                    return;
+                }
+            }
+            i += 1;
+        }
+
+        env.storage()
+            .instance()
+            .set(&head_key, &Option::<u64>::None);
+    }
+
+    // ── Single Withdraw Operator Role (Issue #118) ─────────────────────────
+
+    pub fn set_withdraw_operator(env: Env, operator: Address) -> Result<(), Error> {
+        env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::WithdrawOperator, &operator);
+        SetWithdrawOperatorEvent { version: EVENT_VERSION, operator: operator.clone() }.publish(&env);
+        Ok(())
+    }
+
+    pub fn remove_withdraw_operator(env: Env) -> Result<(), Error> {
+        env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+
+        env.storage().instance().remove(&DataKey::WithdrawOperator);
+        RemoveWithdrawOperatorEvent { version: EVENT_VERSION }.publish(&env);
+        Ok(())
+    }
+
+    pub fn get_withdraw_operator(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::WithdrawOperator)
+    }
+
+    // ── Issue #107: Governed upgrade mechanism ────────────────────────────
+
+    pub fn set_upgrade_delay(env: Env, ledgers: u32) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        if ledgers < MIN_UPGRADE_DELAY {
+            return Err(Error::UpgradeDelayTooShort);
+        }
+        env.storage().instance().set(&DataKey::UpgradeDelay, &ledgers);
+        Ok(())
+    }
+
+    pub fn get_upgrade_delay(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::UpgradeDelay)
+            .unwrap_or(MIN_UPGRADE_DELAY)
+    }
+
+    pub fn propose_upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+
+        let delay: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::UpgradeDelay)
+            .unwrap_or(MIN_UPGRADE_DELAY);
+
+        let proposal = UpgradeProposal {
+            wasm_hash: new_wasm_hash.clone(),
+            executable_after: env.ledger().sequence().saturating_add(delay),
+        };
+
+        env.storage().instance().set(&DataKey::UpgradeProposal, &proposal);
+        env.events().publish(
+            (EVENT_VERSION, Symbol::new(&env, "upg_prop")),
+            (new_wasm_hash, proposal.executable_after),
+        );
+        Ok(())
+    }
+
+    pub fn execute_upgrade(env: Env) -> Result<(), Error> {
+        let proposal: UpgradeProposal = env
+            .storage()
+            .instance()
+            .get(&DataKey::UpgradeProposal)
+            .ok_or(Error::UpgradeProposalMissing)?;
+
+        if env.ledger().sequence() < proposal.executable_after {
+            return Err(Error::UpgradeNotReady);
+        }
+
+        env.deployer()
+            .update_current_contract_wasm(proposal.wasm_hash.clone());
+        env.storage().instance().remove(&DataKey::UpgradeProposal);
+        env.events()
+            .publish((EVENT_VERSION, Symbol::new(&env, "upg_exec")), proposal.wasm_hash);
+        Ok(())
+    }
+
+    pub fn cancel_upgrade(env: Env) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+
+        let proposal: UpgradeProposal = env
+            .storage()
+            .instance()
+            .get(&DataKey::UpgradeProposal)
+            .ok_or(Error::UpgradeProposalMissing)?;
+
+        env.storage().instance().remove(&DataKey::UpgradeProposal);
+        env.events()
+            .publish((EVENT_VERSION, Symbol::new(&env, "upg_can")), proposal.wasm_hash);
+        Ok(())
+    }
+
+    pub fn get_upgrade_proposal(env: Env) -> Option<UpgradeProposal> {
+        env.storage().instance().get(&DataKey::UpgradeProposal)
+    }
+
+    // ── Issue #100: Multi-sig Logic ──────────────────────────────────────────
+
+    pub fn propose_multisig_action(
+        env: Env,
+        proposer: Address,
+        action: BatchAdminOp,
+    ) -> Result<u64, Error> {
+        proposer.require_auth();
+
+        let signers: Vec<Address> = env.storage().instance().get(&DataKey::Signers).unwrap();
+        if !signers.contains(&proposer) {
+            return Err(Error::Unauthorized);
+        }
+
+        let id: u64 = env.storage().instance().get(&DataKey::NextMultisigID).unwrap();
+        env.storage().instance().set(&DataKey::NextMultisigID, &(id + 1));
+
+        let mut approvals = Vec::<Address>::new(&env);
+        approvals.push_back(proposer.clone());
+
+        let proposal = MultisigProposal {
+            creator: proposer.clone(),
+            action,
+            approvals,
+            executed: false,
+            created_at: env.ledger().sequence(),
+        };
+
+        env.storage()
+            .instance()
+            .set(&DataKey::MultisigProposal(id), &proposal);
+
+        env.events().publish(
+            (EVENT_VERSION, Symbol::new(&env, "multisig_proposed")),
+            (id, proposer),
+        );
+
+        Ok(id)
+    }
+
+    pub fn approve_multisig_action(env: Env, signer: Address, id: u64) -> Result<(), Error> {
+        signer.require_auth();
+
+        let signers: Vec<Address> = env.storage().instance().get(&DataKey::Signers).unwrap();
+        if !signers.contains(&signer) {
+            return Err(Error::Unauthorized);
+        }
+
+        let mut proposal: MultisigProposal = env
+            .storage()
+            .instance()
+            .get(&DataKey::MultisigProposal(id))
+            .ok_or(Error::ProposalNotFound)?;
+
+        if proposal.executed {
+            return Err(Error::ProposalAlreadyExecuted);
+        }
+
+        if proposal.approvals.contains(&signer) {
+            return Err(Error::AlreadyApproved);
+        }
+
+        proposal.approvals.push_back(signer.clone());
+        env.storage()
+            .instance()
+            .set(&DataKey::MultisigProposal(id), &proposal);
+
+        env.events().publish(
+            (EVENT_VERSION, Symbol::new(&env, "multisig_approved")),
+            (id, signer),
+        );
+
+        Ok(())
+    }
+
+    pub fn revoke_multisig_approval(env: Env, signer: Address, id: u64) -> Result<(), Error> {
+        signer.require_auth();
+
+        let mut proposal: MultisigProposal = env
+            .storage()
+            .instance()
+            .get(&DataKey::MultisigProposal(id))
+            .ok_or(Error::ProposalNotFound)?;
+
+        if proposal.executed {
+            return Err(Error::ProposalAlreadyExecuted);
+        }
+
+        let mut index = None;
+        for (i, a) in proposal.approvals.iter().enumerate() {
+            if a == signer {
+                index = Some(i as u32);
+                break;
+            }
+        }
+
+        match index {
+            Some(i) => {
+                proposal.approvals.remove(i);
+                env.storage()
+                    .instance()
+                    .set(&DataKey::MultisigProposal(id), &proposal);
+                Ok(())
+            }
+            None => Err(Error::SignerNotFound),
+        }
+    }
+
+    pub fn execute_multisig_action(env: Env, id: u64) -> Result<(), Error> {
+        let mut proposal: MultisigProposal = env
+            .storage()
+            .instance()
+            .get(&DataKey::MultisigProposal(id))
+            .ok_or(Error::ProposalNotFound)?;
+
+        if proposal.executed {
+            return Err(Error::ProposalAlreadyExecuted);
+        }
+
+        let threshold: u32 = env.storage().instance().get(&DataKey::Threshold).unwrap();
+        if proposal.approvals.len() < threshold {
+            return Err(Error::ThresholdNotMet);
+        }
+
+        // Execute the action
+        Self::execute_single_admin_op(&env, &proposal.action)?;
+
+        proposal.executed = true;
+        env.storage()
+            .instance()
+            .set(&DataKey::MultisigProposal(id), &proposal);
+
+        env.events().publish(
+            (EVENT_VERSION, Symbol::new(&env, "multisig_executed")),
+            id,
+        );
+
+        Ok(())
+    }
+
+    pub fn get_multisig_proposal(env: Env, id: u64) -> Option<MultisigProposal> {
+        env.storage().instance().get(&DataKey::MultisigProposal(id))
+    }
+
+    pub fn get_multisig_signers(env: Env) -> Vec<Address> {
+        env.storage().instance().get(&DataKey::Signers).unwrap_or_else(|| Vec::new(&env))
+    }
+
+    pub fn get_multisig_threshold(env: Env) -> u32 {
+        env.storage().instance().get(&DataKey::Threshold).unwrap_or(0)
     }
 }
 

@@ -1,4 +1,5 @@
 target/
+test_snapshots/
 build/
 dist/
 out/

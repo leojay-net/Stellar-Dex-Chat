@@ -38,10 +38,14 @@ export const useChatHistory = () => {
       newSession.messages = [...initialMessages]; // Clone to prevent reference issues
 
       setHistoryState((prev) => {
-        const updatedSessions = ChatHistoryManager.cleanupOldSessions([
+        // Deduplicate before adding new session
+        const dedupedSessions = ChatHistoryManager.deduplicateSessions([
           newSession,
           ...prev.sessions,
         ]);
+
+        const updatedSessions =
+          ChatHistoryManager.cleanupOldSessions(dedupedSessions);
 
         return {
           currentSessionId: newSession.id,
@@ -132,6 +136,30 @@ export const useChatHistory = () => {
     [historyState.sessions],
   );
 
+  const exportSessionAsJSON = useCallback(
+    (sessionId: string): { data: string; filename: string } | null => {
+      const session = historyState.sessions.find((s) => s.id === sessionId);
+      if (!session) return null;
+
+      const data = ChatHistoryManager.exportSessionAsJSON(session);
+      const filename = ChatHistoryManager.generateExportFilename(sessionId, 'json');
+      return { data, filename };
+    },
+    [historyState.sessions],
+  );
+
+  const exportSessionAsTXT = useCallback(
+    (sessionId: string): { data: string; filename: string } | null => {
+      const session = historyState.sessions.find((s) => s.id === sessionId);
+      if (!session) return null;
+
+      const data = ChatHistoryManager.exportSessionAsTXT(session);
+      const filename = ChatHistoryManager.generateExportFilename(sessionId, 'txt');
+      return { data, filename };
+    },
+    [historyState.sessions],
+  );
+
   const searchSessions = useCallback(
     (query: string): ChatSession[] => {
       return ChatHistoryManager.searchSessions(historyState.sessions, query);
@@ -174,7 +202,9 @@ export const useChatHistory = () => {
     if (a.pinned && b.pinned) {
       return (b.pinnedAt?.getTime() ?? 0) - (a.pinnedAt?.getTime() ?? 0);
     }
-    return new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime();
+    return (
+      new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()
+    );
   });
 
   const pinnedSessions = sortedSessions.filter((s) => s.pinned);
@@ -196,6 +226,8 @@ export const useChatHistory = () => {
     deleteSession,
     clearAllHistory,
     exportSession,
+    exportSessionAsJSON,
+    exportSessionAsTXT,
     searchSessions,
     togglePin,
     setIsHistoryOpen,

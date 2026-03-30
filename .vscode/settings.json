@@ -1,0 +1,3 @@
+{
+  "rust-analyzer.linkedProjects": ["stellar-contracts/Cargo.toml"]
+}

@@ -84,6 +84,7 @@ declare global {
     getBridgeLimit: () => Promise<bigint>;
     getContractBalance: () => Promise<bigint>;
     getTotalDeposited: () => Promise<bigint>;
+    getWithdrawalQueueDepth: () => Promise<number>;
   }
 }
 
@@ -93,6 +94,7 @@ try {
     window.getBridgeLimit = async () => getBridgeLimit();
     window.getContractBalance = async () => getContractBalance();
     window.getTotalDeposited = async () => getTotalDeposited();
+    window.getWithdrawalQueueDepth = async () => getWithdrawalQueueDepth();
   }
 } catch {
   // ignore
@@ -342,4 +344,49 @@ export async function validateBridgeAmountLimit(
 /** Returns the running total of all deposits ever made. */
 export async function getTotalDeposited(): Promise<bigint> {
   return viewCall<bigint>('get_total_deposited');
+}
+
+export async function getWithdrawalQueueDepth(): Promise<number> {
+  const value = await viewCall<bigint | number>('get_wq_depth');
+  return Number(value);
+}
+
+/** Returns the accrued fees for the specified token. */
+export async function getAccruedFees(tokenAddress: string): Promise<bigint> {
+  // Check in-memory cache first
+  const functionName = `get_accrued_fees:${tokenAddress}`;
+  const cached = getCachedValue<bigint>(functionName);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const contract = new Contract(CONTRACT_ID);
+  let account;
+  try {
+    account = await server.getAccount(DUMMY_SOURCE);
+  } catch {
+    const { Account } = await import('@stellar/stellar-sdk');
+    account = new Account(DUMMY_SOURCE, '0');
+  }
+
+  const tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(
+      contract.call('get_accrued_fees', new Address(tokenAddress).toScVal()),
+    )
+    .setTimeout(30)
+    .build();
+
+  const sim = await server.simulateTransaction(tx);
+  if (rpc.Api.isSimulationError(sim)) {
+    throw new Error(`View call failed: ${sim.error}`);
+  }
+  const retval = (sim as rpc.Api.SimulateTransactionSuccessResponse).result
+    ?.retval;
+  if (!retval) throw new Error('No return value');
+  const result = scValToNative(retval) as bigint;
+  setCachedValue(functionName, result);
+  return result;
 }

@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for taking the time to contribute. This document covers everything you need to open your first pull request.
+This document covers everything you need to open your first pull request.
 
 ---
 
@@ -20,13 +20,13 @@ Thank you for taking the time to contribute. This document covers everything you
 
 Install the following tools before you begin.
 
-| Tool | Minimum version | Notes |
-|---|---|---|
-| Node.js | 20.x | Use [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schniz/fnm) to manage versions |
-| Rust toolchain | stable | Install via [rustup](https://rustup.rs/) |
-| wasm32 target | — | `rustup target add wasm32-unknown-unknown` |
-| Stellar CLI | latest | Install via `cargo install --locked stellar-cli` |
-| Freighter extension | latest | Browser wallet available at the [Freighter website](https://www.freighter.app/) |
+| Tool                | Minimum version | Notes                                                                                               |
+| ------------------- | --------------- | --------------------------------------------------------------------------------------------------- |
+| Node.js             | 20.x            | Use [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schniz/fnm) to manage versions |
+| Rust toolchain      | stable          | Install via [rustup](https://rustup.rs/)                                                            |
+| wasm32 target       | —               | `rustup target add wasm32-unknown-unknown`                                                          |
+| Stellar CLI         | latest          | Install via `cargo install --locked stellar-cli`                                                    |
+| Freighter extension | latest          | Browser wallet available at the [Freighter website](https://www.freighter.app/)                     |
 
 Verify your setup:
 
@@ -52,7 +52,7 @@ cd Stellar-Dex-Chat
 The frontend requires a `.env.local` file. Copy the example and fill in the values:
 
 ```bash
-cp dex_with_fiat_frontend/.env.example dex_with_fiat_frontend/.env.local
+cp .env.example dex_with_fiat_frontend/.env.local
 ```
 
 The required variables are:
@@ -94,17 +94,19 @@ cargo build --target wasm32-unknown-unknown --release
 cargo test
 ```
 
+If you use VS Code, the repository includes workspace settings that point Rust Analyzer at [stellar-contracts/Cargo.toml](./stellar-contracts/Cargo.toml). Install the recommended `rust-lang.rust-analyzer` extension when prompted so contract code navigation and diagnostics work out of the box.
+
 ---
 
 ## Branch Naming
 
 Use one of the following prefixes followed by a short, hyphen-separated description:
 
-| Prefix | When to use |
-|---|---|
-| `feature/` | New functionality |
-| `fix/` | Bug fixes |
-| `docs/` | Documentation-only changes |
+| Prefix     | When to use                |
+| ---------- | -------------------------- |
+| `feature/` | New functionality          |
+| `fix/`     | Bug fixes                  |
+| `docs/`    | Documentation-only changes |
 
 Examples:
 
@@ -130,12 +132,12 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org/
 
 Allowed types:
 
-| Type | When to use |
-|---|---|
-| `feat` | A new feature |
-| `fix` | A bug fix |
-| `docs` | Documentation changes only |
-| `test` | Adding or updating tests |
+| Type    | When to use                             |
+| ------- | --------------------------------------- |
+| `feat`  | A new feature                           |
+| `fix`   | A bug fix                               |
+| `docs`  | Documentation changes only              |
+| `test`  | Adding or updating tests                |
 | `chore` | Tooling, dependency updates, CI changes |
 
 Examples:

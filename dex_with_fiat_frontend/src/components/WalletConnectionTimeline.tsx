@@ -73,7 +73,7 @@ export default function WalletConnectionTimeline({
         <button
           type="button"
           onClick={onRetry}
-          className="mt-3 w-full rounded-lg border border-red-500/40 px-3 py-2 text-xs font-medium text-red-400 hover:bg-red-500/10"
+          className="mt-3 w-full rounded-lg border border-red-500/40 px-3 py-2 text-xs font-medium text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40"
         >
           Retry wallet connection
         </button>

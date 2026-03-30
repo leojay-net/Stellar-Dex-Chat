@@ -26,7 +26,10 @@ import TransferTimeline, {
   StatusEvent,
   TransferStatus,
 } from '@/components/TransferTimeline';
+import CopyButton from '@/components/ui/CopyButton';
 import { useAccessibleModal } from '@/hooks/useAccessibleModal';
+import { useIdempotentAction } from '@/hooks/useIdempotentAction';
+import { getOrCreateClientSessionId } from '@/lib/clientSession';
 
 interface Bank {
   id: number;
@@ -78,6 +81,12 @@ export default function BankDetailsModal({
 
   const { addNotification } = useNotifications();
   const { addEntry } = useTxHistory();
+
+  const { execute: executePayoutConfirm, isProcessing: isPayoutProcessing } =
+    useIdempotentAction({
+      cooldownMs: 3000,
+      logSuppressed: true,
+    });
 
   const [step, setStep] = useState<Step>(1);
 
@@ -251,100 +260,118 @@ export default function BankDetailsModal({
       !selectedBank ||
       !verifiedAccount ||
       !lockedQuote ||
-      quoteSecondsLeft === 0
+      quoteSecondsLeft === 0 ||
+      isPayoutProcessing
     )
       return;
-    setPayoutLoading(true);
-    setPayoutError('');
-    setStatusEvents([]);
-    pushStatusEvent('initiated', 'Transfer initiated');
-    addNotification('payout_pending', 'Fiat payout request is pending...');
-    try {
-      // 1. Create Paystack transfer recipient
-      const recipientRes = await fetch('/api/create-recipient', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'nuban',
-          name: verifiedAccount.account_name,
-          account_number: accountNumber,
-          bank_code: selectedBank.code,
-          currency: 'NGN',
-        }),
-      });
-      const recipientJson: {
-        success: boolean;
-        data: CreateRecipientData;
-        message?: string;
-      } = await recipientRes.json();
-      if (!recipientJson.success) {
-        throw new Error(
-          recipientJson.message ?? 'Failed to create transfer recipient',
-        );
-      }
 
-      pushStatusEvent('pending', 'Submitted to bank — awaiting confirmation');
-      setIsPollingStatus(true);
+    await executePayoutConfirm(async (idempotencyKey) => {
+      setPayoutLoading(true);
+      setPayoutError('');
+      setStatusEvents([]);
+      pushStatusEvent('initiated', 'Transfer initiated');
+      addNotification('payout_pending', 'Fiat payout request is pending...');
+      try {
+        // 1. Create Paystack transfer recipient
+        const recipientRes = await fetch('/api/create-recipient', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Idempotency-Key': idempotencyKey,
+          },
+          body: JSON.stringify({
+            type: 'nuban',
+            name: verifiedAccount.account_name,
+            account_number: accountNumber,
+            bank_code: selectedBank.code,
+            currency: 'NGN',
+          }),
+        });
+        const recipientJson: {
+          success: boolean;
+          data: CreateRecipientData;
+          message?: string;
+        } = await recipientRes.json();
+        if (!recipientJson.success) {
+          throw new Error(
+            recipientJson.message ?? 'Failed to create transfer recipient',
+          );
+        }
 
-      // 2. Initiate the NGN bank transfer
-      // The route handler multiplies the amount by 100 before calling Paystack,
-      // so we send the NGN value directly (not kobo).
-      const ngnValue = lockedQuote.ngnAmount;
-      const transferRes = await fetch('/api/initiate-transfer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          source: 'balance',
-          reason: `XLM to NGN - ${xlmAmount} XLM`,
-          amount: ngnValue,
-          recipient: recipientJson.data.recipient_code,
-        }),
-      });
-      const transferJson: {
-        success: boolean;
-        data: InitiateTransferData;
-        message?: string;
-      } = await transferRes.json();
-      if (!transferJson.success) {
-        throw new Error(
-          transferJson.message ?? 'Failed to initiate bank transfer',
-        );
-      }
+        pushStatusEvent('pending', 'Submitted to bank — awaiting confirmation');
+        setIsPollingStatus(true);
 
-      setTransferReference(
-        transferJson.data.reference || transferJson.data.transfer_code || '',
-      );
-      addEntry({
-        kind: 'payout',
-        status: 'completed',
-        amount: String(xlmAmount),
-        asset: 'XLM',
-        fiatAmount: lockedQuote.ngnAmount.toLocaleString('en-NG', {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        }),
-        fiatCurrency: 'NGN',
-        note: payoutNote.trim() || undefined,
-        reference:
+        // 2. Initiate the NGN bank transfer
+        // The route handler multiplies the amount by 100 before calling Paystack,
+        // so we send the NGN value directly (not kobo).
+        const ngnValue = lockedQuote.ngnAmount;
+        const transferRes = await fetch('/api/initiate-transfer', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Idempotency-Key': idempotencyKey,
+          },
+          body: JSON.stringify({
+            source: 'balance',
+            reason: `XLM to NGN - ${xlmAmount} XLM`,
+            amount: ngnValue,
+            recipient: recipientJson.data.recipient_code,
+            clientSessionId: getOrCreateClientSessionId(),
+          }),
+        });
+        const transferJson: {
+          success: boolean;
+          data: InitiateTransferData;
+          message?: string;
+        } = await transferRes.json();
+        if (!transferJson.success) {
+          throw new Error(
+            transferJson.message ?? 'Failed to initiate bank transfer',
+          );
+        }
+
+        setTransferReference(
           transferJson.data.reference || transferJson.data.transfer_code || '',
-        message: `Fiat payout initiated to ${selectedBank.name}.`,
-      });
-      // Simulation block
-      await new Promise((resolve) => setTimeout(resolve, 2500));
-      setIsPollingStatus(false);
-      pushStatusEvent('success', 'Bank transfer confirmed');
-      setStep(4);
-      addNotification('payout_success', 'Fiat payout successfully completed!');
-    } catch (err) {
-      const errorMsg =
-        err instanceof Error ? err.message : 'Payout failed. Please try again.';
-      setPayoutError(errorMsg);
-      setIsPollingStatus(false);
-      pushStatusEvent('failed', `Transfer failed: ${errorMsg}`);
-      addNotification('payout_fail', `Payout failed: ${errorMsg}`);
-    } finally {
-      setPayoutLoading(false);
-    }
+        );
+        addEntry({
+          kind: 'payout',
+          status: 'pending',
+          amount: String(xlmAmount),
+          asset: 'XLM',
+          fiatAmount: lockedQuote.ngnAmount.toLocaleString('en-NG', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }),
+          fiatCurrency: 'NGN',
+          note: payoutNote.trim() || undefined,
+          reference:
+            transferJson.data.reference ||
+            transferJson.data.transfer_code ||
+            '',
+          message: `Fiat payout initiated to ${selectedBank.name}.`,
+        });
+        // Simulation block
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        setIsPollingStatus(false);
+        pushStatusEvent('success', 'Bank transfer confirmed');
+        setStep(4);
+        addNotification(
+          'payout_success',
+          'Fiat payout successfully completed!',
+        );
+      } catch (err) {
+        const errorMsg =
+          err instanceof Error
+            ? err.message
+            : 'Payout failed. Please try again.';
+        setPayoutError(errorMsg);
+        setIsPollingStatus(false);
+        pushStatusEvent('failed', `Transfer failed: ${errorMsg}`);
+        addNotification('payout_fail', `Payout failed: ${errorMsg}`);
+      } finally {
+        setPayoutLoading(false);
+      }
+    }, 'payout_confirm');
   };
 
   const handleClose = () => {
@@ -452,12 +479,13 @@ export default function BankDetailsModal({
             {([1, 2, 3] as const).map((s) => (
               <React.Fragment key={s}>
                 <div
-                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${step === s
+                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
+                    step === s
                       ? 'bg-blue-600 text-white'
                       : step > s
                         ? 'bg-green-500 text-white'
                         : 'bg-gray-700 text-gray-400'
-                    }`}
+                  }`}
                 >
                   {s}
                 </div>
@@ -599,10 +627,11 @@ export default function BankDetailsModal({
                         key={bank.id}
                         type="button"
                         onClick={() => setSelectedBank(bank)}
-                        className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${selectedBank?.id === bank.id
+                        className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                          selectedBank?.id === bank.id
                             ? 'bg-blue-600 text-white'
                             : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                          }`}
+                        }`}
                       >
                         {bank.name}
                       </button>
@@ -888,13 +917,14 @@ export default function BankDetailsModal({
                 onClick={handleConfirmPayout}
                 disabled={
                   payoutLoading ||
+                  isPayoutProcessing ||
                   quoteLoading ||
                   !lockedQuote ||
                   quoteSecondsLeft === 0
                 }
                 className="theme-primary-button flex-1 flex items-center justify-center gap-2 disabled:bg-blue-800 disabled:opacity-70 text-white py-3 rounded-lg font-medium transition-colors"
               >
-                {payoutLoading ? (
+                {payoutLoading || isPayoutProcessing ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Processing…
@@ -912,7 +942,10 @@ export default function BankDetailsModal({
                   Transfer Status
                 </p>
                 <TransferTimeline
-                  events={statusEvents}
+                  events={statusEvents.map((event) => ({
+                    ...event,
+                    copyValue: transferReference || undefined,
+                  }))}
                   isPolling={isPollingStatus}
                 />
               </div>
@@ -956,9 +989,12 @@ export default function BankDetailsModal({
                 <p className="theme-text-muted text-xs mb-1">
                   Transfer Reference
                 </p>
-                <p className="theme-text-primary font-mono text-sm break-all">
-                  {transferReference}
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <p className="theme-text-primary font-mono text-sm break-all">
+                    {transferReference}
+                  </p>
+                  <CopyButton value={transferReference} />
+                </div>
               </div>
             )}
 
@@ -968,7 +1004,13 @@ export default function BankDetailsModal({
                 <p className="theme-text-muted text-xs font-semibold uppercase tracking-wider mb-3">
                   Transfer History
                 </p>
-                <TransferTimeline events={statusEvents} isPolling={false} />
+                <TransferTimeline
+                  events={statusEvents.map((event) => ({
+                    ...event,
+                    copyValue: transferReference || undefined,
+                  }))}
+                  isPolling={false}
+                />
               </div>
             )}
 

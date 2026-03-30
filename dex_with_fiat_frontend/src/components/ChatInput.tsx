@@ -1,10 +1,12 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Send, Loader2 } from 'lucide-react';
+import { Send, Loader2, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from '@/contexts/TranslationContext';
+import { useStellarWallet } from '@/contexts/StellarWalletContext';
 import { saveDraft, getDraft, clearDraft } from '@/lib/draftUtils';
+import { useIdempotentAction } from '@/hooks/useIdempotentAction';
 
 interface ChatInputProps {
   onSendMessage: (message: string) => void;
@@ -28,13 +30,24 @@ export default function ChatInput({
   sessionId,
 }: ChatInputProps) {
   const { t } = useTranslation();
+  const { connection } = useStellarWallet();
   const activePlaceholder = placeholder || t('chat.placeholder');
+  const isApplePlatform =
+    typeof navigator !== 'undefined' &&
+    /(Mac|iPhone|iPad|iPod)/i.test(navigator.platform);
+  const submitShortcutLabel = isApplePlatform ? 'Cmd+Enter' : 'Ctrl+Enter';
+  const submitShortcutKeys = isApplePlatform ? 'Meta+Enter' : 'Control+Enter';
   const [message, setMessage] = useState('');
   const [showCommands, setShowCommands] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showPalette, setShowPalette] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
   const [paletteIndex, setPaletteIndex] = useState(0);
+  
+  const { execute: executeSubmit, isProcessing: isSubmitting } = useIdempotentAction({
+    cooldownMs: 1000,
+    logSuppressed: true,
+  });
 
   const commands = [
     { cmd: '/deposit', desc: t('common.deposit_desc') || 'Add funds to your Stellar account' },
@@ -58,15 +71,35 @@ export default function ChatInput({
     setShowCommands(false);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (message.trim() && !isLoading) {
-      onSendMessage(message.trim());
-      setMessage('');
-      if (sessionId) clearDraft(sessionId);
-      setShowCommands(false);
+  const [walletWarning, setWalletWarning] = useState(false);
+  const isSubmitDisabled = !message.trim() || isLoading || isSubmitting;
+
+  const submitMessage = () => {
+    if (!connection.isConnected) {
+      setWalletWarning(true);
+      return;
+    }
+    setWalletWarning(false);
+    if (!isSubmitDisabled) {
+      executeSubmit(async () => {
+        onSendMessage(message.trim());
+        setMessage('');
+        if (sessionId) clearDraft(sessionId);
+        setShowCommands(false);
+      }, 'chat_message_submit');
     }
   };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    submitMessage();
+  };
+
+  useEffect(() => {
+    if (connection.isConnected) {
+      setWalletWarning(false);
+    }
+  }, [connection.isConnected]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (showCommands) {
@@ -87,9 +120,9 @@ export default function ChatInput({
       return;
     }
 
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
-      handleSubmit(e);
+      submitMessage();
     }
   };
 
@@ -158,22 +191,30 @@ export default function ChatInput({
     if (sessionId) {
       const draft = getDraft(sessionId);
       setMessage(draft || '');
+    } else {
+      setMessage('');
     }
   }, [sessionId]);
 
-  // Save draft when message changes
+  // Save draft when message changes (debounced 500ms)
   useEffect(() => {
-    if (sessionId && message.trim()) {
-      saveDraft(sessionId, message);
-    } else if (sessionId && !message.trim()) {
-      clearDraft(sessionId);
-    }
+    if (!sessionId) return;
+
+    const timer = setTimeout(() => {
+      if (message.trim()) {
+        saveDraft(sessionId, message);
+      } else {
+        clearDraft(sessionId);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
   }, [message, sessionId]);
 
   return (
     <form
       onSubmit={handleSubmit}
-      className="theme-surface p-6 transition-colors duration-300 relative"
+      className="theme-surface p-4 sm:p-6 transition-colors duration-300 relative border-t sm:border-none"
     >
       {showPalette && (
         <div className="absolute inset-x-6 bottom-full mb-3 rounded-xl border theme-surface shadow-2xl z-50">
@@ -269,6 +310,7 @@ export default function ChatInput({
             onKeyDown={handleKeyDown}
             placeholder={activePlaceholder}
             disabled={isLoading}
+            aria-describedby="chat-submit-shortcut"
             className="theme-input w-full resize-none border rounded-lg px-4 py-3 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             rows={1}
             style={{
@@ -286,10 +328,14 @@ export default function ChatInput({
 
         <button
           type="submit"
-          disabled={!message.trim() || isLoading}
+          disabled={isSubmitDisabled}
+          title={`Send message (${submitShortcutLabel})`}
+          aria-label={`Send message (${submitShortcutLabel})`}
+          aria-describedby="chat-submit-shortcut"
+          aria-keyshortcuts={submitShortcutKeys}
           className="theme-primary-button flex items-center justify-center w-12 h-12 disabled:bg-gray-300 text-white rounded-lg transition-all duration-200 disabled:cursor-not-allowed transform hover:scale-105 disabled:hover:scale-100 shadow-lg"
         >
-          {isLoading ? (
+          {isLoading || isSubmitting ? (
             <Loader2 className="w-5 h-5 animate-spin" />
           ) : (
             <Send className="w-5 h-5" />
@@ -297,8 +343,19 @@ export default function ChatInput({
         </button>
       </div>
 
+      <p id="chat-submit-shortcut" className="sr-only" aria-live="polite">
+        Send message with {submitShortcutLabel}. The send button stays disabled while a request is pending.
+      </p>
+
+      {walletWarning && (
+        <div className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-700 text-amber-800 dark:text-amber-200 text-xs">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          <span>Wallet disconnected. Reconnect to continue.</span>
+        </div>
+      )}
+
       {/* Quick suggestions */}
-      <div className="flex flex-wrap gap-2 mt-4">
+      <div className="flex flex-wrap gap-2 mt-3 sm:mt-4 overflow-x-auto pb-1 no-scrollbar">
         {[
           t('chat.suggestions.convert'),
           t('chat.suggestions.rates'),
@@ -308,7 +365,7 @@ export default function ChatInput({
             key={index}
             type="button"
             onClick={() => setMessage(suggestion)}
-            className="theme-secondary-button px-3 py-2 text-sm rounded-lg transition-all duration-200 transform hover:scale-105"
+            className="theme-secondary-button px-3 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg transition-all duration-200 transform hover:scale-105 whitespace-nowrap"
           >
             {suggestion}
           </button>

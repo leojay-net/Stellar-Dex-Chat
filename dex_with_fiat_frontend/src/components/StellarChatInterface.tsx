@@ -18,34 +18,46 @@ import {
   AlertCircle,
   RefreshCcw,
   Receipt,
+  Search,
+  Columns2,
 } from 'lucide-react';
 import {
-    EXPECTED_NETWORK,
-    useStellarWallet,
+  EXPECTED_NETWORK,
+  useStellarWallet,
 } from '@/contexts/StellarWalletContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
 import useBridgeStats from '@/hooks/useBridgeStats';
 import useChat from '@/hooks/useChat';
 import { getQueuedReadRequestsCount } from '@/lib/networkQueue';
-import { getAdmin, stroopsToDisplay } from '@/lib/stellarContract';
+import {
+  getAdmin,
+  getWithdrawalQueueDepth,
+  stroopsToDisplay,
+} from '@/lib/stellarContract';
+import { usePaystackWebhookStatus } from '@/hooks/usePaystackWebhookStatus';
 import { TransactionData } from '@/types';
 import BankDetailsModal from './BankDetailsModal';
 import ChatHistorySidebar from './ChatHistorySidebar';
 import ChatInput from './ChatInput';
 import ChatMessages from './ChatMessages';
+import ErrorBoundary from './ErrorBoundary';
 import NotificationsCenter from './NotificationsCenter';
 import StellarFiatModal from './StellarFiatModal';
 import UserSettings from './UserSettings';
 import WalletConnectionTimeline from './WalletConnectionTimeline';
 import { clearExpiredDrafts } from '@/lib/draftUtils';
 import { useTranslation } from '@/contexts/TranslationContext';
-import ReceiptDrawer from './ReceiptDrawer';
+import ReceiptDrawer from './ReceiptDrawerWrapper';
 import { useTxHistory } from '@/hooks/useTxHistory';
-import {
-  subscribeToQueue,
-  processQueue,
-} from '@/lib/networkQueue';
+import { useChatHistory } from '@/hooks/useChatHistory';
+import { useSplitView } from '@/hooks/useSplitView';
+import { subscribeToQueue, processQueue } from '@/lib/networkQueue';
+import CopyButton from '@/components/ui/CopyButton';
+import SplitViewComparison from './SplitViewComparison';
+import ChatSearchPanel from './ChatSearchPanel';
+import { useChatHistory } from '@/hooks/useChatHistory';
+import { useSplitView } from '@/hooks/useSplitView';
 
 /** Possible states for the API health badge */
 type HealthStatus = 'checking' | 'ok' | 'degraded';
@@ -90,13 +102,30 @@ export default function StellarChatInterface() {
   const healthIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // ───────────────────────────────────────────────────────────────────────────
 
+  const [showReconnectedNotice, setShowReconnectedNotice] = useState(false);
+  const [queuedReadables, setQueuedReadables] = useState(
+    getQueuedReadRequestsCount(),
+  );
+  const [withdrawalQueueDepth, setWithdrawalQueueDepth] = useState<
+    number | null
+  >(null);
+  const [isReceiptDrawerOpen, setIsReceiptDrawerOpen] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const { entries: txHistory, clearEntries: clearTxHistory } = useTxHistory();
   const accountDropdownRef = useRef<HTMLDivElement>(null);
+  const reconnectNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  // Chat history sessions (for search + split-view)
+  const { sessions } = useChatHistory();
+  const splitView = useSplitView(sessions);
 
   const sheetRef = useRef<HTMLDivElement>(null);
-  const dragStartY = useRef(0);
-  const dragDelta = useRef(0);
-  const isDragging = useRef(false);
+
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  usePaystackWebhookStatus();
 
   const {
     messages,
@@ -118,9 +147,9 @@ export default function StellarChatInterface() {
     error: statsError,
   } = useBridgeStats();
 
-  // Track viewport width to switch between sidebar and bottom-sheet
+  // Track viewport width to switch between sidebar and drawer
   useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    const checkMobile = () => setIsMobile(window.innerWidth < 640);
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
@@ -131,9 +160,23 @@ export default function StellarChatInterface() {
 
     const handleOnline = () => {
       setIsOnline(true);
+      setShowReconnectedNotice(true);
+      if (reconnectNoticeTimerRef.current) {
+        clearTimeout(reconnectNoticeTimerRef.current);
+      }
+      reconnectNoticeTimerRef.current = setTimeout(() => {
+        setShowReconnectedNotice(false);
+      }, 3000);
       void processQueue();
     };
-    const handleOffline = () => setIsOnline(false);
+    const handleOffline = () => {
+      setIsOnline(false);
+      setShowReconnectedNotice(false);
+      if (reconnectNoticeTimerRef.current) {
+        clearTimeout(reconnectNoticeTimerRef.current);
+        reconnectNoticeTimerRef.current = null;
+      }
+    };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
@@ -145,6 +188,9 @@ export default function StellarChatInterface() {
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      if (reconnectNoticeTimerRef.current) {
+        clearTimeout(reconnectNoticeTimerRef.current);
+      }
       unsubscribe();
     };
   }, []);
@@ -189,6 +235,39 @@ export default function StellarChatInterface() {
     checkAdmin();
   }, [connection.isConnected, connection.address]);
 
+  useEffect(() => {
+    if (!connection.isConnected) {
+      setWithdrawalQueueDepth(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const pollQueueDepth = async () => {
+      try {
+        const depth = await getWithdrawalQueueDepth();
+        if (!cancelled) {
+          setWithdrawalQueueDepth(depth);
+        }
+      } catch (error) {
+        console.error('Failed to fetch withdrawal queue depth:', error);
+        if (!cancelled) {
+          setWithdrawalQueueDepth(null);
+        }
+      }
+    };
+
+    void pollQueueDepth();
+    const intervalId = setInterval(() => {
+      void pollQueueDepth();
+    }, 30_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [connection.isConnected]);
+
   // Sync admin state to chat hook
   useEffect(() => {
     setChatIsAdmin(isAdmin);
@@ -207,14 +286,14 @@ export default function StellarChatInterface() {
     }
   }, [showSidebar, isMobile]);
 
-  // Slide the sheet up after it mounts
+  // Slide the drawer in after it mounts
   useEffect(() => {
     if (!isSheetMounted || !sheetRef.current) return;
     const el = sheetRef.current;
-    el.style.transform = 'translateY(100%)';
+    el.style.transform = 'translateX(-100%)';
     const raf = requestAnimationFrame(() => {
       el.style.transition = 'transform 300ms cubic-bezier(0.32, 0.72, 0, 1)';
-      el.style.transform = 'translateY(0)';
+      el.style.transform = 'translateX(0)';
     });
     return () => cancelAnimationFrame(raf);
   }, [isSheetMounted]);
@@ -261,51 +340,13 @@ export default function StellarChatInterface() {
     if (sheetRef.current) {
       sheetRef.current.style.transition =
         'transform 300ms cubic-bezier(0.32, 0.72, 0, 1)';
-      sheetRef.current.style.transform = 'translateY(100%)';
+      sheetRef.current.style.transform = 'translateX(-100%)';
     }
     closeTimerRef.current = setTimeout(() => {
       setIsSheetMounted(false);
       setShowSidebar(false);
     }, 300);
   }, []);
-
-  const handleSheetTouchStart = useCallback(
-    (e: React.TouchEvent<HTMLDivElement>) => {
-      dragStartY.current = e.touches[0].clientY;
-      dragDelta.current = 0;
-      isDragging.current = true;
-      if (sheetRef.current) {
-        sheetRef.current.style.transition = 'none';
-      }
-    },
-    [],
-  );
-
-  const handleSheetTouchMove = useCallback(
-    (e: React.TouchEvent<HTMLDivElement>) => {
-      if (!isDragging.current || !sheetRef.current) return;
-      const delta = e.touches[0].clientY - dragStartY.current;
-      dragDelta.current = delta;
-      // Only allow downward drag
-      if (delta > 0) {
-        sheetRef.current.style.transform = `translateY(${delta}px)`;
-      }
-    },
-    [],
-  );
-
-  const handleSheetTouchEnd = useCallback(() => {
-    if (!isDragging.current) return;
-    isDragging.current = false;
-    if (dragDelta.current > 120) {
-      closeSheet();
-    } else if (sheetRef.current) {
-      sheetRef.current.style.transition =
-        'transform 300ms cubic-bezier(0.32, 0.72, 0, 1)';
-      sheetRef.current.style.transform = 'translateY(0)';
-    }
-    dragDelta.current = 0;
-  }, [closeSheet]);
 
   // When the AI decides a transaction is ready, open the modal
   const handleTransactionReady = useCallback(
@@ -391,18 +432,31 @@ export default function StellarChatInterface() {
   }[healthStatus];
   // ───────────────────────────────────────────────────────────────────────────
 //fhj
+  const withdrawalQueueTone =
+    withdrawalQueueDepth === null
+      ? isDarkMode
+        ? 'bg-gray-700 text-gray-200'
+        : 'bg-gray-200 text-gray-700'
+      : withdrawalQueueDepth <= 5
+        ? 'bg-green-500/15 text-green-400'
+        : withdrawalQueueDepth <= 20
+          ? 'bg-yellow-500/15 text-yellow-400'
+          : 'bg-red-500/15 text-red-400';
+
   return (
     <div className="theme-app flex h-screen w-screen overflow-hidden transition-colors duration-300">
-      {/* Desktop sidebar - only rendered on md+ viewports */}
-      {!isMobile && showSidebar && (
-        <div className="shrink-0 w-72">
+      {/* Desktop sidebar - only rendered on lg+ viewports or when toggled */}
+      {!isMobile && (
+        <div
+          className={`shrink-0 transition-all duration-300 ${showSidebar ? 'w-72' : 'w-20'}`}
+        >
           {isLoading ? (
             <SkeletonSidebar />
           ) : (
             <ChatHistorySidebar
+              isCollapsed={!showSidebar}
               onLoadSession={(id) => {
                 loadChatSession(id);
-                setShowSidebar(false);
               }}
             />
           )}
@@ -468,6 +522,34 @@ export default function StellarChatInterface() {
 
             <NotificationsCenter />
 
+            {/* Search history */}
+            <button
+              onClick={() => setShowSearch((v) => !v)}
+              title="Search chat history"
+              aria-label="Search chat history"
+              aria-pressed={showSearch}
+              className={`p-2 rounded-lg transition-colors ${showSearch ? (isDarkMode ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-900') : (isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}`}
+            >
+              <Search className="w-5 h-5" />
+            </button>
+
+            {/* Split-view comparison */}
+            <button
+              onClick={() => {
+                if (splitView.state.isOpen) {
+                  splitView.close();
+                } else {
+                  splitView.open(sessions[0]?.id ?? '', sessions[1]?.id);
+                }
+              }}
+              title="Compare threads side by side"
+              aria-label="Toggle split-view"
+              aria-pressed={splitView.state.isOpen}
+              className={`p-2 rounded-lg transition-colors ${splitView.state.isOpen ? (isDarkMode ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-900') : (isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}`}
+            >
+              <Columns2 className="w-5 h-5" />
+            </button>
+
             <button
               onClick={() => setIsReceiptDrawerOpen(true)}
               title={t('header.receipts')}
@@ -498,7 +580,7 @@ export default function StellarChatInterface() {
 
             {connection.isConnected ? (
               <div className="flex items-center gap-2">
-                <div ref={accountDropdownRef} className="relative">
+                <div ref={accountDropdownRef} className="relative flex items-center gap-1">
                   <button
                     onClick={() =>
                       accounts.length > 1 &&
@@ -517,6 +599,11 @@ export default function StellarChatInterface() {
                       />
                     )}
                   </button>
+                  <CopyButton
+                    value={connection.address}
+                    iconClassName="w-3 h-3"
+                    className="p-0.5"
+                  />
                   {showAccountDropdown && accounts.length > 1 && (
                     <div
                       className={`absolute right-0 top-full mt-1 w-56 rounded-lg shadow-lg border z-50 ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}
@@ -527,27 +614,36 @@ export default function StellarChatInterface() {
                         {t('header.switch_account')}
                       </div>
                       {accounts.map((account, idx) => (
-                        <button
+                        <div
                           key={account.address}
-                          onClick={() => {
-                            selectAccount(idx);
-                            setShowAccountDropdown(false);
-                          }}
-                          className={`w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors ${idx === selectedAccountIndex ? (isDarkMode ? 'bg-blue-900/50 text-blue-400' : 'bg-blue-50 text-blue-600') : isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-50'}`}
+                          className={`flex items-center gap-1 px-1.5 py-1 ${idx === selectedAccountIndex ? (isDarkMode ? 'bg-blue-900/50 text-blue-400' : 'bg-blue-50 text-blue-600') : ''}`}
                         >
-                          <User className="w-3.5 h-3.5 flex-shrink-0" />
-                          <span className="font-mono truncate">
-                            {account.address.slice(0, 6)}…
-                            {account.address.slice(-4)}
-                          </span>
-                          {idx === selectedAccountIndex && (
-                            <span
-                              className={`ml-auto text-[10px] px-1.5 py-0.5 rounded ${isDarkMode ? 'bg-blue-900/50' : 'bg-blue-100'}`}
-                            >
-                              {t('header.active_account')}
+                          <button
+                            onClick={() => {
+                              selectAccount(idx);
+                              setShowAccountDropdown(false);
+                            }}
+                            className={`flex-1 flex items-center gap-2 px-1.5 py-1 text-xs rounded transition-colors ${idx === selectedAccountIndex ? '' : isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-50'}`}
+                          >
+                            <User className="w-3.5 h-3.5 flex-shrink-0" />
+                            <span className="font-mono truncate">
+                              {account.address.slice(0, 6)}…
+                              {account.address.slice(-4)}
                             </span>
-                          )}
-                        </button>
+                            {idx === selectedAccountIndex && (
+                              <span
+                                className={`ml-auto text-[10px] px-1.5 py-0.5 rounded ${isDarkMode ? 'bg-blue-900/50' : 'bg-blue-100'}`}
+                              >
+                                {t('header.active_account')}
+                              </span>
+                            )}
+                          </button>
+                          <CopyButton
+                            value={account.address}
+                            iconClassName="w-3 h-3"
+                            className="p-0.5"
+                          />
+                        </div>
                       ))}
                     </div>
                   )}
@@ -583,7 +679,7 @@ export default function StellarChatInterface() {
         )}
 
         {/* Network status */}
-        {(!isOnline || queuedReadables > 0) && (
+        {(!isOnline || queuedReadables > 0 || showReconnectedNotice) && (
           <div
             className={`flex items-center justify-between gap-3 px-4 py-2 text-xs border-b transition-all duration-300 ${
               !isOnline
@@ -621,10 +717,12 @@ export default function StellarChatInterface() {
           <div
             className={`flex-shrink-0 flex flex-col items-center gap-1 py-1.5 text-xs ${
               isNetworkMismatch
-                ? 'bg-red-500/10 text-red-400'
+                ? isDarkMode
+                  ? 'bg-red-900/40 text-red-400'
+                  : 'bg-red-100 text-red-700'
                 : isDarkMode
                   ? 'bg-gray-800/50 text-gray-400'
-                  : 'bg-gray-50 text-gray-500'
+                  : 'bg-gray-50 text-gray-700'
             }`}
             role="status"
             aria-live="polite"
@@ -638,7 +736,13 @@ export default function StellarChatInterface() {
               {t('common.network')}:{' '}
               <span
                 className={`font-medium ${
-                  isNetworkMismatch ? 'text-red-400' : 'text-blue-400'
+                  isNetworkMismatch
+                    ? isDarkMode
+                      ? 'text-red-400'
+                      : 'text-red-700'
+                    : isDarkMode
+                      ? 'text-blue-400'
+                      : 'text-blue-700'
                 }`}
               >
                 {connection.network || t('common.unknown')}
@@ -658,9 +762,19 @@ export default function StellarChatInterface() {
                           setIsAdminMode(true);
                           setShowModal(true);
                         }}
-                        className="text-blue-400 hover:text-blue-300 underline"
+                        className="inline-flex items-center gap-2 text-blue-400 hover:text-blue-300 underline"
                       >
                         {t('common.withdraw_xlm')}
+                        <span
+                          className={`inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[10px] font-semibold no-underline ${withdrawalQueueTone}`}
+                          title={
+                            withdrawalQueueDepth === null
+                              ? 'Withdrawal queue unavailable'
+                              : `Withdrawal queue depth: ${withdrawalQueueDepth}`
+                          }
+                        >
+                          {withdrawalQueueDepth ?? '--'}
+                        </span>
                       </button>
                       {' · '}
                     </>
@@ -680,7 +794,9 @@ export default function StellarChatInterface() {
             {isNetworkMismatch && (
               <span className="flex items-center gap-1 text-[11px]">
                 <AlertCircle className="w-3.5 h-3.5" />
-                {t('common.network_mismatch_warning', { expectedNetwork: EXPECTED_NETWORK })}
+                {t('common.network_mismatch_warning', {
+                  expectedNetwork: EXPECTED_NETWORK,
+                })}
               </span>
             )}
           </div>
@@ -692,7 +808,7 @@ export default function StellarChatInterface() {
             className={`flex-shrink-0 py-2 px-4 text-xs ${
               isDarkMode
                 ? 'bg-gray-800/30 text-gray-300'
-                : 'bg-gray-100 text-gray-600'
+                : 'bg-gray-100 text-gray-700'
             }`}
             role="status"
             aria-live="polite"
@@ -705,19 +821,25 @@ export default function StellarChatInterface() {
               <div className="flex flex-col gap-1 sm:flex-row sm:gap-4 sm:items-center">
                 <span className="font-medium">
                   {t('common.bridge_balance')}:{' '}
-                  <span className="text-blue-400">
+                  <span
+                    className={isDarkMode ? 'text-blue-400' : 'text-blue-700'}
+                  >
                     {balance !== null ? stroopsToDisplay(balance) : '—'} XLM
                   </span>
                 </span>
                 <span className="font-medium">
                   {t('common.deposit_limit')}:{' '}
-                  <span className="text-blue-400">
+                  <span
+                    className={isDarkMode ? 'text-blue-400' : 'text-blue-700'}
+                  >
                     {limit !== null ? stroopsToDisplay(limit) : '—'} XLM
                   </span>
                 </span>
                 <span className="font-medium">
                   Total Deposited:{' '}
-                  <span className="text-blue-400">
+                  <span
+                    className={isDarkMode ? 'text-blue-400' : 'text-blue-700'}
+                  >
                     {totalDeposited !== null
                       ? stroopsToDisplay(totalDeposited)
                       : '—'}{' '}
@@ -734,11 +856,19 @@ export default function StellarChatInterface() {
           {isLoading && messages.length === 0 ? (
             <SkeletonChat />
           ) : (
-            <ChatMessages
-              messages={messages}
-              onActionClick={handleActionClick}
-              isLoading={isLoading}
-            />
+            <ErrorBoundary
+              isDarkMode={isDarkMode}
+              title="Chat unavailable. Please refresh."
+              message="Something went wrong while loading the conversation."
+              retryLabel="Retry"
+              onRetry={() => window.location.reload()}
+            >
+              <ChatMessages
+                messages={messages}
+                onActionClick={handleActionClick}
+                isLoading={isLoading}
+              />
+            </ErrorBoundary>
           )}
           <ChatInput
             onSendMessage={sendMessage}
@@ -765,40 +895,29 @@ export default function StellarChatInterface() {
         </div>
       </div>
 
-      {/* Mobile bottom-sheet - only rendered when isSheetMounted */}
+      {/* Mobile slide-out drawer - only rendered when isSheetMounted */}
       {isSheetMounted && (
         <>
           {/* Backdrop */}
           <div
-            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+            className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm"
             onClick={closeSheet}
             aria-hidden="true"
           />
 
-          {/* Sheet */}
+          {/* Drawer */}
           <div
             ref={sheetRef}
             role="dialog"
             aria-modal="true"
             aria-label="Chat history"
             tabIndex={-1}
-            className={`fixed bottom-0 left-0 right-0 z-50 flex flex-col rounded-t-2xl max-h-[85svh] will-change-transform focus:outline-none ${
-              isDarkMode ? 'bg-gray-800' : 'bg-white'
+            className={`fixed top-0 left-0 bottom-0 w-80 z-[70] flex flex-col will-change-transform focus:outline-none ${
+              isDarkMode
+                ? 'bg-gray-900 border-r border-gray-800'
+                : 'bg-white border-r border-gray-200'
             }`}
-            onTouchStart={handleSheetTouchStart}
-            onTouchMove={handleSheetTouchMove}
-            onTouchEnd={handleSheetTouchEnd}
           >
-            {/* Drag handle */}
-            <div
-              className="flex justify-center pt-3 pb-2 shrink-0 cursor-grab active:cursor-grabbing"
-              aria-hidden="true"
-            >
-              <div
-                className={`w-10 h-1 rounded-full ${isDarkMode ? 'bg-gray-600' : 'bg-gray-300'}`}
-              />
-            </div>
-
             <ChatHistorySidebar
               onLoadSession={(id) => {
                 loadChatSession(id);
@@ -808,6 +927,23 @@ export default function StellarChatInterface() {
             />
           </div>
         </>
+      )}
+
+      {/* Split-view comparison overlay */}
+      <SplitViewComparison splitView={splitView} sessions={sessions} />
+
+      {/* Search panel — slide-over on the right */}
+      {showSearch && (
+        <div className="fixed inset-y-0 right-0 z-40 w-80 shadow-2xl flex flex-col">
+          <ChatSearchPanel
+            sessions={sessions}
+            onSelectResult={(sessionId: string) => {
+              loadChatSession(sessionId);
+              setShowSearch(false);
+            }}
+            onClose={() => setShowSearch(false)}
+          />
+        </div>
       )}
 
       {/* Deposit / Withdraw Modal */}

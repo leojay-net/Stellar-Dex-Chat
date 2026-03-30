@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getTransferStatus, setTransferStatus } from '@/lib/transferStore';
 
 // Temporary memory store to mark cancellation requests.
 // In a full production app, this would update a database record.
@@ -20,6 +21,15 @@ export async function POST(
     }
 
     cancelledTransfers.add(reference);
+    const existing = getTransferStatus(reference);
+    setTransferStatus({
+      reference,
+      status: 'cancelled',
+      amount: existing?.amount ?? 0,
+      updatedAt: new Date().toISOString(),
+      clientSessionId: existing?.clientSessionId,
+      failureReason: existing?.failureReason,
+    });
 
     return NextResponse.json({
       success: true,
@@ -54,13 +64,23 @@ export async function GET(
     }
 
     if (cancelledTransfers.has(reference)) {
+      const existing = getTransferStatus(reference);
       return NextResponse.json({
         success: true,
         data: {
           reference,
           status: 'cancelled',
+          amount: existing?.amount ?? 0,
           message: 'Transfer cancellation requested successfully',
         },
+      });
+    }
+
+    const transferRecord = getTransferStatus(reference);
+    if (transferRecord) {
+      return NextResponse.json({
+        success: true,
+        data: transferRecord,
       });
     }
 

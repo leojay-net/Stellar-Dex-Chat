@@ -4,7 +4,6 @@
  */
 
 import { StateMachine, StateMachineConfig } from '@/lib/stateMachine';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { TransactionData } from '@/types';
 
 /**

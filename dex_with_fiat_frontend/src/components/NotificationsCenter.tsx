@@ -129,7 +129,7 @@ export default function NotificationsCenter() {
           <div className="max-h-[400px] overflow-y-auto">
             {notifications.length === 0 ? (
               <div
-                className={`px-4 py-8 text-center text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}
+                className={`px-4 py-8 text-center text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
               >
                 No notifications yet
               </div>
