@@ -26,6 +26,7 @@ import TransferTimeline, {
   StatusEvent,
   TransferStatus,
 } from '@/components/TransferTimeline';
+import CopyButton from '@/components/ui/CopyButton';
 import { useAccessibleModal } from '@/hooks/useAccessibleModal';
 import { useIdempotentAction } from '@/hooks/useIdempotentAction';
 import { getOrCreateClientSessionId } from '@/lib/clientSession';
@@ -941,7 +942,10 @@ export default function BankDetailsModal({
                   Transfer Status
                 </p>
                 <TransferTimeline
-                  events={statusEvents}
+                  events={statusEvents.map((event) => ({
+                    ...event,
+                    copyValue: transferReference || undefined,
+                  }))}
                   isPolling={isPollingStatus}
                 />
               </div>
@@ -985,9 +989,12 @@ export default function BankDetailsModal({
                 <p className="theme-text-muted text-xs mb-1">
                   Transfer Reference
                 </p>
-                <p className="theme-text-primary font-mono text-sm break-all">
-                  {transferReference}
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <p className="theme-text-primary font-mono text-sm break-all">
+                    {transferReference}
+                  </p>
+                  <CopyButton value={transferReference} />
+                </div>
               </div>
             )}
 
@@ -997,7 +1004,13 @@ export default function BankDetailsModal({
                 <p className="theme-text-muted text-xs font-semibold uppercase tracking-wider mb-3">
                   Transfer History
                 </p>
-                <TransferTimeline events={statusEvents} isPolling={false} />
+                <TransferTimeline
+                  events={statusEvents.map((event) => ({
+                    ...event,
+                    copyValue: transferReference || undefined,
+                  }))}
+                  isPolling={false}
+                />
               </div>
             )}
 

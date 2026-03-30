@@ -48,6 +48,7 @@ All errors are returned as `Result<_, Error>` variants. The contract uses a flat
 | Code | Variant | Series | Description | Returned By |
 |------|---------|--------|-------------|-------------|
 | 1 | `NotInitialized` | Initialization | Contract has not been initialized (no admin set) | `withdraw`, `request_withdrawal`, `cancel_withdrawal`, `set_limit`, `set_cooldown`, `set_lock_period`, `transfer_admin`, `set_oracle`, `set_fiat_limit`, `queue_admin_action`, `execute_admin_action`, all view fns |
+| 103 | `InternalError` | Initialization | Internal contract error (e.g. integer overflow) | `deposit`, `request_withdrawal`, `execute_withdrawal` |
 | 2 | `AlreadyInitialized` | Initialization | `init` was called on a contract already initialized | `init` |
 | 3 | `Unauthorized` | Auth | Caller is not the contract admin | (reserved; auth enforced via `require_auth`) |
 | 4 | `ZeroAmount` | Amount Validation | Amount is ≤ 0, or `init` called with `limit ≤ 0` | `init`, `deposit`, `withdraw`, `request_withdrawal`, `execute_withdrawal` |
@@ -128,6 +129,13 @@ A GitHub Actions step validates that the error table stays in sync with the cont
 | `set_fiat_limit(limit_usd_cents)` | admin | Set daily USD fiat limit |
 | `queue_admin_action(type, payload, delay)` | admin | Queue a timelocked admin action |
 | `execute_admin_action(id)` | admin | Execute a matured admin action |
+| `set_token_allowlist_enabled(token, enabled)` | admin | Enable/disable allowlist for a specific token |
+| `add_token_allowlist(token, address)` | admin | Add address to token-specific allowlist |
+| `remove_token_allowlist(token, address)` | admin | Remove address from token-specific allowlist |
+| `get_daily_deposit_record(user)` | — | Get 24h fiat deposit volume for a user |
+
+---
+
 # FiatBridge Contract — Integrator Reference
 
 ## Receipt IDs

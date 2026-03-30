@@ -1,0 +1,10 @@
+[
+  {
+    "contract": "bridge",
+    "topics": [
+      "u32:1",
+      "symbol:deny_rem"
+    ],
+    "data": "address:target"
+  }
+]

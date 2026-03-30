@@ -38,6 +38,9 @@ jobs:
         working-directory: dex_with_fiat_frontend
         run: npm ci
 
+      - name: Type Check
+        run: npm run typecheck
+
       - name: Cache Next.js build artifacts
         uses: actions/cache@v4
         with:
@@ -56,3 +59,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || 'PLACEHOLDER' }}
           PAYSTACK_SECRET_KEY: ${{ secrets.PAYSTACK_SECRET_KEY || 'PLACEHOLDER' }}
           PAYOUT_PROVIDER: ${{ secrets.PAYOUT_PROVIDER || 'paystack' }}
+
+      - name: Unit tests with coverage
+        run: npm run test:coverage
+        # Fails the pipeline if coverage thresholds (stmt 70%, branch 65%, fn 70%) are not met

@@ -18,6 +18,8 @@ import {
   AlertCircle,
   RefreshCcw,
   Receipt,
+  Search,
+  Columns2,
 } from 'lucide-react';
 import {
   EXPECTED_NETWORK,
@@ -48,7 +50,14 @@ import { clearExpiredDrafts } from '@/lib/draftUtils';
 import { useTranslation } from '@/contexts/TranslationContext';
 import ReceiptDrawer from './ReceiptDrawerWrapper';
 import { useTxHistory } from '@/hooks/useTxHistory';
+import { useChatHistory } from '@/hooks/useChatHistory';
+import { useSplitView } from '@/hooks/useSplitView';
 import { subscribeToQueue, processQueue } from '@/lib/networkQueue';
+import CopyButton from '@/components/ui/CopyButton';
+import SplitViewComparison from './SplitViewComparison';
+import ChatSearchPanel from './ChatSearchPanel';
+import { useChatHistory } from '@/hooks/useChatHistory';
+import { useSplitView } from '@/hooks/useSplitView';
 
 export default function StellarChatInterface() {
   const { t } = useTranslation();
@@ -89,11 +98,16 @@ export default function StellarChatInterface() {
     number | null
   >(null);
   const [isReceiptDrawerOpen, setIsReceiptDrawerOpen] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const { entries: txHistory, clearEntries: clearTxHistory } = useTxHistory();
   const accountDropdownRef = useRef<HTMLDivElement>(null);
   const reconnectNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+
+  // Chat history sessions (for search + split-view)
+  const { sessions } = useChatHistory();
+  const splitView = useSplitView(sessions);
 
   const sheetRef = useRef<HTMLDivElement>(null);
 
@@ -446,6 +460,34 @@ export default function StellarChatInterface() {
 
             <NotificationsCenter />
 
+            {/* Search history */}
+            <button
+              onClick={() => setShowSearch((v) => !v)}
+              title="Search chat history"
+              aria-label="Search chat history"
+              aria-pressed={showSearch}
+              className={`p-2 rounded-lg transition-colors ${showSearch ? (isDarkMode ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-900') : (isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}`}
+            >
+              <Search className="w-5 h-5" />
+            </button>
+
+            {/* Split-view comparison */}
+            <button
+              onClick={() => {
+                if (splitView.state.isOpen) {
+                  splitView.close();
+                } else {
+                  splitView.open(sessions[0]?.id ?? '', sessions[1]?.id);
+                }
+              }}
+              title="Compare threads side by side"
+              aria-label="Toggle split-view"
+              aria-pressed={splitView.state.isOpen}
+              className={`p-2 rounded-lg transition-colors ${splitView.state.isOpen ? (isDarkMode ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-900') : (isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}`}
+            >
+              <Columns2 className="w-5 h-5" />
+            </button>
+
             <button
               onClick={() => setIsReceiptDrawerOpen(true)}
               title={t('header.receipts')}
@@ -476,7 +518,7 @@ export default function StellarChatInterface() {
 
             {connection.isConnected ? (
               <div className="flex items-center gap-2">
-                <div ref={accountDropdownRef} className="relative">
+                <div ref={accountDropdownRef} className="relative flex items-center gap-1">
                   <button
                     onClick={() =>
                       accounts.length > 1 &&
@@ -495,6 +537,11 @@ export default function StellarChatInterface() {
                       />
                     )}
                   </button>
+                  <CopyButton
+                    value={connection.address}
+                    iconClassName="w-3 h-3"
+                    className="p-0.5"
+                  />
                   {showAccountDropdown && accounts.length > 1 && (
                     <div
                       className={`absolute right-0 top-full mt-1 w-56 rounded-lg shadow-lg border z-50 ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}
@@ -505,27 +552,36 @@ export default function StellarChatInterface() {
                         {t('header.switch_account')}
                       </div>
                       {accounts.map((account, idx) => (
-                        <button
+                        <div
                           key={account.address}
-                          onClick={() => {
-                            selectAccount(idx);
-                            setShowAccountDropdown(false);
-                          }}
-                          className={`w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors ${idx === selectedAccountIndex ? (isDarkMode ? 'bg-blue-900/50 text-blue-400' : 'bg-blue-50 text-blue-600') : isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-50'}`}
+                          className={`flex items-center gap-1 px-1.5 py-1 ${idx === selectedAccountIndex ? (isDarkMode ? 'bg-blue-900/50 text-blue-400' : 'bg-blue-50 text-blue-600') : ''}`}
                         >
-                          <User className="w-3.5 h-3.5 flex-shrink-0" />
-                          <span className="font-mono truncate">
-                            {account.address.slice(0, 6)}…
-                            {account.address.slice(-4)}
-                          </span>
-                          {idx === selectedAccountIndex && (
-                            <span
-                              className={`ml-auto text-[10px] px-1.5 py-0.5 rounded ${isDarkMode ? 'bg-blue-900/50' : 'bg-blue-100'}`}
-                            >
-                              {t('header.active_account')}
+                          <button
+                            onClick={() => {
+                              selectAccount(idx);
+                              setShowAccountDropdown(false);
+                            }}
+                            className={`flex-1 flex items-center gap-2 px-1.5 py-1 text-xs rounded transition-colors ${idx === selectedAccountIndex ? '' : isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-50'}`}
+                          >
+                            <User className="w-3.5 h-3.5 flex-shrink-0" />
+                            <span className="font-mono truncate">
+                              {account.address.slice(0, 6)}…
+                              {account.address.slice(-4)}
                             </span>
-                          )}
-                        </button>
+                            {idx === selectedAccountIndex && (
+                              <span
+                                className={`ml-auto text-[10px] px-1.5 py-0.5 rounded ${isDarkMode ? 'bg-blue-900/50' : 'bg-blue-100'}`}
+                              >
+                                {t('header.active_account')}
+                              </span>
+                            )}
+                          </button>
+                          <CopyButton
+                            value={account.address}
+                            iconClassName="w-3 h-3"
+                            className="p-0.5"
+                          />
+                        </div>
                       ))}
                     </div>
                   )}
@@ -809,6 +865,23 @@ export default function StellarChatInterface() {
             />
           </div>
         </>
+      )}
+
+      {/* Split-view comparison overlay */}
+      <SplitViewComparison splitView={splitView} sessions={sessions} />
+
+      {/* Search panel — slide-over on the right */}
+      {showSearch && (
+        <div className="fixed inset-y-0 right-0 z-40 w-80 shadow-2xl flex flex-col">
+          <ChatSearchPanel
+            sessions={sessions}
+            onSelectResult={(sessionId: string) => {
+              loadChatSession(sessionId);
+              setShowSearch(false);
+            }}
+            onClose={() => setShowSearch(false)}
+          />
+        </div>
       )}
 
       {/* Deposit / Withdraw Modal */}

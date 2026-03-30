@@ -363,7 +363,7 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
               })}
             </ul>
           </section>
-          {/* Analytics consent section */}
+          {/* Telemetry section */}
           <section
             className={`pt-6 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-100'}`}
           >
@@ -372,15 +372,14 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                 isDarkMode ? 'text-gray-400' : 'text-gray-500'
               }`}
             >
-              Analytics
+              Telemetry
             </h3>
             <p
               className={`text-xs mb-4 ${
                 isDarkMode ? 'text-gray-500' : 'text-gray-400'
               }`}
             >
-              Allow anonymous usage data to be collected for product improvements.
-              No personally identifiable information is ever sent.
+              Help improve the app by sending anonymous usage data
             </p>
             <div className="flex items-center justify-between">
               <span
@@ -388,12 +387,12 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                   isDarkMode ? 'text-gray-300' : 'text-gray-700'
                 }`}
               >
-                Enable analytics
+                Enable telemetry
               </span>
               <button
                 onClick={() => setTelemetryConsent(!telemetryConsented)}
                 aria-pressed={telemetryConsented}
-                aria-label="Toggle analytics consent"
+                aria-label="Telemetry consent"
                 className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors focus:outline-none ${
                   telemetryConsented ? 'bg-blue-600' : 'bg-gray-700'
                 }`}

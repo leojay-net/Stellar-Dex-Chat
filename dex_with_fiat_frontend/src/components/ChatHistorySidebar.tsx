@@ -16,12 +16,16 @@ import {
   Coins,
   Pin,
   PinOff,
+  Activity,
+  ArrowUpRight,
+  ArrowDownLeft,
 } from 'lucide-react';
 import SkeletonSidebar from '@/components/ui/skeleton/SkeletonSidebar';
 import EmptyState from '@/components/ui/EmptyState';
 import PriceTicker from '@/components/PriceTicker';
 
 import { ChatSession } from '@/types';
+import { ContractEvent } from '@/types/events';
 
 interface SessionRowProps {
   session: ChatSession;
@@ -148,6 +152,29 @@ export default function ChatHistorySidebar({
     null,
   );
   const [isLoading, setIsLoading] = useState(true);
+  const [contractEvents, setContractEvents] = useState<ContractEvent[]>([]);
+  const [isLoadingEvents, setIsLoadingEvents] = useState(false);
+
+  useEffect(() => {
+    const fetchEvents = async () => {
+      setIsLoadingEvents(true);
+      try {
+        const res = await fetch('/api/events?limit=5');
+        if (res.ok) {
+          const data = await res.json();
+          setContractEvents(data.events);
+        }
+      } catch (err) {
+        console.error('Failed to fetch contract events:', err);
+      } finally {
+        setIsLoadingEvents(false);
+      }
+    };
+
+    fetchEvents();
+    const interval = setInterval(fetchEvents, 60000); // Refresh every minute
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 800);
@@ -338,65 +365,118 @@ export default function ChatHistorySidebar({
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
           <SkeletonSidebar />
-        ) : !hasHistory ? (
-          <EmptyState
-            icon={MessageSquare}
-            title="No conversations yet"
-            description="Start chatting to see your history here"
-            cta={{
-              label: 'New Conversation',
-              onClick: () => window.location.reload(),
-            }}
-          />
-        ) : filteredSessions.length === 0 ? (
-          <EmptyState
-            icon={Search}
-            title="No conversations found"
-            description={`No results for "${searchQuery}"`}
-            cta={{ label: 'Clear search', onClick: () => setSearchQuery('') }}
-          />
         ) : (
-          <div
-            className={`p-2 ${isCollapsed ? 'flex flex-col items-center' : ''}`}
-          >
-            {filteredPinned.length > 0 && (
-              <>
-                {!isCollapsed && (
-                  <p className="theme-text-muted text-xs font-semibold uppercase tracking-wider px-1 py-1 mt-1">
-                    Pinned
-                  </p>
+          <div className="flex flex-col h-full">
+            {/* Contract Activity Section */}
+            {!isCollapsed && (
+              <div className="px-4 py-3 border-b border-[var(--color-border)] bg-[var(--color-surface-muted)]">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--color-text-primary)] uppercase tracking-wider">
+                    <Activity className="w-3.5 h-3.5 text-blue-500" />
+                    <span>Bridge Activity</span>
+                  </div>
+                  {isLoadingEvents && (
+                    <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                  )}
+                </div>
+                {contractEvents.length > 0 ? (
+                  <div className="space-y-2">
+                    {contractEvents.map((event) => (
+                      <div key={event.id} className="flex items-center justify-between text-[11px] group">
+                        <div className="flex items-center gap-2 overflow-hidden">
+                          {event.type === 'deposit' ? (
+                            <div className="p-1 rounded bg-green-500/10 text-green-500">
+                              <ArrowDownLeft className="w-3 h-3" />
+                            </div>
+                          ) : (
+                            <div className="p-1 rounded bg-orange-500/10 text-orange-500">
+                              <ArrowUpRight className="w-3 h-3" />
+                            </div>
+                          )}
+                          <div className="flex flex-col min-w-0">
+                            <span className="font-medium truncate text-[var(--color-text-secondary)]">
+                              {event.actor.slice(0, 4)}...{event.actor.slice(-4)}
+                            </span>
+                            <span className="text-[10px] text-[var(--color-text-muted)]">
+                              {new Date(event.ledgerClosedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        </div>
+                        <span className={`font-bold ${event.type === 'deposit' ? 'text-green-500' : 'text-orange-500'}`}>
+                          {event.type === 'deposit' ? '+' : '-'}{(parseFloat(event.amount) / 10000000).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-[var(--color-text-muted)] text-center py-2">No recent bridge activity</p>
                 )}
-                {filteredPinned.map((session) => (
-                  <SessionRow
-                    key={session.id}
-                    session={session}
-                    isActive={currentSessionId === session.id}
-                    onLoad={onLoadSession}
-                    onExport={handleExportSession}
-                    onDelete={(id) => setShowDeleteConfirm(id)}
-                    onTogglePin={togglePin}
-                    formatDate={formatDate}
-                  />
-                ))}
-                {!isCollapsed && filteredUnpinned.length > 0 && (
-                  <p className="theme-text-muted text-xs font-semibold uppercase tracking-wider px-1 py-1 mt-3">
-                    Recent
-                  </p>
-                )}
-              </>
+              </div>
             )}
-            {filteredUnpinned.map((session) => (
-              <SessionRow
-                key={session.id}
-                session={session}
-                isActive={currentSessionId === session.id}
-                onLoad={onLoadSession}
-                onExport={handleExportSession}
-                onDelete={(id) => setShowDeleteConfirm(id)}
-                onTogglePin={togglePin}
-                formatDate={formatDate}
-              />
-            ))}
+
+            <div className="flex-1 overflow-y-auto">
+              {!hasHistory ? (
+                <EmptyState
+                  icon={MessageSquare}
+                  title="No conversations yet"
+                  description="Start chatting to see your history here"
+                  cta={{
+                    label: 'New Conversation',
+                    onClick: () => window.location.reload(),
+                  }}
+                />
+              ) : filteredSessions.length === 0 ? (
+                <EmptyState
+                  icon={Search}
+                  title="No conversations found"
+                  description={`No results for "${searchQuery}"`}
+                  cta={{ label: 'Clear search', onClick: () => setSearchQuery('') }}
+                />
+              ) : (
+                <div
+                  className={`p-2 ${isCollapsed ? 'flex flex-col items-center' : ''}`}
+                >
+                  {filteredPinned.length > 0 && (
+                    <>
+                      {!isCollapsed && (
+                        <p className="theme-text-muted text-xs font-semibold uppercase tracking-wider px-1 py-1 mt-1">
+                          Pinned
+                        </p>
+                      )}
+                      {filteredPinned.map((session) => (
+                        <SessionRow
+                          key={session.id}
+                          session={session}
+                          isActive={currentSessionId === session.id}
+                          onLoad={onLoadSession}
+                          onExport={handleExportSession}
+                          onDelete={(id) => setShowDeleteConfirm(id)}
+                          onTogglePin={togglePin}
+                          formatDate={formatDate}
+                        />
+                      ))}
+                      {!isCollapsed && filteredUnpinned.length > 0 && (
+                        <p className="theme-text-muted text-xs font-semibold uppercase tracking-wider px-1 py-1 mt-3">
+                          Recent
+                        </p>
+                      )}
+                    </>
+                  )}
+                  {filteredUnpinned.map((session) => (
+                    <SessionRow
+                      key={session.id}
+                      session={session}
+                      isActive={currentSessionId === session.id}
+                      onLoad={onLoadSession}
+                      onExport={handleExportSession}
+                      onDelete={(id) => setShowDeleteConfirm(id)}
+                      onTogglePin={togglePin}
+                      formatDate={formatDate}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

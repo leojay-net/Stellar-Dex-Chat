@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { CheckCircle, Clock, XCircle, RefreshCw, Loader2 } from 'lucide-react';
+import CopyButton from '@/components/ui/CopyButton';
 
 export type TransferStatus =
   | 'initiated'
@@ -15,6 +16,7 @@ export interface StatusEvent {
   status: TransferStatus;
   timestamp: Date;
   label?: string;
+  copyValue?: string;
 }
 
 interface TransferTimelineProps {
@@ -167,13 +169,18 @@ export default function TransferTimeline({
 
               {/* Label + timestamp */}
               <div className={`flex-1 pb-1 ${isLast ? 'font-medium' : ''}`}>
-                <p
-                  className={`text-sm ${
-                    isLast ? 'theme-text-primary' : 'theme-text-secondary'
-                  }`}
-                >
-                  {event.label ?? meta.defaultLabel}
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <p
+                    className={`text-sm ${
+                      isLast ? 'theme-text-primary' : 'theme-text-secondary'
+                    }`}
+                  >
+                    {event.label ?? meta.defaultLabel}
+                  </p>
+                  {event.copyValue && (
+                    <CopyButton value={event.copyValue} iconClassName="w-3 h-3" />
+                  )}
+                </div>
                 <p className="theme-text-muted text-[11px] mt-0.5">
                   {formatEventTime(event.timestamp)}
                 </p>

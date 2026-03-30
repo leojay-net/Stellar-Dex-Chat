@@ -6,11 +6,13 @@ import { useUserPreferences } from '@/contexts/UserPreferencesContext';
 import { useMasking } from '@/hooks/useMasking';
 import { useCurrencyConversion } from '@/hooks/useCurrencyConversion';
 import { ChatMessage } from '@/types';
-import { AlertTriangle, Bot, Clock, Coins, Copy, Check, Link, RotateCcw, User, Loader2, RefreshCcw, XCircle } from 'lucide-react';
-import React, { useState, useCallback } from 'react';
+import { AlertTriangle, Bot, Clock, Coins, Link, RotateCcw, User, Loader2, RefreshCcw, XCircle } from 'lucide-react';
+import React from 'react';
 import ReactMarkdown from 'react-markdown';
+import { sanitizeUrl } from '@/lib/markdownSanitizer';
 import { useTranslation } from '@/contexts/TranslationContext';
 import { motion, useReducedMotion } from 'framer-motion';
+import CopyButton from '@/components/ui/CopyButton';
 
 interface MessageProps {
   message: ChatMessage;
@@ -39,7 +41,7 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
   const { t } = useTranslation();
   const isPending = message.metadata?.status === 'pending';
   const isFailed = message.metadata?.status === 'failed';
-  const [receiptCopied, setReceiptCopied] = useState(false);
+
 
   // Currency conversion hook for transaction amounts
   const amountForConversion = message.metadata?.transactionData?.amountIn 
@@ -51,14 +53,7 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
     tokenForConversion,
   );
 
-  const handleCopyReceiptId = useCallback((receiptId: string) => {
-    navigator.clipboard?.writeText(receiptId).then(() => {
-      setReceiptCopied(true);
-      setTimeout(() => setReceiptCopied(false), 2000);
-    }).catch(() => {
-      /* clipboard unavailable */
-    });
-  }, []);
+
 
   const variants = {
     initial: { 
@@ -167,6 +162,34 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
                       h3: ({ children }) => (
                         <h3 className="text-sm font-bold mb-1">{children}</h3>
                       ),
+                      a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
+                        const safeHref = sanitizeUrl(href);
+                        return (
+                          <a
+                            href={safeHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline text-blue-400 hover:text-blue-300"
+                          >
+                            {children}
+                          </a>
+                        );
+                      },
+                      img: (props: React.ImgHTMLAttributes<HTMLImageElement> & { src?: string | Blob }) => {
+                        const { src, alt, ...rest } = props;
+                        const srcStr = typeof src === 'string' ? src : undefined;
+                        const safeSrc = sanitizeUrl(srcStr);
+                        void rest;
+                        if (safeSrc === '#blocked') return null;
+                        return (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={safeSrc}
+                            alt={alt ?? ''}
+                            className="max-w-full rounded"
+                          />
+                        );
+                      },
                     }}
                   >
                     {maskedContent}
@@ -357,6 +380,40 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
                       </span>
                     </div>
                   )}
+                  {message.metadata.transactionData.transactionId && (
+                    <div className="flex justify-between items-center gap-2">
+                      <span>Request ID:</span>
+                      <div className="flex items-center gap-1">
+                        <span className="theme-text-primary font-mono text-xs">
+                          {message.metadata.transactionData.transactionId.slice(0, 6)}
+                          ...
+                          {message.metadata.transactionData.transactionId.slice(-4)}
+                        </span>
+                        <CopyButton
+                          value={message.metadata.transactionData.transactionId}
+                          className="flex-shrink-0 p-0.5"
+                          iconClassName="w-3 h-3"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {message.metadata.transactionData.txHash && (
+                    <div className="flex justify-between items-center gap-2">
+                      <span>Tx Hash:</span>
+                      <div className="flex items-center gap-1">
+                        <span className="theme-text-primary font-mono text-xs">
+                          {message.metadata.transactionData.txHash.slice(0, 6)}
+                          ...
+                          {message.metadata.transactionData.txHash.slice(-4)}
+                        </span>
+                        <CopyButton
+                          value={message.metadata.transactionData.txHash}
+                          className="flex-shrink-0 p-0.5"
+                          iconClassName="w-3 h-3"
+                        />
+                      </div>
+                    </div>
+                  )}
                   {message.metadata.transactionData.receiptId && (
                     <div className="flex justify-between items-center gap-2">
                       <span>Receipt ID:</span>
@@ -366,22 +423,11 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
                           ...
                           {message.metadata.transactionData.receiptId.slice(-4)}
                         </span>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleCopyReceiptId(
-                              message.metadata!.transactionData!.receiptId!,
-                            )
-                          }
-                          className="flex-shrink-0 p-0.5 rounded text-gray-400 hover:text-blue-400 transition-colors"
-                          title="Copy receipt ID"
-                        >
-                          {receiptCopied ? (
-                            <Check className="w-3 h-3 text-green-400" />
-                          ) : (
-                            <Copy className="w-3 h-3" />
-                          )}
-                        </button>
+                        <CopyButton
+                          value={message.metadata.transactionData.receiptId}
+                          className="flex-shrink-0 p-0.5"
+                          iconClassName="w-3 h-3"
+                        />
                       </div>
                     </div>
                   )}

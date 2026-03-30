@@ -306,6 +306,49 @@ describe('ChatStateMachine', () => {
     });
   });
 
+  describe('Required acceptance paths', () => {
+    beforeEach(() => {
+      machine.transition(ChatEvent.INITIALIZE_SESSION);
+    });
+
+    it('idle -> sending -> success -> idle', () => {
+      expect(machine.getState().state).toBe(ChatState.INITIALIZED);
+      machine.transition(ChatEvent.SEND_MESSAGE);
+      expect(machine.getState().state).toBe(ChatState.SENDING_MESSAGE);
+      machine.transition(ChatEvent.ANALYSIS_COMPLETE);
+      expect(machine.getState().state).toBe(ChatState.ANALYZING);
+      machine.transition(ChatEvent.ANALYSIS_COMPLETE);
+      expect(machine.getState().state).toBe(ChatState.AWAITING_USER_INPUT);
+      // idle in this machine is represented by awaiting user input after success
+      expect(machine.getState().state).toBe(ChatState.AWAITING_USER_INPUT);
+    });
+
+    it('idle -> sending -> error -> idle', () => {
+      expect(machine.getState().state).toBe(ChatState.INITIALIZED);
+      machine.transition(ChatEvent.SEND_MESSAGE);
+      expect(machine.getState().state).toBe(ChatState.SENDING_MESSAGE);
+      machine.transition(ChatEvent.ANALYSIS_COMPLETE);
+      expect(machine.transition(ChatEvent.ENCOUNTER_ERROR)).toBe(true);
+      expect(machine.getState().state).toBe(ChatState.ERROR);
+      machine.transition(ChatEvent.RESET_FLOW);
+      expect(machine.getState().state).toBe(ChatState.INITIALIZED);
+    });
+
+    it('error -> retrying -> sending -> success', () => {
+      machine.transition(ChatEvent.SEND_MESSAGE);
+      machine.transition(ChatEvent.ANALYSIS_COMPLETE);
+      machine.transition(ChatEvent.ENCOUNTER_ERROR);
+      expect(machine.getState().state).toBe(ChatState.ERROR);
+      machine.transition(ChatEvent.RETRY_FROM_ERROR);
+      expect(machine.getState().state).toBe(ChatState.SENDING_MESSAGE);
+
+      machine.transition(ChatEvent.ANALYSIS_COMPLETE);
+      expect(machine.getState().state).toBe(ChatState.ANALYZING);
+      machine.transition(ChatEvent.ANALYSIS_COMPLETE);
+      expect(machine.getState().state).toBe(ChatState.AWAITING_USER_INPUT);
+    });
+  });
+
   describe('Guards and Conditions', () => {
     describe('hasTransactionData guard', () => {
       it('should return false with null transaction data', () => {

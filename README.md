@@ -6,6 +6,7 @@ A decentralized exchange (DEX) interface prioritizing seamless asset-to-bank con
 ![Next.js](https://img.shields.io/badge/Next.js-15.3.5-black)
 ![Rust](https://img.shields.io/badge/Rust-Soroban-orange)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)
+![Coverage](https://img.shields.io/badge/coverage-≥70%25-brightgreen)
 
 ## Overview
 
@@ -181,5 +182,5 @@ npm run precommit:clippy
 npm run precommit:eslint
 ```
 
-## Contributing
+## Contributing!!
 Contributions and feature reviews are welcome. Please open up an issue to raise bugs or feature requests!

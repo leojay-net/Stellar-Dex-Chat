@@ -8,12 +8,11 @@ import {
   CheckCircle,
   AlertCircle,
   ArrowDownUp,
-  Copy,
-  Check,
   Download,
   WifiOff,
 } from 'lucide-react';
 import EmptyState from '@/components/ui/EmptyState';
+import CopyButton from '@/components/ui/CopyButton';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
 import {
   BRIDGE_LIMIT_WARNING_PERCENT,
@@ -94,7 +93,6 @@ export default function StellarFiatModal({
   const [txHash, setTxHash] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [isLoadingUI, setIsLoadingUI] = useState(true);
-  const [copied, setCopied] = useState(false);
   const [lastActionTimestamp, setLastActionTimestamp] = useState(0);
   const [walletBalance, setWalletBalance] = useState<string | null>(null);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
@@ -141,19 +139,6 @@ export default function StellarFiatModal({
       cancelled = true;
     };
   }, [isOpen, connection.isConnected, connection.publicKey, connection.network]);
-
-  const handleCopyHash = () => {
-    if (!txHash) return;
-    navigator.clipboard
-      ?.writeText(txHash)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      })
-      .catch(() => {
-        /* clipboard unavailable — no-op */
-      });
-  };
 
   const {
     limit: bridgeLimit,
@@ -618,19 +603,7 @@ export default function StellarFiatModal({
               >
                 {txHash}
               </a>
-              <button
-                type="button"
-                onClick={handleCopyHash}
-                aria-label="Copy transaction hash"
-                className="flex-shrink-0 p-1 rounded text-gray-400 hover:text-blue-400 transition-colors"
-                title="Copy hash"
-              >
-                {copied ? (
-                  <Check className="w-4 h-4 text-green-400" />
-                ) : (
-                  <Copy className="w-4 h-4" />
-                )}
-              </button>
+              <CopyButton value={txHash} />
             </div>
 
             <button
@@ -974,9 +947,12 @@ export default function StellarFiatModal({
               data-testid="wallet-info"
               className="theme-text-muted flex justify-between text-xs mb-6"
             >
-              <span>
-                Connected: {connection.address.slice(0, 8)}…
-                {connection.address.slice(-4)}
+              <span className="flex items-center gap-1">
+                <span>
+                  Connected: {connection.address.slice(0, 8)}…
+                  {connection.address.slice(-4)}
+                </span>
+                <CopyButton value={connection.address} iconClassName="w-3 h-3" />
               </span>
               <span>Network: {connection.network || 'TESTNET'}</span>
             </div>

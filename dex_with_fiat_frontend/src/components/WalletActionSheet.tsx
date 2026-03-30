@@ -1,8 +1,33 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import BottomSheet from '@/components/ui/BottomSheet';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { getFeatureFlag } from '@/lib/featureFlags';
+
+export interface WalletActionHapticControls {
+  confirm: () => void;
+  error: () => void;
+}
+
+/**
+ * Context to provide haptic actions to WalletActionSheet children.
+ */
+const WalletActionHapticsContext = React.createContext<WalletActionHapticControls | null>(null);
+
+/**
+ * Hook to read haptic controls from a WalletActionSheet instance.
+ *
+ * @returns Haptic controls for confirm/error action feedback.
+ * @throws if used outside of WalletActionSheet provider boundary.
+ */
+export function useWalletActionHaptics(): WalletActionHapticControls {
+  const context = React.useContext(WalletActionHapticsContext);
+  if (!context) {
+    throw new Error('useWalletActionHaptics must be used within WalletActionSheet');
+  }
+  return context;
+}
 
 interface WalletActionSheetProps {
   isOpen: boolean;
@@ -10,6 +35,10 @@ interface WalletActionSheetProps {
   title: string;
   children: React.ReactNode;
   ariaLabel?: string;
+  /** Optional confirm callback for action success events */
+  onConfirm?: () => void;
+  /** Optional error callback for action failure events */
+  onError?: () => void;
   /** Optional ref forwarded to the desktop modal root */
   modalRef?: React.RefObject<HTMLDivElement | null>;
 }
@@ -25,27 +54,43 @@ export default function WalletActionSheet({
   title,
   children,
   ariaLabel,
+  onConfirm,
+  onError,
   modalRef,
 }: WalletActionSheetProps) {
   const isMobile = useMediaQuery('(max-width: 639px)');
+  const enableHaptics = getFeatureFlag('enableHaptics');
+
+  const haptics = useMemo<WalletActionHapticControls>(
+    () => ({
+      confirm: () => {
+        if (enableHaptics) {
+          navigator.vibrate?.([10]);
+        }
+        onConfirm?.();
+      },
+      error: () => {
+        if (enableHaptics) {
+          navigator.vibrate?.([50, 30, 50]);
+        }
+        onError?.();
+      },
+    }),
+    [enableHaptics, onConfirm, onError],
+  );
 
   if (!isOpen) return null;
 
-  if (isMobile) {
-    return (
-      <BottomSheet
-        isOpen={isOpen}
-        onClose={onClose}
-        title={title}
-        ariaLabel={ariaLabel}
-      >
-        {children}
-      </BottomSheet>
-    );
-  }
-
-  // Desktop: existing modal pattern
-  return (
+  const content = isMobile ? (
+    <BottomSheet
+      isOpen={isOpen}
+      onClose={onClose}
+      title={title}
+      ariaLabel={ariaLabel}
+    >
+      {children}
+    </BottomSheet>
+  ) : (
     <div className="theme-overlay fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm">
       <div
         ref={modalRef}
@@ -59,5 +104,11 @@ export default function WalletActionSheet({
         {children}
       </div>
     </div>
+  );
+
+  return (
+    <WalletActionHapticsContext.Provider value={haptics}>
+      {content}
+    </WalletActionHapticsContext.Provider>
   );
 }
