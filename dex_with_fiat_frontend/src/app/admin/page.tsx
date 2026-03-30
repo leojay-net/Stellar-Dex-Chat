@@ -9,6 +9,7 @@ import {
 import { aggregateDailyVolume, DailyMetric } from '@/lib/analytics';
 import { aggregatePayoutMetrics } from '@/lib/adminMetrics';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
+import AuditTable from '@/components/AuditTable';
 import useBridgeStats from '@/hooks/useBridgeStats';
 import AdminGuard from '@/components/AdminGuard';
 import { stroopsToDisplay } from '@/lib/stellarContract';
@@ -532,6 +533,14 @@ export default function AdminDashboard() {
               </button>
             </div>
           </div>
+        </div>
+
+        {/* Audit Log Section */}
+        <div className="mt-12">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
+            Audit Log
+          </h2>
+          <AuditTable />
         </div>
       </div>
     </AdminGuard>
