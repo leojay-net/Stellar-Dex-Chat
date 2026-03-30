@@ -1,9 +1,8 @@
 #![no_std]
-#![allow(deprecated)]
 #![allow(clippy::too_many_arguments)]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, token, xdr::ToXdr, Address, Bytes, BytesN,
-    Env, Symbol, Vec,
+    contract, contracterror, contractevent, contractimpl, contracttype, token, xdr::ToXdr,
+    Address, Bytes, BytesN, Env, Symbol, Vec,
 };
 
 pub mod math;
@@ -14,7 +13,7 @@ pub const MIN_TTL: u32 = 518_400; // ~30 days
 pub const MAX_TTL: u32 = 535_680; // ~31 days
 const MAX_REFERENCE_LEN: u32 = 64;
 const WINDOW_LEDGERS: u32 = 17_280; // ~24 hours
-#[allow(dead_code)]
+const CIRCUIT_BREAKER_RESET_LEDGERS: u32 = 34_560; // ~48 hours (2 × WINDOW_LEDGERS)
 const WITHDRAWAL_EXPIRY_WINDOW_LEDGERS: u32 = 17_280; // ~24 hours — reserved for future withdrawal expiry feature
 const MIN_TIMELOCK_DELAY: u32 = 34_560; // 48 hours
 const DEFAULT_INACTIVITY_THRESHOLD: u32 = 1_555_200; // ~3 months
@@ -243,6 +242,286 @@ pub struct ConfigSnapshot {
     pub anti_sandwich_delay: u32,
 }
 
+// ── Events ────────────────────────────────────────────────────────────────
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct DeployHashEvent {
+    pub version: u32,
+    pub config_hash: BytesN<32>,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct DepositEvent {
+    pub version: u32,
+    pub from: Address,
+    pub token: Address,
+    pub amount: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct ReceiptIssuedEvent {
+    pub version: u32,
+    pub receipt_id: BytesN<32>,
+    pub memo_hash: Option<BytesN<32>>,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct WithdrawEvent {
+    pub version: u32,
+    pub to: Address,
+    pub token: Address,
+    pub amount: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct WithdrawalRequestedEvent {
+    pub version: u32,
+    pub to: Address,
+    pub request_id: u64,
+    pub memo_hash: Option<BytesN<32>>,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct WithdrawalExecutedEvent {
+    pub version: u32,
+    pub request_id: u64,
+    pub to: Address,
+    pub amount: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct WithdrawalCancelledEvent {
+    pub version: u32,
+    pub request_id: u64,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct FeeAccruedEvent {
+    pub version: u32,
+    pub token: Address,
+    pub amount: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct RefundEvent {
+    pub version: u32,
+    pub receipt_id: BytesN<32>,
+    pub to: Address,
+    pub amount: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct PausedEvent {
+    pub version: u32,
+    pub by: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct UnpausedEvent {
+    pub version: u32,
+    pub by: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct AdminTransferEvent {
+    pub version: u32,
+    pub old_admin: Address,
+    pub new_admin: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct SetMinDepositEvent {
+    pub version: u32,
+    pub min: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct SlippageEvent {
+    pub version: u32,
+    pub slippage_bps: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct AdminActionQueuedEvent {
+    pub version: u32,
+    pub action_type: Symbol,
+    pub action_id: u64,
+    pub target_ledger: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct AdminActionExecutedEvent {
+    pub version: u32,
+    pub action_id: u64,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct SetOperatorEvent {
+    pub version: u32,
+    pub operator: Address,
+    pub active: bool,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct DenyAddressEvent {
+    pub version: u32,
+    pub address: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct HeartbeatEvent {
+    pub version: u32,
+    pub operator: Address,
+    pub ledger: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct NonceIncrementedEvent {
+    pub version: u32,
+    pub operator: Address,
+    pub new_nonce: u64,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct OperatorPrunedEvent {
+    pub version: u32,
+    pub operator: Address,
+    pub ledger: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct FeeWithdrawnEvent {
+    pub version: u32,
+    pub to: Address,
+    pub amount: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct RescueEvent {
+    pub version: u32,
+    pub token: Address,
+    pub to: Address,
+    pub amount: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct QuotaSetEvent {
+    pub version: u32,
+    pub quota: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct QuotaResetEvent {
+    pub version: u32,
+    pub user: Address,
+    pub window_start: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct MigrationEvent {
+    pub version: u32,
+    pub cursor: u64,
+    pub migrated_count: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct BatchFailEvent {
+    pub version: u32,
+    pub index: u32,
+    pub total_ops: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct BatchOkEvent {
+    pub version: u32,
+    pub success_count: u32,
+    pub failure_count: u32,
+    pub total_ops: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct CircuitBreakerResetEvent {
+    pub version: u32,
+    pub ledger: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct CircuitBreakerTrippedEvent {
+    pub version: u32,
+    pub new_total: i128,
+    pub threshold: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct SetWithdrawOperatorEvent {
+    pub version: u32,
+    pub operator: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct RemoveWithdrawOperatorEvent {
+    pub version: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct DenyRemovedEvent {
+    pub version: u32,
+    pub address: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WithdrawalExpiredEvent {
+    #[topic]
+    pub version: u32,
+    pub request_id: u64,
+    pub to: Address,
+    pub amount: i128,
+    pub queued_ledger: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CircuitBreakerAutoResetEvent {
+    #[topic]
+    pub version: u32,
+    pub tripped_at: u32,
+    pub reset_at: u32,
+}
+
 // ── Storage keys ──────────────────────────────────────────────────────────
 #[contracttype]
 pub enum DataKey {
@@ -269,6 +548,7 @@ pub enum DataKey {
     // Withdrawal cooldown after large deposit
     WithdrawCooldownLedgers,
     WithdrawCooldownThreshold,
+    WithdrawalExpiryWindow,
     LastLargeDeposit(Address),
     UserDeposited(Address),
     NextActionID,
@@ -307,6 +587,8 @@ pub enum DataKey {
     // ── Issue #209: global circuit breaker ───────────────────────────────
     CircuitBreakerThreshold,
     CircuitBreakerTripped,
+    CircuitBreakerTrippedAt,
+    CircuitBreakerResetWindow,
     GlobalDailyWithdrawn,
     // ── Issue #226: withdrawal queue risk tiers ───────────────────────────
     TierQueueHead(u32),
@@ -411,10 +693,11 @@ impl FiatBridge {
         env.storage()
             .persistent()
             .set(&DataKey::DeployConfigHash, &config_hash);
-        env.events().publish(
-            (EVENT_VERSION, Symbol::new(&env, "deploy_hash")),
+        DeployHashEvent {
+            version: EVENT_VERSION,
             config_hash,
-        );
+        }
+        .publish(&env);
 
         env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
         Ok(())
@@ -622,12 +905,20 @@ impl FiatBridge {
             env.storage().temporary().extend_ttl(&large_key, ttl, ttl);
         }
 
-        env.events()
-            .publish((EVENT_VERSION, Symbol::new(&env, "deposit"), from), amount);
-        env.events().publish(
-            (EVENT_VERSION, Symbol::new(&env, "rcpt_issd"), memo_hash),
-            receipt_id,
-        );
+        DepositEvent {
+            version: EVENT_VERSION,
+            from: from.clone(),
+            token: token.clone(),
+            amount,
+        }
+        .publish(&env);
+
+        ReceiptIssuedEvent {
+            version: EVENT_VERSION,
+            receipt_id: receipt_hash.clone(),
+            memo_hash,
+        }
+        .publish(&env);
 
         Self::check_invariants(&env, &token)?;
 
@@ -687,9 +978,9 @@ impl FiatBridge {
             .instance()
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
-            
+
         let operator: Option<Address> = env.storage().instance().get(&DataKey::WithdrawOperator);
-        
+
         if caller == admin {
             caller.require_auth();
         } else if let Some(op) = operator {
@@ -701,7 +992,7 @@ impl FiatBridge {
         } else {
             return Err(Error::Unauthorized);
         }
-        
+
         Self::require_not_paused(&env)?;
 
         if amount <= 0 {
@@ -738,8 +1029,13 @@ impl FiatBridge {
             .set(&DataKey::TokenRegistry(token.clone()), &config);
 
         Self::check_invariants(&env, &token)?;
-        env.events()
-            .publish((EVENT_VERSION, Symbol::new(&env, "withdraw"), to), amount);
+        WithdrawEvent {
+            version: EVENT_VERSION,
+            to: to.clone(),
+            token: token.clone(),
+            amount,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -861,10 +1157,13 @@ impl FiatBridge {
 
         Self::check_invariants(&env, &token)?;
 
-        env.events().publish(
-            (EVENT_VERSION, Symbol::new(&env, "req_withdr"), to),
-            (request_id, memo_hash),
-        );
+        WithdrawalRequestedEvent {
+            version: EVENT_VERSION,
+            to: to.clone(),
+            request_id,
+            memo_hash,
+        }
+        .publish(&env);
 
         Ok(request_id)
     }
@@ -996,6 +1295,14 @@ impl FiatBridge {
 
         Self::check_invariants(&env, &request.token)?;
 
+        WithdrawalExecutedEvent {
+            version: EVENT_VERSION,
+            request_id,
+            to: request.to.clone(),
+            amount: execute_amount,
+        }
+        .publish(&env);
+
         Ok(())
     }
 
@@ -1063,6 +1370,99 @@ impl FiatBridge {
         Self::advance_tier_queue_head(&env, tier, request_id);
 
         Self::check_invariants(&env, &request.token)?;
+
+        WithdrawalCancelledEvent { version: EVENT_VERSION, request_id }.publish(&env);
+
+        Ok(())
+    }
+
+    /// Reclaim an expired withdrawal request.
+    ///
+    /// An admin may call this when a queued withdrawal has not been executed
+    /// within the expiry window. The request is removed from the queue and
+    /// the reserved liability is released back to the pool. Funds stay in
+    /// escrow — they are NOT returned to the depositor. Use `rescue_token`
+    /// or a manual `withdraw` if repatriation is needed.
+    pub fn reclaim_expired_withdrawal(env: Env, request_id: u64) -> Result<(), Error> {
+        env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+
+        let request: WithdrawRequest = env
+            .storage()
+            .persistent()
+            .get(&DataKey::WithdrawQueue(request_id))
+            .ok_or(Error::RequestNotFound)?;
+
+        // Resolve the configured expiry window (fallback to compile-time default).
+        let expiry_window: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::WithdrawalExpiryWindow)
+            .unwrap_or(WITHDRAWAL_EXPIRY_WINDOW_LEDGERS);
+
+        // Reject if the request has not yet passed the expiry window.
+        if env.ledger().sequence() <= request.queued_ledger.saturating_add(expiry_window) {
+            return Err(Error::WithdrawalLocked);
+        }
+
+        let tier = request.risk_tier;
+
+        // Release the liability.
+        let mut config: TokenConfig = env
+            .storage()
+            .persistent()
+            .get(&DataKey::TokenRegistry(request.token.clone()))
+            .ok_or(Error::TokenNotWhitelisted)?;
+        config.total_liabilities -= request.amount;
+        env.storage()
+            .persistent()
+            .set(&DataKey::TokenRegistry(request.token.clone()), &config);
+
+        // Remove from queue.
+        env.storage()
+            .persistent()
+            .remove(&DataKey::WithdrawQueue(request_id));
+
+        let queue_len: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::WithdrawQueueLen)
+            .unwrap_or(0);
+        if queue_len > 0 {
+            env.storage()
+                .instance()
+                .set(&DataKey::WithdrawQueueLen, &(queue_len - 1));
+        }
+        Self::advance_withdraw_queue_head(&env, request_id);
+
+        // Per-tier bookkeeping.
+        let tier_len: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::TierQueueLen(tier))
+            .unwrap_or(0);
+        if tier_len > 0 {
+            env.storage()
+                .instance()
+                .set(&DataKey::TierQueueLen(tier), &(tier_len - 1));
+        }
+        Self::advance_tier_queue_head(&env, tier, request_id);
+
+        WithdrawalExpiredEvent {
+            version: EVENT_VERSION,
+            request_id,
+            to: request.to.clone(),
+            amount: request.amount,
+            queued_ledger: request.queued_ledger,
+        }
+        .publish(&env);
+
         Ok(())
     }
 
@@ -1185,8 +1585,7 @@ impl FiatBridge {
             return Err(Error::BelowMinimum);
         }
         env.storage().instance().set(&DataKey::MinDeposit, &min);
-        env.events()
-            .publish((EVENT_VERSION, Symbol::new(&env, "set_min_dep")), min);
+        SetMinDepositEvent { version: EVENT_VERSION, min }.publish(&env);
         Ok(())
     }
 
@@ -1272,8 +1671,7 @@ impl FiatBridge {
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
         env.storage().instance().set(&DataKey::Paused, &true);
-        env.events()
-            .publish((EVENT_VERSION, Symbol::new(&env, "paused")), ());
+        PausedEvent { version: EVENT_VERSION, by: admin.clone() }.publish(&env);
         Ok(())
     }
 
@@ -1285,8 +1683,7 @@ impl FiatBridge {
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
         env.storage().instance().set(&DataKey::Paused, &false);
-        env.events()
-            .publish((EVENT_VERSION, Symbol::new(&env, "unpaused")), ());
+        UnpausedEvent { version: EVENT_VERSION, by: admin.clone() }.publish(&env);
         Ok(())
     }
 
@@ -1377,10 +1774,7 @@ impl FiatBridge {
             0
         };
 
-        env.events().publish(
-            (EVENT_VERSION, Symbol::new(env, "slippage")),
-            slippage_bps as u32,
-        );
+        SlippageEvent { version: EVENT_VERSION, slippage_bps: slippage_bps as u32 }.publish(env);
 
         // Check slippage using cross-multiplication to avoid division errors.
         // We allow extra tolerance to account for ceiling division rounding in tests:
@@ -1389,7 +1783,7 @@ impl FiatBridge {
             let diff = expected_price - actual_price;
             let max_i128 = max_slippage_bps as i128;
             let threshold = max_i128 * expected_price;
-            
+
             if diff * 10_000 > threshold {
                 return Err(Error::SlippageTooHigh);
             }
@@ -1536,15 +1930,13 @@ impl FiatBridge {
         env.storage()
             .instance()
             .set(&DataKey::NextActionID, &(id + 1));
-        env.events().publish(
-            (
-                EVENT_VERSION,
-                Symbol::new(&env, "admin_action_queued"),
-                action_type,
-                id,
-            ),
-            action.target_ledger,
-        );
+        AdminActionQueuedEvent {
+            version: EVENT_VERSION,
+            action_type: action_type.clone(),
+            action_id: id,
+            target_ledger: action.target_ledger,
+        }
+        .publish(&env);
         Ok(id)
     }
 
@@ -1566,14 +1958,7 @@ impl FiatBridge {
         env.storage()
             .persistent()
             .remove(&DataKey::QueuedAdminAction(id));
-        env.events().publish(
-            (
-                EVENT_VERSION,
-                Symbol::new(&env, "admin_action_executed"),
-                id,
-            ),
-            true, // success
-        );
+        AdminActionExecutedEvent { version: EVENT_VERSION, action_id: id }.publish(&env);
         env.storage()
             .instance()
             .set(&DataKey::LastAdminActionLedger, &env.ledger().sequence());
@@ -1622,11 +2007,7 @@ impl FiatBridge {
             .instance()
             .set(&DataKey::OperatorCount, &operators.len());
 
-        // Emit event for off-chain monitoring
-        env.events().publish(
-            (EVENT_VERSION, Symbol::new(&env, "set_op"), operator),
-            active,
-        );
+        SetOperatorEvent { version: EVENT_VERSION, operator: operator.clone(), active }.publish(&env);
 
         Ok(())
     }
@@ -1669,8 +2050,7 @@ impl FiatBridge {
             .instance()
             .set(&DataKey::DeniedCount, &(count + 1));
 
-        env.events()
-            .publish((EVENT_VERSION, Symbol::new(&env, "deny_add")), address);
+        DenyAddressEvent { version: EVENT_VERSION, address: address.clone() }.publish(&env);
         Ok(())
     }
 
@@ -1693,10 +2073,7 @@ impl FiatBridge {
             .instance()
             .set(&DataKey::OperatorHeartbeat(operator.clone()), &curr);
 
-        env.events().publish(
-            (EVENT_VERSION, Symbol::new(&env, "heartbeat"), operator),
-            curr,
-        );
+        HeartbeatEvent { version: EVENT_VERSION, operator: operator.clone(), ledger: curr }.publish(&env);
 
         Ok(())
     }
@@ -1758,14 +2135,12 @@ impl FiatBridge {
             &(current_nonce + 1),
         );
 
-        env.events().publish(
-            (
-                EVENT_VERSION,
-                Symbol::new(env, "nonce_inc"),
-                operator.clone(),
-            ),
-            current_nonce + 1,
-        );
+        NonceIncrementedEvent {
+            version: EVENT_VERSION,
+            operator: operator.clone(),
+            new_nonce: current_nonce + 1,
+        }
+        .publish(env);
 
         Ok(())
     }
@@ -1802,10 +2177,12 @@ impl FiatBridge {
                 env.storage()
                     .instance()
                     .set(&DataKey::Operator(operator.clone()), &false);
-                env.events().publish(
-                    (Symbol::new(env, "operator_pruned"), operator),
-                    current_ledger,
-                );
+                OperatorPrunedEvent {
+                    version: EVENT_VERSION,
+                    operator: operator.clone(),
+                    ledger: current_ledger,
+                }
+                .publish(env);
             } else {
                 retained.push_back(operator);
             }
@@ -1848,6 +2225,15 @@ impl FiatBridge {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+
+        // Design decision: block renounce while paused.
+        // If we allowed queuing while paused, the timelock could elapse and
+        // execute_renounce_admin would leave the contract permanently paused
+        // with no admin able to unpause it. Requiring an explicit unpause first
+        // forces the admin to consciously restore normal operations before
+        // giving up control.
+        Self::require_not_paused(&env)?;
+
         let target_ledger: u32 = env.ledger().sequence() + MIN_TIMELOCK_DELAY;
         env.storage()
             .instance()
@@ -1887,8 +2273,7 @@ impl FiatBridge {
             }
         }
 
-        env.events()
-            .publish((EVENT_VERSION, Symbol::new(&env, "deny_rem")), address);
+        DenyRemovedEvent { version: EVENT_VERSION, address: address.clone() }.publish(&env);
         Ok(())
     }
 
@@ -1948,10 +2333,7 @@ impl FiatBridge {
         let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
         env.storage().persistent().set(&key, &(current + amount));
 
-        env.events().publish(
-            (EVENT_VERSION, Symbol::new(&env, "fee_accrue"), token),
-            amount,
-        );
+        FeeAccruedEvent { version: EVENT_VERSION, token: token.clone(), amount }.publish(&env);
         Ok(())
     }
 
@@ -1997,8 +2379,7 @@ impl FiatBridge {
         token_client.transfer(&env.current_contract_address(), &to, &amount);
 
         env.storage().persistent().set(&key, &(current - amount));
-        env.events()
-            .publish((EVENT_VERSION, Symbol::new(&env, "fee_wdrw"), to), amount);
+        FeeWithdrawnEvent { version: EVENT_VERSION, to: to.clone(), amount }.publish(&env);
         Ok(())
     }
 
@@ -2021,10 +2402,7 @@ impl FiatBridge {
             let token_client = token::Client::new(&env, &token);
             token_client.transfer(&contract, &to, &current);
             env.storage().persistent().set(&key, &0i128);
-            env.events().publish(
-                (EVENT_VERSION, Symbol::new(&env, "fee_wdrw"), to.clone()),
-                current,
-            );
+            FeeWithdrawnEvent { version: EVENT_VERSION, to: to.clone(), amount: current }.publish(&env);
         }
 
         Ok(())
@@ -2093,10 +2471,7 @@ impl FiatBridge {
 
         token_client.transfer(&env.current_contract_address(), &to, &amount);
 
-        env.events().publish(
-            (EVENT_VERSION, Symbol::new(&env, "rescue"), token, to),
-            amount,
-        );
+        RescueEvent { version: EVENT_VERSION, token: token.clone(), to: to.clone(), amount }.publish(&env);
         Ok(())
     }
 
@@ -2331,8 +2706,7 @@ impl FiatBridge {
         env.storage()
             .instance()
             .set(&DataKey::WithdrawalQuota, &quota);
-        env.events()
-            .publish((EVENT_VERSION, Symbol::new(&env, "quota_set")), quota);
+        QuotaSetEvent { version: EVENT_VERSION, quota }.publish(&env);
         Ok(())
     }
 
@@ -2341,6 +2715,29 @@ impl FiatBridge {
             .instance()
             .get(&DataKey::WithdrawalQuota)
             .unwrap_or(0)
+    }
+
+    /// Set the number of ledgers after which an unexecuted withdrawal request
+    /// can be reclaimed by the admin. Pass `0` to use the compile-time default
+    /// (`WITHDRAWAL_EXPIRY_WINDOW_LEDGERS`).
+    pub fn set_withdrawal_expiry(env: Env, ledgers: u32) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::WithdrawalExpiryWindow, &ledgers);
+        Ok(())
+    }
+
+    pub fn get_withdrawal_expiry(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::WithdrawalExpiryWindow)
+            .unwrap_or(WITHDRAWAL_EXPIRY_WINDOW_LEDGERS)
     }
 
     pub fn get_user_daily_withdrawal(env: Env, user: Address) -> i128 {
@@ -2383,10 +2780,12 @@ impl FiatBridge {
         if curr >= record.window_start + WINDOW_LEDGERS {
             record.amount = 0;
             record.window_start = curr;
-            env.events().publish(
-                (EVENT_VERSION, Symbol::new(env, "quota_reset")),
-                (user.clone(), record.window_start),
-            );
+            QuotaResetEvent {
+                version: EVENT_VERSION,
+                user: user.clone(),
+                window_start: record.window_start,
+            }
+            .publish(env);
         }
 
         if record.amount + amount > quota {
@@ -2530,10 +2929,12 @@ impl FiatBridge {
                 .set(&DataKey::EscrowStorageVersion, &ESCROW_STORAGE_VERSION);
         }
 
-        env.events().publish(
-            (EVENT_VERSION, Symbol::new(&env, "migration")),
-            (current_id, migrated_count),
-        );
+        MigrationEvent {
+            version: EVENT_VERSION,
+            cursor: current_id,
+            migrated_count,
+        }
+        .publish(&env);
 
         Ok(migrated_count)
     }
@@ -2569,10 +2970,7 @@ impl FiatBridge {
         for (idx, op) in operations.iter().enumerate() {
             let result = Self::execute_single_admin_op(&env, &op);
             if result.is_err() {
-                env.events().publish(
-                    (EVENT_VERSION, Symbol::new(&env, "batch_fail")),
-                    (idx as u32, total_ops),
-                );
+                BatchFailEvent { version: EVENT_VERSION, index: idx as u32, total_ops }.publish(&env);
                 failure_count += 1;
                 if first_failed_index.is_none() {
                     first_failed_index = Some(idx as u32);
@@ -2589,10 +2987,7 @@ impl FiatBridge {
             failed_index: first_failed_index,
         };
 
-        env.events().publish(
-            (EVENT_VERSION, Symbol::new(&env, "batch_ok")),
-            (success_count, failure_count, total_ops),
-        );
+        BatchOkEvent { version: EVENT_VERSION, success_count, failure_count, total_ops }.publish(&env);
 
         Ok(batch_result)
     }
@@ -2694,6 +3089,30 @@ impl FiatBridge {
         Ok(())
     }
 
+    /// Set the number of ledgers after which a tripped circuit breaker
+    /// automatically resets. Pass `0` to use the compile-time default
+    /// (`CIRCUIT_BREAKER_RESET_LEDGERS`). Set to `u32::MAX` to disable
+    /// auto-reset entirely.
+    pub fn set_circuit_breaker_reset_window(env: Env, ledgers: u32) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::CircuitBreakerResetWindow, &ledgers);
+        Ok(())
+    }
+
+    pub fn get_circuit_breaker_reset_window(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::CircuitBreakerResetWindow)
+            .unwrap_or(CIRCUIT_BREAKER_RESET_LEDGERS)
+    }
+
     /// Reset the circuit breaker so withdrawals can resume.
     pub fn reset_circuit_breaker(env: Env) -> Result<(), Error> {
         let admin: Address = env
@@ -2705,10 +3124,7 @@ impl FiatBridge {
         env.storage()
             .instance()
             .set(&DataKey::CircuitBreakerTripped, &false);
-        env.events().publish(
-            (EVENT_VERSION, Symbol::new(&env, "cb_reset")),
-            env.ledger().sequence(),
-        );
+        CircuitBreakerResetEvent { version: EVENT_VERSION, ledger: env.ledger().sequence() }.publish(&env);
         Ok(())
     }
 
@@ -2739,17 +3155,51 @@ impl FiatBridge {
             return Ok(());
         }
 
-        // Reject immediately if already tripped.
+        let curr = env.ledger().sequence();
+
+        // Check if breaker is tripped but eligible for auto-reset.
         if env
             .storage()
             .instance()
             .get::<_, bool>(&DataKey::CircuitBreakerTripped)
             .unwrap_or(false)
         {
-            return Err(Error::CircuitBreakerActive);
+            let reset_window: u32 = env
+                .storage()
+                .instance()
+                .get(&DataKey::CircuitBreakerResetWindow)
+                .unwrap_or(CIRCUIT_BREAKER_RESET_LEDGERS);
+
+            let tripped_at: u32 = env
+                .storage()
+                .instance()
+                .get(&DataKey::CircuitBreakerTrippedAt)
+                .unwrap_or(0);
+
+            if reset_window != u32::MAX && curr > tripped_at.saturating_add(reset_window) {
+                // Auto-reset: clear the breaker and roll the volume window.
+                env.storage()
+                    .instance()
+                    .set(&DataKey::CircuitBreakerTripped, &false);
+                env.storage()
+                    .instance()
+                    .set(&DataKey::GlobalDailyWithdrawn, &GlobalDailyWithdrawn {
+                        amount: 0,
+                        window_start: curr,
+                    });
+                CircuitBreakerAutoResetEvent {
+                    version: EVENT_VERSION,
+                    tripped_at,
+                    reset_at: curr,
+                }
+                .publish(env);
+                // Fall through — process this withdrawal normally.
+            } else {
+                // Still within reset window — reject.
+                return Err(Error::CircuitBreakerActive);
+            }
         }
 
-        let curr = env.ledger().sequence();
         let mut vol: GlobalDailyWithdrawn = env
             .storage()
             .instance()
@@ -2759,30 +3209,32 @@ impl FiatBridge {
                 window_start: curr,
             });
 
-        // Roll window if 24h has elapsed.
+        // Roll 24h window if elapsed.
         if curr >= vol.window_start + WINDOW_LEDGERS {
             vol.amount = 0;
             vol.window_start = curr;
         }
 
         let new_total = vol.amount + amount;
-
-        // Update running total first so the state persists.
         vol.amount = new_total;
         env.storage()
             .instance()
             .set(&DataKey::GlobalDailyWithdrawn, &vol);
 
         if new_total > threshold {
-            // This withdrawal crossed the threshold: allow it but trip the
-            // breaker so that all subsequent withdrawals are paused.
+            // Trip the breaker — record when it was tripped.
             env.storage()
                 .instance()
                 .set(&DataKey::CircuitBreakerTripped, &true);
-            env.events().publish(
-                (EVENT_VERSION, Symbol::new(env, "cbtripped")),
-                (new_total, threshold),
-            );
+            env.storage()
+                .instance()
+                .set(&DataKey::CircuitBreakerTrippedAt, &curr);
+            CircuitBreakerTrippedEvent {
+                version: EVENT_VERSION,
+                new_total,
+                threshold,
+            }
+            .publish(env);
         }
 
         Ok(())
@@ -2872,7 +3324,7 @@ impl FiatBridge {
     }
 
     // ── Single Withdraw Operator Role (Issue #118) ─────────────────────────
-    
+
     pub fn set_withdraw_operator(env: Env, operator: Address) -> Result<(), Error> {
         env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
         let admin: Address = env
@@ -2881,9 +3333,9 @@ impl FiatBridge {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
-        
+
         env.storage().instance().set(&DataKey::WithdrawOperator, &operator);
-        env.events().publish((EVENT_VERSION, Symbol::new(&env, "set_wd_op")), operator);
+        SetWithdrawOperatorEvent { version: EVENT_VERSION, operator: operator.clone() }.publish(&env);
         Ok(())
     }
 
@@ -2895,9 +3347,9 @@ impl FiatBridge {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
-        
+
         env.storage().instance().remove(&DataKey::WithdrawOperator);
-        env.events().publish((EVENT_VERSION, Symbol::new(&env, "rm_wd_op")), ());
+        RemoveWithdrawOperatorEvent { version: EVENT_VERSION }.publish(&env);
         Ok(())
     }
 
