@@ -60,7 +60,8 @@ fn test_deposit_and_withdraw() {
     assert_eq!(token.balance(&contract_id), 200);
 
     let req_id = bridge.request_withdrawal(&user, &100, &token_addr);
-    bridge.execute_withdrawal(&req_id, &None);
+    let operator = Address::generate(&env);
+    bridge.execute_withdrawal(&operator, &req_id, &None);
 
     assert_eq!(token.balance(&user), 900);
     assert_eq!(token.balance(&contract_id), 100);
@@ -88,14 +89,15 @@ fn test_time_locked_withdrawal() {
     assert_eq!(req.amount, 100);
     assert_eq!(req.unlock_ledger, start_ledger + 100);
 
-    let result = bridge.try_execute_withdrawal(&req_id, &None);
+    let operator = Address::generate(&env);
+    let result = bridge.try_execute_withdrawal(&operator, &req_id, &None);
     assert_eq!(result, Err(Ok(Error::WithdrawalLocked)));
 
     env.ledger().with_mut(|li| {
         li.sequence_number = start_ledger + 100;
     });
 
-    bridge.execute_withdrawal(&req_id, &None);
+    bridge.execute_withdrawal(&operator, &req_id, &None);
     assert_eq!(token.balance(&user), 900);
     assert_eq!(token.balance(&contract_id), 100);
     assert_eq!(bridge.get_withdrawal_request(&req_id), None);
@@ -117,7 +119,8 @@ fn test_cancel_withdrawal() {
     bridge.cancel_withdrawal(&req_id);
     assert!(bridge.get_withdrawal_request(&req_id).is_none());
 
-    let result = bridge.try_execute_withdrawal(&req_id, &None);
+    let operator = Address::generate(&env);
+    let result = bridge.try_execute_withdrawal(&operator, &req_id, &None);
     assert_eq!(result, Err(Ok(Error::RequestNotFound)));
 }
 
@@ -250,6 +253,53 @@ fn test_over_limit_deposit() {
 }
 
 #[test]
+fn test_execute_withdrawal_operator_limit_enforced() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 500);
+    let user = Address::generate(&env);
+    let operator = Address::generate(&env);
+    token_sac.mint(&user, &1_000);
+
+    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env));
+    bridge.set_operator_daily_limit(&operator, &150);
+
+    let req1 = bridge.request_withdrawal(&user, &100, &token_addr);
+    bridge.execute_withdrawal(&operator, &req1, &None);
+
+    let req2 = bridge.request_withdrawal(&user, &100, &token_addr);
+    let result = bridge.try_execute_withdrawal(&operator, &req2, &None);
+    assert_eq!(result, Err(Ok(Error::OperatorDailyLimitExceeded)));
+}
+
+#[test]
+fn test_execute_withdrawal_operator_limit_resets_after_window() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 500);
+    let user = Address::generate(&env);
+    let operator = Address::generate(&env);
+    token_sac.mint(&user, &1_000);
+
+    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env));
+    bridge.set_operator_daily_limit(&operator, &150);
+
+    let req1 = bridge.request_withdrawal(&user, &100, &token_addr);
+    bridge.execute_withdrawal(&operator, &req1, &None);
+
+    let start_ledger = env.ledger().sequence();
+    env.ledger().with_mut(|li| {
+        li.sequence_number = start_ledger + WINDOW_LEDGERS;
+    });
+
+    let req2 = bridge.request_withdrawal(&user, &100, &token_addr);
+    bridge.execute_withdrawal(&operator, &req2, &None);
+    assert_eq!(token_sac.balance(&user), 700);
+}
+
+#[test]
 fn test_zero_amount_deposit() {
     let env = Env::default();
     env.mock_all_auths();
@@ -272,7 +322,8 @@ fn test_insufficient_funds_withdraw() {
     bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env));
 
     let req_id = bridge.request_withdrawal(&user, &200, &token_addr);
-    let result = bridge.try_execute_withdrawal(&req_id, &None);
+    let operator = Address::generate(&env);
+    let result = bridge.try_execute_withdrawal(&operator, &req_id, &None);
     assert_eq!(result, Err(Ok(Error::InsufficientFunds)));
 }
 
