@@ -56,3 +56,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || 'PLACEHOLDER' }}
           PAYSTACK_SECRET_KEY: ${{ secrets.PAYSTACK_SECRET_KEY || 'PLACEHOLDER' }}
           PAYOUT_PROVIDER: ${{ secrets.PAYOUT_PROVIDER || 'paystack' }}
+
+      - name: Unit tests with coverage
+        run: npm run test:coverage
+        # Fails the pipeline if coverage thresholds (stmt 70%, branch 65%, fn 70%) are not met

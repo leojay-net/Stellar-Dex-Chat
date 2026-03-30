@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for taking the time to contribute. This document covers everything you need to open your first pull request.
+This document covers everything you need to open your first pull request.
 
 ---
 

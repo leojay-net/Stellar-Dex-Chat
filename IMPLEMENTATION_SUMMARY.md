@@ -104,7 +104,7 @@ Automated verification script that checks:
 ✅ **Persist and validate nonce per operator**
 
 - Nonces stored in instance storage with `DataKey::OperatorNonce(Address)`
-- Each operator has independent nonce counter
+- Each operator has independent nonce counters
 - Nonces persist across operator deactivation/reactivation
 - Validation occurs before any state changes
 

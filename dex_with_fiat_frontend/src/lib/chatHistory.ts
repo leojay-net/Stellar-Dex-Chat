@@ -68,22 +68,41 @@ export class ChatHistoryManager {
       const parsed = JSON.parse(stored);
 
       // Convert string dates back to Date objects
+      const sessions = parsed.sessions.map((session: SerializedSession) => ({
+        ...session,
+        createdAt: new Date(session.createdAt),
+        lastUpdated: new Date(session.lastUpdated),
+        messages: session.messages.map((msg: SerializedMessage) => ({
+          ...msg,
+          timestamp: new Date(msg.timestamp),
+        })),
+      }));
+
+      // Deduplicate sessions by ID (keep the most recent one)
+      const deduped = this.deduplicateSessions(sessions);
+
       return {
         ...parsed,
-        sessions: parsed.sessions.map((session: SerializedSession) => ({
-          ...session,
-          createdAt: new Date(session.createdAt),
-          lastUpdated: new Date(session.lastUpdated),
-          messages: session.messages.map((msg: SerializedMessage) => ({
-            ...msg,
-            timestamp: new Date(msg.timestamp),
-          })),
-        })),
+        sessions: deduped,
       };
     } catch (error) {
       console.error('Failed to load chat history:', error);
       return { currentSessionId: null, sessions: [] };
     }
+  }
+
+  static deduplicateSessions(sessions: ChatSession[]): ChatSession[] {
+    const sessionMap = new Map<string, ChatSession>();
+
+    // Keep the most recently updated version of each session ID
+    sessions.forEach((session) => {
+      const existing = sessionMap.get(session.id);
+      if (!existing || session.lastUpdated > existing.lastUpdated) {
+        sessionMap.set(session.id, session);
+      }
+    });
+
+    return Array.from(sessionMap.values());
   }
 
   static createNewSession(walletAddress?: string): ChatSession {

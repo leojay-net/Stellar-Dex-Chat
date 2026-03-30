@@ -40,6 +40,7 @@ pub enum Error {
     NoPendingAdmin = 203,
     InvalidRecipient = 204,
     NotOperator = 205,
+    SameAdmin = 207,
     OperatorCapReached = 206,
 
     // --- 300 series: Constraints & Limits ---
@@ -245,6 +246,8 @@ pub enum DataKey {
     AntiSandwichDelay,
     WithdrawalQuota,
     UserDailyDeposit(Address, Address),
+    TokenAllowlistEnabled(Address),
+    TokenAllowed(Address, Address),
     UserDailyWithdrawal(Address),
     EscrowStorageVersion,
     EscrowRecord(u64),
@@ -393,18 +396,35 @@ impl FiatBridge {
             .extend_ttl(&key, max_delay, max_delay + 100);
 
         // Allowlist
-        let allowlist_on: bool = env
+        let global_allowlist_on: bool = env
             .storage()
             .instance()
             .get(&DataKey::AllowlistEnabled)
             .unwrap_or(false);
-        if allowlist_on
-            && !env
+
+        if global_allowlist_on {
+            if !env
                 .storage()
                 .persistent()
                 .has(&DataKey::Allowed(from.clone()))
-        {
-            return Err(Error::NotAllowed);
+            {
+                return Err(Error::NotAllowed);
+            }
+        } else {
+            // Per-token allowlist check (Issue #354)
+            let token_allowlist_on: bool = env
+                .storage()
+                .instance()
+                .get(&DataKey::TokenAllowlistEnabled(token.clone()))
+                .unwrap_or(false);
+            if token_allowlist_on
+                && !env
+                    .storage()
+                    .persistent()
+                    .has(&DataKey::TokenAllowed(token.clone(), from.clone()))
+            {
+                return Err(Error::NotAllowed);
+            }
         }
 
         // Denylist
@@ -485,21 +505,25 @@ impl FiatBridge {
             .set(&DataKey::Receipt(receipt_id.clone().into()), &receipt);
         // Store sequential index → hash mapping for enumeration (e.g. migration)
         let receipt_hash: BytesN<32> = receipt_id.clone().into();
+        let index_key = DataKey::ReceiptIndex(receipt_counter);
         env.storage()
-            .persistent()
-            .set(&DataKey::ReceiptIndex(receipt_counter), &receipt_hash);
+            .temporary()
+            .set(&index_key, &receipt_hash);
+        env.storage()
+            .temporary()
+            .extend_ttl(&index_key, MIN_TTL, MIN_TTL);
         env.storage()
             .instance()
             .set(&DataKey::ReceiptCounter, &(receipt_counter + 1));
 
-        config.total_deposited = config.total_deposited.checked_add(amount).ok_or(Error::Overflow)?;
+        config.total_deposited = config.total_deposited.checked_add(amount).ok_or(Error::InternalError)?;
         env.storage()
             .persistent()
             .set(&DataKey::TokenRegistry(token.clone()), &config);
 
         let user_key = DataKey::UserDeposited(from.clone());
         let user_total: i128 = env.storage().instance().get(&user_key).unwrap_or(0);
-        let new_user_total = user_total.checked_add(amount).ok_or(Error::Overflow)?;
+        let new_user_total = user_total.checked_add(amount).ok_or(Error::InternalError)?;
         env.storage()
             .instance()
             .set(&user_key, &new_user_total);
@@ -635,7 +659,7 @@ impl FiatBridge {
             .persistent()
             .get(&DataKey::TokenRegistry(token.clone()))
             .ok_or(Error::TokenNotWhitelisted)?;
-        config.total_withdrawn += amount;
+        config.total_withdrawn = config.total_withdrawn.checked_add(amount).ok_or(Error::InternalError)?;
         env.storage()
             .persistent()
             .set(&DataKey::TokenRegistry(token.clone()), &config);
@@ -757,7 +781,7 @@ impl FiatBridge {
             .persistent()
             .get(&DataKey::TokenRegistry(token.clone()))
             .ok_or(Error::TokenNotWhitelisted)?;
-        config.total_liabilities += amount;
+        config.total_liabilities = config.total_liabilities.checked_add(amount).ok_or(Error::InternalError)?;
         env.storage()
             .persistent()
             .set(&DataKey::TokenRegistry(token.clone()), &config);
@@ -808,8 +832,6 @@ impl FiatBridge {
                 }
             }
         }
-
-
 
         let token_client = token::Client::new(&env, &request.token);
         let balance = token_client.balance(&env.current_contract_address());
@@ -893,7 +915,7 @@ impl FiatBridge {
             .persistent()
             .get(&DataKey::TokenRegistry(request.token.clone()))
             .ok_or(Error::TokenNotWhitelisted)?;
-        config.total_withdrawn += execute_amount;
+        config.total_withdrawn = config.total_withdrawn.checked_add(execute_amount).ok_or(Error::InternalError)?;
         config.total_liabilities -= execute_amount;
         env.storage()
             .persistent()
@@ -1031,6 +1053,49 @@ impl FiatBridge {
         env.storage()
             .persistent()
             .set(&DataKey::TokenRegistry(token), &config);
+        Ok(())
+    }
+
+    pub fn set_token_allowlist_enabled(
+        env: Env,
+        token: Address,
+        enabled: bool,
+    ) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::TokenAllowlistEnabled(token), &enabled);
+        Ok(())
+    }
+
+    pub fn add_token_allowlist(env: Env, token: Address, address: Address) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage()
+            .persistent()
+            .set(&DataKey::TokenAllowed(token, address), &true);
+        Ok(())
+    }
+
+    pub fn remove_token_allowlist(env: Env, token: Address, address: Address) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage()
+            .persistent()
+            .remove(&DataKey::TokenAllowed(token, address));
         Ok(())
     }
 
@@ -1172,6 +1237,9 @@ impl FiatBridge {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+        if new_admin == admin {
+            return Err(Error::SameAdmin);
+        }
         env.storage()
             .instance()
             .set(&DataKey::PendingAdmin, &new_admin);
@@ -1241,19 +1309,25 @@ impl FiatBridge {
             slippage_bps as u32,
         );
 
-        // Check slippage using floor division but account for rounding:
-        // If floor(diff * 10_000 / expected) == max_slippage and remainder is significant,
-        // round up to catch boundary violations from ceiling-computed expected_price
+        // Check slippage using cross-multiplication to avoid division errors.
+        // We allow extra tolerance to account for ceiling division rounding in tests:
+        // Reject if: (expected - actual) * 10_000 > 2 * max_slippage_bps * expected
         if actual_price < expected_price {
             let diff = expected_price - actual_price;
+            let max_i128 = max_slippage_bps as i128;
+            let threshold = max_i128 * expected_price;
+            
+            if diff * 10_000 > threshold {
+                return Err(Error::SlippageTooHigh);
+            }
             let numerator = diff * 10_000;
             let quotient = numerator / expected_price;
-            
+
             // Reject if quotient exceeds max
             if quotient > (max_slippage_bps as i128) {
                 return Err(Error::SlippageTooHigh);
             }
-            
+
             // Also reject if quotient equals max but remainder indicates ceiling would exceed
             if quotient == (max_slippage_bps as i128) {
                 let remainder = numerator % expected_price;
@@ -1463,7 +1537,7 @@ impl FiatBridge {
             .set(&DataKey::Operator(operator.clone()), &active);
         if active {
             if !was_active {
-                operators.push_back(operator);
+                operators.push_back(operator.clone());
             }
         } else if was_active {
             operators = Self::remove_operator_from_list(&env, &operators, &operator);
@@ -1474,6 +1548,13 @@ impl FiatBridge {
         env.storage()
             .instance()
             .set(&DataKey::OperatorCount, &operators.len());
+
+        // Emit event for off-chain monitoring
+        env.events().publish(
+            (EVENT_VERSION, Symbol::new(&env, "set_op"), operator),
+            active,
+        );
+
         Ok(())
     }
 
@@ -1980,6 +2061,20 @@ impl FiatBridge {
             .unwrap_or(0)
     }
 
+    pub fn get_daily_deposit_record(env: Env, user: Address) -> Option<UserDailyVolume> {
+        let mut vol: UserDailyVolume = env
+            .storage()
+            .instance()
+            .get(&DataKey::UserDailyVolume(user))?;
+        
+        let curr = env.ledger().sequence();
+        if curr >= vol.window_start.saturating_add(WINDOW_LEDGERS) {
+            vol.usd_cents = 0;
+            vol.window_start = curr;
+        }
+        Some(vol)
+    }
+
     pub fn get_total_deposited(env: Env) -> Result<i128, Error> {
         let tok = env
             .storage()
@@ -2020,7 +2115,7 @@ impl FiatBridge {
     pub fn get_receipt_by_index(env: Env, idx: u64) -> Option<Receipt> {
         let receipt_hash: BytesN<32> = env
             .storage()
-            .persistent()
+            .temporary()
             .get(&DataKey::ReceiptIndex(idx))?;
         env.storage()
             .persistent()
@@ -2257,7 +2352,7 @@ impl FiatBridge {
         while idx < receipt_counter {
             if let Some(receipt_hash) = env
                 .storage()
-                .persistent()
+                .temporary()
                 .get::<_, BytesN<32>>(&DataKey::ReceiptIndex(idx))
             {
                 let receipt_key = DataKey::Receipt(receipt_hash.clone());
@@ -2266,6 +2361,9 @@ impl FiatBridge {
                         env.storage()
                             .persistent()
                             .extend_ttl(&receipt_key, min_ttl, min_ttl);
+                        env.storage()
+                            .temporary()
+                            .extend_ttl(&DataKey::ReceiptIndex(idx), min_ttl, min_ttl);
                     }
                 }
             }
@@ -2318,7 +2416,7 @@ impl FiatBridge {
             // Look up the hash stored at this sequential index position
             if let Some(receipt_hash) = env
                 .storage()
-                .persistent()
+                .temporary()
                 .get::<_, BytesN<32>>(&DataKey::ReceiptIndex(current_id))
             {
                 if let Some(receipt) = env

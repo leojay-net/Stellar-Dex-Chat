@@ -1,0 +1,11 @@
+[
+  {
+    "contract": "bridge",
+    "topics": [
+      "u32:1",
+      "symbol:fee_accrue",
+      "address:token"
+    ],
+    "data": "i128:250"
+  }
+]

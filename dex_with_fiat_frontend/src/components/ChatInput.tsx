@@ -191,16 +191,24 @@ export default function ChatInput({
     if (sessionId) {
       const draft = getDraft(sessionId);
       setMessage(draft || '');
+    } else {
+      setMessage('');
     }
   }, [sessionId]);
 
-  // Save draft when message changes
+  // Save draft when message changes (debounced 500ms)
   useEffect(() => {
-    if (sessionId && message.trim()) {
-      saveDraft(sessionId, message);
-    } else if (sessionId && !message.trim()) {
-      clearDraft(sessionId);
-    }
+    if (!sessionId) return;
+
+    const timer = setTimeout(() => {
+      if (message.trim()) {
+        saveDraft(sessionId, message);
+      } else {
+        clearDraft(sessionId);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
   }, [message, sessionId]);
 
   return (

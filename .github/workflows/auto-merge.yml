@@ -1,0 +1,129 @@
+name: Auto-Merge PRs
+
+# Fires when a PR is opened/updated (to enable native auto-merge) and when a
+# check suite completes (to directly merge if every check went green and the
+# branch has no conflicts).
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+  check_suite:
+    types: [completed]
+
+permissions:
+  contents: write        # needed to merge
+  pull-requests: write   # needed to update PR auto-merge flag
+
+jobs:
+  # ── 1. Enable GitHub's built-in auto-merge the moment a PR is opened / updated
+  enable-auto-merge:
+    name: Enable auto-merge on PR
+    if: |
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable squash auto-merge
+        # continue-on-error so a repo without branch-protection rules doesn't
+        # block the workflow; the merge-when-green job is the primary mechanism.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr merge --auto --squash \
+            --repo "${{ github.repository }}" \
+            "${{ github.event.pull_request.number }}"
+
+  # ── 2. Directly merge when ALL check runs on the suite pass ──────────────
+  merge-when-green:
+    name: Merge PR when all checks pass
+    if: |
+      github.event_name == 'check_suite' &&
+      github.event.check_suite.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge passing, conflict-free PRs
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const headSha = context.payload.check_suite.head_sha;
+            const prs     = context.payload.check_suite.pull_requests ?? [];
+
+            if (prs.length === 0) {
+              core.info('No open PRs linked to this check suite — nothing to do.');
+              return;
+            }
+
+            for (const pr of prs) {
+              // Fetch the full PR object (includes mergeable + draft fields)
+              const { data: pull } = await github.rest.pulls.get({
+                owner:       context.repo.owner,
+                repo:        context.repo.repo,
+                pull_number: pr.number,
+              });
+
+              if (pull.draft) {
+                core.info(`PR #${pr.number} is a draft — skipping.`);
+                continue;
+              }
+
+              if (pull.state !== 'open') {
+                core.info(`PR #${pr.number} is already closed — skipping.`);
+                continue;
+              }
+
+              // GitHub computes mergeability asynchronously; poll once if null.
+              let mergeable = pull.mergeable;
+              if (mergeable === null) {
+                core.info(`PR #${pr.number}: mergeability not yet computed, waiting 6 s…`);
+                await new Promise(r => setTimeout(r, 6000));
+                const { data: refreshed } = await github.rest.pulls.get({
+                  owner:       context.repo.owner,
+                  repo:        context.repo.repo,
+                  pull_number: pr.number,
+                });
+                mergeable = refreshed.mergeable;
+              }
+
+              if (mergeable === false) {
+                core.info(`PR #${pr.number} has merge conflicts — skipping.`);
+                continue;
+              }
+
+              // Confirm every completed check run passed (or was neutral/skipped).
+              const { data: { check_runs } } = await github.rest.checks.listForRef({
+                owner:    context.repo.owner,
+                repo:     context.repo.repo,
+                ref:      headSha,
+                per_page: 100,
+              });
+
+              const failing = check_runs.filter(r =>
+                r.status === 'completed' &&
+                !['success', 'skipped', 'neutral'].includes(r.conclusion)
+              );
+
+              if (failing.length > 0) {
+                core.info(
+                  `PR #${pr.number} has failing checks ` +
+                  `(${failing.map(r => r.name).join(', ')}) — skipping.`
+                );
+                continue;
+              }
+
+              // Everything is green and conflict-free — merge!
+              try {
+                await github.rest.pulls.merge({
+                  owner:          context.repo.owner,
+                  repo:           context.repo.repo,
+                  pull_number:    pr.number,
+                  merge_method:   'squash',
+                  commit_title:   `${pull.title} (#${pr.number})`,
+                  commit_message: pull.body ?? '',
+                });
+                core.info(`✅  Auto-merged PR #${pr.number}: ${pull.title}`);
+              } catch (err) {
+                core.error(`Failed to merge PR #${pr.number}: ${err.message}`);
+              }
+            }

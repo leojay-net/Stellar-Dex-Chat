@@ -3,7 +3,8 @@ import { z } from 'zod';
 const serverSchema = z.object({
   PAYSTACK_SECRET_KEY: z.string().optional(),
   PAYOUT_PROVIDER: z.string().default('paystack'),
-  ADMIN_API_TOKEN: z.string().optional(),
+  ADMIN_SECRET: z.string().optional(),
+  GEMINI_API_KEY: z.string().optional(),
 });
 
 const clientSchema = z.object({
@@ -57,7 +58,8 @@ const processEnvVars = () => {
     const serverVars = {
       PAYSTACK_SECRET_KEY: process.env.PAYSTACK_SECRET_KEY,
       PAYOUT_PROVIDER: process.env.PAYOUT_PROVIDER,
-      ADMIN_API_TOKEN: process.env.ADMIN_API_TOKEN,
+      ADMIN_SECRET: process.env.ADMIN_SECRET,
+      GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     };
 
     const parsedServer = serverSchema.safeParse(serverVars);

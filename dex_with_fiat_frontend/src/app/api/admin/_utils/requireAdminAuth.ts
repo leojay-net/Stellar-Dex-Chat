@@ -1,12 +1,7 @@
 import { env } from '@/lib/env';
 
 export function requireAdminAuth(request: Request): Response | null {
-  const configuredToken = env.ADMIN_API_TOKEN;
-
-  // Keep development ergonomics when no token is configured.
-  if (!configuredToken) {
-    return null;
-  }
+  const configuredSecret = env.ADMIN_SECRET;
 
   const headerToken = request.headers.get('x-admin-token');
   const authHeader = request.headers.get('authorization');
@@ -14,7 +9,8 @@ export function requireAdminAuth(request: Request): Response | null {
     ? authHeader.slice('Bearer '.length).trim()
     : null;
 
-  if (headerToken === configuredToken || bearerToken === configuredToken) {
+  // Basic check: match against secret (header is preferred)
+  if (configuredSecret && (headerToken === configuredSecret || bearerToken === configuredSecret)) {
     return null;
   }
 

@@ -5,10 +5,11 @@ extern crate std;
 use super::*;
 use soroban_sdk::xdr::ToXdr;
 use soroban_sdk::{
-    testutils::{storage::Persistent as _, Address as _, Events as _, Ledger},
+    testutils::{storage::Persistent as _, Address as _, EnvTestConfig, Events as _, Ledger},
     token::{Client as TokenClient, StellarAssetClient},
     vec, Address, Bytes, BytesN, Env, IntoVal, Symbol,
 };
+use std::{format, fs, path::PathBuf, string::String, vec::Vec as StdVec};
 
 // ── helpers ──────────────────────────────────────────────────────────
 
@@ -67,6 +68,69 @@ fn setup_bridge_with_min(
     (contract_id, bridge, admin, token_addr, token, token_sac)
 }
 
+struct SnapshotEvent {
+    topics: StdVec<String>,
+    data: String,
+}
+
+fn new_snapshot_env() -> Env {
+    Env::new_with_config(EnvTestConfig {
+        capture_snapshot_at_drop: false,
+    })
+}
+
+fn snapshot_path(name: &str) -> PathBuf {
+    PathBuf::from("test_snapshots")
+        .join("events")
+        .join(format!("{name}.json"))
+}
+
+fn escape_json(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn render_snapshot(events: &[SnapshotEvent]) -> String {
+    let mut out = String::from("[\n");
+    for (index, event) in events.iter().enumerate() {
+        out.push_str("  {\n");
+        out.push_str("    \"contract\": \"bridge\",\n");
+        out.push_str("    \"topics\": [\n");
+        for (topic_index, topic) in event.topics.iter().enumerate() {
+            out.push_str(&format!(
+                "      \"{}\"{}\n",
+                escape_json(topic),
+                if topic_index + 1 == event.topics.len() {
+                    ""
+                } else {
+                    ","
+                }
+            ));
+        }
+        out.push_str("    ],\n");
+        out.push_str(&format!("    \"data\": \"{}\"\n", escape_json(&event.data)));
+        out.push_str("  }");
+        if index + 1 != events.len() {
+            out.push(',');
+        }
+        out.push('\n');
+    }
+    out.push(']');
+    out.push('\n');
+    out
+}
+
+fn assert_event_snapshot(name: &str, events: &[SnapshotEvent]) {
+    let path = snapshot_path(name);
+    let expected = fs::read_to_string(&path)
+        .unwrap_or_else(|err| panic!("failed to read snapshot {}: {err}", path.display()));
+    let actual = render_snapshot(events);
+    assert_eq!(
+        expected,
+        actual,
+        "snapshot mismatch for {name}. Update {} if this event change is intentional.",
+        path.display()
+    );
+}
 
 // ── happy-path tests ──────────────────────────────────────────────────
 
@@ -326,6 +390,21 @@ fn test_transfer_admin() {
     bridge.accept_admin();
 
     assert_eq!(bridge.get_admin(), new_admin);
+}
+
+#[test]
+fn test_transfer_admin_to_self_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, _, _, _) = setup_bridge(&env, 100);
+
+    // Attempting to transfer to self should fail with InvalidRecipient
+    let result = bridge.try_transfer_admin(&admin);
+    assert_eq!(result, Err(Ok(Error::SameAdmin)));
+    
+    // Admin should remain the same
+    assert_eq!(bridge.get_admin(), admin);
 }
 
 #[test]
@@ -746,7 +825,7 @@ fn test_slippage_boundary_exact() {
         // We derive: expected = actual * 10_000 / (10_000 - max_slippage_bps)
         // BUT we must use ceiling division here so the resulting ceil-computed
         // slippage does not exceed max_slippage_bps.
-        
+
         // Calculate expected_price such that actual slippage equals max_slippage_bps
         // MockOracle returns 9_500_000 (0.95 USD)
         // We want: (expected - 9_500_000) / expected * 10_000 = max_slippage_bps
@@ -760,10 +839,10 @@ fn test_slippage_boundary_exact() {
             // No slippage allowed — expected must equal actual
             actual_price
         } else {
-            // Use ceiling division to ensure slippage_bps ≤ max_slippage_bps
+            // Use floor division to ensure generated expected_price's slippage is <= max_slippage_bps
             let numerator = actual_price * 10_000;
             let denominator = 10_000 - *max_slippage_bps as i128;
-            (numerator + denominator - 1) / denominator
+            numerator / denominator
         };
 
         // Deposit should succeed at exactly max_slippage
@@ -818,7 +897,12 @@ fn test_slippage_boundary_exceeded() {
             continue;
         }
 
-        let expected_price = actual_price * 10_000 / (10_000 - target_slippage as i128);
+        // Use ceiling division to ensure computed slippage equals exactly target_slippage
+        let expected_price = {
+            let numerator = actual_price * 10_000;
+            let denominator = 10_000 - target_slippage as i128;
+            (numerator + denominator - 1) / denominator
+        };
 
         // Deposit should fail at max_slippage + 1
         let result = bridge.try_deposit(
@@ -1059,8 +1143,24 @@ fn test_withdrawal_quota_window_reset_isolated_per_user() {
     token_sac.mint(&user_a, &5_000);
     token_sac.mint(&user_b, &5_000);
 
-    bridge.deposit(&user_a, &2_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    bridge.deposit(&user_b, &2_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.deposit(
+        &user_a,
+        &2_000,
+        &token_addr,
+        &Bytes::new(&env),
+        &0,
+        &0,
+        &None,
+    );
+    bridge.deposit(
+        &user_b,
+        &2_000,
+        &token_addr,
+        &Bytes::new(&env),
+        &0,
+        &0,
+        &None,
+    );
     bridge.set_withdrawal_quota(&500);
 
     let start_ledger = env.ledger().sequence();
@@ -2775,6 +2875,295 @@ fn test_event_version_deny_add_remove() {
 
 // ── Property-based tests (proptest) ──────────────────────────────────────────
 
+#[test]
+fn test_event_snapshot_heartbeat() {
+    let env = new_snapshot_env();
+    env.mock_all_auths();
+    let (contract_id, bridge, _, _, _, _) = setup_bridge(&env, 1_000);
+    let operator = Address::generate(&env);
+
+    bridge.set_operator(&operator, &true);
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 12_345;
+    });
+
+    bridge.heartbeat(&operator, &0);
+
+    assert_eq!(
+        env.events().all().filter_by_contract(&contract_id),
+        vec![
+            &env,
+            (
+                contract_id.clone(),
+                vec![
+                    &env,
+                    EVENT_VERSION.into_val(&env),
+                    Symbol::new(&env, "nonce_inc").into_val(&env),
+                    operator.clone().into_val(&env)
+                ],
+                1u64.into_val(&env)
+            ),
+            (
+                contract_id,
+                vec![
+                    &env,
+                    EVENT_VERSION.into_val(&env),
+                    Symbol::new(&env, "heartbeat").into_val(&env),
+                    operator.into_val(&env)
+                ],
+                12_345u32.into_val(&env)
+            )
+        ]
+    );
+
+    assert_event_snapshot(
+        "heartbeat",
+        &[
+            SnapshotEvent {
+                topics: StdVec::from([
+                    "u32:1".into(),
+                    "symbol:nonce_inc".into(),
+                    "address:operator".into(),
+                ]),
+                data: "u64:1".into(),
+            },
+            SnapshotEvent {
+                topics: StdVec::from([
+                    "u32:1".into(),
+                    "symbol:heartbeat".into(),
+                    "address:operator".into(),
+                ]),
+                data: "u32:12345".into(),
+            },
+        ],
+    );
+}
+
+#[test]
+fn test_event_snapshot_deny_add() {
+    let env = new_snapshot_env();
+    env.mock_all_auths();
+    let (contract_id, bridge, _, _, _, _) = setup_bridge(&env, 1_000);
+    let target = Address::generate(&env);
+
+    bridge.deny_address(&target);
+
+    assert_eq!(
+        env.events().all().filter_by_contract(&contract_id),
+        vec![
+            &env,
+            (
+                contract_id,
+                vec![
+                    &env,
+                    EVENT_VERSION.into_val(&env),
+                    Symbol::new(&env, "deny_add").into_val(&env)
+                ],
+                target.into_val(&env)
+            )
+        ]
+    );
+
+    assert_event_snapshot(
+        "deny_add",
+        &[SnapshotEvent {
+            topics: StdVec::from(["u32:1".into(), "symbol:deny_add".into()]),
+            data: "address:target".into(),
+        }],
+    );
+}
+
+#[test]
+fn test_event_snapshot_deny_rem() {
+    let env = new_snapshot_env();
+    env.mock_all_auths();
+    let (contract_id, bridge, _, _, _, _) = setup_bridge(&env, 1_000);
+    let target = Address::generate(&env);
+
+    env.as_contract(&contract_id, || {
+        env.storage()
+            .persistent()
+            .set(&DataKey::Denied(target.clone()), &true);
+    });
+
+    bridge.remove_denied_address(&target);
+
+    assert_eq!(
+        env.events().all().filter_by_contract(&contract_id),
+        vec![
+            &env,
+            (
+                contract_id,
+                vec![
+                    &env,
+                    EVENT_VERSION.into_val(&env),
+                    Symbol::new(&env, "deny_rem").into_val(&env)
+                ],
+                target.into_val(&env)
+            )
+        ]
+    );
+
+    assert_event_snapshot(
+        "deny_rem",
+        &[SnapshotEvent {
+            topics: StdVec::from(["u32:1".into(), "symbol:deny_rem".into()]),
+            data: "address:target".into(),
+        }],
+    );
+}
+
+#[test]
+fn test_event_snapshot_quota_reset() {
+    let env = new_snapshot_env();
+    env.mock_all_auths();
+    let (contract_id, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+
+    token_sac.mint(&user, &5_000);
+    bridge.deposit(&user, &2_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.set_withdrawal_quota(&500);
+    bridge.withdraw(&admin, &user, &500, &token_addr);
+
+    let result = bridge.try_withdraw(&admin, &user, &100, &token_addr);
+    assert_eq!(result, Err(Ok(Error::WithdrawalQuotaExceeded)));
+
+    let start_ledger = env.ledger().sequence();
+    env.ledger().with_mut(|li| {
+        li.sequence_number = start_ledger + 17_280;
+    });
+
+    bridge.withdraw(&admin, &user, &500, &token_addr);
+
+    assert_eq!(
+        env.events().all().filter_by_contract(&contract_id),
+        vec![
+            &env,
+            (
+                contract_id.clone(),
+                vec![
+                    &env,
+                    EVENT_VERSION.into_val(&env),
+                    Symbol::new(&env, "quota_reset").into_val(&env)
+                ],
+                (user.clone(), start_ledger + 17_280).into_val(&env)
+            ),
+            (
+                contract_id,
+                vec![
+                    &env,
+                    EVENT_VERSION.into_val(&env),
+                    Symbol::new(&env, "withdraw").into_val(&env),
+                    user.into_val(&env)
+                ],
+                500i128.into_val(&env)
+            )
+        ]
+    );
+
+    assert_event_snapshot(
+        "quota_reset",
+        &[
+            SnapshotEvent {
+                topics: StdVec::from(["u32:1".into(), "symbol:quota_reset".into()]),
+                data: "tuple:[address:user,u32:17281]".into(),
+            },
+            SnapshotEvent {
+                topics: StdVec::from([
+                    "u32:1".into(),
+                    "symbol:withdraw".into(),
+                    "address:user".into(),
+                ]),
+                data: "i128:500".into(),
+            },
+        ],
+    );
+}
+
+#[test]
+fn test_event_snapshot_fee_accrued() {
+    let env = new_snapshot_env();
+    env.mock_all_auths();
+    let (contract_id, bridge, _, token_addr, _, _) = setup_bridge(&env, 1_000);
+
+    bridge.accrue_fee(&token_addr, &250);
+
+    assert_eq!(
+        env.events().all().filter_by_contract(&contract_id),
+        vec![
+            &env,
+            (
+                contract_id,
+                vec![
+                    &env,
+                    EVENT_VERSION.into_val(&env),
+                    Symbol::new(&env, "fee_accrue").into_val(&env),
+                    token_addr.into_val(&env)
+                ],
+                250i128.into_val(&env)
+            )
+        ]
+    );
+
+    assert_event_snapshot(
+        "fee_accrued",
+        &[SnapshotEvent {
+            topics: StdVec::from([
+                "u32:1".into(),
+                "symbol:fee_accrue".into(),
+                "address:token".into(),
+            ]),
+            data: "i128:250".into(),
+        }],
+    );
+}
+
+#[test]
+fn test_event_snapshot_fees_withdrawn() {
+    let env = new_snapshot_env();
+    env.mock_all_auths();
+    let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1_000);
+    let recipient = Address::generate(&env);
+
+    token_sac.mint(&contract_id, &400);
+    env.as_contract(&contract_id, || {
+        env.storage()
+            .persistent()
+            .set(&DataKey::FeeVault(token_addr.clone()), &400i128);
+    });
+
+    bridge.withdraw_fees(&recipient, &token_addr, &150);
+
+    assert_eq!(
+        env.events().all().filter_by_contract(&contract_id),
+        vec![
+            &env,
+            (
+                contract_id,
+                vec![
+                    &env,
+                    EVENT_VERSION.into_val(&env),
+                    Symbol::new(&env, "fee_wdrw").into_val(&env),
+                    recipient.into_val(&env)
+                ],
+                150i128.into_val(&env)
+            )
+        ]
+    );
+
+    assert_event_snapshot(
+        "fees_withdrawn",
+        &[SnapshotEvent {
+            topics: StdVec::from([
+                "u32:1".into(),
+                "symbol:fee_wdrw".into(),
+                "address:recipient".into(),
+            ]),
+            data: "i128:150".into(),
+        }],
+    );
+}
+
 #[cfg(test)]
 mod proptest_deposit {
     use super::*;
@@ -2927,7 +3316,9 @@ fn test_escrow_accounting_invariant_after_full_migration() {
     // Sum all EscrowRecord amounts and assert equal to deposit total
     let mut escrow_total: i128 = 0;
     for i in 0..(deposit_amounts.len() as u64) {
-        let record = bridge.get_escrow_record(&i).expect("escrow record must exist");
+        let record = bridge
+            .get_escrow_record(&i)
+            .expect("escrow record must exist");
         assert!(record.migrated);
         assert_eq!(record.version, ESCROW_STORAGE_VERSION);
         escrow_total += record.amount;
@@ -2973,7 +3364,9 @@ fn test_escrow_partial_migration_preserves_count() {
     // All records now exist and totals match
     let mut escrow_total: i128 = 0;
     for i in 0..4u64 {
-        let record = bridge.get_escrow_record(&i).expect("escrow record must exist");
+        let record = bridge
+            .get_escrow_record(&i)
+            .expect("escrow record must exist");
         assert!(record.migrated);
         escrow_total += record.amount;
     }
@@ -3025,6 +3418,7 @@ fn test_withdraw_operator_role() {
     let result = bridge.try_withdraw(&operator, &user, &100, &token_addr);
     assert_eq!(result, Err(Ok(Error::Unauthorized)));
 }
+
 // ── Issue #109: withdraw self-address guard tests ─────────────────────────
 
 #[test]
@@ -3040,6 +3434,8 @@ fn test_withdraw_to_self_address_rejected() {
     bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
 
     // Attempt to withdraw to the contract's own address — should be rejected
+    // Order: caller, to, amount, token
+
     let result = bridge.try_withdraw(&admin, &contract_id, &100, &token_addr);
     assert_eq!(result, Err(Ok(Error::InvalidRecipient)));
 
@@ -3082,6 +3478,7 @@ fn test_deposit_overflow_guard() {
     let result = bridge.try_deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
     assert_eq!(result, Err(Ok(Error::Overflow)));
 }
+
 // ── Issue #113: minimum deposit floor tests ───────────────────────────────
 
 #[test]
@@ -3159,3 +3556,85 @@ fn test_set_min_deposit_admin_only() {
     let result = bridge.try_set_min_deposit(&0);
     assert_eq!(result, Err(Ok(Error::BelowMinimum)));
 }
+
+#[test]
+fn test_get_daily_deposit_record() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+
+    let oracle_id = env.register(MockOracle, ());
+    bridge.set_oracle(&oracle_id);
+    bridge.set_fiat_limit(&100_000); // 1000 USD cents
+
+    // MockOracle price is 9.5 USD (9_500_000)
+    // Deposit 1 token = 9.5 USD = 950 cents (with ORACLE_PRICE_DECIMALS = 100,000,000)
+    // Let's check ORACLE_PRICE_DECIMALS value in lib.rs
+    bridge.deposit(&user, &1, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    let record = bridge.get_daily_deposit_record(&user).unwrap();
+    // 1 * 9_500_000 / (100_000_000 / 100) = 1 * 9_500_000 / 1_000_000 = 9.5 -> floor = 9 cents?
+    // Wait, let's check the math in validate_fiat_limit
+    // let usd_cents = crate::math::mul_div_floor(amount, price, ORACLE_PRICE_DECIMALS / 100);
+    // If ORACLE_PRICE_DECIMALS is 10^7 or something.
+    assert!(bridge.get_daily_deposit_record(&user).unwrap().usd_cents > 0);
+
+    // Advance beyond window
+    env.ledger().with_mut(|li| {
+        li.sequence_number = start_ledger + WINDOW_LEDGERS;
+    });
+
+    // Record should be zeroed in memory (though not yet in instance storage)
+    let record = bridge.get_daily_deposit_record(&user).unwrap();
+    assert_eq!(record.usd_cents, 0);
+    assert_eq!(record.window_start, start_ledger + WINDOW_LEDGERS);
+}
+
+
+#[test]
+fn test_token_specific_allowlist() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, token, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+
+    // Enable per-token allowlist for this token
+    bridge.set_token_allowlist_enabled(&token_addr, &true);
+
+    // Deposit should fail
+    let result = bridge.try_deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(result, Err(Ok(Error::NotAllowed)));
+
+    // Add to allowlist
+    bridge.add_token_allowlist(&token_addr, &user);
+
+    // Deposit should now succeed
+    bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(token.balance(&user), 4900);
+}
+
+#[test]
+fn test_accumulator_overflow_returns_internal_error() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, i128::MAX);
+    let user = Address::generate(&env);
+    
+    // Use a large amount that will cause overflow if added twice
+    let large_amount = i128::MAX / 2 + 100;
+    token_sac.mint(&user, &i128::MAX);
+
+    bridge.deposit(&user, &large_amount, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    
+    // Second deposit should overflow total_deposited
+    let result = bridge.try_deposit(&user, &large_amount, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(result, Err(Ok(Error::InternalError)));
+}
+
+

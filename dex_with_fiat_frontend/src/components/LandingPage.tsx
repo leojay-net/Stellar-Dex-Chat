@@ -22,13 +22,12 @@ import {
   FileText,
   HelpCircle,
   MessageSquare,
-  Copy,
-  Check,
   Sun,
   Moon,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTheme } from '../contexts/ThemeContext';
+import CopyButton from '@/components/ui/CopyButton';
 import OfflineStatusBanner from '@/components/OfflineStatusBanner';
 
 interface FeatureCardProps {
@@ -106,7 +105,6 @@ export default function LandingPage() {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const { isDarkMode, toggleDarkMode } = useTheme();
   const [heroVisible, setHeroVisible] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   const contractAddress =
     'CB4L7Q6M3N7Z6K4L2A3B5C6D7E8F9G0H1I2J3K4L5M6N7O8P9Q0R1S2T3U4V5W6X7Y8Z9'; // Replace with actual deployed address
@@ -117,16 +115,6 @@ export default function LandingPage() {
 
   const handleGetStarted = () => {
     router.push('/chat');
-  };
-
-  const copyToClipboard = async () => {
-    try {
-      await navigator.clipboard.writeText(contractAddress);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy: ', err);
-    }
   };
 
   const handleEmailSubmit = (e: React.FormEvent) => {
@@ -321,17 +309,7 @@ export default function LandingPage() {
               <code className="text-blue-400 font-mono text-sm break-all flex-1 mr-2">
                 {contractAddress}
               </code>
-              <button
-                onClick={copyToClipboard}
-                className="flex-shrink-0 p-1 hover:bg-gray-700 rounded transition-colors duration-200"
-                title="Copy to clipboard"
-              >
-                {copied ? (
-                  <Check className="w-4 h-4 text-green-400" />
-                ) : (
-                  <Copy className="w-4 h-4 text-gray-400" />
-                )}
-              </button>
+              <CopyButton value={contractAddress} />
             </div>
           </div>
         </div>

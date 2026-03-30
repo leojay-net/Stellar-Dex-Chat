@@ -17,6 +17,26 @@ export async function POST(request: NextRequest) {
   );
 
   try {
+    // Fail-closed: reject immediately if the secret key is not configured.
+    // Never process a webhook without a verified signature.
+    if (!PAYSTACK_SECRET_KEY) {
+      telemetry.addLog(
+        span.spanId,
+        'error',
+        'Webhook rejected: PAYSTACK_SECRET_KEY is not configured',
+        { endpoint: '/api/webhook' },
+      );
+      telemetry.finishSpan(span.spanId, {
+        success: false,
+        error: 'Missing PAYSTACK_SECRET_KEY',
+      });
+      console.error('PAYSTACK_SECRET_KEY is not configured. Rejecting webhook.');
+      return NextResponse.json(
+        { message: 'Webhook processing is not configured' },
+        { status: 400 },
+      );
+    }
+
     telemetry.addLog(span.spanId, 'info', 'Starting webhook processing', {
       endpoint: '/api/webhook',
     });
@@ -28,22 +48,6 @@ export async function POST(request: NextRequest) {
       hasSignature: !!signature,
       payloadLength: payload.length,
     });
-
-    if (!PAYSTACK_SECRET_KEY) {
-      telemetry.addLog(
-        span.spanId,
-        'warn',
-        'Skipping webhook verification (no API key)',
-        { endpoint: '/api/webhook' },
-      );
-      console.warn(
-        'Paystack secret key not found, skipping webhook verification',
-      );
-
-      const response = NextResponse.json({ received: true });
-      telemetry.setTraceHeaders(response.headers, traceContext);
-      return response;
-    }
 
     if (!signature) {
       telemetry.addLog(span.spanId, 'warn', 'No signature provided', {

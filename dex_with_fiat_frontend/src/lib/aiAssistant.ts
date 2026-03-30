@@ -1,4 +1,3 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import {
   AIAnalysisResult,
   GuardrailCategory,
@@ -6,11 +5,6 @@ import {
   TransactionData,
 } from '@/types';
 import { telemetry } from '@/lib/telemetry';
-import { parseMessage, mergeParserWithAI } from '@/lib/messageParser';
-import { findFAQMatch } from './faq';
-import { env } from '@/lib/env';
-
-const genAI = new GoogleGenerativeAI(env.NEXT_PUBLIC_GEMINI_API_KEY || '');
 
 type GuardrailMatch = {
   category: GuardrailCategory;
@@ -26,49 +20,41 @@ export class AIAssistant {
     financial_guarantee: 0,
   };
 
-  private model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
   static readonly LOW_CONFIDENCE_THRESHOLD = 0.7;
 
+  /**
+   * Analyse a user message by proxying to the server-side /api/ai/chat route.
+   * The Gemini API key is handled entirely server-side and never reaches the browser.
+   */
   async analyzeUserMessage(
     message: string,
     context?: Record<string, unknown>,
   ): Promise<AIAnalysisResult> {
     try {
-      // 1. Check Guardrails
-      const guardrailMatch = this.classifyGuardrail(message);
-      if (guardrailMatch) {
-        return this.buildGuardrailResponse(guardrailMatch, message);
+      const response = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, context }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`AI chat API returned ${response.status}`);
       }
 
-      // 2. Check Local FAQ Knowledge Base (#51)
-      const faqMatch = findFAQMatch(message);
-      if (faqMatch) {
-        return {
-          intent: faqMatch.intent,
-          confidence: 0.98,
-          extractedData: {},
-          requiredQuestions: [],
-          suggestedResponse: faqMatch.answer,
-        };
+      const result: AIAnalysisResult = await response.json() as AIAnalysisResult;
+
+      // Record any guardrail triggers for telemetry
+      if (result.guardrail?.triggered) {
+        this.recordGuardrailTrigger(
+          {
+            category: result.guardrail.category,
+            reason: result.guardrail.reason,
+          },
+          message,
+        );
       }
 
-      // 3. Deterministic parser — runs before AI so numeric fields are reliable
-      const parserResult = parseMessage(message);
-
-      // 4. AI Analysis
-      const prompt = this.buildAnalysisPrompt(message, context);
-      const result = await this.model.generateContent(prompt);
-      const response = result.response.text();
-
-      const aiResult = this.parseAIResponse(response);
-
-      // 5. Merge — parser takes precedence for numeric fields
-      aiResult.extractedData = mergeParserWithAI(
-        parserResult,
-        aiResult.extractedData,
-      );
-
-      return aiResult;
+      return result;
     } catch (error) {
       console.error('AI Analysis Error:', error);
       return {
@@ -382,23 +368,22 @@ Choose one of the next actions below and I'll keep it moving.`;
     intent: string,
     missingData: string[],
   ): Promise<string> {
-    const prompt = `
-Generate a natural follow-up question for a DeFi trading assistant.
-
-Intent: ${intent}
-Missing Data: ${missingData.join(', ')}
-
-Generate a single, conversational question to collect the missing information.
-Be helpful and specific about what you need.
-`;
-
     try {
-      const result = await this.model.generateContent(prompt);
-      return result.response.text();
+      const response = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `Generate a single, natural follow-up question for a Stellar DeFi assistant. Intent: ${intent}. Missing data: ${missingData.join(', ')}. Return only the question text.`,
+        }),
+      });
+      if (response.ok) {
+        const result = await response.json() as AIAnalysisResult;
+        return result.suggestedResponse || 'Could you provide more details about your request?';
+      }
     } catch (error) {
       console.error('Failed to generate follow-up question:', error);
-      return 'Could you provide more details about your request?';
     }
+    return 'Could you provide more details about your request?';
   }
 
   getClarificationQuestion(analysis: AIAnalysisResult): string {

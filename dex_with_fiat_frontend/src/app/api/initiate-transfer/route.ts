@@ -3,6 +3,7 @@ import { getPayoutProvider } from '@/lib/payout/providers/registry';
 import { telemetry } from '@/lib/telemetry';
 import { applyRateLimit, getClientIp } from '@/lib/rateLimit';
 import { setTransferStatus } from '@/lib/transferStore';
+import { initiateTransferSchema } from '@/lib/apiSchemas';
 
 const RATE_LIMIT = { maxRequests: 3, windowMs: 60_000 };
 
@@ -23,37 +24,43 @@ export async function POST(request: NextRequest) {
       endpoint: '/api/initiate-transfer',
     });
 
-    const { source, reason, amount, recipient, reference, clientSessionId } =
-      await request.json();
+    const body = await request.json();
 
-    telemetry.addLog(span.spanId, 'info', 'Request parsed', {
-      hasSource: !!source,
-      hasAmount: !!amount,
-      hasRecipient: !!recipient,
-      amount: amount,
-    });
+    // Validate with Zod
+    const validationResult = initiateTransferSchema.safeParse(body);
 
-    if (!source || !amount || !recipient) {
-      telemetry.addLog(span.spanId, 'warn', 'Validation failed', {
-        missingFields: {
-          source: !source,
-          amount: !amount,
-          recipient: !recipient,
-        },
+    if (!validationResult.success) {
+      telemetry.addLog(span.spanId, 'warn', 'Zod validation failed', {
+        errors: validationResult.error.issues,
       });
       telemetry.finishSpan(span.spanId, {
         success: false,
-        error: 'Missing required fields',
+        error: 'Validation failed',
       });
 
       return NextResponse.json(
         {
           success: false,
-          message: 'Source, amount, and recipient are required',
+          message: 'Validation failed',
+          errors: validationResult.error.issues,
         },
         { status: 400 },
       );
     }
+
+    const { source, reason, amount, recipient, reference } =
+      validationResult.data;
+    const clientSessionId =
+      typeof body.clientSessionId === 'string'
+        ? body.clientSessionId
+        : undefined;
+
+    telemetry.addLog(span.spanId, 'info', 'Request validated', {
+      hasSource: !!source,
+      hasAmount: !!amount,
+      hasRecipient: !!recipient,
+      amount: amount,
+    });
 
     const provider = getPayoutProvider();
     const data = await provider.initiateTransfer({
@@ -63,6 +70,7 @@ export async function POST(request: NextRequest) {
       recipient,
       reference,
     });
+
     const transferReference =
       typeof data.reference === 'string' && data.reference
         ? data.reference
@@ -76,8 +84,7 @@ export async function POST(request: NextRequest) {
         status: 'pending',
         amount: Number(amount),
         updatedAt: new Date().toISOString(),
-        clientSessionId:
-          typeof clientSessionId === 'string' ? clientSessionId : undefined,
+        clientSessionId,
       });
     }
 
