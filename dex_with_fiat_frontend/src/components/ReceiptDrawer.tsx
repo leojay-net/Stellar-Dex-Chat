@@ -1,11 +1,20 @@
-import React from 'react';
-import { X, Receipt, ExternalLink, Clock, CheckCircle2, AlertCircle, Trash2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import {
+  X,
+  Receipt,
+  ExternalLink,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  Trash2,
+} from 'lucide-react';
 import { TransactionHistoryEntry } from '@/types';
 import { useTranslation } from '@/contexts/TranslationContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useTransactionFilters } from '@/hooks/useTransactionFilters';
 import { TransactionAmountDisplay } from './TransactionAmountDisplay';
 import { FilterChipBar } from './filters/FilterChipBar';
+import SkeletonReceipt from '@/components/ui/skeleton/SkeletonReceipt';
 
 interface ReceiptDrawerProps {
   isOpen: boolean;
@@ -22,6 +31,18 @@ export default function ReceiptDrawer({
 }: ReceiptDrawerProps) {
   const { t } = useTranslation();
   const { isDarkMode } = useTheme();
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Simulate fetching receipt data with a delay when drawer opens
+  useEffect(() => {
+    if (isOpen) {
+      setIsLoading(true);
+      const timer = setTimeout(() => {
+        setIsLoading(false);
+      }, 1000); // 1s mock delay
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
 
   // Use transaction filters hook
   const {
@@ -50,6 +71,7 @@ export default function ReceiptDrawer({
         className={`fixed top-0 right-0 h-full w-full max-w-md bg-white dark:bg-gray-900 shadow-2xl z-[101] transform transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
+        aria-busy={isLoading}
       >
         <div className="flex flex-col h-full">
           {/* Header */}
@@ -89,14 +111,22 @@ export default function ReceiptDrawer({
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {displayTransactions.length === 0 ? (
+            {isLoading ? (
+              <div className="space-y-4">
+                <SkeletonReceipt />
+                <SkeletonReceipt />
+                <SkeletonReceipt />
+              </div>
+            ) : displayTransactions.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 text-gray-500">
                 <Receipt className="w-12 h-12 mb-4 opacity-20" />
                 {transactions.length === 0 ? (
                   <p>{t('receipt.no_receipts')}</p>
                 ) : (
                   <div className="text-center space-y-2">
-                    <p className="font-medium">No transactions match your filters</p>
+                    <p className="font-medium">
+                      No transactions match your filters
+                    </p>
                     <button
                       onClick={clearAllFilters}
                       className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
@@ -144,7 +174,9 @@ export default function ReceiptDrawer({
 
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-500">{t('receipt.amount')}</span>
+                      <span className="text-gray-500">
+                        {t('receipt.amount')}
+                      </span>
                       <TransactionAmountDisplay
                         amount={tx.amount}
                         asset={tx.asset}
@@ -162,7 +194,9 @@ export default function ReceiptDrawer({
                     )}
                     {tx.txHash && (
                       <div className="flex justify-between items-center gap-2">
-                        <span className="text-gray-500">{t('receipt.hash')}</span>
+                        <span className="text-gray-500">
+                          {t('receipt.hash')}
+                        </span>
                         <a
                           href={`https://stellar.expert/explorer/testnet/tx/${tx.txHash}`}
                           target="_blank"
