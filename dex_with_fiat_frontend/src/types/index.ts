@@ -171,14 +171,17 @@ export interface ReconciliationRecord {
   status: 'matched' | 'unmatched' | 'error';
 }
 
-export type AdminAuditActionType =
-  | 'withdrawal_approved'
-  | 'withdrawal_rejected'
-  | 'reconciliation_adjustment'
-  | 'operator_added'
-  | 'operator_removed'
-  | 'bridge_paused'
-  | 'bridge_unpaused';
+export const ADMIN_AUDIT_ACTION_TYPES = [
+  'withdrawal_approved',
+  'withdrawal_rejected',
+  'reconciliation_adjustment',
+  'operator_added',
+  'operator_removed',
+  'bridge_paused',
+  'bridge_unpaused',
+] as const;
+
+export type AdminAuditActionType = (typeof ADMIN_AUDIT_ACTION_TYPES)[number];
 
 export type AdminAuditResult = 'success' | 'failed' | 'pending';
 
