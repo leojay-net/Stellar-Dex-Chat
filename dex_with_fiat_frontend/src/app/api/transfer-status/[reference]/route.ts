@@ -1,30 +1,101 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { transferStore } from '@/lib/transferStore';
+import { getTransferStatus, setTransferStatus } from '@/lib/transferStore';
 
-export async function GET(
-    request: NextRequest,
-    { params }: { params: Promise<{ reference: string }> }
+// Temporary memory store to mark cancellation requests.
+// In a full production app, this would update a database record.
+const cancelledTransfers = new Set<string>();
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ reference: string }> },
 ) {
-    const { reference } = await params;
+  try {
+    const p = await params;
+    const { reference } = p;
 
     if (!reference) {
-        return NextResponse.json(
-            { success: false, message: 'Reference is required' },
-            { status: 400 }
-        );
+      return NextResponse.json(
+        { success: false, message: 'Reference is required' },
+        { status: 400 },
+      );
     }
 
-    const record = transferStore.get(reference);
+    cancelledTransfers.add(reference);
+    const existing = getTransferStatus(reference);
+    setTransferStatus({
+      reference,
+      status: 'cancelled',
+      amount: existing?.amount ?? 0,
+      updatedAt: new Date().toISOString(),
+      clientSessionId: existing?.clientSessionId,
+      failureReason: existing?.failureReason,
+    });
 
-    if (!record) {
-        return NextResponse.json(
-            { success: false, message: 'Transfer status not found' },
-            { status: 404 }
-        );
+    return NextResponse.json({
+      success: true,
+      data: {
+        reference,
+        status: 'cancelled',
+        message: 'Transfer cancellation requested successfully',
+      },
+    });
+  } catch (error: unknown) {
+    console.error('Cancel transfer error:', error);
+    return NextResponse.json(
+      { success: false, message: 'Failed to cancel transfer' },
+      { status: 500 },
+    );
+  }
+}
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ reference: string }> },
+) {
+  try {
+    const p = await params;
+    const { reference } = p;
+
+    if (!reference) {
+      return NextResponse.json(
+        { success: false, message: 'Reference is required' },
+        { status: 400 },
+      );
+    }
+
+    if (cancelledTransfers.has(reference)) {
+      const existing = getTransferStatus(reference);
+      return NextResponse.json({
+        success: true,
+        data: {
+          reference,
+          status: 'cancelled',
+          amount: existing?.amount ?? 0,
+          message: 'Transfer cancellation requested successfully',
+        },
+      });
+    }
+
+    const transferRecord = getTransferStatus(reference);
+    if (transferRecord) {
+      return NextResponse.json({
+        success: true,
+        data: transferRecord,
+      });
     }
 
     return NextResponse.json({
-        success: true,
-        data: record,
+      success: true,
+      data: {
+        reference,
+        status: 'pending',
+      },
     });
+  } catch (error: unknown) {
+    console.error('Get transfer status error:', error);
+    return NextResponse.json(
+      { success: false, message: 'Failed to retrieve transfer status' },
+      { status: 500 },
+    );
+  }
 }

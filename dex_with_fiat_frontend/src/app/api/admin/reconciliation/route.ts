@@ -1,16 +1,25 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { ReconciliationRecord } from '../../../../types';
+import { requireAdminAuth } from '../_utils/requireAdminAuth';
+import { enforceAdminIpAllowlist } from '@/lib/security';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    // In production, add authentication check here
+    const blockedResponse = enforceAdminIpAllowlist(request);
+    if (blockedResponse) return blockedResponse;
+
     // For now, return mock data
+    const authError = requireAdminAuth(request);
+    if (authError) {
+      return authError;
+    }
+
     return NextResponse.json(mockReconciliationData);
   } catch (error) {
     console.error('Error fetching reconciliation data:', error);
     return NextResponse.json(
       { error: 'Failed to fetch reconciliation data' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

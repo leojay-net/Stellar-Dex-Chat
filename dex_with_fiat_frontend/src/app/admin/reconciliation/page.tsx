@@ -5,7 +5,9 @@ import { ReconciliationRecord } from '../../../types';
 
 export default function ReconciliationDashboard() {
   const [records, setRecords] = useState<ReconciliationRecord[]>([]);
-  const [filteredRecords, setFilteredRecords] = useState<ReconciliationRecord[]>([]);
+  const [filteredRecords, setFilteredRecords] = useState<
+    ReconciliationRecord[]
+  >([]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
@@ -35,15 +37,19 @@ export default function ReconciliationDashboard() {
     let filtered = records;
 
     if (statusFilter !== 'all') {
-      filtered = filtered.filter(record => record.status === statusFilter);
+      filtered = filtered.filter((record) => record.status === statusFilter);
     }
 
     if (startDate) {
-      filtered = filtered.filter(record => new Date(record.depositDate) >= new Date(startDate));
+      filtered = filtered.filter(
+        (record) => new Date(record.depositDate) >= new Date(startDate),
+      );
     }
 
     if (endDate) {
-      filtered = filtered.filter(record => new Date(record.depositDate) <= new Date(endDate));
+      filtered = filtered.filter(
+        (record) => new Date(record.depositDate) <= new Date(endDate),
+      );
     }
 
     setFilteredRecords(filtered);
@@ -65,31 +71,36 @@ export default function ReconciliationDashboard() {
       'Payout Recipient',
       'Payout Status',
       'Payout Date',
-      'Status'
+      'Status',
     ];
 
     const csvContent = [
       headers.join(','),
-      ...filteredRecords.map(record => [
-        record.id,
-        record.depositTxHash,
-        record.depositAmount,
-        record.depositUser,
-        record.depositDate,
-        record.payoutId,
-        record.payoutAmount,
-        record.payoutRecipient,
-        record.payoutStatus,
-        record.payoutDate,
-        record.status
-      ].join(','))
+      ...filteredRecords.map((record) =>
+        [
+          record.id,
+          record.depositTxHash,
+          record.depositAmount,
+          record.depositUser,
+          record.depositDate,
+          record.payoutId,
+          record.payoutAmount,
+          record.payoutRecipient,
+          record.payoutStatus,
+          record.payoutDate,
+          record.status,
+        ].join(','),
+      ),
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `reconciliation_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute(
+      'download',
+      `reconciliation_${new Date().toISOString().split('T')[0]}.csv`,
+    );
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -186,10 +197,15 @@ export default function ReconciliationDashboard() {
               </thead>
               <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                 {filteredRecords.map((record) => (
-                  <tr key={record.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                  <tr
+                    key={record.id}
+                    className="hover:bg-gray-50 dark:hover:bg-gray-700"
+                  >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900 dark:text-white">
-                        <div className="font-medium">{record.depositAmount} XLM</div>
+                        <div className="font-medium">
+                          {record.depositAmount} XLM
+                        </div>
                         <div className="text-gray-500 dark:text-gray-400">
                           {record.depositTxHash.slice(0, 10)}...
                         </div>
@@ -202,7 +218,10 @@ export default function ReconciliationDashboard() {
                       <div className="text-sm text-gray-900 dark:text-white">
                         {record.payoutId ? (
                           <>
-                            <div className="font-medium">{record.payoutAmount} {record.payoutStatus === 'completed' ? 'NGN' : ''}</div>
+                            <div className="font-medium">
+                              {record.payoutAmount}{' '}
+                              {record.payoutStatus === 'completed' ? 'NGN' : ''}
+                            </div>
                             <div className="text-gray-500 dark:text-gray-400">
                               {record.payoutId}
                             </div>
@@ -211,29 +230,35 @@ export default function ReconciliationDashboard() {
                             </div>
                           </>
                         ) : (
-                          <span className="text-gray-400 dark:text-gray-500">No payout</span>
+                          <span className="text-gray-400 dark:text-gray-500">
+                            No payout
+                          </span>
                         )}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        record.status === 'matched'
-                          ? 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-200'
-                          : record.status === 'unmatched'
-                          ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-200'
-                          : 'bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-200'
-                      }`}>
+                      <span
+                        className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          record.status === 'matched'
+                            ? 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-200'
+                            : record.status === 'unmatched'
+                              ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-200'
+                              : 'bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-200'
+                        }`}
+                      >
                         {record.status}
                       </span>
                       {record.payoutId && (
                         <div className="mt-1">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            record.payoutStatus === 'completed'
-                              ? 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-200'
-                              : record.payoutStatus === 'pending'
-                              ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-200'
-                              : 'bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-200'
-                          }`}>
+                          <span
+                            className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              record.payoutStatus === 'completed'
+                                ? 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-200'
+                                : record.payoutStatus === 'pending'
+                                  ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-200'
+                                  : 'bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-200'
+                            }`}
+                          >
                             {record.payoutStatus}
                           </span>
                         </div>

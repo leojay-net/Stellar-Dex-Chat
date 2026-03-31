@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
 import { telemetry } from '@/lib/telemetry';
+import { env } from '@/lib/env';
 
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
+const PAYSTACK_SECRET_KEY = env.PAYSTACK_SECRET_KEY;
 
 export async function GET(request: Request) {
   const traceContext = telemetry.extractTraceFromHeaders(

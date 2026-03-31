@@ -1,104 +1,93 @@
 'use client';
 
-import { useState, useEffect, ReactNode } from 'react';
-import { X, CheckCircle, AlertCircle, Info, AlertTriangle } from 'lucide-react';
-import { toastStore, Toast, ToastVariant } from '@/lib/toastStore';
+import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react';
+import { ReactNode } from 'react';
+import { useToast } from '@/hooks/useToast';
+import { AppToast } from '@/lib/toastStore';
 import { useTheme } from '@/contexts/ThemeContext';
-
-interface ToastItemProps {
-  toast: Toast;
-  onDismiss: (id: string) => void;
-  isDarkMode: boolean;
-}
-
-function ToastItem({ toast, onDismiss, isDarkMode }: ToastItemProps) {
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      onDismiss(toast.id);
-    }, 5000);
-
-    return () => clearTimeout(timer);
-  }, [toast.id, onDismiss]);
-
-  const getVariantStyles = (variant: ToastVariant) => {
-    const baseClasses = `flex items-start gap-3 px-4 py-3 rounded-lg shadow-lg transition-all`;
-    
-    switch (variant) {
-      case 'success':
-        return `${baseClasses} ${isDarkMode ? 'bg-green-900 border border-green-700' : 'bg-green-100 border border-green-300'} ${isDarkMode ? 'text-green-100' : 'text-green-800'}`;
-      case 'error':
-        return `${baseClasses} ${isDarkMode ? 'bg-red-900 border border-red-700' : 'bg-red-100 border border-red-300'} ${isDarkMode ? 'text-red-100' : 'text-red-800'}`;
-      case 'warning':
-        return `${baseClasses} ${isDarkMode ? 'bg-yellow-900 border border-yellow-700' : 'bg-yellow-100 border border-yellow-300'} ${isDarkMode ? 'text-yellow-100' : 'text-yellow-800'}`;
-      case 'info':
-      default:
-        return `${baseClasses} ${isDarkMode ? 'bg-blue-900 border border-blue-700' : 'bg-blue-100 border border-blue-300'} ${isDarkMode ? 'text-blue-100' : 'text-blue-800'}`;
-    }
-  };
-
-  const getIconComponent = (variant: ToastVariant) => {
-    const iconClasses = 'w-5 h-5 flex-shrink-0 mt-0.5';
-    switch (variant) {
-      case 'success':
-        return <CheckCircle className={iconClasses} />;
-      case 'error':
-        return <AlertCircle className={iconClasses} />;
-      case 'warning':
-        return <AlertTriangle className={iconClasses} />;
-      case 'info':
-      default:
-        return <Info className={iconClasses} />;
-    }
-  };
-
-  return (
-    <div className={getVariantStyles(toast.variant)}>
-      {getIconComponent(toast.variant)}
-      <div className="flex-1">
-        <p className="font-medium text-sm">{toast.message}</p>
-      </div>
-      <button
-        onClick={() => onDismiss(toast.id)}
-        className="flex-shrink-0 ml-2 hover:opacity-70 transition-opacity"
-        aria-label="Dismiss toast"
-      >
-        <X className="w-4 h-4" />
-      </button>
-    </div>
-  );
-}
 
 interface ToastProviderProps {
   children: ReactNode;
 }
 
+function getToastClasses(isDarkMode: boolean, toast: AppToast) {
+  if (isDarkMode) {
+    switch (toast.severity) {
+      case 'success':
+        return 'border-green-500/50 bg-green-900/30 text-green-100';
+      case 'warning':
+        return 'border-amber-500/50 bg-amber-900/30 text-amber-100';
+      case 'error':
+        return 'border-red-500/50 bg-red-900/30 text-red-100';
+      default:
+        return 'border-blue-500/50 bg-blue-900/30 text-blue-100';
+    }
+  }
+
+  switch (toast.severity) {
+    case 'success':
+      return 'border-green-200 bg-green-50 text-green-900';
+    case 'warning':
+      return 'border-amber-200 bg-amber-50 text-amber-900';
+    case 'error':
+      return 'border-red-200 bg-red-50 text-red-900';
+    default:
+      return 'border-blue-200 bg-blue-50 text-blue-900';
+  }
+}
+
+function ToastIcon({ severity }: { severity: AppToast['severity'] }) {
+  switch (severity) {
+    case 'success':
+      return <CheckCircle2 className="h-4 w-4" aria-hidden="true" />;
+    case 'warning':
+      return <AlertTriangle className="h-4 w-4" aria-hidden="true" />;
+    case 'error':
+      return <XCircle className="h-4 w-4" aria-hidden="true" />;
+    default:
+      return <Info className="h-4 w-4" aria-hidden="true" />;
+  }
+}
+
 export function ToastProvider({ children }: ToastProviderProps) {
-  const [toasts, setToasts] = useState<Toast[]>([]);
+  const { toasts, dismissToast } = useToast();
   const { isDarkMode } = useTheme();
-
-  useEffect(() => {
-    const unsubscribe = toastStore.subscribe((updatedToasts) => {
-      setToasts(updatedToasts);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  const handleDismiss = (id: string) => {
-    toastStore.removeToast(id);
-  };
 
   return (
     <>
       {children}
-      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+
+      <div
+        aria-live="polite"
+        aria-atomic="false"
+        className="pointer-events-none fixed right-4 top-4 z-[100] flex w-[min(92vw,24rem)] flex-col gap-2"
+      >
         {toasts.map((toast) => (
-          <ToastItem
+          <div
             key={toast.id}
-            toast={toast}
-            onDismiss={handleDismiss}
-            isDarkMode={isDarkMode}
-          />
+            role="status"
+            className={`pointer-events-auto flex items-start gap-3 rounded-lg border px-3 py-2 shadow-lg backdrop-blur-sm transition-all ${getToastClasses(
+              isDarkMode,
+              toast,
+            )}`}
+          >
+            <div className="mt-0.5 flex-shrink-0">
+              <ToastIcon severity={toast.severity} />
+            </div>
+
+            <p className="flex-1 text-sm font-medium leading-5">
+              {toast.message}
+            </p>
+
+            <button
+              type="button"
+              onClick={() => dismissToast(toast.id)}
+              className="rounded p-1 opacity-80 transition-opacity hover:opacity-100"
+              aria-label="Dismiss notification"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         ))}
       </div>
     </>

@@ -9,18 +9,18 @@ import {
   rpc,
 } from '@stellar/stellar-sdk';
 import { stroopsToXlm } from '@/lib/stroops';
+import { env } from '@/lib/env';
 
 export { stroopsToXlm as stroopsToDisplay } from '@/lib/stroops';
 
 const RPC_URL =
-  process.env.NEXT_PUBLIC_STELLAR_RPC_URL ||
-  'https://soroban-testnet.stellar.org';
-const CONTRACT_ID =
-  process.env.NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT ||
+  env.NEXT_PUBLIC_STELLAR_RPC_URL || 'https://soroban-testnet.stellar.org';
+export const CONTRACT_ID =
+  env.NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT ||
   'CAWYXBN4PSVXD7NIYEWVFFIIIEUCC6PUN3IMG3J2WHKDB4NVIISMXBPR';
 // XLM SAC address — the token used by the bridge (stored on-chain after init)
 export const XLM_SAC_ID =
-  process.env.NEXT_PUBLIC_XLM_SAC_CONTRACT ||
+  env.NEXT_PUBLIC_XLM_SAC_CONTRACT ||
   'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC';
 
 // Stellar Testnet passphrase — switch to Networks.PUBLIC for mainnet
@@ -84,6 +84,7 @@ declare global {
     getBridgeLimit: () => Promise<bigint>;
     getContractBalance: () => Promise<bigint>;
     getTotalDeposited: () => Promise<bigint>;
+    getWithdrawalQueueDepth: () => Promise<number>;
   }
 }
 
@@ -93,6 +94,7 @@ try {
     window.getBridgeLimit = async () => getBridgeLimit();
     window.getContractBalance = async () => getContractBalance();
     window.getTotalDeposited = async () => getTotalDeposited();
+    window.getWithdrawalQueueDepth = async () => getWithdrawalQueueDepth();
   }
 } catch {
   // ignore
@@ -138,10 +140,20 @@ async function buildAndSimulate(
   };
 }
 
-export async function pollTransaction(hash: string): Promise<string> {
+export async function pollTransaction(
+  hash: string,
+  maxRetries: number = 20,
+): Promise<string> {
   let getResult = await server.getTransaction(hash);
+  let retries = 0;
   while (getResult.status === rpc.Api.GetTransactionStatus.NOT_FOUND) {
+    if (retries >= maxRetries) {
+      throw new Error(
+        `Transaction confirmation timed out after ${maxRetries} attempts`,
+      );
+    }
     await new Promise((r) => setTimeout(r, 1500));
+    retries += 1;
     getResult = await server.getTransaction(hash);
   }
   if (getResult.status === rpc.Api.GetTransactionStatus.FAILED) {
@@ -154,6 +166,7 @@ export async function pollTransaction(hash: string): Promise<string> {
 async function submitAndWait(
   signedXdr: string,
   onHashKnown?: (hash: string) => void,
+  maxRetries: number = 20,
 ): Promise<string> {
   const tx = TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE);
   const sendResult = await server.sendTransaction(tx);
@@ -163,7 +176,7 @@ async function submitAndWait(
     );
   }
   onHashKnown?.(sendResult.hash);
-  return pollTransaction(sendResult.hash);
+  return pollTransaction(sendResult.hash, maxRetries);
 }
 
 // ── Write functions (require wallet signature) ────────────────────────────
@@ -269,23 +282,23 @@ async function viewCall<T>(functionName: string): Promise<T> {
   // Use a dummy account (Stellar Foundation's well-known testnet account) for cls
   const contract = new Contract(CONTRACT_ID);
 
-    // We don't need a funded account — just a valid one for building the tx
-    let account;
-    try {
-      account = await server.getAccount(DUMMY_SOURCE);
-    } catch {
-      // If testnet doesn't know the account, create a skeleton account object
-      const { Account } = await import('@stellar/stellar-sdk');
-      account = new Account(DUMMY_SOURCE, '0');
-    }
+  // We don't need a funded account — just a valid one for building the tx
+  let account;
+  try {
+    account = await server.getAccount(DUMMY_SOURCE);
+  } catch {
+    // If testnet doesn't know the account, create a skeleton account object
+    const { Account } = await import('@stellar/stellar-sdk');
+    account = new Account(DUMMY_SOURCE, '0');
+  }
 
-    const tx = new TransactionBuilder(account, {
-      fee: BASE_FEE,
-      networkPassphrase: NETWORK_PASSPHRASE,
-    })
-      .addOperation(contract.call(functionName))
-      .setTimeout(30)
-      .build();
+  const tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(contract.call(functionName))
+    .setTimeout(30)
+    .build();
 
   const sim = await server.simulateTransaction(tx);
   if (rpc.Api.isSimulationError(sim)) {
@@ -314,7 +327,9 @@ export async function getBridgeLimit(): Promise<bigint> {
   return viewCall<bigint>('get_limit');
 }
 
-export async function validateBridgeAmountLimit(amount: bigint): Promise<bigint> {
+export async function validateBridgeAmountLimit(
+  amount: bigint,
+): Promise<bigint> {
   const limit = await getBridgeLimit();
 
   if (amount > limit) {
@@ -331,3 +346,47 @@ export async function getTotalDeposited(): Promise<bigint> {
   return viewCall<bigint>('get_total_deposited');
 }
 
+export async function getWithdrawalQueueDepth(): Promise<number> {
+  const value = await viewCall<bigint | number>('get_wq_depth');
+  return Number(value);
+}
+
+/** Returns the accrued fees for the specified token. */
+export async function getAccruedFees(tokenAddress: string): Promise<bigint> {
+  // Check in-memory cache first
+  const functionName = `get_accrued_fees:${tokenAddress}`;
+  const cached = getCachedValue<bigint>(functionName);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const contract = new Contract(CONTRACT_ID);
+  let account;
+  try {
+    account = await server.getAccount(DUMMY_SOURCE);
+  } catch {
+    const { Account } = await import('@stellar/stellar-sdk');
+    account = new Account(DUMMY_SOURCE, '0');
+  }
+
+  const tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(
+      contract.call('get_accrued_fees', new Address(tokenAddress).toScVal()),
+    )
+    .setTimeout(30)
+    .build();
+
+  const sim = await server.simulateTransaction(tx);
+  if (rpc.Api.isSimulationError(sim)) {
+    throw new Error(`View call failed: ${sim.error}`);
+  }
+  const retval = (sim as rpc.Api.SimulateTransactionSuccessResponse).result
+    ?.retval;
+  if (!retval) throw new Error('No return value');
+  const result = scValToNative(retval) as bigint;
+  setCachedValue(functionName, result);
+  return result;
+}

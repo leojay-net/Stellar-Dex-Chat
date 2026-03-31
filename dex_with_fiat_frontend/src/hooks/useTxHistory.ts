@@ -61,6 +61,13 @@ class TxHistoryStore {
     return nextEntry;
   }
 
+  updateEntry(id: string, updates: Partial<TransactionHistoryEntry>) {
+    this.entries = this.entries.map((entry) =>
+      entry.id === id ? { ...entry, ...updates } : entry,
+    );
+    this.emit();
+  }
+
   clearEntries() {
     this.entries = [];
     this.emit();
@@ -90,6 +97,7 @@ export function useTxHistory() {
   return {
     entries,
     addEntry: txHistoryStore.addEntry.bind(txHistoryStore),
+    updateEntry: txHistoryStore.updateEntry.bind(txHistoryStore),
     clearEntries: txHistoryStore.clearEntries.bind(txHistoryStore),
     exportEntries: txHistoryStore.exportEntries.bind(txHistoryStore),
   };

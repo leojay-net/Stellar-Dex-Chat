@@ -1,0 +1,11 @@
+[
+  {
+    "contract": "bridge",
+    "topics": [
+      "u32:1",
+      "symbol:fee_wdrw",
+      "address:recipient"
+    ],
+    "data": "i128:150"
+  }
+]

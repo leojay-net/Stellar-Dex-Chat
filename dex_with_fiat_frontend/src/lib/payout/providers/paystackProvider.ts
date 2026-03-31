@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { env } from '@/lib/env';
 
 import type {
   CreateRecipientInput,
@@ -12,7 +13,7 @@ import type {
   VerifyAccountResult,
 } from './types';
 
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
+const PAYSTACK_SECRET_KEY = env.PAYSTACK_SECRET_KEY;
 
 function paystackHeaders() {
   return {

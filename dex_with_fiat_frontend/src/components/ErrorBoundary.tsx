@@ -5,6 +5,10 @@ import React from 'react';
 interface ErrorBoundaryProps {
   children: React.ReactNode;
   isDarkMode?: boolean;
+  title?: string;
+  message?: string;
+  retryLabel?: string;
+  onRetry?: () => void;
 }
 
 interface ErrorBoundaryState {
@@ -45,20 +49,29 @@ export default class ErrorBoundary extends React.Component<
                 : 'border-gray-200 bg-white'
             }`}
           >
-            <h1 className="text-xl font-semibold">Something went wrong.</h1>
+            <h1 className="text-xl font-semibold">
+              {this.props.title ?? 'Something went wrong.'}
+            </h1>
             <p
               className={`mt-2 text-sm ${
                 isDarkMode ? 'text-gray-300' : 'text-gray-600'
               }`}
             >
-              Please refresh the page.
+              {this.props.message ?? 'Please refresh the page.'}
             </p>
             <button
               type="button"
-              onClick={() => window.location.reload()}
+              onClick={() => {
+                if (this.props.onRetry) {
+                  this.setState({ hasError: false });
+                  this.props.onRetry();
+                  return;
+                }
+                window.location.reload();
+              }}
               className="mt-5 inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
             >
-              Reload
+              {this.props.retryLabel ?? 'Reload'}
             </button>
           </div>
         </div>

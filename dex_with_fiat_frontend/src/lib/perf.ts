@@ -1,5 +1,5 @@
 /**
- * Performance tracking utility for measuring latency of UI renders, 
+ * Performance tracking utility for measuring latency of UI renders,
  * AI responses, and Stellar transaction flows.
  */
 
@@ -41,8 +41,11 @@ class PerformanceTracker {
     this.marks.delete(name);
 
     // Also log to console for immediate visibility during dev/benchmarking
-    console.log(`[PERF] ${name}: ${metric.duration.toFixed(2)}ms`, metadata || '');
-    
+    console.log(
+      `[PERF] ${name}: ${metric.duration.toFixed(2)}ms`,
+      metadata || '',
+    );
+
     return metric;
   }
 

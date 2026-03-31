@@ -23,7 +23,7 @@ export function downloadReceipt(data: ReceiptData): void {
   doc.setTextColor(40, 44, 52);
   doc.text('Stellar Dex Bridge', margin, cursorY);
   cursorY += 10;
-  
+
   doc.setFontSize(10);
   doc.setTextColor(100, 100, 100);
   doc.text('Transaction Receipt', margin, cursorY);
@@ -33,7 +33,7 @@ export function downloadReceipt(data: ReceiptData): void {
   doc.setDrawColor(200, 200, 200);
   doc.setFillColor(249, 250, 251);
   doc.roundedRect(margin, cursorY, pageWidth - margin * 2, 65, 3, 3, 'FD');
-  
+
   cursorY += 10;
   doc.setFontSize(12);
   doc.setTextColor(40, 44, 52);
@@ -43,16 +43,16 @@ export function downloadReceipt(data: ReceiptData): void {
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
-  
+
   const drawRow = (label: string, value: string) => {
     doc.setTextColor(100, 100, 100);
     doc.text(label, margin + 5, cursorY);
     doc.setTextColor(40, 44, 52);
-    
+
     // Handle long values like hashes
     const splitValue = doc.splitTextToSize(value, pageWidth - margin * 2 - 40);
     doc.text(splitValue, margin + 40, cursorY);
-    cursorY += (splitValue.length * 5);
+    cursorY += splitValue.length * 5;
   };
 
   drawRow('Type:', data.type);
@@ -61,7 +61,7 @@ export function downloadReceipt(data: ReceiptData): void {
   drawRow('Wallet:', data.wallet);
   drawRow('Tx Hash:', data.txHash);
   drawRow('Date:', data.timestamp);
-  
+
   if (data.note) {
     drawRow('Note:', data.note);
   }
@@ -83,14 +83,14 @@ export function downloadReceipt(data: ReceiptData): void {
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    
+
     for (const msg of data.messages) {
       const role = msg.role.charAt(0).toUpperCase() + msg.role.slice(1);
       const text = `${role}: ${msg.content}`;
       const splitText = doc.splitTextToSize(text, pageWidth - margin * 2);
-      
+
       // Page break check
-      if (cursorY + (splitText.length * 4) > 270) {
+      if (cursorY + splitText.length * 4 > 270) {
         doc.addPage();
         cursorY = 20;
       }
@@ -101,7 +101,7 @@ export function downloadReceipt(data: ReceiptData): void {
         doc.setTextColor(40, 44, 52);
       }
       doc.text(splitText, margin, cursorY);
-      cursorY += (splitText.length * 5);
+      cursorY += splitText.length * 5;
     }
   }
 
@@ -109,8 +109,16 @@ export function downloadReceipt(data: ReceiptData): void {
   cursorY = 280; // Try to put at the bottom
   doc.setFontSize(8);
   doc.setTextColor(150, 150, 150);
-  doc.text('This receipt was generated on the client as evidence of the transaction context.', margin, cursorY);
-  doc.text('Explorer: https://stellar.expert/explorer/testnet/tx/' + data.txHash, margin, cursorY + 4);
+  doc.text(
+    'This receipt was generated on the client as evidence of the transaction context.',
+    margin,
+    cursorY,
+  );
+  doc.text(
+    'Explorer: https://stellar.expert/explorer/testnet/tx/' + data.txHash,
+    margin,
+    cursorY + 4,
+  );
 
   doc.save(`stellar-receipt-${data.txHash.slice(0, 8)}.pdf`);
 }

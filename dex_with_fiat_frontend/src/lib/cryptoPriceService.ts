@@ -15,16 +15,36 @@ export interface TokenPriceData {
   lastUpdated: number;
 }
 
+export interface TokenPriceWithChange {
+  symbol: string;
+  price: number;
+  change24h?: number;
+  currency: string;
+}
+
+export interface TickerData {
+  [symbol: string]: TokenPriceWithChange;
+}
+
 // Token ID mapping for CoinGecko API
 const TOKEN_IDS: Record<string, string> = {
   XLM: 'stellar',
   ETH: 'ethereum',
+  BTC: 'bitcoin',
   USDC: 'usd-coin',
   USDT: 'tether',
 };
 
 // Supported fiat currencies — exported so UI can reference the same list
-export const SUPPORTED_CURRENCIES = ['usd', 'eur', 'gbp', 'ngn', 'cad', 'aud', 'jpy'];
+export const SUPPORTED_CURRENCIES = [
+  'usd',
+  'eur',
+  'gbp',
+  'ngn',
+  'cad',
+  'aud',
+  'jpy',
+];
 
 // Cache for prices to avoid excessive API calls
 const priceCache: Map<string, TokenPriceData> = new Map();
@@ -55,7 +75,7 @@ export async function fetchCryptoPrices(
     const idsParam = tokenIds.join(',');
     const currenciesParam = validCurrencies.join(',');
 
-    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${idsParam}&vs_currencies=${currenciesParam}&include_24hr_change=false`;
+    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${idsParam}&vs_currencies=${currenciesParam}&include_24hr_change=true`;
 
     const response = await fetch(url, {
       headers: {
@@ -99,11 +119,51 @@ function getFallbackPrices(
   vsCurrencies: string[],
 ): CryptoPrice {
   const fallbackPrices: CryptoPrice = {
-    XLM:  { usd: 0.11, eur: 0.10, gbp: 0.087, ngn: 180,    cad: 0.15, aud: 0.17, jpy: 16.5  },
-    ETH:  { usd: 4000, eur: 3700, gbp: 3200,  ngn: 6500000, cad: 5400, aud: 6200, jpy: 600000 },
-    STRK: { usd: 0.8,  eur: 0.74, gbp: 0.64,  ngn: 1300,    cad: 1.08, aud: 1.24, jpy: 120   },
-    USDC: { usd: 1,    eur: 0.92, gbp: 0.8,   ngn: 1650,    cad: 1.35, aud: 1.55, jpy: 150   },
-    USDT: { usd: 1,    eur: 0.92, gbp: 0.8,   ngn: 1650,    cad: 1.35, aud: 1.55, jpy: 150   },
+    XLM: {
+      usd: 0.11,
+      eur: 0.1,
+      gbp: 0.087,
+      ngn: 180,
+      cad: 0.15,
+      aud: 0.17,
+      jpy: 16.5,
+    },
+    ETH: {
+      usd: 4000,
+      eur: 3700,
+      gbp: 3200,
+      ngn: 6500000,
+      cad: 5400,
+      aud: 6200,
+      jpy: 600000,
+    },
+    STRK: {
+      usd: 0.8,
+      eur: 0.74,
+      gbp: 0.64,
+      ngn: 1300,
+      cad: 1.08,
+      aud: 1.24,
+      jpy: 120,
+    },
+    USDC: {
+      usd: 1,
+      eur: 0.92,
+      gbp: 0.8,
+      ngn: 1650,
+      cad: 1.35,
+      aud: 1.55,
+      jpy: 150,
+    },
+    USDT: {
+      usd: 1,
+      eur: 0.92,
+      gbp: 0.8,
+      ngn: 1650,
+      cad: 1.35,
+      aud: 1.55,
+      jpy: 150,
+    },
   };
 
   const result: CryptoPrice = {};
@@ -220,6 +280,72 @@ export function clearPriceCache(): void {
   priceCache.clear();
 }
 
+/**
+ * Fetch ticker data with 24h change for live price display
+ */
+export async function fetchTickerData(
+  tokenSymbols: string[] = ['XLM', 'ETH', 'BTC'],
+  vsCurrency: string = 'usd',
+): Promise<TickerData> {
+  try {
+    // Map symbols to CoinGecko IDs
+    const tokenIds = tokenSymbols
+      .map((symbol) => TOKEN_IDS[symbol.toUpperCase()])
+      .filter(Boolean);
+
+    if (tokenIds.length === 0) {
+      throw new Error('No valid token IDs found');
+    }
+
+    const idsParam = tokenIds.join(',');
+    const currencyLower = vsCurrency.toLowerCase();
+
+    // Only include supported currencies
+    if (!SUPPORTED_CURRENCIES.includes(currencyLower)) {
+      throw new Error(`Unsupported currency: ${vsCurrency}`);
+    }
+
+    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${idsParam}&vs_currencies=${currencyLower}&include_24hr_change=true`;
+
+    const response = await fetch(url, {
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `CoinGecko API error: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    const data = await response.json();
+
+    // Convert to ticker format
+    const tickerData: TickerData = {};
+    Object.entries(data).forEach(([coinId, priceData]) => {
+      const tokenSymbol = Object.entries(TOKEN_IDS).find(
+        ([, id]) => id === coinId,
+      )?.[0];
+      
+      const priceRecord = priceData as Record<string, number | undefined>;
+      if (tokenSymbol && priceRecord[currencyLower] !== undefined) {
+        tickerData[tokenSymbol] = {
+          symbol: tokenSymbol,
+          price: priceRecord[currencyLower]!,
+          change24h: priceRecord[`${currencyLower}_24h_change`],
+          currency: vsCurrency,
+        };
+      }
+    });
+
+    return tickerData;
+  } catch (error) {
+    console.error('Error fetching ticker data:', error);
+    return {}; // Return empty object to trigger fallback UI
+  }
+}
+
 export const QUOTE_LOCK_DURATION_MS = 120 * 1000; // 120 seconds
 
 export interface LockedQuote {
@@ -238,7 +364,11 @@ export async function fetchLockedQuote(
   amount: number,
   fiatCurrency: string = 'ngn',
 ): Promise<LockedQuote> {
-  const ngnAmount = await convertCryptoToFiat(tokenSymbol, amount, fiatCurrency);
+  const ngnAmount = await convertCryptoToFiat(
+    tokenSymbol,
+    amount,
+    fiatCurrency,
+  );
   const lockedAt = Date.now();
   return {
     ngnAmount,

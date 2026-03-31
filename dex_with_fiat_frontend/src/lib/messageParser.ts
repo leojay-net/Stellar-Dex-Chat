@@ -13,7 +13,7 @@ const FIAT_MAP: Record<string, string> = {
   usd: 'USD',
   dollar: 'USD',
   dollars: 'USD',
-  '$': 'USD',
+  $: 'USD',
   eur: 'EUR',
   euro: 'EUR',
   euros: 'EUR',
@@ -32,7 +32,9 @@ const TOKEN_MAP: Record<string, string> = {
 };
 
 const FIAT_PATTERN = new RegExp(
-  `\\b(${Object.keys(FIAT_MAP).filter((k) => /^[a-z]/.test(k)).join('|')})\\b`,
+  `\\b(${Object.keys(FIAT_MAP)
+    .filter((k) => /^[a-z]/.test(k))
+    .join('|')})\\b`,
   'i',
 );
 

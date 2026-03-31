@@ -3,8 +3,10 @@ import { getPayoutProvider } from '@/lib/payout/providers/registry';
 import axios from 'axios';
 import { telemetry } from '@/lib/telemetry';
 import { applyRateLimit, getClientIp } from '@/lib/rateLimit';
+import { env } from '@/lib/env';
+import { createRecipientSchema } from '@/lib/apiSchemas';
 
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
+const PAYSTACK_SECRET_KEY = env.PAYSTACK_SECRET_KEY;
 const RATE_LIMIT = { maxRequests: 5, windowMs: 60_000 };
 
 export async function POST(request: NextRequest) {
@@ -24,10 +26,34 @@ export async function POST(request: NextRequest) {
       endpoint: '/api/create-recipient',
     });
 
-    const { type, name, account_number, bank_code, currency } =
-      await request.json();
+    const body = await request.json();
 
-    telemetry.addLog(span.spanId, 'info', 'Request parsed', {
+    // Validate with Zod
+    const validationResult = createRecipientSchema.safeParse(body);
+
+    if (!validationResult.success) {
+      telemetry.addLog(span.spanId, 'warn', 'Zod validation failed', {
+        errors: validationResult.error.issues,
+      });
+      telemetry.finishSpan(span.spanId, {
+        success: false,
+        error: 'Validation failed',
+      });
+
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Validation failed',
+          errors: validationResult.error.issues,
+        },
+        { status: 400 },
+      );
+    }
+
+    const { type, name, account_number, bank_code, currency } =
+      validationResult.data;
+
+    telemetry.addLog(span.spanId, 'info', 'Request validated', {
       hasType: !!type,
       hasName: !!name,
       hasAccountNumber: !!account_number,
@@ -35,27 +61,6 @@ export async function POST(request: NextRequest) {
       hasCurrency: !!currency,
       currency: currency,
     });
-
-    if (!type || !name || !account_number || !bank_code || !currency) {
-      telemetry.addLog(span.spanId, 'warn', 'Validation failed', {
-        missingFields: {
-          type: !type,
-          name: !name,
-          account_number: !account_number,
-          bank_code: !bank_code,
-          currency: !currency,
-        },
-      });
-      telemetry.finishSpan(span.spanId, {
-        success: false,
-        error: 'Missing required fields',
-      });
-
-      return NextResponse.json(
-        { success: false, message: 'All fields are required' },
-        { status: 400 },
-      );
-    }
 
     const provider = getPayoutProvider();
     const data = await provider.createRecipient({

@@ -1,0 +1,19 @@
+[
+  {
+    "contract": "bridge",
+    "topics": [
+      "u32:1",
+      "symbol:quota_reset"
+    ],
+    "data": "tuple:[address:user,u32:17281]"
+  },
+  {
+    "contract": "bridge",
+    "topics": [
+      "u32:1",
+      "symbol:withdraw",
+      "address:user"
+    ],
+    "data": "i128:500"
+  }
+]

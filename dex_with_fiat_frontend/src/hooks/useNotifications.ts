@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { toastStore, ToastSeverity } from '@/lib/toastStore';
 
 export type NotificationType =
   | 'tx_submit'
@@ -6,6 +7,7 @@ export type NotificationType =
   | 'payout_pending'
   | 'payout_success'
   | 'payout_fail'
+  | 'payout_cancelled'
   | 'risk_warning';
 
 export interface AppNotification {
@@ -16,10 +18,20 @@ export interface AppNotification {
   read: boolean;
 }
 
+const NOTIFICATION_TO_SEVERITY: Record<NotificationType, ToastSeverity> = {
+  tx_submit: 'info',
+  tx_confirm: 'success',
+  payout_pending: 'warning',
+  payout_success: 'success',
+  payout_fail: 'error',
+  payout_cancelled: 'warning',
+  risk_warning: 'warning',
+};
+
 class NotificationStore {
   private notifications: AppNotification[] = [];
   private listeners: Set<() => void> = new Set();
-  
+
   constructor() {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('stellar_notifications');
@@ -36,7 +48,10 @@ class NotificationStore {
   private emit() {
     this.listeners.forEach((listener) => listener());
     if (typeof window !== 'undefined') {
-      localStorage.setItem('stellar_notifications', JSON.stringify(this.notifications));
+      localStorage.setItem(
+        'stellar_notifications',
+        JSON.stringify(this.notifications),
+      );
     }
   }
 
@@ -59,20 +74,25 @@ class NotificationStore {
       timestamp: Date.now(),
       read: false,
     };
-    
+
     this.notifications = [newNotif, ...this.notifications].slice(0, 50); // Keep last 50
     this.emit();
+
+    toastStore.addToast({
+      message,
+      severity: NOTIFICATION_TO_SEVERITY[type],
+    });
   }
 
   markAsRead(id: string) {
-    this.notifications = this.notifications.map(n => 
-      n.id === id ? { ...n, read: true } : n
+    this.notifications = this.notifications.map((n) =>
+      n.id === id ? { ...n, read: true } : n,
     );
     this.emit();
   }
 
   markAllAsRead() {
-    this.notifications = this.notifications.map(n => ({ ...n, read: true }));
+    this.notifications = this.notifications.map((n) => ({ ...n, read: true }));
     this.emit();
   }
 
@@ -90,10 +110,10 @@ export function useNotifications() {
   const notifications = useSyncExternalStore(
     (listener) => notificationStore.subscribe(listener),
     () => notificationStore.getSnapshot(),
-    () => EMPTY_ARRAY
+    () => EMPTY_ARRAY,
   );
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
   return {
     notifications,
@@ -101,6 +121,7 @@ export function useNotifications() {
     addNotification: notificationStore.addNotification.bind(notificationStore),
     markAsRead: notificationStore.markAsRead.bind(notificationStore),
     markAllAsRead: notificationStore.markAllAsRead.bind(notificationStore),
-    clearNotifications: notificationStore.clearNotifications.bind(notificationStore),
+    clearNotifications:
+      notificationStore.clearNotifications.bind(notificationStore),
   };
 }

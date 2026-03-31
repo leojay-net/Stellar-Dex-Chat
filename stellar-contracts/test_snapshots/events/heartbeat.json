@@ -1,0 +1,20 @@
+[
+  {
+    "contract": "bridge",
+    "topics": [
+      "u32:1",
+      "symbol:nonce_inc",
+      "address:operator"
+    ],
+    "data": "u64:1"
+  },
+  {
+    "contract": "bridge",
+    "topics": [
+      "u32:1",
+      "symbol:heartbeat",
+      "address:operator"
+    ],
+    "data": "u32:12345"
+  }
+]

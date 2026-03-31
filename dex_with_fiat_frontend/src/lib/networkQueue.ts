@@ -14,6 +14,11 @@ type QueuedRequest = {
 const queue: QueuedRequest[] = [];
 let nextId = 1;
 let processing = false;
+const listeners: Set<(count: number) => void> = new Set();
+
+function notifyListeners() {
+  listeners.forEach((fn) => fn(queue.length));
+}
 
 const MAX_RETRY = 5;
 
@@ -35,7 +40,10 @@ function isNetworkError(error: unknown): boolean {
 }
 
 async function processQueue(): Promise<void> {
-  if (processing || (typeof window !== 'undefined' && !window.navigator.onLine)) {
+  if (
+    processing ||
+    (typeof window !== 'undefined' && !window.navigator.onLine)
+  ) {
     return;
   }
   processing = true;
@@ -43,6 +51,7 @@ async function processQueue(): Promise<void> {
   while (queue.length > 0) {
     const request = queue.shift();
     if (!request) break;
+    notifyListeners();
 
     try {
       const result = await request.task();
@@ -53,6 +62,7 @@ async function processQueue(): Promise<void> {
       if (request.attempts < MAX_RETRY && isNetworkError(error)) {
         request.attempts += 1;
         queue.push(request);
+        notifyListeners();
         break;
       } else {
         // Notify user of final failure
@@ -70,17 +80,24 @@ if (typeof window !== 'undefined') {
     console.log('Network is back online; flushing read queue.');
     void processQueue();
   });
-
-  window.addEventListener('offline', () => {
-    console.log('Network offline; read requests will be queued.');
-  });
 }
+
+export function subscribeToQueue(fn: (count: number) => void) {
+  listeners.add(fn);
+  fn(queue.length);
+  return () => listeners.delete(fn);
+}
+
+export { processQueue };
 
 export function getQueuedReadRequestsCount(): number {
   return queue.length;
 }
 
-export function withNetworkReadQueue<T>(task: () => Promise<T>, name?: string): Promise<T> {
+export function withNetworkReadQueue<T>(
+  task: () => Promise<T>,
+  name?: string,
+): Promise<T> {
   return new Promise<T>(async (resolve, reject) => {
     if (typeof window !== 'undefined' && !window.navigator.onLine) {
       const id = nextId++;
@@ -92,6 +109,7 @@ export function withNetworkReadQueue<T>(task: () => Promise<T>, name?: string): 
         reject,
         attempts: 0,
       });
+      notifyListeners();
       console.warn(`Queued read request [${name || id}] until online.`);
       return;
     }
@@ -110,7 +128,10 @@ export function withNetworkReadQueue<T>(task: () => Promise<T>, name?: string): 
           reject,
           attempts: 1,
         });
-        console.warn(`Network read failed, queued request [${name || id}] for retry.`);
+        notifyListeners();
+        console.warn(
+          `Network read failed, queued request [${name || id}] for retry.`,
+        );
       } else {
         reject(error);
       }
