@@ -17,12 +17,17 @@ describe(
   'networkQueue with toastStore integration',
   { timeout: 15000 },
   () => {
+    let rejectionHandler: (reason: unknown) => void;
+
     beforeEach(() => {
       vi.clearAllMocks();
+      rejectionHandler = () => {}; // suppress unhandled rejections from async queue
+      process.on('unhandledRejection', rejectionHandler);
     });
 
     afterEach(() => {
       vi.clearAllMocks();
+      process.off('unhandledRejection', rejectionHandler);
     });
 
     it('should call toastStore.addToast with success variant on successful request', async () => {
