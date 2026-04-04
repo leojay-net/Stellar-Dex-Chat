@@ -3,8 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AuditEntry } from '@/types';
 
-interface AuditTableProps {
-}
+type AuditTableProps = Record<string, never>;
 
 interface FilterState {
   actionType: string;
@@ -15,7 +14,7 @@ interface FilterState {
   endDate: string;
 }
 
-export default function AuditTable(_props: AuditTableProps) {
+export default function AuditTable() {
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

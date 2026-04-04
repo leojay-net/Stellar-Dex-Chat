@@ -50,6 +50,7 @@ export async function GET(request: NextRequest) {
       try {
         filter.startDate = new Date(startDate);
       } catch (_error) {
+    void _error;
         return NextResponse.json(
           { error: 'Invalid startDate format. Use ISO 8601 format.' },
           { status: 400 }
@@ -62,6 +63,7 @@ export async function GET(request: NextRequest) {
       try {
         filter.endDate = new Date(endDate);
       } catch (_error) {
+    void _error;
         return NextResponse.json(
           { error: 'Invalid endDate format. Use ISO 8601 format.' },
           { status: 400 }
@@ -104,6 +106,7 @@ export async function GET(request: NextRequest) {
       }
     );
   } catch (_error) {
+    void _error;
     console.error('Error retrieving audit entries:', _error);
     return NextResponse.json(
       {

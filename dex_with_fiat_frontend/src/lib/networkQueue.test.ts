@@ -73,7 +73,7 @@ describe(
 
     it('should trigger error toast when request fails after MAX_RETRY', async () => {
       const isOnline = true;
-      const _attemptCount = 0;
+      void (0;
       Object.defineProperty(window.navigator, 'onLine', {
         configurable: true,
         get: () => isOnline,
@@ -107,7 +107,7 @@ describe(
 
       try {
         await promise;
-      } catch (_error) {
+      } catch {
         // Expected to fail
       }
 
@@ -170,7 +170,7 @@ describe(
 
       try {
         await promise;
-      } catch (_error) {
+      } catch {
         // Expected to fail
       }
 
@@ -197,7 +197,7 @@ describe(
 
       try {
         await withNetworkReadQueue(mockTask, 'test');
-      } catch (_error) {
+      } catch {
         // Expected to fail immediately
       }
 
