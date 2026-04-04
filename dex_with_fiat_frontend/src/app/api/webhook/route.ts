@@ -6,9 +6,10 @@ import { getTransferStatus, setTransferStatus } from '@/lib/transferStore';
 import { env } from '@/lib/env';
 import { publishPaymentStatus } from '@/lib/paymentStatusEvents';
 
-const PAYSTACK_SECRET_KEY = env.PAYSTACK_SECRET_KEY;
+// PAYSTACK_SECRET_KEY read lazily inside POST handler
 
 export async function POST(request: NextRequest) {
+  const PAYSTACK_SECRET_KEY = env.PAYSTACK_SECRET_KEY;
   const traceContext = telemetry.extractTraceFromHeaders(request.headers);
   const span = telemetry.createSpan(
     'webhook-handler',

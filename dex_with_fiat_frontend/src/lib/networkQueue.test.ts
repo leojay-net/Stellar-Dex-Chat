@@ -17,12 +17,17 @@ describe(
   'networkQueue with toastStore integration',
   { timeout: 15000 },
   () => {
+    let rejectionHandler: (reason: unknown) => void;
+
     beforeEach(() => {
       vi.clearAllMocks();
+      rejectionHandler = () => {}; // suppress unhandled rejections from async queue
+      process.on('unhandledRejection', rejectionHandler);
     });
 
     afterEach(() => {
       vi.clearAllMocks();
+      process.off('unhandledRejection', rejectionHandler);
     });
 
     it('should call toastStore.addToast with success variant on successful request', async () => {
@@ -63,9 +68,9 @@ describe(
 
       expect(result).toEqual({ data: 'success' });
       // Success toast should be called with correct variant
-      const calls = (toastStore.addToast as any).mock.calls;
+      const calls = (toastStore.addToast as jest.Mock).mock.calls;
       const hasSuccessToast = calls.some(
-        (call: any[]) =>
+        (call: unknown[]) =>
           call[0] === 'Message sent!' && call[1] === 'success'
       );
       expect(hasSuccessToast).toBe(true);
@@ -73,14 +78,15 @@ describe(
 
     it('should trigger error toast when request fails after MAX_RETRY', async () => {
       let isOnline = true;
-      let attemptCount = 0;
       Object.defineProperty(window.navigator, 'onLine', {
         configurable: true,
         get: () => isOnline,
       });
 
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      let _attemptCount = 0;
       const mockTask = vi.fn().mockImplementation(async () => {
-        attemptCount++;
+        _attemptCount++;
         // Always fail with network error
         throw new Error('failed to fetch');
       });
@@ -107,14 +113,14 @@ describe(
 
       try {
         await promise;
-      } catch (_error) {
+      } catch {
         // Expected to fail
       }
 
       // Error toast should be called with correct variant
-      const calls = (toastStore.addToast as any).mock.calls;
+      const calls = (toastStore.addToast as jest.Mock).mock.calls;
       const hasErrorToast = calls.some(
-        (call: any[]) =>
+        (call: unknown[]) =>
           call[0] === 'Could not send. Please try again.' &&
           call[1] === 'error'
       );
@@ -122,7 +128,7 @@ describe(
     });
 
     it('should use success variant for retry success toast', async () => {
-      let isOnline = true;
+      const isOnline = true;
       Object.defineProperty(window.navigator, 'onLine', {
         configurable: true,
         get: () => isOnline,
@@ -134,9 +140,9 @@ describe(
 
       expect(result).toEqual({ data: 'test' });
 
-      const calls = (toastStore.addToast as any).mock.calls;
+      const calls = (toastStore.addToast as jest.Mock).mock.calls;
       const successToastCall = calls.find(
-        (call: any[]) => call[0] === 'Message sent!'
+        (call: unknown[]) => call[0] === 'Message sent!'
       );
 
       if (successToastCall) {
@@ -170,13 +176,13 @@ describe(
 
       try {
         await promise;
-      } catch (_error) {
+      } catch {
         // Expected to fail
       }
 
-      const calls = (toastStore.addToast as any).mock.calls;
+      const calls = (toastStore.addToast as jest.Mock).mock.calls;
       const errorToastCall = calls.find(
-        (call: any[]) => call[0] === 'Could not send. Please try again.'
+        (call: unknown[]) => call[0] === 'Could not send. Please try again.'
       );
 
       if (errorToastCall) {
@@ -185,7 +191,7 @@ describe(
     });
 
     it('should not trigger toast for immediate non-network errors', async () => {
-      let isOnline = true;
+      const isOnline = true;
       Object.defineProperty(window.navigator, 'onLine', {
         configurable: true,
         get: () => isOnline,
@@ -197,13 +203,13 @@ describe(
 
       try {
         await withNetworkReadQueue(mockTask, 'test');
-      } catch (_error) {
+      } catch {
         // Expected to fail immediately
       }
 
       // For non-network errors when online, failure happens immediately without retries
       // So there should be no toast calls for immediate failures
-      const calls = (toastStore.addToast as any).mock.calls;
+      const calls = (toastStore.addToast as jest.Mock).mock.calls;
       expect(calls.length).toBe(0);
     });
   }

@@ -15,6 +15,9 @@ import crypto from 'crypto';
 // ---------------------------------------------------------------------------
 const mockEnv = { PAYSTACK_SECRET_KEY: 'test-secret', PAYOUT_PROVIDER: 'paystack' } as Record<string, string | undefined>;
 vi.mock('@/lib/env', () => ({ get env() { return mockEnv; } }));
+vi.mock('@/lib/paymentStatusEvents', () => ({
+  publishPaymentStatus: vi.fn(),
+}));
 vi.mock('@/lib/telemetry', () => ({
   telemetry: {
     extractTraceFromHeaders: () => ({ traceId: 'trace1', spanId: 'span1' }),
@@ -27,9 +30,12 @@ vi.mock('@/lib/telemetry', () => ({
     logWithTrace: vi.fn(),
   },
 }));
+const mockRecord = { clientSessionId: 'session-1', reference: 'ref123', status: 'pending', amount: 5000 };
 vi.mock('@/lib/transferStore', () => ({
   isReplayEvent: () => false,
   replayCacheStats: () => ({ size: 0, ttlMs: 0, maxSize: 0 }),
+  getTransferStatus: () => mockRecord,
+  setTransferStatus: () => ({ ...mockRecord, status: 'success' }),
   transferStore: { set: vi.fn(), get: vi.fn() },
 }));
 
