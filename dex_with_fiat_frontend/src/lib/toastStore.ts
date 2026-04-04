@@ -1,15 +1,19 @@
 'use client';
-
 import { v4 as uuidv4 } from 'uuid';
 
 export type ToastVariant = 'success' | 'error' | 'info' | 'warning';
+export type ToastSeverity = ToastVariant;
 
 export interface Toast {
   id: string;
   message: string;
   variant: ToastVariant;
+  severity?: ToastSeverity;
   timestamp: number;
+  durationMs?: number;
 }
+
+export type AppToast = Toast;
 
 type ToastListener = (toasts: Toast[]) => void;
 
@@ -21,55 +25,34 @@ function notifyListeners(): void {
 }
 
 export const toastStore = {
-  /**
-   * Add a toast notification
-   * @param message The message to display
-   * @param variant The toast variant type (success, error, info, warning)
-   * @returns The toast id for reference
-   */
-  addToast(message: string, variant: ToastVariant = 'info'): string {
-    const toast: Toast = {
-      id: uuidv4(),
-      message,
-      variant,
-      timestamp: Date.now(),
-    };
+  addToast(input: string | { message: string; severity?: ToastSeverity; variant?: ToastVariant; durationMs?: number }, variant: ToastVariant = 'info'): string {
+    let message: string;
+    let resolvedVariant: ToastVariant;
+    let durationMs: number | undefined;
+    if (typeof input === 'string') {
+      message = input;
+      resolvedVariant = variant;
+    } else {
+      message = input.message;
+      resolvedVariant = input.variant || (input.severity as ToastVariant) || variant;
+      durationMs = input.durationMs;
+    }
+    const toast: Toast = { id: uuidv4(), message, variant: resolvedVariant, severity: resolvedVariant, timestamp: Date.now(), durationMs };
     toasts.push(toast);
     notifyListeners();
+    if (durationMs) setTimeout(() => toastStore.removeToast(toast.id), durationMs);
     return toast.id;
   },
-
-  /**
-   * Remove a toast by id
-   */
   removeToast(id: string): void {
     const index = toasts.findIndex((t) => t.id === id);
-    if (index > -1) {
-      toasts.splice(index, 1);
-      notifyListeners();
-    }
+    if (index > -1) { toasts.splice(index, 1); notifyListeners(); }
   },
-
-  /**
-   * Subscribe to toast changes
-   */
+  dismissToast(id: string): void { this.removeToast(id); },
   subscribe(listener: ToastListener): () => void {
     listeners.add(listener);
     return () => listeners.delete(listener);
   },
-
-  /**
-   * Get current toasts
-   */
-  getToasts(): Toast[] {
-    return [...toasts];
-  },
-
-  /**
-   * Clear all toasts
-   */
-  clearToasts(): void {
-    toasts.length = 0;
-    notifyListeners();
-  },
+  getSnapshot(): Toast[] { return [...toasts]; },
+  getToasts(): Toast[] { return [...toasts]; },
+  clearToasts(): void { toasts.length = 0; notifyListeners(); },
 };
