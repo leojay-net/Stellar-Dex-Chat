@@ -31,6 +31,7 @@ vi.mock('@/lib/transferStore', () => ({
   isReplayEvent: () => false,
   replayCacheStats: () => ({ size: 0, ttlMs: 0, maxSize: 0 }),
   getTransferStatus: vi.fn(),
+  setTransferStatus: vi.fn(),
   transferStore: { set: vi.fn(), get: vi.fn() },
 }));
 

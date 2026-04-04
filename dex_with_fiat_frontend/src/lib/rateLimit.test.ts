@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { describe, it, expect, beforeEach, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest';
 import { getClientIp, applyRateLimit, type RateLimitConfig } from './rateLimit';
 
 describe('rateLimit utility', () => {
