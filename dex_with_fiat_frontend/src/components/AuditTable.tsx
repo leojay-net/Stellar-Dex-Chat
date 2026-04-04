@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AuditEntry } from '@/types';
 
-type AuditTableProps = Record<string, never>;
 
 interface FilterState {
   actionType: string;

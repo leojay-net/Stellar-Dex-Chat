@@ -73,7 +73,6 @@ describe(
 
     it('should trigger error toast when request fails after MAX_RETRY', async () => {
       const isOnline = true;
-      void (0;
       Object.defineProperty(window.navigator, 'onLine', {
         configurable: true,
         get: () => isOnline,
