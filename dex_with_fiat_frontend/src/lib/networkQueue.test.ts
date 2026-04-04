@@ -78,6 +78,7 @@ describe(
         get: () => isOnline,
       });
 
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       let _attemptCount = 0;
       const mockTask = vi.fn().mockImplementation(async () => {
         _attemptCount++;
