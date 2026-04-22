@@ -1517,6 +1517,9 @@ impl FiatBridge {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+        if limit < 1 {
+            return Err(Error::BelowMinimum);
+        }
         let mut config: TokenConfig = env
             .storage()
             .persistent()

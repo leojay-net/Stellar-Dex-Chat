@@ -445,6 +445,30 @@ fn test_set_limit() {
 }
 
 #[test]
+fn test_set_limit_rejects_zero_boundary() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, _) = setup_bridge(&env, 500);
+
+    let result = bridge.try_set_limit(&token_addr, &0);
+    assert_eq!(result, Err(Ok(Error::BelowMinimum)));
+    assert_eq!(bridge.get_limit(), 500);
+}
+
+#[test]
+fn test_set_limit_rejects_negative_values() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, _) = setup_bridge(&env, 500);
+
+    let result = bridge.try_set_limit(&token_addr, &-1);
+    assert_eq!(result, Err(Ok(Error::BelowMinimum)));
+    assert_eq!(bridge.get_limit(), 500);
+}
+
+#[test]
 fn test_over_limit_deposit() {
     let env = Env::default();
     env.mock_all_auths();
