@@ -66,4 +66,20 @@ stellar contract deploy \
   --network testnet
 ```
 
+## Invariant Testing
+
+The contract test suite includes both example-driven unit tests and invariant
+coverage for accounting-critical behavior.
+
+- `FiatBridge::check_invariants()` guards the bridge's core solvency rule after
+  deposits, withdrawals, fee movements, and queue execution.
+- `src/test.rs` contains property-based deposit tests that exercise the same
+  accounting assumptions across a full range of valid amounts.
+- Snapshot tests in `test_snapshots/` complement those invariant tests by
+  pinning event payload shapes for contract observability.
+
+When changing balance-affecting logic, update the unit test closest to the
+behavior first, then make sure the broader invariant tests still describe the
+new state transition clearly.
+
 See [FIAT_BRIDGE_README.md](./FIAT_BRIDGE_README.md) for full API reference and error code documentation.

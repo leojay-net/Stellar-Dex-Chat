@@ -938,6 +938,15 @@ impl FiatBridge {
         Ok(())
     }
 
+    /// Verifies the bridge remains fully collateralized for a token after any
+    /// state transition that can change balances or liabilities.
+    ///
+    /// The invariant is:
+    /// `token.balance(contract) >= total_deposited - total_withdrawn - total_fees_accrued`
+    ///
+    /// If the contract balance ever drops below the accounted net liabilities,
+    /// mutating flows abort with `InternalError` so tests and operators catch
+    /// the drift before additional state is committed.
     fn check_invariants(env: &Env, token_addr: &Address) -> Result<(), Error> {
         let config: TokenConfig = env
             .storage()

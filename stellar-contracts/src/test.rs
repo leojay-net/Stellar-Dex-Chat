@@ -3307,11 +3307,12 @@ mod proptest_deposit {
     use super::*;
     use proptest::prelude::*;
 
-    // Deposit invariants that must hold for every positive amount <= limit:
+    // Property-based coverage for the happy-path deposit accounting contract.
+    // For every valid amount up to the configured token limit we expect:
     // 1. deposit() succeeds
-    // 2. contract balance increases by exactly amount
-    // 3. user balance decreases by exactly amount
-    // 4. get_user_deposited() returns amount
+    // 2. contract balance increases by exactly `amount`
+    // 3. user balance decreases by exactly `amount`
+    // 4. get_user_deposited() reflects the credited amount
  
     proptest! {
         #[test]
@@ -3333,7 +3334,7 @@ mod proptest_deposit {
             prop_assert_eq!(bridge.get_user_deposited(&user), amount);
         }
 
-        /// Amounts above the configured limit must be rejected with ExceedsLimit.
+        // Amounts above the configured limit must be rejected with ExceedsLimit.
         #[test]
         fn deposit_above_limit_is_rejected(amount in 501i128..=10_000i128) {
             let env = Env::default();
