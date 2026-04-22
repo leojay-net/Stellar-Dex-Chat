@@ -188,3 +188,6 @@ npm run precommit:eslint
 
 ## Contributing!!
 Contributions and feature reviews are welcome. Please open up an issue to raise bugs or feature requests!
+
+
+<!-- Fix #561 -->
