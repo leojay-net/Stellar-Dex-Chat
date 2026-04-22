@@ -3828,8 +3828,6 @@ fn test_get_denied_addresses_offset_beyond_count() {
 }
 // ── Circuit Breaker Tests (#356) ──────────────────────────────────────────
 
-#[test]
-fn test_circuit_breaker_trips_on_large_cumulative_withdrawal() {
 // ── withdrawal expiry tests ───────────────────────────────────────────────
 #[test]
 fn test_reclaim_expired_withdrawal_succeeds_after_window() {
@@ -4120,6 +4118,9 @@ fn test_circuit_breaker_respects_threshold_zero_disables_it() {
     bridge.withdraw(&admin, &user, &500, &token_addr);
 
     assert!(!bridge.is_circuit_breaker_tripped());
+}
+
+#[test]
 fn test_set_and_get_circuit_breaker_reset_window() {
     let env = Env::default();
     env.mock_all_auths();
@@ -4166,6 +4167,64 @@ fn test_circuit_breaker_auto_reset_uses_configured_window() {
     });
     bridge.withdraw(&admin, &user, &100, &token_addr);
     assert!(!bridge.is_circuit_breaker_tripped());
+}
+
+#[test]
+fn test_heartbeat_auto_resets_circuit_breaker_after_window() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 100_000);
+    let user = Address::generate(&env);
+    let operator = Address::generate(&env);
+    token_sac.mint(&user, &50_000);
+
+    bridge.deposit(&user, &10_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.set_operator(&operator, &true);
+    bridge.set_circuit_breaker_threshold(&500);
+    bridge.set_circuit_breaker_reset_window(&100);
+
+    bridge.withdraw(&admin, &user, &600, &token_addr);
+    assert!(bridge.is_circuit_breaker_tripped());
+
+    let tripped_at = env.ledger().sequence();
+    env.ledger().with_mut(|li| {
+        li.sequence_number = tripped_at + 101;
+    });
+
+    bridge.heartbeat(&operator, &0);
+
+    assert!(!bridge.is_circuit_breaker_tripped());
+    assert_eq!(bridge.get_operator_heartbeat(&operator), Some(tripped_at + 101));
+}
+
+#[test]
+fn test_heartbeat_keeps_circuit_breaker_active_before_window() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 100_000);
+    let user = Address::generate(&env);
+    let operator = Address::generate(&env);
+    token_sac.mint(&user, &50_000);
+
+    bridge.deposit(&user, &10_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.set_operator(&operator, &true);
+    bridge.set_circuit_breaker_threshold(&500);
+    bridge.set_circuit_breaker_reset_window(&100);
+
+    bridge.withdraw(&admin, &user, &600, &token_addr);
+    assert!(bridge.is_circuit_breaker_tripped());
+
+    let tripped_at = env.ledger().sequence();
+    env.ledger().with_mut(|li| {
+        li.sequence_number = tripped_at + 100;
+    });
+
+    bridge.heartbeat(&operator, &0);
+
+    assert!(bridge.is_circuit_breaker_tripped());
+    assert_eq!(bridge.get_operator_heartbeat(&operator), Some(tripped_at + 100));
 }
 
 #[test]

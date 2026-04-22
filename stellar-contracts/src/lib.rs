@@ -2068,6 +2068,8 @@ impl FiatBridge {
         // Validate and increment nonce for replay protection
         Self::validate_and_increment_nonce(&env, &operator, nonce)?;
 
+        Self::maybe_auto_reset_circuit_breaker(&env);
+
         let curr = env.ledger().sequence();
         env.storage()
             .instance()
@@ -3140,6 +3142,56 @@ impl FiatBridge {
             .instance()
             .get::<_, bool>(&DataKey::CircuitBreakerTripped)
             .unwrap_or(false)
+    }
+
+    fn maybe_auto_reset_circuit_breaker(env: &Env) {
+        let threshold: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::CircuitBreakerThreshold)
+            .unwrap_or(0);
+        if threshold <= 0 {
+            return;
+        }
+
+        if !env
+            .storage()
+            .instance()
+            .get::<_, bool>(&DataKey::CircuitBreakerTripped)
+            .unwrap_or(false)
+        {
+            return;
+        }
+
+        let curr = env.ledger().sequence();
+        let reset_window: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::CircuitBreakerResetWindow)
+            .unwrap_or(CIRCUIT_BREAKER_RESET_LEDGERS);
+        let tripped_at: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::CircuitBreakerTrippedAt)
+            .unwrap_or(0);
+
+        if reset_window != u32::MAX && curr > tripped_at.saturating_add(reset_window) {
+            env.storage()
+                .instance()
+                .set(&DataKey::CircuitBreakerTripped, &false);
+            env.storage()
+                .instance()
+                .set(&DataKey::GlobalDailyWithdrawn, &GlobalDailyWithdrawn {
+                    amount: 0,
+                    window_start: curr,
+                });
+            CircuitBreakerAutoResetEvent {
+                version: EVENT_VERSION,
+                tripped_at,
+                reset_at: curr,
+            }
+            .publish(env);
+        }
     }
 
     /// Accumulate `amount` into the rolling 24-h global withdrawal volume.
