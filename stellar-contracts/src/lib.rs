@@ -1921,6 +1921,24 @@ impl FiatBridge {
         Ok(())
     }
 
+    /// Enforces `max_slippage_bps` on **downward** price moves only.
+    ///
+    /// # Model
+    ///
+    /// - `expected_price` — benchmark (e.g. oracle) price used for the check.
+    /// - `actual_price` — effective price for the current deposit/withdraw path.
+    /// - `max_slippage_bps` — cap in **basis points** (10_000 BPS = 100%). Only
+    ///   applies when `actual_price < expected_price`.
+    ///
+    /// # Display vs assertion
+    ///
+    /// The emitted `SlippageEvent` uses **floor** BPS:
+    /// `⌊(expected - actual) * 10_000 / expected⌋` when `actual < expected`, else `0`.
+    ///
+    /// The revert decision uses **integer cross-multiplication** and a
+    /// **remainder guard** when the floored quotient equals `max_slippage_bps`,
+    /// so boundary tests at “exactly max” vs “max + 1 bps” stay stable without
+    /// floating point. See `docs/slippage-threshold.md` at the repo root.
     fn check_slippage(
         env: &Env,
         expected_price: i128,

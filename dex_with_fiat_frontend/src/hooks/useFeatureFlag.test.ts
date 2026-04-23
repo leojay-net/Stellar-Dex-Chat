@@ -3,7 +3,10 @@ import { describe, it, expect, vi } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import { hydrateRoot } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
-import { useFeatureFlag } from './useFeatureFlag';
+import {
+  useFeatureFlag,
+  featureFlagSectionDividerBorderClass,
+} from './useFeatureFlag';
 
 function Harness(props: { flag: 'enableAdminReconciliation' | 'enableConversionReminders' }) {
   const isEnabled = useFeatureFlag(props.flag);
@@ -34,5 +37,14 @@ describe('useFeatureFlag', () => {
     ).toBe(false);
 
     consoleErrorSpy.mockRestore();
+  });
+
+  it('uses theme-aligned divider borders for feature-flag sections', () => {
+    expect(featureFlagSectionDividerBorderClass(true)).toContain(
+      'border-gray-700',
+    );
+    expect(featureFlagSectionDividerBorderClass(false)).toContain(
+      'border-gray-200',
+    );
   });
 });

@@ -103,6 +103,8 @@ DEX-CHAT converts crypto to fiat through an AI-guided conversation flow. The end
 
 The user connects their Freighter wallet and tells the AI assistant they want to offramp a token amount. The frontend builds a Soroban `deposit` transaction that transfers the specified token from the user's Stellar account into the `FiatBridge` contract. The contract validates the deposit against oracle-sourced prices, enforces slippage limits, checks per-token and daily deposit caps, and records a `Receipt` with a unique memo hash.
 
+For maintainers: how slippage BPS and the on-chain threshold interact is documented in [docs/slippage-threshold.md](docs/slippage-threshold.md).
+
 ### 2. Escrow (on-chain hold)
 
 Deposited funds are held in the smart contract's escrow. A withdrawal request is queued with a risk tier that determines the timelock duration — higher-value or higher-risk withdrawals wait longer before they can be executed. During this period the admin dashboard provides real-time metrics (queue depth, oldest request age, accrued fees) so operators can monitor the pipeline.

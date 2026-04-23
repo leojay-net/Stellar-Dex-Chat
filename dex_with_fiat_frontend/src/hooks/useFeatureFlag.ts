@@ -34,3 +34,15 @@ export function useFeatureFlag(flag: FeatureFlag) {
 
   return isEnabled;
 }
+
+/**
+ * Tailwind classes for `border-t` dividers in settings panels that include
+ * feature-flag-gated blocks (e.g. conversion reminders). Using the same
+ * tokens as the main header divider avoids a too-faint light-mode border
+ * (`border-gray-100`) that looked inconsistent next to `border-gray-200`.
+ */
+export function featureFlagSectionDividerBorderClass(
+  isDarkMode: boolean,
+): string {
+  return isDarkMode ? 'border-gray-700' : 'border-gray-200';
+}
