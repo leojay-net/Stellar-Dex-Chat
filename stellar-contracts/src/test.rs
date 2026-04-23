@@ -3349,6 +3349,75 @@ mod proptest_deposit {
     }
 }
 
+#[cfg(test)]
+mod proptest_request_withdrawal {
+    use super::*;
+    use proptest::prelude::*;
+
+    // request_withdrawal invariants for valid amounts:
+    // 1. Request is persisted with exact payload values
+    // 2. Queue depth increments
+    // 3. Total liabilities increase by amount
+    // 4. No token transfer occurs at request time
+    proptest! {
+        #[test]
+        fn request_withdrawal_invariants_hold_for_all_valid_amounts(amount in 1i128..=500i128) {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let (contract_id, bridge, _admin, token_addr, token, token_sac) = setup_bridge(&env, 1_000);
+            let user = Address::generate(&env);
+            token_sac.mint(&user, &1_000);
+            bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+            let user_before = token.balance(&user);
+            let contract_before = token.balance(&contract_id);
+
+            let req_id = bridge.request_withdrawal(&user, &amount, &token_addr, &None, &0);
+            let req = bridge.get_withdrawal_request(&req_id).unwrap();
+
+            prop_assert_eq!(req.to, user);
+            prop_assert_eq!(req.token, token_addr);
+            prop_assert_eq!(req.amount, amount);
+            prop_assert_eq!(req.risk_tier, 0);
+            prop_assert_eq!(bridge.get_wq_depth(), 1);
+            prop_assert_eq!(bridge.get_total_liabilities(), amount);
+            prop_assert_eq!(token.balance(&user), user_before);
+            prop_assert_eq!(token.balance(&contract_id), contract_before);
+        }
+
+        /// Requests above net deposits must fail invariant checks.
+        #[test]
+        fn request_withdrawal_above_net_deposits_is_rejected(amount in 101i128..=1_000i128) {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let (_, bridge, _admin, token_addr, _, token_sac) = setup_bridge(&env, 1_000);
+            let user = Address::generate(&env);
+            token_sac.mint(&user, &1_000);
+            bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+            let result = bridge.try_request_withdrawal(&user, &amount, &token_addr, &None, &0);
+            prop_assert_eq!(result, Err(Ok(Error::InvariantViolation)));
+        }
+
+        /// Non-positive amounts are always invalid.
+        #[test]
+        fn request_withdrawal_non_positive_amount_is_rejected(amount in -1_000i128..=0i128) {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let (_, bridge, _admin, token_addr, _, token_sac) = setup_bridge(&env, 1_000);
+            let user = Address::generate(&env);
+            token_sac.mint(&user, &1_000);
+            bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+            let result = bridge.try_request_withdrawal(&user, &amount, &token_addr, &None, &0);
+            prop_assert_eq!(result, Err(Ok(Error::ZeroAmount)));
+        }
+    }
+}
+
 // ── Per-token daily deposit limit tests (#381) ──────────────────────
 // ── Per-token daily deposit limit tests ──────────────────────────────
 
