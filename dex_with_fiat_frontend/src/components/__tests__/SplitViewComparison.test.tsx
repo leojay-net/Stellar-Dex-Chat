@@ -9,10 +9,6 @@ import SplitViewComparison from '@/components/SplitViewComparison';
 // Mocks
 // ---------------------------------------------------------------------------
 
-vi.mock('@/contexts/ThemeContext', () => ({
-  useTheme: () => ({ isDarkMode: false }),
-}));
-
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
@@ -86,6 +82,23 @@ describe('SplitViewComparison – layout', () => {
     const dialog = screen.getByTestId('split-view-comparison');
     expect(dialog.getAttribute('role')).toBe('dialog');
     expect(dialog.getAttribute('aria-modal')).toBe('true');
+    expect(dialog.getAttribute('aria-labelledby')).toBe('split-view-comparison-title');
+  });
+
+  it('exposes labeled regions and a toolbar for assistive tech', () => {
+    const splitView = makeSplitView();
+    render(<SplitViewComparison splitView={splitView} sessions={allSessions} />);
+    expect(screen.getByRole('region', { name: /left thread comparison pane/i })).toBeDefined();
+    expect(screen.getByRole('region', { name: /right thread comparison pane/i })).toBeDefined();
+    expect(screen.getByRole('toolbar', { name: /comparison actions/i })).toBeDefined();
+  });
+
+  it('uses theme CSS variables for surfaces and borders', () => {
+    const splitView = makeSplitView();
+    const { container } = render(<SplitViewComparison splitView={splitView} sessions={allSessions} />);
+    const root = container.querySelector('[data-testid="split-view-comparison"]');
+    expect(root?.getAttribute('class')).toContain('var(--background)');
+    expect(root?.getAttribute('class')).toContain('var(--foreground)');
   });
 
   it('shows messages from the left session', () => {
