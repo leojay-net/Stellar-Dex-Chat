@@ -929,7 +929,7 @@ impl FiatBridge {
             .extend_ttl(&index_key, MIN_TTL, MIN_TTL);
         env.storage()
             .instance()
-            .set(&DataKey::ReceiptCounter, &(receipt_counter + 1));
+            .set(&DataKey::ReceiptCounter, &(receipt_counter.checked_add(1).unwrap_or(u64::MAX)));
 
         config.total_deposited = config.total_deposited.checked_add(amount).ok_or(Error::Overflow)?;
         env.storage()

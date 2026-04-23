@@ -164,6 +164,54 @@ fn propose_upgrade_overflow_prevention() {
 
 ---
 
+## Quick Decision Table
+
+| Scenario | Recommended API | Example | Why |
+|---|---|---|---|
+| External input amounts, counters, stored totals | `checked_add` / `checked_sub` | `total.checked_add(amount).ok_or(Error::Overflow)?` | Panic becomes a clean, catchable error |
+| TTL, window boundaries, comparison-only values | `saturating_add` / `saturating_sub` | `last.saturating_add(cooldown)` | Conservative clamping is safe for comparisons |
+| Price × amount before division | `math::mul_div_floor` / `math::mul_div_ceil` | `mul_div_floor(amount, price, FIXED_POINT)` | Avoids intermediate overflow and precision loss |
+| Subtraction after an explicit `>=` guard | Plain `-` (with comment) | `// guarded above: total >= withdrawn` | Guard makes overflow impossible |
+
+---
+
+## Common Pitfalls
+
+### Incrementing internal counters
+A common oversight is incrementing a storage counter with plain `+ 1`:
+
+```rust
+// ❗ risky — panics if ReceiptCounter ever reaches i128::MAX
+let next = receipt_counter + 1;
+```
+
+For counters that are unbounded over the lifetime of the contract, prefer:
+
+```rust
+// ✅ safer — returns Error::Overflow if the counter is exhausted
+let next = receipt_counter.checked_add(1).ok_or(Error::Overflow)?;
+```
+
+> **Note:** In practice `i128::MAX` is astronomically large, so a `+ 1` panic is
+> extremely unlikely for a receipt counter.  The decision to use `checked_add`
+> here is defensive — it makes the intent explicit and keeps the contract
+> consistent with the "always check" rule.
+
+### Chained additions
+When adding three or more values, chain `checked_add` rather than adding in a
+single expression:
+
+```rust
+// ❗ wrong — intermediate sum of first two may overflow even if final result fits
+let ttl = a + b + c;
+
+// ✅ correct — each step is checked
+let ttl = a.checked_add(b).ok_or(Error::Overflow)?;
+let ttl = ttl.checked_add(c).ok_or(Error::Overflow)?;
+```
+
+---
+
 ## Checklist for New Arithmetic
 
 When adding new arithmetic to the contract, verify:
@@ -178,3 +226,5 @@ When adding new arithmetic to the contract, verify:
       → Plain subtraction is acceptable; add a comment explaining the guard.
 - [ ] Is there a test that exercises the overflow boundary?
       → Add one to `test_new_issues.rs` or the relevant test module.
+- [ ] Are internal counters incremented safely?
+      → Consider `checked_add(1)` for consistency, even when overflow is unlikely.
