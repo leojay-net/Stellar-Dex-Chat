@@ -427,33 +427,6 @@ export default function ChatHistorySidebar({
         {isLoading ? (
           <SkeletonSidebar />
         ) : (
-          <div
-            className={`p-2 ${isCollapsed ? 'flex flex-col items-center' : ''}`}
-          >
-            {filteredPinned.length > 0 && (
-              <>
-                {!isCollapsed && (
-                  <p className="theme-text-muted text-xs font-semibold uppercase tracking-wider px-1 py-1 mt-1">
-                    Pinned
-                  </p>
-                )}
-                {filteredPinned.map((session) => (
-                  <SessionRow
-                    key={session.id}
-                    session={session}
-                    isActive={currentSessionId === session.id}
-                    onLoad={onLoadSession}
-                    onExportJSON={handleExportSessionJSON}
-                    onExportTXT={handleExportSessionTXT}
-                    onDelete={(id) => setShowDeleteConfirm(id)}
-                    onTogglePin={togglePin}
-                    formatDate={formatDate}
-                  />
-                ))}
-                {!isCollapsed && filteredUnpinned.length > 0 && (
-                  <p className="theme-text-muted text-xs font-semibold uppercase tracking-wider px-1 py-1 mt-3">
-                    Recent
-                  </p>
           <div className="flex flex-col h-full">
             {/* Contract Activity Section */}
             {!isCollapsed && (
@@ -501,21 +474,8 @@ export default function ChatHistorySidebar({
                 )}
               </div>
             )}
-            {filteredUnpinned.map((session) => (
-              <SessionRow
-                key={session.id}
-                session={session}
-                isActive={currentSessionId === session.id}
-                onLoad={onLoadSession}
-                onExportJSON={handleExportSessionJSON}
-                onExportTXT={handleExportSessionTXT}
-                onDelete={(id) => setShowDeleteConfirm(id)}
-                onTogglePin={togglePin}
-                formatDate={formatDate}
-              />
-            ))}
 
-            <div className="flex-1 overflow-y-auto">
+            <div className={`p-2 ${isCollapsed ? 'flex flex-col items-center' : ''}`}>
               {!hasHistory ? (
                 <EmptyState
                   icon={MessageSquare}
@@ -534,9 +494,7 @@ export default function ChatHistorySidebar({
                   cta={{ label: 'Clear search', onClick: () => setSearchQuery('') }}
                 />
               ) : (
-                <div
-                  className={`p-2 ${isCollapsed ? 'flex flex-col items-center' : ''}`}
-                >
+                <>
                   {filteredPinned.length > 0 && (
                     <>
                       {!isCollapsed && (
@@ -550,32 +508,38 @@ export default function ChatHistorySidebar({
                           session={session}
                           isActive={currentSessionId === session.id}
                           onLoad={onLoadSession}
-                          onExport={handleExportSession}
+                          onExportJSON={handleExportSessionJSON}
+                          onExportTXT={handleExportSessionTXT}
                           onDelete={(id) => setShowDeleteConfirm(id)}
                           onTogglePin={togglePin}
                           formatDate={formatDate}
                         />
                       ))}
-                      {!isCollapsed && filteredUnpinned.length > 0 && (
+                    </>
+                  )}
+                  {filteredUnpinned.length > 0 && (
+                    <>
+                      {!isCollapsed && (
                         <p className="theme-text-muted text-xs font-semibold uppercase tracking-wider px-1 py-1 mt-3">
                           Recent
                         </p>
                       )}
+                      {filteredUnpinned.map((session) => (
+                        <SessionRow
+                          key={session.id}
+                          session={session}
+                          isActive={currentSessionId === session.id}
+                          onLoad={onLoadSession}
+                          onExportJSON={handleExportSessionJSON}
+                          onExportTXT={handleExportSessionTXT}
+                          onDelete={(id) => setShowDeleteConfirm(id)}
+                          onTogglePin={togglePin}
+                          formatDate={formatDate}
+                        />
+                      ))}
                     </>
                   )}
-                  {filteredUnpinned.map((session) => (
-                    <SessionRow
-                      key={session.id}
-                      session={session}
-                      isActive={currentSessionId === session.id}
-                      onLoad={onLoadSession}
-                      onExport={handleExportSession}
-                      onDelete={(id) => setShowDeleteConfirm(id)}
-                      onTogglePin={togglePin}
-                      formatDate={formatDate}
-                    />
-                  ))}
-                </div>
+                </>
               )}
             </div>
           </div>
@@ -670,7 +634,7 @@ export default function ChatHistorySidebar({
                   {entry.kind === 'payout' &&
                     entry.status !== 'cancelled' &&
                     entry.reference &&
-                    Date.now() - new Date(entry.createdAt).getTime() 
+                    Date.now() - new Date(entry.createdAt).getTime() <
                       2 * 60 * 1000 && (
                       <button
                         type="button"

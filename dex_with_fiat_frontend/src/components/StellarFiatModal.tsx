@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { pollTransaction } from '@/lib/stellarContract';
 import {
   X,
@@ -319,23 +319,34 @@ export default function StellarFiatModal({
     recipient,
   ]);
 
-  const updateFiatEstimate = useCallback(async () => {
+  useEffect(() => {
     const xlm = parseFloat(amount);
     if (!xlm || xlm <= 0) {
       setFiatEstimate(null);
       return;
     }
-    try {
-      const price = await getTokenPrice('XLM', fiatCurrency);
-      setFiatEstimate(formatFiatAmount(xlm * price, fiatCurrency));
-    } catch {
-      setFiatEstimate(null);
-    }
-  }, [amount, fiatCurrency]);
 
-  useEffect(() => {
-    void updateFiatEstimate();
-  }, [updateFiatEstimate]);
+    let cancelled = false;
+
+    const fetchEstimate = async () => {
+      try {
+        const price = await getTokenPrice('XLM', fiatCurrency);
+        if (!cancelled) {
+          setFiatEstimate(formatFiatAmount(xlm * price, fiatCurrency));
+        }
+      } catch {
+        if (!cancelled) {
+          setFiatEstimate(null);
+        }
+      }
+    };
+
+    void fetchEstimate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [amount, fiatCurrency]);
 
   const numericAmount = Number.parseFloat(amount);
   const isAmountInvalid = !Number.isFinite(numericAmount) || numericAmount <= 0;

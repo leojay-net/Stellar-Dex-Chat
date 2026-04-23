@@ -543,6 +543,7 @@ export default function AdminDashboard() {
           <AuditTable />
         </div>
       </div>
-    </AdminGuard>
+    </div>
+  </AdminGuard>
   );
 }

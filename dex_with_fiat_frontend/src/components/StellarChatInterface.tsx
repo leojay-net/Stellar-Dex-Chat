@@ -46,7 +46,6 @@ import NotificationsCenter from './NotificationsCenter';
 import StellarFiatModal from './StellarFiatModal';
 import UserSettings from './UserSettings';
 import WalletConnectionTimeline from './WalletConnectionTimeline';
-import { clearExpiredDrafts } from '@/lib/draftUtils';
 import { useTranslation } from '@/contexts/TranslationContext';
 import ReceiptDrawer from './ReceiptDrawerWrapper';
 import { useTxHistory } from '@/hooks/useTxHistory';
@@ -56,8 +55,6 @@ import { subscribeToQueue, processQueue } from '@/lib/networkQueue';
 import CopyButton from '@/components/ui/CopyButton';
 import SplitViewComparison from './SplitViewComparison';
 import ChatSearchPanel from './ChatSearchPanel';
-import { useChatHistory } from '@/hooks/useChatHistory';
-import { useSplitView } from '@/hooks/useSplitView';
 
 /** Possible states for the API health badge */
 type HealthStatus = 'checking' | 'ok' | 'degraded';
@@ -95,7 +92,6 @@ export default function StellarChatInterface() {
   const [isOnline, setIsOnline] = useState(
     typeof window !== 'undefined' ? window.navigator.onLine : true,
   );
-  const [queuedReadables, setQueuedReadables] = useState(0);
 
   // ── Health badge state ──────────────────────────────────────────────────────
   const [healthStatus, setHealthStatus] = useState<HealthStatus>('checking');

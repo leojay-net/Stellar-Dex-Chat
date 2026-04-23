@@ -1,5 +1,6 @@
 import {
   AIAnalysisResult,
+  ChatMessage,
   GuardrailCategory,
   GuardrailResult,
   TransactionData,
@@ -10,6 +11,18 @@ type GuardrailMatch = {
   category: GuardrailCategory;
   reason: string;
 };
+
+/**
+ * Result returned by the pagination helper.
+ */
+export interface PaginationResult<T> {
+  items: T[];
+  currentPage: number;
+  totalPages: number;
+  totalItems: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+}
 
 /**
  * A helper utility class managing AI message analysis and guardrail protection
@@ -25,6 +38,38 @@ export class AIAssistant {
   };
 
   static readonly LOW_CONFIDENCE_THRESHOLD = 0.7;
+  static readonly DEFAULT_PAGE_SIZE = 20;
+
+  /**
+   * Paginate an array of chat messages.
+   *
+   * @param messages - Full array of messages to paginate.
+   * @param page - 1-indexed page number (defaults to 1).
+   * @param pageSize - Number of items per page (defaults to DEFAULT_PAGE_SIZE).
+   * @returns PaginationResult containing the sliced items and metadata.
+   */
+  static paginateMessages(
+    messages: ChatMessage[],
+    page: number = 1,
+    pageSize: number = AIAssistant.DEFAULT_PAGE_SIZE,
+  ): PaginationResult<ChatMessage> {
+    const safePage = Math.max(1, Math.floor(page));
+    const safePageSize = Math.max(1, Math.floor(pageSize));
+    const totalItems = messages.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / safePageSize));
+    const clampedPage = Math.min(safePage, totalPages);
+    const startIndex = (clampedPage - 1) * safePageSize;
+    const endIndex = Math.min(startIndex + safePageSize, totalItems);
+
+    return {
+      items: messages.slice(startIndex, endIndex),
+      currentPage: clampedPage,
+      totalPages,
+      totalItems,
+      hasNextPage: clampedPage < totalPages,
+      hasPreviousPage: clampedPage > 1,
+    };
+  }
 
   /**
    * Analyze the user message and produce a structured AI analysis result.
@@ -38,12 +83,14 @@ export class AIAssistant {
   async analyzeUserMessage(
     message: string,
     context?: Record<string, unknown>,
+    signal?: AbortSignal,
   ): Promise<AIAnalysisResult> {
     try {
       const response = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message, context }),
+        signal,
       });
 
       if (!response.ok) {
@@ -65,6 +112,10 @@ export class AIAssistant {
 
       return result;
     } catch (error) {
+      // Re-throw abort errors cleanly without logging -- callers handle cancellation
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
       console.error('AI Analysis Error:', error);
       return {
         intent: 'unknown',
@@ -423,6 +474,7 @@ Choose one of the next actions below and I'll keep it moving.`;
   async generateFollowUpQuestion(
     intent: string,
     missingData: string[],
+    signal?: AbortSignal,
   ): Promise<string> {
     try {
       const response = await fetch('/api/ai/chat', {
@@ -431,12 +483,16 @@ Choose one of the next actions below and I'll keep it moving.`;
         body: JSON.stringify({
           message: `Generate a single, natural follow-up question for a Stellar DeFi assistant. Intent: ${intent}. Missing data: ${missingData.join(', ')}. Return only the question text.`,
         }),
+        signal,
       });
       if (response.ok) {
         const result = await response.json() as AIAnalysisResult;
         return result.suggestedResponse || 'Could you provide more details about your request?';
       }
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
       console.error('Failed to generate follow-up question:', error);
     }
     return 'Could you provide more details about your request?';

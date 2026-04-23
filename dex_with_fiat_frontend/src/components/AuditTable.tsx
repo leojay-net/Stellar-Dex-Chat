@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { AuditEntry, AuditLogFilter } from '@/types';
+import { AuditEntry } from '@/types';
 
 interface AuditTableProps {
   onRefresh?: () => void;
@@ -16,7 +16,7 @@ interface FilterState {
   endDate: string;
 }
 
-export default function AuditTable({ onRefresh }: AuditTableProps) {
+export default function AuditTable({}: AuditTableProps) {
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

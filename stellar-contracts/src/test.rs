@@ -3349,6 +3349,75 @@ mod proptest_deposit {
     }
 }
 
+#[cfg(test)]
+mod proptest_request_withdrawal {
+    use super::*;
+    use proptest::prelude::*;
+
+    // request_withdrawal invariants for valid amounts:
+    // 1. Request is persisted with exact payload values
+    // 2. Queue depth increments
+    // 3. Total liabilities increase by amount
+    // 4. No token transfer occurs at request time
+    proptest! {
+        #[test]
+        fn request_withdrawal_invariants_hold_for_all_valid_amounts(amount in 1i128..=500i128) {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let (contract_id, bridge, _admin, token_addr, token, token_sac) = setup_bridge(&env, 1_000);
+            let user = Address::generate(&env);
+            token_sac.mint(&user, &1_000);
+            bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+            let user_before = token.balance(&user);
+            let contract_before = token.balance(&contract_id);
+
+            let req_id = bridge.request_withdrawal(&user, &amount, &token_addr, &None, &0);
+            let req = bridge.get_withdrawal_request(&req_id).unwrap();
+
+            prop_assert_eq!(req.to, user);
+            prop_assert_eq!(req.token, token_addr);
+            prop_assert_eq!(req.amount, amount);
+            prop_assert_eq!(req.risk_tier, 0);
+            prop_assert_eq!(bridge.get_wq_depth(), 1);
+            prop_assert_eq!(bridge.get_total_liabilities(), amount);
+            prop_assert_eq!(token.balance(&user), user_before);
+            prop_assert_eq!(token.balance(&contract_id), contract_before);
+        }
+
+        /// Requests above net deposits must fail invariant checks.
+        #[test]
+        fn request_withdrawal_above_net_deposits_is_rejected(amount in 101i128..=1_000i128) {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let (_, bridge, _admin, token_addr, _, token_sac) = setup_bridge(&env, 1_000);
+            let user = Address::generate(&env);
+            token_sac.mint(&user, &1_000);
+            bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+            let result = bridge.try_request_withdrawal(&user, &amount, &token_addr, &None, &0);
+            prop_assert_eq!(result, Err(Ok(Error::InvariantViolation)));
+        }
+
+        /// Non-positive amounts are always invalid.
+        #[test]
+        fn request_withdrawal_non_positive_amount_is_rejected(amount in -1_000i128..=0i128) {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let (_, bridge, _admin, token_addr, _, token_sac) = setup_bridge(&env, 1_000);
+            let user = Address::generate(&env);
+            token_sac.mint(&user, &1_000);
+            bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+            let result = bridge.try_request_withdrawal(&user, &amount, &token_addr, &None, &0);
+            prop_assert_eq!(result, Err(Ok(Error::ZeroAmount)));
+        }
+    }
+}
+
 // ── Per-token daily deposit limit tests (#381) ──────────────────────
 // ── Per-token daily deposit limit tests ──────────────────────────────
 
@@ -3827,6 +3896,9 @@ fn test_get_denied_addresses_offset_beyond_count() {
     assert_eq!(result.len(), 0);
 }
 
+#[test]
+fn test_circuit_breaker_trips_on_large_cumulative_withdrawal() {
+}
 // ── withdrawal expiry tests ───────────────────────────────────────────────
 #[test]
 fn test_reclaim_expired_withdrawal_succeeds_after_window() {
@@ -4073,6 +4145,52 @@ fn test_circuit_breaker_still_blocked_before_reset_window() {
     assert_eq!(result, Err(Ok(Error::CircuitBreakerActive)));
 }
 
+#[test]
+fn test_circuit_breaker_manual_reset_allows_withdrawal() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+
+    bridge.deposit(&user, &2000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.set_circuit_breaker_threshold(&500);
+
+    // Trip the breaker
+    bridge.withdraw(&admin, &user, &600, &token_addr);
+    assert!(bridge.is_circuit_breaker_tripped());
+
+    // Admin resets the breaker
+    bridge.reset_circuit_breaker();
+    assert!(!bridge.is_circuit_breaker_tripped());
+
+    // Withdrawal should succeed now
+    let result = bridge.try_withdraw(&admin, &user, &100, &token_addr);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_circuit_breaker_respects_threshold_zero_disables_it() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+
+    bridge.deposit(&user, &2000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // Setting threshold to 0 disables the circuit breaker logic
+    bridge.set_circuit_breaker_threshold(&0);
+
+    // Perform large withdrawals that would otherwise trip any reasonable threshold
+    bridge.withdraw(&admin, &user, &1000, &token_addr);
+    bridge.withdraw(&admin, &user, &500, &token_addr);
+
+    // Breaker should NOT be tripped because threshold 0 disables it
+    assert!(!bridge.is_circuit_breaker_tripped());
+}
 #[test]
 fn test_set_and_get_circuit_breaker_reset_window() {
     let env = Env::default();

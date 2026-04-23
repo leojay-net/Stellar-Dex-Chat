@@ -63,9 +63,9 @@ describe(
 
       expect(result).toEqual({ data: 'success' });
       // Success toast should be called with correct variant
-      const calls = (toastStore.addToast as any).mock.calls;
+      const calls = vi.mocked(toastStore.addToast).mock.calls;
       const hasSuccessToast = calls.some(
-        (call: any[]) =>
+        (call) =>
           call[0] === 'Message sent!' && call[1] === 'success'
       );
       expect(hasSuccessToast).toBe(true);
@@ -73,14 +73,12 @@ describe(
 
     it('should trigger error toast when request fails after MAX_RETRY', async () => {
       let isOnline = true;
-      let attemptCount = 0;
       Object.defineProperty(window.navigator, 'onLine', {
         configurable: true,
         get: () => isOnline,
       });
 
       const mockTask = vi.fn().mockImplementation(async () => {
-        attemptCount++;
         // Always fail with network error
         throw new Error('failed to fetch');
       });
@@ -107,14 +105,14 @@ describe(
 
       try {
         await promise;
-      } catch (_error) {
+      } catch {
         // Expected to fail
       }
 
       // Error toast should be called with correct variant
-      const calls = (toastStore.addToast as any).mock.calls;
+      const calls = vi.mocked(toastStore.addToast).mock.calls;
       const hasErrorToast = calls.some(
-        (call: any[]) =>
+        (call) =>
           call[0] === 'Could not send. Please try again.' &&
           call[1] === 'error'
       );
@@ -122,7 +120,7 @@ describe(
     });
 
     it('should use success variant for retry success toast', async () => {
-      let isOnline = true;
+      const isOnline = true;
       Object.defineProperty(window.navigator, 'onLine', {
         configurable: true,
         get: () => isOnline,
@@ -134,9 +132,9 @@ describe(
 
       expect(result).toEqual({ data: 'test' });
 
-      const calls = (toastStore.addToast as any).mock.calls;
+      const calls = vi.mocked(toastStore.addToast).mock.calls;
       const successToastCall = calls.find(
-        (call: any[]) => call[0] === 'Message sent!'
+        (call) => call[0] === 'Message sent!'
       );
 
       if (successToastCall) {
@@ -170,13 +168,13 @@ describe(
 
       try {
         await promise;
-      } catch (_error) {
+      } catch {
         // Expected to fail
       }
 
-      const calls = (toastStore.addToast as any).mock.calls;
+      const calls = vi.mocked(toastStore.addToast).mock.calls;
       const errorToastCall = calls.find(
-        (call: any[]) => call[0] === 'Could not send. Please try again.'
+        (call) => call[0] === 'Could not send. Please try again.'
       );
 
       if (errorToastCall) {
@@ -185,7 +183,7 @@ describe(
     });
 
     it('should not trigger toast for immediate non-network errors', async () => {
-      let isOnline = true;
+      const isOnline = true;
       Object.defineProperty(window.navigator, 'onLine', {
         configurable: true,
         get: () => isOnline,
@@ -197,13 +195,13 @@ describe(
 
       try {
         await withNetworkReadQueue(mockTask, 'test');
-      } catch (_error) {
+      } catch {
         // Expected to fail immediately
       }
 
       // For non-network errors when online, failure happens immediately without retries
       // So there should be no toast calls for immediate failures
-      const calls = (toastStore.addToast as any).mock.calls;
+      const calls = vi.mocked(toastStore.addToast).mock.calls;
       expect(calls.length).toBe(0);
     });
   }
