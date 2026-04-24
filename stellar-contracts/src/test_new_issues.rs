@@ -14,8 +14,7 @@ use super::*;
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     token::{Client as TokenClient, StellarAssetClient},
-    Address, BytesN, Env,
-    vec,
+    vec, Address, BytesN, Env,
 };
 
 // ── helpers ──────────────────────────────────────────────────────────────
@@ -38,11 +37,11 @@ fn create_token<'a>(
 fn setup_bridge(
     env: &Env,
 ) -> (
-    Address,           // contract_id
-    FiatBridgeClient,  // bridge client
-    Address,           // admin
-    Address,           // token_addr
-    TokenClient,       // token client
+    Address,            // contract_id
+    FiatBridgeClient,   // bridge client
+    Address,            // admin
+    Address,            // token_addr
+    TokenClient,        // token client
     StellarAssetClient, // token SAC client
 ) {
     let contract_id = env.register(FiatBridge, ());
@@ -95,7 +94,9 @@ fn propose_upgrade_accepts_minimum_delay() {
 
     bridge.propose_upgrade(&dummy_wasm_hash(&env), &MIN_UPGRADE_DELAY);
 
-    let proposal = bridge.get_upgrade_proposal().expect("proposal should exist");
+    let proposal = bridge
+        .get_upgrade_proposal()
+        .expect("proposal should exist");
     assert_eq!(
         proposal.executable_after,
         env.ledger().sequence() + MIN_UPGRADE_DELAY
@@ -112,7 +113,9 @@ fn propose_upgrade_accepts_large_delay() {
     let large_delay = MIN_UPGRADE_DELAY * 10;
     bridge.propose_upgrade(&dummy_wasm_hash(&env), &large_delay);
 
-    let proposal = bridge.get_upgrade_proposal().expect("proposal should exist");
+    let proposal = bridge
+        .get_upgrade_proposal()
+        .expect("proposal should exist");
     assert_eq!(
         proposal.executable_after,
         env.ledger().sequence() + large_delay
@@ -130,7 +133,8 @@ fn propose_upgrade_overflow_prevention() {
 
     // Set the ledger sequence close to u32::MAX so that adding any
     // meaningful delay overflows.
-    env.ledger().set_sequence_number(u32::MAX - MIN_UPGRADE_DELAY + 1);
+    env.ledger()
+        .set_sequence_number(u32::MAX - MIN_UPGRADE_DELAY + 1);
 
     // A delay of MIN_UPGRADE_DELAY would push executable_after past u32::MAX.
     let result = bridge.try_propose_upgrade(&dummy_wasm_hash(&env), &MIN_UPGRADE_DELAY);
@@ -163,7 +167,8 @@ fn execute_upgrade_before_timelock_returns_not_ready() {
 
     // Advance ledger by less than the required delay — still locked.
     let current = env.ledger().sequence();
-    env.ledger().set_sequence_number(current + MIN_UPGRADE_DELAY - 1);
+    env.ledger()
+        .set_sequence_number(current + MIN_UPGRADE_DELAY - 1);
 
     let result = bridge.try_execute_upgrade();
     assert_eq!(result, Err(Ok(Error::UpgradeNotReady)));
