@@ -79,7 +79,7 @@ describe('useIdempotentAction', () => {
 
     expect(result.current.isProcessing).toBe(false);
 
-    let executePromise: Promise<any>;
+    let executePromise: Promise<unknown>;
     await act(async () => {
       executePromise = result.current.execute(mockAction, 'test_action');
     });
@@ -180,7 +180,7 @@ describe('useIdempotentAction', () => {
     );
 
     // Start first execution
-    let firstExecution: Promise<any>;
+    let firstExecution: Promise<unknown>;
     await act(async () => {
       firstExecution = result.current.execute(mockAction, 'test_action');
     });

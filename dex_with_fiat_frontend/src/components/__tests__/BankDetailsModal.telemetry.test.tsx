@@ -42,8 +42,7 @@ vi.mock('@/hooks/useAccessibleModal', () => ({
 vi.mock('@/hooks/useIdempotentAction', () => ({
   useIdempotentAction: () => ({
     execute: async (
-      fn: (key: string) => Promise<void>,
-      _actionName?: string,
+      fn: (key: string) => Promise<unknown>
     ) => {
       await fn('test-key');
       return null;

@@ -63,7 +63,8 @@ describe('BankDetailsModal - Rapid Click Protection', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     // Mock successful API responses
-    (global.fetch as any).mockImplementation((url: string) => {
+    vi.mocked(global.fetch).mockImplementation((input: string | Request | URL) => {
+      const url = input.toString();
       if (url.includes('/api/banks')) {
         return Promise.resolve({
           ok: true,
@@ -181,9 +182,9 @@ describe('BankDetailsModal - Rapid Click Protection', () => {
     fireEvent.click(confirmButton);
 
     await waitFor(() => {
-      const createRecipientCalls = (
-        global.fetch as any
-      ).mock.calls.filter((call: any) => call[0].includes('/api/create-recipient'));
+      const createRecipientCalls = vi.mocked(global.fetch).mock.calls.filter((call) =>
+        (call[0] as unknown as string).includes('/api/create-recipient'),
+      );
       expect(createRecipientCalls).toHaveLength(1);
     }, { timeout: 3000 });
   });
@@ -196,12 +197,14 @@ describe('BankDetailsModal - Rapid Click Protection', () => {
     fireEvent.click(confirmButton);
 
     await waitFor(() => {
-      const createRecipientCall = (global.fetch as any).mock.calls.find(
-        (call: any) => call[0].includes('/api/create-recipient'),
+      const createRecipientCall = vi.mocked(global.fetch).mock.calls.find((call) =>
+        (call[0] as unknown as string).includes('/api/create-recipient'),
       );
 
       expect(createRecipientCall).toBeDefined();
-      expect(createRecipientCall[1].headers['X-Idempotency-Key']).toMatch(
+      expect((createRecipientCall?.[1] as RequestInit).headers).toBeDefined();
+      const headers = (createRecipientCall?.[1] as RequestInit).headers as Record<string, string>;
+      expect(headers['X-Idempotency-Key']).toMatch(
         /^payout_confirm_\d+_[a-z0-9]+$/,
       );
     });

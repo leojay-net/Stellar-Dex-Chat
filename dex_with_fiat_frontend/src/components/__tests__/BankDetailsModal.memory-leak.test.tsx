@@ -55,12 +55,12 @@ describe('BankDetailsModal - Memory Leak Regression', () => {
     vi.spyOn(global, 'setInterval');
     vi.spyOn(global, 'clearInterval');
 
-    (fetchLockedQuote as any).mockResolvedValue({
+    vi.mocked(fetchLockedQuote).mockResolvedValue({
       ngnAmount: 1000,
       xlmAmount: 10,
       rate: 100,
       expiresAt: Date.now() + 120000,
-    });
+    } as unknown as Awaited<ReturnType<typeof fetchLockedQuote>>);
 
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,

@@ -95,7 +95,6 @@ describe('useBeneficiaries', () => {
 
     // Navigate down
     act(() => {
-      const mockEvent = new KeyboardEvent('keydown', { key: 'ArrowDown' });
       // Simulate the keyboard handler - in real usage this would be called via event listener
       // For testing, we can call the internal handler or test the selection change
     });

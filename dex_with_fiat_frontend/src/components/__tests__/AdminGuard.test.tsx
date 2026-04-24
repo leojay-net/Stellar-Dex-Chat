@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import AdminGuard from '../AdminGuard';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
@@ -19,7 +19,7 @@ describe('AdminGuard', () => {
   it('renders landing page when connection address is empty', async () => {
     vi.mocked(useStellarWallet).mockReturnValue({
       connection: { address: '' },
-    } as any);
+    } as unknown as ReturnType<typeof useStellarWallet>);
 
     render(
       <AdminGuard>
@@ -36,7 +36,7 @@ describe('AdminGuard', () => {
       connection: {
         address: 'invalid-address-not-starting-with-g-or-correct-length',
       },
-    } as any);
+    } as unknown as ReturnType<typeof useStellarWallet>);
 
     render(
       <AdminGuard>
@@ -54,7 +54,7 @@ describe('AdminGuard', () => {
       connection: {
         address: 'GABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDE',
       }, // 56 chars
-    } as any);
+    } as unknown as ReturnType<typeof useStellarWallet>);
     vi.mocked(getAdmin).mockResolvedValue('invalid-admin-address');
 
     render(
@@ -73,7 +73,7 @@ describe('AdminGuard', () => {
       'GABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDE';
     vi.mocked(useStellarWallet).mockReturnValue({
       connection: { address: validAddr },
-    } as any);
+    } as unknown as ReturnType<typeof useStellarWallet>);
     vi.mocked(getAdmin).mockResolvedValue(validAddr);
 
     render(
@@ -92,7 +92,7 @@ describe('AdminGuard', () => {
       'G1234567890123456789012345678901234567890123456789012345';
     vi.mocked(useStellarWallet).mockReturnValue({
       connection: { address: userAddr },
-    } as any);
+    } as unknown as ReturnType<typeof useStellarWallet>);
     vi.mocked(getAdmin).mockResolvedValue(adminAddr);
 
     render(
