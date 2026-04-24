@@ -222,8 +222,12 @@ export default function LandingPage() {
         </button>
       </div>
 
+      <main id="landing-main" aria-label="DexFiat product overview">
       {/* Hero Section */}
-      <section className="relative min-h-screen flex items-center justify-center px-4 overflow-hidden">
+      <section
+        className="relative min-h-screen flex items-center justify-center px-4 overflow-hidden"
+        aria-labelledby="landing-hero-heading"
+      >
         {/* Animated Background Elements */}
         <div className="absolute inset-0 overflow-hidden">
           <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-600/10 rounded-full blur-3xl animate-pulse"></div>
@@ -233,7 +237,7 @@ export default function LandingPage() {
         <div
           className={`relative z-10 text-center max-w-5xl mx-auto transform transition-all duration-1000 ${heroVisible ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'}`}
         >
-          <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
+          <h1 id="landing-hero-heading" className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
             <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
               XLM-to-Fiat
             </span>{' '}
@@ -284,8 +288,10 @@ export default function LandingPage() {
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-8">
             <button
+              type="button"
               onClick={handleGetStarted}
               className="group flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 px-8 py-4 rounded-lg text-lg font-semibold transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-blue-500/25"
+              aria-label="Start bridging: open the chat app"
             >
               <Play className="w-5 h-5" />
               <span>Start Bridging</span>
@@ -297,6 +303,7 @@ export default function LandingPage() {
               target="_blank"
               rel="noopener noreferrer"
               className="text-[var(--color-text-muted)] hover:text-blue-500 transition-colors duration-300 text-sm underline"
+              aria-label="View Stellar Testnet on Stellar Expert (opens in a new tab)"
             >
               View on Stellar Expert →
             </a>
@@ -316,10 +323,10 @@ export default function LandingPage() {
       </section>
 
       {/* Features Section */}
-      <section className="py-20 px-4">
+      <section className="py-20 px-4" aria-labelledby="landing-features-heading">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4 text-[var(--color-text-primary)]">
+            <h2 id="landing-features-heading" className="text-4xl font-bold mb-4 text-[var(--color-text-primary)]">
               Why Choose DexFiat on Stellar
             </h2>
             <p className="text-xl text-[var(--color-text-secondary)] max-w-3xl mx-auto">
@@ -337,10 +344,10 @@ export default function LandingPage() {
       </section>
 
       {/* Technology Stack */}
-      <section className="py-20 px-4 bg-[var(--color-surface-muted)]">
+      <section className="py-20 px-4 bg-[var(--color-surface-muted)]" aria-labelledby="landing-tech-heading">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4 text-[var(--color-text-primary)]">
+            <h2 id="landing-tech-heading" className="text-4xl font-bold mb-4 text-[var(--color-text-primary)]">
               Powered by Stellar Infrastructure
             </h2>
             <p className="text-xl text-[var(--color-text-secondary)] max-w-3xl mx-auto">
@@ -387,10 +394,10 @@ export default function LandingPage() {
       </section>
 
       {/* Supported Assets */}
-      <section className="py-20 px-4">
+      <section className="py-20 px-4" aria-labelledby="landing-assets-heading">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4 text-[var(--color-text-primary)]">
+            <h2 id="landing-assets-heading" className="text-4xl font-bold mb-4 text-[var(--color-text-primary)]">
               Stellar Assets &amp; Fiat Currencies
             </h2>
             <p className="text-xl text-[var(--color-text-secondary)] max-w-3xl mx-auto">
@@ -464,10 +471,10 @@ export default function LandingPage() {
       </section>
 
       {/* Testimonials */}
-      <section className="py-20 px-4 bg-[var(--color-surface-muted)]">
+      <section className="py-20 px-4 bg-[var(--color-surface-muted)]" aria-labelledby="landing-testimonials-heading">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4 text-[var(--color-text-primary)]">Trusted by DeFi Leaders</h2>
+            <h2 id="landing-testimonials-heading" className="text-4xl font-bold mb-4 text-[var(--color-text-primary)]">Trusted by DeFi Leaders</h2>
             <p className="text-xl text-[var(--color-text-secondary)]">
               Join thousands of satisfied users who trust our platform
             </p>
@@ -525,10 +532,10 @@ export default function LandingPage() {
       </section>
 
       {/* Features Section */}
-      <section className="py-20 px-4">
+      <section className="py-20 px-4" aria-labelledby="landing-platform-heading">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4 text-[var(--color-text-primary)]">Why Choose Our Platform</h2>
+            <h2 id="landing-platform-heading" className="text-4xl font-bold mb-4 text-[var(--color-text-primary)]">Why Choose Our Platform</h2>
             <p className="text-xl text-[var(--color-text-secondary)] max-w-3xl mx-auto">
               Built for the future of finance with cutting-edge blockchain
               technology and enterprise-grade security
@@ -544,10 +551,10 @@ export default function LandingPage() {
       </section>
 
       {/* How It Works */}
-      <section className="py-20 px-4 bg-gray-800/30">
+      <section className="py-20 px-4 bg-gray-800/30" aria-labelledby="landing-how-heading">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4 text-[var(--color-text-primary)]">
+            <h2 id="landing-how-heading" className="text-4xl font-bold mb-4 text-[var(--color-text-primary)]">
               How Stellar FiatBridge Works
             </h2>
             <p className="text-xl text-[var(--color-text-secondary)]">
@@ -564,9 +571,9 @@ export default function LandingPage() {
       </section>
 
       {/* Early Access Form */}
-      <section className="py-20 px-4">
+      <section className="py-20 px-4" aria-labelledby="landing-early-access-heading">
         <div className="max-w-2xl mx-auto text-center">
-          <h2 className="text-4xl font-bold mb-4">
+          <h2 id="landing-early-access-heading" className="text-4xl font-bold mb-4">
             Join the Stellar DeFi Revolution
           </h2>
           <p className="text-xl text-[var(--color-text-secondary)] mb-8">
@@ -578,18 +585,25 @@ export default function LandingPage() {
             <form
               onSubmit={handleEmailSubmit}
               className="flex flex-col sm:flex-row gap-4 max-w-lg mx-auto"
+              aria-label="Early access email signup"
             >
+              <label htmlFor="landing-email-input" className="sr-only">
+                Email address for early access
+              </label>
               <input
+                id="landing-email-input"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Enter your email address"
+                autoComplete="email"
                 className="flex-1 px-4 py-3 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:border-blue-500 transition-colors duration-300"
                 required
               />
               <button
                 type="submit"
                 className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 px-6 py-3 rounded-lg font-semibold transition-all duration-300 hover:scale-105 whitespace-nowrap"
+                aria-label="Submit email and launch app"
               >
                 Launch App
               </button>
@@ -608,6 +622,7 @@ export default function LandingPage() {
           </p>
         </div>
       </section>
+      </main>
 
       {/* Footer */}
       <footer className="bg-[var(--color-surface)] border-t border-[var(--color-border)]">
@@ -623,30 +638,34 @@ export default function LandingPage() {
                 The future of crypto-to-fiat conversion. Secure, fast, and
                 compliant with global financial standards.
               </p>
-              <div className="flex space-x-4">
+              <div className="flex space-x-4" role="list" aria-label="DexFiat social links">
                 <a
                   href="#"
                   className="text-[var(--color-text-muted)] hover:text-blue-500 transition-colors"
+                  aria-label="DexFiat on Twitter"
                 >
-                  <Twitter className="w-5 h-5" />
+                  <Twitter className="w-5 h-5" aria-hidden />
                 </a>
                 <a
                   href="#"
                   className="text-[var(--color-text-muted)] hover:text-blue-500 transition-colors"
+                  aria-label="DexFiat on GitHub"
                 >
-                  <Github className="w-5 h-5" />
+                  <Github className="w-5 h-5" aria-hidden />
                 </a>
                 <a
                   href="#"
                   className="text-[var(--color-text-muted)] hover:text-blue-500 transition-colors"
+                  aria-label="DexFiat on LinkedIn"
                 >
-                  <Linkedin className="w-5 h-5" />
+                  <Linkedin className="w-5 h-5" aria-hidden />
                 </a>
                 <a
                   href="#"
                   className="text-[var(--color-text-muted)] hover:text-blue-500 transition-colors"
+                  aria-label="DexFiat community chat"
                 >
-                  <MessageSquare className="w-5 h-5" />
+                  <MessageSquare className="w-5 h-5" aria-hidden />
                 </a>
               </div>
             </div>

@@ -32,6 +32,10 @@ import { downloadReceipt } from '@/lib/receipt';
 import type { ChatMessage } from '@/types';
 import { useAccessibleModal } from '@/hooks/useAccessibleModal';
 import { useIdempotentAction } from '@/hooks/useIdempotentAction';
+import {
+  STELLAR_FIAT_RISK_CONFIRMATION_PHRASE,
+  validateStellarFiatModalForm,
+} from '@/lib/stellarFiatModalSchema';
 
 interface StellarFiatModalProps {
   isOpen: boolean;
@@ -48,7 +52,6 @@ type TxStatus = 'idle' | 'loading' | 'success' | 'error';
 
 const PENDING_TX_KEY = 'stellar_pending_tx';
 const LARGE_AMOUNT_RISK_THRESHOLD = 500;
-const RISK_CONFIRMATION_PHRASE = 'CONFIRM LARGE AMOUNT';
 const SUBMIT_COOLDOWN_MS = 2000;
 
 interface PendingTxRecord {
@@ -392,7 +395,8 @@ export default function StellarFiatModal({
     (isDepositFlow &&
       (isLoadingBridgeLimit || isLimitUnavailable || isOverLimit)) ||
     (isRiskyAmount &&
-      riskConfirmation.trim().toUpperCase() !== RISK_CONFIRMATION_PHRASE) ||
+      riskConfirmation.trim().toUpperCase() !==
+        STELLAR_FIAT_RISK_CONFIRMATION_PHRASE) ||
     Date.now() - lastActionTimestamp < SUBMIT_COOLDOWN_MS;
 
   const operationType = isAdminMode ? 'Withdraw' : 'Deposit';
@@ -439,6 +443,20 @@ export default function StellarFiatModal({
   const handleAction = async () => {
     if (!connection.isConnected) return;
 
+    const zodMessage = validateStellarFiatModalForm({
+      isAdminMode,
+      amount,
+      recipient,
+      note,
+      riskConfirmation,
+      isRiskyAmount,
+    });
+    if (zodMessage) {
+      setErrorMsg(zodMessage);
+      setStatus('error');
+      return;
+    }
+
     if (
       isAmountInvalid ||
       !amount ||
@@ -460,16 +478,6 @@ export default function StellarFiatModal({
       setErrorMsg(
         bridgeLimitError ||
           'Unable to validate against the current bridge limit. Please try again.',
-      );
-      setStatus('error');
-      return;
-    }
-    if (
-      isRiskyAmount &&
-      riskConfirmation.trim().toUpperCase() !== RISK_CONFIRMATION_PHRASE
-    ) {
-      setErrorMsg(
-        `Type "${RISK_CONFIRMATION_PHRASE}" to confirm this large transfer.`,
       );
       setStatus('error');
       return;
@@ -959,7 +967,7 @@ export default function StellarFiatModal({
                   type="text"
                   value={riskConfirmation}
                   onChange={(e) => setRiskConfirmation(e.target.value)}
-                  placeholder={RISK_CONFIRMATION_PHRASE}
+                  placeholder={STELLAR_FIAT_RISK_CONFIRMATION_PHRASE}
                   className="theme-input w-full border rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
                 />
               </div>

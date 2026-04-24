@@ -357,7 +357,7 @@ export default function ChatHistorySidebar({
 
   return (
     <div
-      className={`theme-surface h-full flex flex-col transition-all duration-300 border-r ${
+      className={`theme-surface theme-border h-full flex flex-col transition-all duration-300 border-r ${
         isCollapsed ? 'w-20' : 'w-full'
       } transition-colors duration-300`}
     >

@@ -23,7 +23,6 @@ import {
   CartesianGrid,
 } from 'recharts';
 import Link from 'next/link';
-import { useEffect as useThemeEffect, useState as useThemeState } from 'react';
 
 type AuditLogResponse = {
   entries: AdminAuditLogEntry[];
@@ -60,51 +59,6 @@ function escapeCsvValue(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
 }
 
-// Hook to get theme-aware colors for charts
-function useChartColors() {
-  const [colors, setColors] = useThemeState({
-    primary: '#3b82f6',
-    textMuted: '#9ca3af',
-    border: '#374151',
-    surface: '#1f2937',
-    surfaceBorder: '#374151',
-  });
-
-  useThemeEffect(() => {
-    const updateColors = () => {
-      const root = document.documentElement;
-      const computedStyle = getComputedStyle(root);
-
-      setColors({
-        primary:
-          computedStyle.getPropertyValue('--color-primary').trim() || '#3b82f6',
-        textMuted:
-          computedStyle.getPropertyValue('--color-text-muted').trim() ||
-          '#9ca3af',
-        border:
-          computedStyle.getPropertyValue('--color-border').trim() || '#374151',
-        surface:
-          computedStyle.getPropertyValue('--color-surface').trim() || '#1f2937',
-        surfaceBorder:
-          computedStyle.getPropertyValue('--color-border').trim() || '#374151',
-      });
-    };
-
-    updateColors();
-
-    // Listen for theme changes
-    const observer = new MutationObserver(updateColors);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['data-theme'],
-    });
-
-    return () => observer.disconnect();
-  }, []);
-
-  return colors;
-}
-
 export default function AdminDashboard() {
   const [reconciliationRecords, setReconciliationRecords] = useState<
     ReconciliationRecord[]
@@ -122,7 +76,6 @@ export default function AdminDashboard() {
   const [auditTotalPages, setAuditTotalPages] = useState(1);
   const [exportingCsv, setExportingCsv] = useState(false);
   const enableAdminReconciliation = useFeatureFlag('enableAdminReconciliation');
-  const chartColors = useChartColors();
 
   const { balance, totalDeposited } = useBridgeStats();
 
@@ -132,6 +85,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     fetchMetrics();
+    // Refresh payouts every 30s to match bridge stats
     const interval = setInterval(fetchMetrics, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -274,16 +228,16 @@ export default function AdminDashboard() {
 
   return (
     <AdminGuard>
-      <div className="min-h-screen theme-app p-8">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
         <div className="max-w-7xl mx-auto">
           <div className="flex justify-between items-center mb-8">
-            <h1 className="text-3xl font-bold theme-text-primary">
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
               Admin Dashboard
             </h1>
             {enableAdminReconciliation && (
               <Link
                 href="/admin/reconciliation"
-                className="theme-primary-button px-4 py-2 rounded-md"
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
               >
                 Reconciliation Tools
               </Link>
@@ -291,69 +245,56 @@ export default function AdminDashboard() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div
-              className="theme-surface rounded-lg shadow p-6 border-t-4"
-              style={{ borderTopColor: 'var(--color-primary)' }}
-            >
-              <h2 className="text-sm font-medium theme-text-secondary mb-2 uppercase tracking-wider">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border-t-4 border-blue-500">
+              <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wider">
                 Bridge Balance
               </h2>
-              <div className="text-2xl font-bold theme-text-primary">
+              <div className="text-2xl font-bold text-gray-900 dark:text-white">
                 {balance !== null ? `${stroopsToDisplay(balance)} XLM` : '---'}
               </div>
             </div>
 
-            <div
-              className="theme-surface rounded-lg shadow p-6 border-t-4"
-              style={{ borderTopColor: 'var(--color-primary)' }}
-            >
-              <h2 className="text-sm font-medium theme-text-secondary mb-2 uppercase tracking-wider">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border-t-4 border-indigo-500">
+              <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wider">
                 Total Deposited
               </h2>
-              <div className="text-2xl font-bold theme-text-primary">
+              <div className="text-2xl font-bold text-gray-900 dark:text-white">
                 {totalDeposited !== null
                   ? `${stroopsToDisplay(totalDeposited)} XLM`
                   : '---'}
               </div>
             </div>
 
-            <div
-              className="theme-surface rounded-lg shadow p-6 border-t-4"
-              style={{ borderTopColor: 'var(--color-warning)' }}
-            >
-              <h2 className="text-sm font-medium theme-text-secondary mb-2 uppercase tracking-wider">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border-t-4 border-yellow-500">
+              <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wider">
                 Pending Payouts
               </h2>
-              <div className="text-2xl font-bold theme-text-primary">
+              <div className="text-2xl font-bold text-gray-900 dark:text-white">
                 {payoutMetrics.pendingPayouts}
               </div>
             </div>
 
-            <div
-              className="theme-surface rounded-lg shadow p-6 border-t-4"
-              style={{ borderTopColor: 'var(--color-danger)' }}
-            >
-              <h2 className="text-sm font-medium theme-text-secondary mb-2 uppercase tracking-wider">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border-t-4 border-red-500">
+              <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wider">
                 Failed Payouts
               </h2>
-              <div className="text-2xl font-bold theme-text-primary">
+              <div className="text-2xl font-bold text-gray-900 dark:text-white">
                 {payoutMetrics.failedPayouts}
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-8">
-            <div className="lg:col-span-8 theme-surface rounded-lg shadow p-6">
-              <h2 className="text-xl font-semibold theme-text-primary mb-6">
+            <div className="lg:col-span-8 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
                 Daily Transaction Volume
               </h2>
-              <div className="h-80 w-full relative" role="img" aria-label="Transaction volume chart showing volume over time in XLM">
+              <div className="h-80 w-full relative">
                 {maxVolume > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart
                       data={metrics}
                       margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                      aria-hidden="true"
                     >
                       <defs>
                         <linearGradient
@@ -365,12 +306,12 @@ export default function AdminDashboard() {
                         >
                           <stop
                             offset="5%"
-                            stopColor={chartColors.primary}
+                            stopColor="#3b82f6"
                             stopOpacity={0.8}
                           />
                           <stop
                             offset="95%"
-                            stopColor={chartColors.primary}
+                            stopColor="#3b82f6"
                             stopOpacity={0}
                           />
                         </linearGradient>
@@ -381,32 +322,32 @@ export default function AdminDashboard() {
                           const date = new Date(val);
                           return `${date.getMonth() + 1}/${date.getDate()}`;
                         }}
-                        stroke={chartColors.textMuted}
-                        tick={{ fill: chartColors.textMuted }}
+                        stroke="#9ca3af"
+                        tick={{ fill: '#9ca3af' }}
                       />
                       <YAxis
-                        stroke={chartColors.textMuted}
-                        tick={{ fill: chartColors.textMuted }}
+                        stroke="#9ca3af"
+                        tick={{ fill: '#9ca3af' }}
                         width={60}
                       />
                       <CartesianGrid
                         strokeDasharray="3 3"
                         vertical={false}
-                        stroke={chartColors.border}
+                        stroke="#374151"
                       />
                       <Tooltip
                         contentStyle={{
-                          backgroundColor: chartColors.surface,
-                          borderColor: chartColors.surfaceBorder,
-                          color: chartColors.textMuted,
+                          backgroundColor: '#1f2937',
+                          borderColor: '#374151',
+                          color: '#fff',
                         }}
-                        itemStyle={{ color: chartColors.primary }}
+                        itemStyle={{ color: '#60a5fa' }}
                         labelFormatter={(label) => `Date: ${label}`}
                       />
                       <Area
                         type="monotone"
                         dataKey="volume"
-                        stroke={chartColors.primary}
+                        stroke="#3b82f6"
                         strokeWidth={3}
                         fillOpacity={1}
                         fill="url(#colorVolume)"
@@ -414,10 +355,10 @@ export default function AdminDashboard() {
                     </AreaChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center border-2 border-dashed theme-border rounded-lg theme-surface-muted">
-                    <div className="theme-text-muted text-center">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                    <div className="text-gray-500 dark:text-gray-400 text-center">
                       <svg
-                        className="mx-auto h-12 w-12 mb-3"
+                        className="mx-auto h-12 w-12 text-gray-400 mb-3"
                         fill="none"
                         viewBox="0 0 24 24"
                         stroke="currentColor"
@@ -442,14 +383,11 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            <div
-              className="lg:col-span-4 theme-surface rounded-lg shadow p-6 border-t-4"
-              style={{ borderTopColor: 'var(--color-primary)' }}
-            >
-              <h2 className="text-lg font-medium theme-text-secondary mb-2">
+            <div className="lg:col-span-4 bg-white dark:bg-gray-800 rounded-lg shadow p-6 border-t-4 border-blue-500">
+              <h2 className="text-lg font-medium text-gray-500 dark:text-gray-400 mb-2">
                 30-Day Volume (XLM)
               </h2>
-              <div className="text-4xl font-bold theme-text-primary" aria-label={`30-day transaction volume: ${totalVolume.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM`}>
+              <div className="text-4xl font-bold text-gray-900 dark:text-white">
                 {totalVolume.toLocaleString(undefined, {
                   maximumFractionDigits: 2,
                 })}
@@ -457,14 +395,14 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <div className="theme-surface rounded-lg shadow mt-8 overflow-hidden">
-            <div className="p-6 theme-border border-b">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow mt-8 overflow-hidden">
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                 <div>
-                  <h2 className="text-xl font-semibold theme-text-primary">
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
                     Admin Audit Log
                   </h2>
-                  <p className="text-sm theme-text-secondary mt-1">
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                     Append-only timeline of administrative actions.
                   </p>
                 </div>
@@ -473,7 +411,7 @@ export default function AdminDashboard() {
                   <div>
                     <label
                       htmlFor="audit-action-filter"
-                      className="block text-xs font-medium theme-text-secondary mb-1"
+                      className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1"
                     >
                       Action Type
                     </label>
@@ -484,7 +422,7 @@ export default function AdminDashboard() {
                         setActionFilter(event.target.value);
                         setAuditPage(1);
                       }}
-                      className="w-full sm:w-64 px-3 py-2 rounded-md text-sm theme-input theme-border border"
+                      className="w-full sm:w-64 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white"
                     >
                       <option value="all">All Actions</option>
                       {auditActions.map((action) => (
@@ -499,13 +437,7 @@ export default function AdminDashboard() {
                     type="button"
                     onClick={exportAuditToCSV}
                     disabled={exportingCsv || auditLoading || auditTotal === 0}
-                    className="h-10 mt-0 sm:mt-5 px-4 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{
-                      backgroundColor: 'var(--color-success)',
-                      color: '#fff',
-                    }}
-                    aria-label={exportingCsv ? 'Exporting audit log to CSV file' : 'Export audit log to CSV file'}
-                    aria-describedby="audit-action-filter"
+                    className="h-10 mt-0 sm:mt-5 px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:bg-emerald-300 disabled:cursor-not-allowed"
                   >
                     {exportingCsv ? 'Exporting...' : 'Export CSV'}
                   </button>
@@ -514,57 +446,51 @@ export default function AdminDashboard() {
             </div>
 
             {auditError && (
-              <div
-                className="px-6 py-4 text-sm theme-border border-b"
-                style={{
-                  backgroundColor: 'var(--color-danger-soft)',
-                  color: 'var(--color-danger)',
-                }}
-              >
+              <div className="px-6 py-4 text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800">
                 {auditError}
               </div>
             )}
 
             <div className="overflow-x-auto">
-              <table className="min-w-full" role="table" aria-label="Admin audit log entries">
-                <thead className="theme-surface-muted">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-700">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider" scope="col">
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       Timestamp
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider" scope="col">
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       Action
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider" scope="col">
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       Admin Address
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider" scope="col">
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       Parameters
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider" scope="col">
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       Result
                     </th>
                   </tr>
                 </thead>
 
-                <tbody className="theme-surface">
+                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                   {!auditLoading &&
                     auditEntries.map((entry) => (
                       <tr
                         key={entry.id}
-                        className="theme-border border-b hover:opacity-80"
+                        className="hover:bg-gray-50 dark:hover:bg-gray-700/40"
                       >
-                        <td className="px-6 py-4 whitespace-nowrap text-sm theme-text-primary">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-200">
                           {new Date(entry.timestamp).toLocaleString()}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm theme-text-primary font-medium">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white font-medium">
                           {formatActionLabel(entry.action)}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-mono theme-text-primary">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-700 dark:text-gray-200">
                           {entry.adminAddress}
                         </td>
-                        <td className="px-6 py-4 text-sm theme-text-primary max-w-xl">
-                          <span className="inline-block theme-surface-muted rounded px-2 py-1 break-all">
+                        <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-200 max-w-xl">
+                          <span className="inline-block bg-gray-100 dark:bg-gray-700 rounded px-2 py-1 break-all">
                             {formatParameters(entry.parameters)}
                           </span>
                         </td>
@@ -572,10 +498,10 @@ export default function AdminDashboard() {
                           <span
                             className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${
                               entry.result === 'success'
-                                ? 'theme-soft-success'
+                                ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
                                 : entry.result === 'failed'
-                                  ? 'theme-soft-danger'
-                                  : 'theme-soft-warning'
+                                  ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                                  : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300'
                             }`}
                           >
                             {entry.result}
@@ -588,19 +514,19 @@ export default function AdminDashboard() {
             </div>
 
             {auditLoading && (
-              <div className="px-6 py-8 text-center text-sm theme-text-muted">
+              <div className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
                 Loading audit entries...
               </div>
             )}
 
             {!auditLoading && auditEntries.length === 0 && (
-              <div className="px-6 py-8 text-center text-sm theme-text-muted">
+              <div className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
                 No audit entries found for the selected action type.
               </div>
             )}
 
-            <div className="px-6 py-4 theme-border border-t flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <p className="text-sm theme-text-secondary">
+            <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <p className="text-sm text-gray-600 dark:text-gray-300">
                 Showing{' '}
                 {(auditPage - 1) * auditPageSize +
                   (auditEntries.length ? 1 : 0)}
@@ -614,12 +540,11 @@ export default function AdminDashboard() {
                     setAuditPage((previous) => Math.max(previous - 1, 1))
                   }
                   disabled={auditPage <= 1 || auditLoading}
-                  className="px-3 py-2 text-sm theme-border border rounded-md theme-text-primary theme-surface-muted hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
-                  aria-label={`Go to previous page. Current page is ${auditPage} of ${auditTotalPages}`}
+                  className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Previous
                 </button>
-                <span className="text-sm theme-text-secondary" aria-live="polite" aria-atomic="true">
+                <span className="text-sm text-gray-600 dark:text-gray-300">
                   Page {auditPage} of {auditTotalPages}
                 </span>
                 <button
@@ -630,8 +555,7 @@ export default function AdminDashboard() {
                     )
                   }
                   disabled={auditPage >= auditTotalPages || auditLoading}
-                  className="px-3 py-2 text-sm theme-border border rounded-md theme-text-primary theme-surface-muted hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
-                  aria-label={`Go to next page. Current page is ${auditPage} of ${auditTotalPages}`}
+                  className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Next
                 </button>
@@ -641,7 +565,7 @@ export default function AdminDashboard() {
 
           {/* Audit Log Section */}
           <div className="mt-12">
-            <h2 className="text-2xl font-bold theme-text-primary mb-6">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
               Audit Log
             </h2>
             <AuditTable />

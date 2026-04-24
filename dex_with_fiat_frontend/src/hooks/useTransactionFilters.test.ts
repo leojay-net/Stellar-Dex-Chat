@@ -1,114 +1,95 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { KEYBOARD_SHORTCUTS } from './useTransactionFilters';
+import { renderHook, act } from '@testing-library/react';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import type { TransactionHistoryEntry } from '@/types';
+import { KEYBOARD_SHORTCUTS, useTransactionFilters } from './useTransactionFilters';
 
-// ---------- Issue #711: Keyboard shortcuts ----------
+let mockSearchParams = new URLSearchParams('tab=history');
+const mockPush = vi.fn((url: string) => {
+  const query = url.split('?')[1] ?? '';
+  mockSearchParams = new URLSearchParams(query);
+});
 
-describe('useTransactionFilters keyboard shortcuts', () => {
-  describe('KEYBOARD_SHORTCUTS constant', () => {
-    it('should define a clearAll shortcut', () => {
-      expect(KEYBOARD_SHORTCUTS.clearAll).toBeDefined();
-      expect(KEYBOARD_SHORTCUTS.clearAll.key).toBe('x');
-      expect(KEYBOARD_SHORTCUTS.clearAll.modifiers).toContain('Ctrl');
-      expect(KEYBOARD_SHORTCUTS.clearAll.modifiers).toContain('Shift');
-    });
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: mockPush }),
+  usePathname: () => '/transactions',
+  useSearchParams: () => mockSearchParams,
+}));
 
-    it('should define cycleStatus shortcut with key 1', () => {
-      expect(KEYBOARD_SHORTCUTS.cycleStatus.key).toBe('1');
-      expect(KEYBOARD_SHORTCUTS.cycleStatus.modifiers).toContain('Ctrl');
-    });
+const transactions: TransactionHistoryEntry[] = [
+  {
+    id: '1',
+    kind: 'deposit',
+    status: 'completed',
+    asset: 'XLM',
+    message: 'Deposit completed',
+    createdAt: new Date('2026-01-01T10:00:00Z'),
+  },
+  {
+    id: '2',
+    kind: 'payout',
+    status: 'failed',
+    asset: 'USDC',
+    message: 'Payout failed',
+    createdAt: new Date('2026-01-02T10:00:00Z'),
+  },
+];
 
-    it('should define cycleAsset shortcut with key 2', () => {
-      expect(KEYBOARD_SHORTCUTS.cycleAsset.key).toBe('2');
-      expect(KEYBOARD_SHORTCUTS.cycleAsset.modifiers).toContain('Ctrl');
-    });
-
-    it('should define cycleNetwork shortcut with key 3', () => {
-      expect(KEYBOARD_SHORTCUTS.cycleNetwork.key).toBe('3');
-      expect(KEYBOARD_SHORTCUTS.cycleNetwork.modifiers).toContain('Ctrl');
-    });
-
-    it('should have descriptions for all shortcuts', () => {
-      const shortcuts = Object.values(KEYBOARD_SHORTCUTS);
-      for (const shortcut of shortcuts) {
-        expect(shortcut.description).toBeTruthy();
-        expect(typeof shortcut.description).toBe('string');
-      }
-    });
+describe('useTransactionFilters', () => {
+  beforeEach(() => {
+    mockSearchParams = new URLSearchParams('tab=history');
+    mockPush.mockClear();
+    vi.useFakeTimers();
   });
 
-  describe('keyboard event handler integration', () => {
-    let addSpy: ReturnType<typeof vi.spyOn>;
-    let removeSpy: ReturnType<typeof vi.spyOn>;
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
 
-    beforeEach(() => {
-      addSpy = vi.spyOn(window, 'addEventListener');
-      removeSpy = vi.spyOn(window, 'removeEventListener');
+  it('debounces URL updates and combines rapid filter toggles', () => {
+    const { result } = renderHook(() => useTransactionFilters(transactions));
+
+    act(() => {
+      result.current.toggleFilter('status', 'completed');
+      result.current.toggleFilter('asset', 'XLM');
     });
 
-    afterEach(() => {
-      addSpy.mockRestore();
-      removeSpy.mockRestore();
+    expect(mockPush).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(149);
+    });
+    expect(mockPush).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(1);
     });
 
-    it('should not trigger shortcuts when target is an input element', () => {
-      const mockClearAll = vi.fn();
-      const input = document.createElement('input');
-      document.body.appendChild(input);
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledWith(
+      '/transactions?tab=history&status=completed&asset=XLM',
+      { scroll: false },
+    );
+  });
 
-      // Simulate the handler logic for input check
-      const target = input as HTMLElement;
-      const shouldIgnore =
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.isContentEditable;
+  it('applies pending filter state immediately before debounce flush', () => {
+    const { result } = renderHook(() => useTransactionFilters(transactions));
 
-      expect(shouldIgnore).toBe(true);
-      expect(mockClearAll).not.toHaveBeenCalled();
+    expect(result.current.filteredTransactions).toHaveLength(2);
 
-      document.body.removeChild(input);
+    act(() => {
+      result.current.toggleFilter('status', 'completed');
     });
 
-    it('should not trigger shortcuts when target is a textarea element', () => {
-      const textarea = document.createElement('textarea');
-      const target = textarea as HTMLElement;
-      const shouldIgnore =
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.isContentEditable;
+    // UI should reflect optimistic filter state immediately.
+    expect(result.current.filteredTransactions).toHaveLength(1);
+    expect(result.current.filteredTransactions[0]?.status).toBe('completed');
+  });
 
-      expect(shouldIgnore).toBe(true);
-    });
-
-    it('should not trigger shortcuts when target is contenteditable', () => {
-      const div = document.createElement('div');
-      div.contentEditable = 'true';
-      const shouldIgnore = div.isContentEditable;
-
-      expect(shouldIgnore).toBe(true);
-    });
-
-    it('should not trigger without modifier keys', () => {
-      const isModified = false; // Mocking behavior
-      expect(isModified).toBe(false);
-    });
-
-    it('should trigger with Ctrl+Shift', () => {
-      const isModified = true; // Mocking behavior
-      expect(isModified).toBe(true);
-    });
-
-    it('should map keys correctly to filter categories', () => {
-      const keyMap: Record<string, string> = {
-        x: 'clearAll',
-        '1': 'status',
-        '2': 'asset',
-        '3': 'network',
-      };
-
-      expect(keyMap['x']).toBe('clearAll');
-      expect(keyMap['1']).toBe('status');
-      expect(keyMap['2']).toBe('asset');
-      expect(keyMap['3']).toBe('network');
-    });
+  it('keeps keyboard shortcut metadata intact', () => {
+    expect(KEYBOARD_SHORTCUTS.clearAll.key).toBe('x');
+    expect(KEYBOARD_SHORTCUTS.cycleStatus.key).toBe('1');
+    expect(KEYBOARD_SHORTCUTS.cycleAsset.key).toBe('2');
+    expect(KEYBOARD_SHORTCUTS.cycleNetwork.key).toBe('3');
   });
 });

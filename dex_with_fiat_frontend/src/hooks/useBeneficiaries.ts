@@ -2,6 +2,15 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
+const KEYBOARD_SHORTCUTS = {
+  ADD_BENEFICIARY: 'Ctrl+B',
+  FOCUS_BENEFICIARIES: 'Ctrl+Shift+B',
+  NAVIGATE_UP: 'ArrowUp',
+  NAVIGATE_DOWN: 'ArrowDown',
+  SELECT_BENEFICIARY: 'Enter',
+  DELETE_BENEFICIARY: 'Delete',
+} as const;
+
 export interface Beneficiary {
   id: string;
   name: string;
@@ -22,6 +31,7 @@ function generateId(): string {
 export function useBeneficiaries() {
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState<number>(-1);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -88,12 +98,85 @@ export function useBeneficiaries() {
     [beneficiaries],
   );
 
+  // Keyboard shortcuts handling
+  const handleKeyboardShortcut = useCallback((event: KeyboardEvent) => {
+    const { ctrlKey, shiftKey, key } = event;
+
+    // Add beneficiary: Ctrl+B
+    if (ctrlKey && !shiftKey && key === 'b') {
+      event.preventDefault();
+      // This would typically trigger a UI action to add beneficiary
+      // For now, we'll just log or provide a callback
+      return 'add';
+    }
+
+    // Focus beneficiaries: Ctrl+Shift+B
+    if (ctrlKey && shiftKey && key === 'B') {
+      event.preventDefault();
+      return 'focus';
+    }
+
+    // Navigation: ArrowUp/ArrowDown when beneficiaries are focused
+    if (key === 'ArrowUp' && selectedIndex > 0) {
+      event.preventDefault();
+      setSelectedIndex(selectedIndex - 1);
+      return 'navigate-up';
+    }
+
+    if (key === 'ArrowDown' && selectedIndex < beneficiaries.length - 1) {
+      event.preventDefault();
+      setSelectedIndex(selectedIndex + 1);
+      return 'navigate-down';
+    }
+
+    // Select: Enter
+    if (key === 'Enter' && selectedIndex >= 0) {
+      event.preventDefault();
+      return 'select';
+    }
+
+    // Delete: Delete key
+    if (key === 'Delete' && selectedIndex >= 0) {
+      event.preventDefault();
+      const beneficiaryToDelete = beneficiaries[selectedIndex];
+      if (beneficiaryToDelete) {
+        deleteBeneficiary(beneficiaryToDelete.id);
+      }
+      return 'delete';
+    }
+
+    return null;
+  }, [selectedIndex, beneficiaries, deleteBeneficiary]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      handleKeyboardShortcut(event);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyboardShortcut]);
+
+  const selectBeneficiary = useCallback((index: number) => {
+    setSelectedIndex(index);
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIndex(-1);
+  }, []);
+
   return {
     beneficiaries,
     isLoaded,
+    selectedIndex,
     addBeneficiary,
     renameBeneficiary,
     deleteBeneficiary,
     getBeneficiary,
+    selectBeneficiary,
+    clearSelection,
+    keyboardShortcuts: KEYBOARD_SHORTCUTS,
   };
 }

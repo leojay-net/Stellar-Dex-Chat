@@ -30,6 +30,7 @@ import CopyButton from '@/components/ui/CopyButton';
 import { useAccessibleModal } from '@/hooks/useAccessibleModal';
 import { useIdempotentAction } from '@/hooks/useIdempotentAction';
 import { getOrCreateClientSessionId } from '@/lib/clientSession';
+import { chatTelemetry } from '@/lib/chatTelemetry';
 
 interface Bank {
   id: number;
@@ -140,6 +141,19 @@ export default function BankDetailsModal({
     ]);
   };
 
+  const wasOpenRef = useRef(false);
+  useEffect(() => {
+    if (isOpen && !wasOpenRef.current) {
+      chatTelemetry.fiatPayoutStep({ action: 'open', step: 1, xlmAmount });
+    }
+    wasOpenRef.current = isOpen;
+  }, [isOpen, xlmAmount]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    chatTelemetry.fiatPayoutStep({ action: 'step_change', step, xlmAmount });
+  }, [step, isOpen, xlmAmount]);
+
   // Fetch banks when modal opens
   useEffect(() => {
     if (!isOpen) return;
@@ -245,11 +259,28 @@ export default function BankDetailsModal({
       } = await res.json();
       if (json.success) {
         setVerifiedAccount(json.data);
+        chatTelemetry.fiatPayoutStep({
+          action: 'account_verify_success',
+          step: 2,
+          xlmAmount,
+        });
       } else {
         setVerifyError(json.message ?? 'Account verification failed');
+        chatTelemetry.fiatPayoutStep({
+          action: 'account_verify_fail',
+          step: 2,
+          xlmAmount,
+          errorMessage: json.message ?? 'Account verification failed',
+        });
       }
     } catch {
       setVerifyError('Account verification failed. Please try again.');
+      chatTelemetry.fiatPayoutStep({
+        action: 'account_verify_fail',
+        step: 2,
+        xlmAmount,
+        errorMessage: 'network_error',
+      });
     } finally {
       setVerifying(false);
     }
@@ -266,6 +297,11 @@ export default function BankDetailsModal({
       return;
 
     await executePayoutConfirm(async (idempotencyKey) => {
+      chatTelemetry.fiatPayoutStep({
+        action: 'confirm_attempt',
+        step: 3,
+        xlmAmount,
+      });
       setPayoutLoading(true);
       setPayoutError('');
       setStatusEvents([]);
@@ -355,6 +391,11 @@ export default function BankDetailsModal({
         setIsPollingStatus(false);
         pushStatusEvent('success', 'Bank transfer confirmed');
         setStep(4);
+        chatTelemetry.fiatPayoutStep({
+          action: 'confirm_success',
+          step: 4,
+          xlmAmount,
+        });
         addNotification(
           'payout_success',
           'Fiat payout successfully completed!',
@@ -364,6 +405,12 @@ export default function BankDetailsModal({
           err instanceof Error
             ? err.message
             : 'Payout failed. Please try again.';
+        chatTelemetry.fiatPayoutStep({
+          action: 'confirm_error',
+          step: 3,
+          xlmAmount,
+          errorMessage: errorMsg,
+        });
         setPayoutError(errorMsg);
         setIsPollingStatus(false);
         pushStatusEvent('failed', `Transfer failed: ${errorMsg}`);
@@ -375,6 +422,7 @@ export default function BankDetailsModal({
   };
 
   const handleClose = () => {
+    chatTelemetry.fiatPayoutStep({ action: 'close', step, xlmAmount });
     // Reset all state before closing
     setStep(1);
     setBanks([]);
@@ -626,7 +674,15 @@ export default function BankDetailsModal({
                       <button
                         key={bank.id}
                         type="button"
-                        onClick={() => setSelectedBank(bank)}
+                        onClick={() => {
+                          setSelectedBank(bank);
+                          chatTelemetry.fiatPayoutStep({
+                            action: 'bank_selected',
+                            step: 1,
+                            xlmAmount,
+                            bankCode: bank.code,
+                          });
+                        }}
                         className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
                           selectedBank?.id === bank.id
                             ? 'bg-blue-600 text-white'
