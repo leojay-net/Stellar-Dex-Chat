@@ -32,16 +32,23 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
     reminderFrequency,
     setReminderFrequency,
   } = useUserPreferences();
-  const { consented: telemetryConsented, setConsent: setTelemetryConsent } = useChatTelemetry();
-  const { beneficiaries, addBeneficiary, deleteBeneficiary, renameBeneficiary } = useBeneficiaries();
+  const { consented: telemetryConsented, setConsent: setTelemetryConsent } =
+    useChatTelemetry();
+  const {
+    beneficiaries,
+    addBeneficiary,
+    deleteBeneficiary,
+    renameBeneficiary,
+  } = useBeneficiaries();
   const panelRef = useRef<HTMLDivElement>(null);
-  
+
   // Beneficiary management states
   const [showAddBeneficiary, setShowAddBeneficiary] = useState(false);
-  const [editingBeneficiary, setEditingBeneficiary] = useState<Beneficiary | null>(null);
+  const [editingBeneficiary, setEditingBeneficiary] =
+    useState<Beneficiary | null>(null);
   const [newBeneficiaryName, setNewBeneficiaryName] = useState('');
   const [newBeneficiaryAddress, setNewBeneficiaryAddress] = useState('');
-  
+
   useAccessibleModal(isOpen, panelRef, onClose);
 
   if (!isOpen) return null;
@@ -57,7 +64,14 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
         renameBeneficiary(editingBeneficiary.id, newBeneficiaryName);
         setEditingBeneficiary(null);
       } else {
-        addBeneficiary(0, 'Unknown Bank', '000', newBeneficiaryAddress, newBeneficiaryAddress, newBeneficiaryName);
+        addBeneficiary(
+          0,
+          'Unknown Bank',
+          '000',
+          newBeneficiaryAddress,
+          newBeneficiaryAddress,
+          newBeneficiaryName,
+        );
       }
       setNewBeneficiaryName('');
       setNewBeneficiaryAddress('');
@@ -162,7 +176,9 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
             </p>
 
             {showAddBeneficiary && (
-              <div className={`p-3 rounded-lg mb-3 border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+              <div
+                className={`p-3 rounded-lg mb-3 border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}
+              >
                 <div className="space-y-3">
                   <div>
                     <label
@@ -258,10 +274,14 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                     }`}
                   >
                     <div className="min-w-0 flex-1">
-                      <p className={`text-xs font-medium truncate ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>
+                      <p
+                        className={`text-xs font-medium truncate ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+                      >
                         {beneficiary.name}
                       </p>
-                      <p className={`text-[10px] truncate ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                      <p
+                        className={`text-[10px] truncate ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}
+                      >
                         {beneficiary.accountName}
                       </p>
                     </div>

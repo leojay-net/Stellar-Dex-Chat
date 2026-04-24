@@ -12,12 +12,16 @@ export interface AdminMetrics {
  */
 export function aggregatePayoutMetrics(records: ReconciliationRecord[]) {
   return {
-    pendingPayouts: records.filter(r => r.payoutStatus === 'pending' || r.status === 'unmatched').length,
-    failedPayouts: records.filter(r => r.payoutStatus === 'failed' || r.status === 'error').length,
+    pendingPayouts: records.filter(
+      (r) => r.payoutStatus === 'pending' || r.status === 'unmatched',
+    ).length,
+    failedPayouts: records.filter(
+      (r) => r.payoutStatus === 'failed' || r.status === 'error',
+    ).length,
   };
 }
 
 /**
- * Hook or helper could be added here if needed, 
+ * Hook or helper could be added here if needed,
  * but for now we'll use base logic in the components.
  */

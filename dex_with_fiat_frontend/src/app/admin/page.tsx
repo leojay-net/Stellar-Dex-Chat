@@ -347,7 +347,11 @@ export default function AdminDashboard() {
               <h2 className="text-xl font-semibold theme-text-primary mb-6">
                 Daily Transaction Volume
               </h2>
-              <div className="h-80 w-full relative" role="img" aria-label="Transaction volume chart showing volume over time in XLM">
+              <div
+                className="h-80 w-full relative"
+                role="img"
+                aria-label="Transaction volume chart showing volume over time in XLM"
+              >
                 {maxVolume > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart
@@ -449,7 +453,10 @@ export default function AdminDashboard() {
               <h2 className="text-lg font-medium theme-text-secondary mb-2">
                 30-Day Volume (XLM)
               </h2>
-              <div className="text-4xl font-bold theme-text-primary" aria-label={`30-day transaction volume: ${totalVolume.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM`}>
+              <div
+                className="text-4xl font-bold theme-text-primary"
+                aria-label={`30-day transaction volume: ${totalVolume.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM`}
+              >
                 {totalVolume.toLocaleString(undefined, {
                   maximumFractionDigits: 2,
                 })}
@@ -504,7 +511,11 @@ export default function AdminDashboard() {
                       backgroundColor: 'var(--color-success)',
                       color: '#fff',
                     }}
-                    aria-label={exportingCsv ? 'Exporting audit log to CSV file' : 'Export audit log to CSV file'}
+                    aria-label={
+                      exportingCsv
+                        ? 'Exporting audit log to CSV file'
+                        : 'Export audit log to CSV file'
+                    }
                     aria-describedby="audit-action-filter"
                   >
                     {exportingCsv ? 'Exporting...' : 'Export CSV'}
@@ -526,22 +537,41 @@ export default function AdminDashboard() {
             )}
 
             <div className="overflow-x-auto">
-              <table className="min-w-full" role="table" aria-label="Admin audit log entries">
+              <table
+                className="min-w-full"
+                role="table"
+                aria-label="Admin audit log entries"
+              >
                 <thead className="theme-surface-muted">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider" scope="col">
+                    <th
+                      className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider"
+                      scope="col"
+                    >
                       Timestamp
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider" scope="col">
+                    <th
+                      className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider"
+                      scope="col"
+                    >
                       Action
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider" scope="col">
+                    <th
+                      className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider"
+                      scope="col"
+                    >
                       Admin Address
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider" scope="col">
+                    <th
+                      className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider"
+                      scope="col"
+                    >
                       Parameters
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider" scope="col">
+                    <th
+                      className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider"
+                      scope="col"
+                    >
                       Result
                     </th>
                   </tr>
@@ -619,7 +649,11 @@ export default function AdminDashboard() {
                 >
                   Previous
                 </button>
-                <span className="text-sm theme-text-secondary" aria-live="polite" aria-atomic="true">
+                <span
+                  className="text-sm theme-text-secondary"
+                  aria-live="polite"
+                  aria-atomic="true"
+                >
                   Page {auditPage} of {auditTotalPages}
                 </span>
                 <button

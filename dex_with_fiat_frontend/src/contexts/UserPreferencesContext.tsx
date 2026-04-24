@@ -46,11 +46,15 @@ export function UserPreferencesProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [fiatCurrencyState, setFiatCurrencyState] = useState<FiatCurrencyCode>(DEFAULT_CURRENCY);
+  const [fiatCurrencyState, setFiatCurrencyState] =
+    useState<FiatCurrencyCode>(DEFAULT_CURRENCY);
   const [remindersEnabledState, setRemindersEnabledState] = useState(false);
-  const [reminderFrequencyState, setReminderFrequencyState] = useState<'weekly' | 'monthly'>('weekly');
+  const [reminderFrequencyState, setReminderFrequencyState] = useState<
+    'weekly' | 'monthly'
+  >('weekly');
   const [maskingEnabledState, setMaskingEnabledState] = useState(false);
-  const [maskingStyleState, setMaskingStyleState] = useState<MaskingStyle>('asterisk');
+  const [maskingStyleState, setMaskingStyleState] =
+    useState<MaskingStyle>('asterisk');
 
   // Restore saved preferences on mount
   useEffect(() => {
@@ -82,8 +86,13 @@ export function UserPreferencesProvider({
       setMaskingEnabledState(savedMasking === 'true');
     }
 
-    const savedMaskingStyle = localStorage.getItem(MASKING_STYLE_KEY) as MaskingStyle | null;
-    if (savedMaskingStyle && ['asterisk', 'block', 'initial', 'pipe'].includes(savedMaskingStyle)) {
+    const savedMaskingStyle = localStorage.getItem(
+      MASKING_STYLE_KEY,
+    ) as MaskingStyle | null;
+    if (
+      savedMaskingStyle &&
+      ['asterisk', 'block', 'initial', 'pipe'].includes(savedMaskingStyle)
+    ) {
       setMaskingStyleState(savedMaskingStyle as MaskingStyle);
     }
   }, []);
@@ -114,7 +123,8 @@ export function UserPreferencesProvider({
   };
 
   const currencySymbol =
-    SUPPORTED_FIAT_CURRENCIES.find((c) => c.code === fiatCurrencyState)?.symbol ?? '$';
+    SUPPORTED_FIAT_CURRENCIES.find((c) => c.code === fiatCurrencyState)
+      ?.symbol ?? '$';
 
   return (
     <UserPreferencesContext.Provider
@@ -140,7 +150,9 @@ export function UserPreferencesProvider({
 export const useUserPreferences = () => {
   const context = useContext(UserPreferencesContext);
   if (!context) {
-    throw new Error('useUserPreferences must be used within UserPreferencesProvider');
+    throw new Error(
+      'useUserPreferences must be used within UserPreferencesProvider',
+    );
   }
   return context;
 };

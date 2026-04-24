@@ -186,21 +186,24 @@ export default function BankDetailsModal({
   }, [isOpen]);
 
   // Fetch a locked quote when the user reaches step 3
-  const fetchQuote = useCallback((signal?: AbortSignal) => {
-    if (xlmAmount <= 0) return;
-    setQuoteLoading(true);
-    setLockedQuote(null);
-    fetchLockedQuote('XLM', xlmAmount, 'ngn', signal)
-      .then((quote) => {
-        setLockedQuote(quote);
-        setQuoteSecondsLeft(120);
-      })
-      .catch((err) => {
-        if (err.name === 'AbortError') return;
-        setLockedQuote(null);
-      })
-      .finally(() => setQuoteLoading(false));
-  }, [xlmAmount]);
+  const fetchQuote = useCallback(
+    (signal?: AbortSignal) => {
+      if (xlmAmount <= 0) return;
+      setQuoteLoading(true);
+      setLockedQuote(null);
+      fetchLockedQuote('XLM', xlmAmount, 'ngn', signal)
+        .then((quote) => {
+          setLockedQuote(quote);
+          setQuoteSecondsLeft(120);
+        })
+        .catch((err) => {
+          if (err.name === 'AbortError') return;
+          setLockedQuote(null);
+        })
+        .finally(() => setQuoteLoading(false));
+    },
+    [xlmAmount],
+  );
 
   useEffect(() => {
     if (!isOpen || step !== 3) return;
@@ -979,7 +982,7 @@ export default function BankDetailsModal({
                 </div>
                 <button
                   type="button"
-                  onClick={fetchQuote}
+                  onClick={() => fetchQuote()}
                   disabled={quoteLoading}
                   className="flex items-center gap-1 text-blue-400 hover:text-blue-300 whitespace-nowrap disabled:opacity-50"
                 >

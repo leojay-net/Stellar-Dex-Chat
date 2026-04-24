@@ -106,7 +106,10 @@ function SessionRow({
           {/* Export Menu */}
           <div className="relative">
             <button
-              onClick={(e) => { e.stopPropagation(); setShowExportMenu(!showExportMenu); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowExportMenu(!showExportMenu);
+              }}
               className="theme-text-muted hover:bg-[var(--color-primary-soft)] p-1 rounded transition-all hover:scale-110"
               title="Export conversation"
             >
@@ -443,7 +446,10 @@ export default function ChatHistorySidebar({
                 {contractEvents.length > 0 ? (
                   <div className="space-y-2">
                     {contractEvents.map((event) => (
-                      <div key={event.id} className="flex items-center justify-between text-[11px] group">
+                      <div
+                        key={event.id}
+                        className="flex items-center justify-between text-[11px] group"
+                      >
                         <div className="flex items-center gap-2 overflow-hidden">
                           {event.type === 'deposit' ? (
                             <div className="p-1 rounded bg-green-500/10 text-green-500">
@@ -456,26 +462,42 @@ export default function ChatHistorySidebar({
                           )}
                           <div className="flex flex-col min-w-0">
                             <span className="font-medium truncate text-[var(--color-text-secondary)]">
-                              {event.actor.slice(0, 4)}...{event.actor.slice(-4)}
+                              {event.actor.slice(0, 4)}...
+                              {event.actor.slice(-4)}
                             </span>
                             <span className="text-[10px] text-[var(--color-text-muted)]">
-                              {new Date(event.ledgerClosedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {new Date(
+                                event.ledgerClosedAt,
+                              ).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
                             </span>
                           </div>
                         </div>
-                        <span className={`font-bold ${event.type === 'deposit' ? 'text-green-500' : 'text-orange-500'}`}>
-                          {event.type === 'deposit' ? '+' : '-'}{(parseFloat(event.amount) / 10000000).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        <span
+                          className={`font-bold ${event.type === 'deposit' ? 'text-green-500' : 'text-orange-500'}`}
+                        >
+                          {event.type === 'deposit' ? '+' : '-'}
+                          {(parseFloat(event.amount) / 10000000).toLocaleString(
+                            undefined,
+                            { maximumFractionDigits: 2 },
+                          )}
                         </span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-[10px] text-[var(--color-text-muted)] text-center py-2">No recent bridge activity</p>
+                  <p className="text-[10px] text-[var(--color-text-muted)] text-center py-2">
+                    No recent bridge activity
+                  </p>
                 )}
               </div>
             )}
 
-            <div className={`p-2 ${isCollapsed ? 'flex flex-col items-center' : ''}`}>
+            <div
+              className={`p-2 ${isCollapsed ? 'flex flex-col items-center' : ''}`}
+            >
               {!hasHistory ? (
                 <EmptyState
                   icon={MessageSquare}
@@ -491,7 +513,10 @@ export default function ChatHistorySidebar({
                   icon={Search}
                   title="No conversations found"
                   description={`No results for "${searchQuery}"`}
-                  cta={{ label: 'Clear search', onClick: () => setSearchQuery('') }}
+                  cta={{
+                    label: 'Clear search',
+                    onClick: () => setSearchQuery(''),
+                  }}
                 />
               ) : (
                 <>
@@ -546,11 +571,17 @@ export default function ChatHistorySidebar({
         )}
       </div>
 
-      <div className={`theme-border border-t p-4 ${isCollapsed ? 'flex flex-col items-center' : ''}`}>
+      <div
+        className={`theme-border border-t p-4 ${isCollapsed ? 'flex flex-col items-center' : ''}`}
+      >
         <PriceTicker symbols={['XLM', 'ETH', 'BTC']} currency="usd" />
 
-        <div className={`theme-border border-t p-4 ${isCollapsed ? 'flex flex-col items-center' : ''}`}>
-          <div className={`flex items-center justify-between mb-3 w-full ${isCollapsed ? 'flex-col gap-3' : ''}`}>
+        <div
+          className={`theme-border border-t p-4 ${isCollapsed ? 'flex flex-col items-center' : ''}`}
+        >
+          <div
+            className={`flex items-center justify-between mb-3 w-full ${isCollapsed ? 'flex-col gap-3' : ''}`}
+          >
             <div className="flex items-center gap-2">
               <Coins className="w-4 h-4 text-[var(--color-primary)]" />
               {!isCollapsed && (

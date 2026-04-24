@@ -48,7 +48,8 @@ export default function AuditTable({}: AuditTableProps) {
 
       if (filters.actionType) params.append('actionType', filters.actionType);
       if (filters.status) params.append('status', filters.status);
-      if (filters.adminAddress) params.append('adminAddress', filters.adminAddress);
+      if (filters.adminAddress)
+        params.append('adminAddress', filters.adminAddress);
       if (filters.txHash) params.append('txHash', filters.txHash);
       if (filters.startDate) params.append('startDate', filters.startDate);
       if (filters.endDate) params.append('endDate', filters.endDate);
@@ -65,16 +66,20 @@ export default function AuditTable({}: AuditTableProps) {
       }
 
       const data = await response.json();
-      setEntries(data.entries.map((entry: AuditEntry) => ({
-        ...entry,
-        timestamp: new Date(entry.timestamp),
-      })));
+      setEntries(
+        data.entries.map((entry: AuditEntry) => ({
+          ...entry,
+          timestamp: new Date(entry.timestamp),
+        })),
+      );
       setTotalEntries(data.total);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         return;
       }
-      setError(err instanceof Error ? err.message : 'Failed to fetch audit entries');
+      setError(
+        err instanceof Error ? err.message : 'Failed to fetch audit entries',
+      );
       console.error('Audit fetch error:', err);
     } finally {
       if (!signal.aborted) {
@@ -133,30 +138,37 @@ export default function AuditTable({}: AuditTableProps) {
   };
 
   const getStatusBadge = (status: AuditEntry['status']) => {
-    const baseClasses =
-      'px-2 py-1 text-xs font-medium rounded-full';
+    const baseClasses = 'px-2 py-1 text-xs font-medium rounded-full';
     switch (status) {
       case 'success':
         return (
-          <span className={`${baseClasses} bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400`}>
+          <span
+            className={`${baseClasses} bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400`}
+          >
             Success
           </span>
         );
       case 'failed':
         return (
-          <span className={`${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400`}>
+          <span
+            className={`${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400`}
+          >
             Failed
           </span>
         );
       case 'pending':
         return (
-          <span className={`${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400`}>
+          <span
+            className={`${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400`}
+          >
             Pending
           </span>
         );
       default:
         return (
-          <span className={`${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300`}>
+          <span
+            className={`${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300`}
+          >
             {status}
           </span>
         );
@@ -190,9 +202,7 @@ export default function AuditTable({}: AuditTableProps) {
             </label>
             <select
               value={filters.actionType}
-              onChange={(e) =>
-                handleFilterChange('actionType', e.target.value)
-              }
+              onChange={(e) => handleFilterChange('actionType', e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
               <option value="">All Types</option>
@@ -255,9 +265,7 @@ export default function AuditTable({}: AuditTableProps) {
             <input
               type="date"
               value={filters.startDate}
-              onChange={(e) =>
-                handleFilterChange('startDate', e.target.value)
-              }
+              onChange={(e) => handleFilterChange('startDate', e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             />
           </div>
@@ -304,7 +312,9 @@ export default function AuditTable({}: AuditTableProps) {
         {entries.length === 0 && !loading ? (
           <div className="p-8 text-center text-gray-500 dark:text-gray-400">
             <p className="text-lg mb-2">No audit entries found</p>
-            <p className="text-sm">Try adjusting your filters or check back later</p>
+            <p className="text-sm">
+              Try adjusting your filters or check back later
+            </p>
           </div>
         ) : (
           <table className="w-full">

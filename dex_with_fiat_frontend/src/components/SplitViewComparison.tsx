@@ -44,7 +44,10 @@ function ThreadPane({
   const scrollToMessage = (id: string) => {
     const el = scrollRef.current?.querySelector(`[data-message-id="${id}"]`);
     if (el && typeof (el as HTMLElement).scrollIntoView === 'function') {
-      (el as HTMLElement).scrollIntoView({ block: 'center', behavior: 'smooth' });
+      (el as HTMLElement).scrollIntoView({
+        block: 'center',
+        behavior: 'smooth',
+      });
     }
   };
 
@@ -54,7 +57,7 @@ function ThreadPane({
     if (newId) scrollToMessage(newId);
   };
 
-  const formatTimestamp = (timestamp: number) => {
+  const formatTimestamp = (timestamp: number | Date) => {
     if (!mounted) return ''; // Avoid hydration mismatch by not rendering on server
     return new Date(timestamp).toLocaleString([], {
       month: 'short',
@@ -137,7 +140,9 @@ function ThreadPane({
                 >
                   <span
                     className={`font-semibold ${
-                      isUser ? 'text-[var(--color-primary)]' : 'text-[var(--color-success)]'
+                      isUser
+                        ? 'text-[var(--color-primary)]'
+                        : 'text-[var(--color-success)]'
                     }`}
                   >
                     {isUser ? 'You' : 'Assistant'}
@@ -145,9 +150,12 @@ function ThreadPane({
                   <p className="mt-1 line-clamp-3 leading-relaxed text-[var(--color-text-secondary)]">
                     {msg.content}
                   </p>
-                   <p className="mt-1 text-[10px] text-[var(--color-text-muted)]" data-testid="message-timestamp">
-                     {formatTimestamp(msg.timestamp)}
-                   </p>
+                  <p
+                    className="mt-1 text-[10px] text-[var(--color-text-muted)]"
+                    data-testid="message-timestamp"
+                  >
+                    {formatTimestamp(msg.timestamp)}
+                  </p>
                 </button>
               );
             })
@@ -165,8 +173,16 @@ export default function SplitViewComparison({
   splitView,
   sessions,
 }: SplitViewComparisonProps) {
-  const { state, close, setLeftSession, setRightSession, swapSessions, selectMessage, leftSession, rightSession } =
-    splitView;
+  const {
+    state,
+    close,
+    setLeftSession,
+    setRightSession,
+    swapSessions,
+    selectMessage,
+    leftSession,
+    rightSession,
+  } = splitView;
 
   const { isOnline, wasOffline, resetWasOffline } = useOnlineStatus();
   const { addToast } = useToast();
@@ -185,7 +201,8 @@ export default function SplitViewComparison({
       });
     } else if (!wasOnline && isOnline && wasOffline) {
       addToast({
-        message: 'Back online. Comparison panes will use the latest thread data.',
+        message:
+          'Back online. Comparison panes will use the latest thread data.',
         severity: 'success',
         durationMs: 3000,
       });
@@ -212,7 +229,10 @@ export default function SplitViewComparison({
         aria-label="Comparison actions"
         className="flex items-center justify-between px-4 py-2 border-b border-[var(--color-border)] bg-[var(--color-surface-muted)] flex-shrink-0"
       >
-        <h2 id={dialogTitleId} className="text-sm font-semibold text-[var(--color-text-primary)]">
+        <h2
+          id={dialogTitleId}
+          className="text-sm font-semibold text-[var(--color-text-primary)]"
+        >
           Compare Threads
         </h2>
 

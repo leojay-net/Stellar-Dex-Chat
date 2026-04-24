@@ -13,7 +13,7 @@ export type ChatEventName =
   | 'tx_confirm'
   | 'fiat_payout_step';
 
-export interface ChatEvent<P extends object = Record<string, unknown>> {
+export interface ChatEvent<P extends object = object> {
   /** Normalized event name. */
   name: ChatEventName;
   /** Schema version for this payload shape. */
@@ -76,8 +76,7 @@ export interface AvatarColorTelemetryPayload {
   avatarTextColor?: string;
 }
 
-export interface AccessibleAvatarColorTelemetryPayload
-  extends AvatarColorTelemetryPayload {
+export interface AccessibleAvatarColorTelemetryPayload extends AvatarColorTelemetryPayload {
   avatarTextColor: string;
   avatarContrastRatio: number;
   avatarContrastCompliant: boolean;
@@ -112,9 +111,7 @@ function getRelativeLuminance(color: string): number | null {
   const hex = normalizedColor.slice(1);
   const channels = [0, 2, 4].map((offset) => {
     const sRGB = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
-    return sRGB <= 0.03928
-      ? sRGB / 12.92
-      : ((sRGB + 0.055) / 1.055) ** 2.4;
+    return sRGB <= 0.03928 ? sRGB / 12.92 : ((sRGB + 0.055) / 1.055) ** 2.4;
   });
 
   return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
@@ -127,10 +124,7 @@ export function calculateContrastRatio(
   const foregroundLuminance = getRelativeLuminance(foregroundColor);
   const backgroundLuminance = getRelativeLuminance(backgroundColor);
 
-  if (
-    foregroundLuminance === null ||
-    backgroundLuminance === null
-  ) {
+  if (foregroundLuminance === null || backgroundLuminance === null) {
     return null;
   }
 
@@ -173,12 +167,14 @@ export function getAccessibleAvatarTextColor(
     }
   }
 
-  return bestRatio >= MIN_CONTRAST_RATIO ? bestColor : normalizedPreferredTextColor;
+  return bestRatio >= MIN_CONTRAST_RATIO
+    ? bestColor
+    : normalizedPreferredTextColor;
 }
 
-export function withAccessibleAvatarContrast<
-  P extends object,
->(payload: P): P | (P & AccessibleAvatarColorTelemetryPayload) {
+export function withAccessibleAvatarContrast<P extends object>(
+  payload: P,
+): P | (P & AccessibleAvatarColorTelemetryPayload) {
   const avatarPayload = payload as Partial<AvatarColorTelemetryPayload>;
   const backgroundColor =
     typeof avatarPayload.avatarBackgroundColor === 'string'
@@ -236,10 +232,7 @@ export function setTelemetryConsent(enabled: boolean): void {
  * Dispatches a CustomEvent on window so any listener can react
  * (analytics adapters, logging, etc.) without tight coupling.
  */
-function emit<P extends object>(
-  name: ChatEventName,
-  payload: P,
-): void {
+function emit<P extends object>(name: ChatEventName, payload: P): void {
   if (!getTelemetryConsent()) return;
 
   const normalizedPayload =
@@ -255,11 +248,9 @@ function emit<P extends object>(
   };
 
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(
-      new CustomEvent('chat:telemetry', { detail: event }),
-    );
+    window.dispatchEvent(new CustomEvent('chat:telemetry', { detail: event }));
   }
-}   
+}
 
 // ── Public API ────────────────────────────────────────────────────────────
 

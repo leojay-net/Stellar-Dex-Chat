@@ -290,9 +290,7 @@ export default function CCIPBridgeModal({
             <p className="theme-text-primary font-semibold text-lg mb-2">
               CCIP transfer error
             </p>
-            <p className="theme-text-secondary text-sm mb-4">
-              {errorMessage}
-            </p>
+            <p className="theme-text-secondary text-sm mb-4">{errorMessage}</p>
             {explorerUrl && (
               <a
                 href={explorerUrl}

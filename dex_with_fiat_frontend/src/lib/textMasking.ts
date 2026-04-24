@@ -15,7 +15,10 @@ export interface MaskingOptions {
 /**
  * Generate mask character(s) for a term
  */
-export function generateMask(term: string, style: MaskingStyle = 'asterisk'): string {
+export function generateMask(
+  term: string,
+  style: MaskingStyle = 'asterisk',
+): string {
   const length = term.length;
 
   switch (style) {

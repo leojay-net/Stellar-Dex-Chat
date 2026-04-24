@@ -145,7 +145,8 @@ export default function PriceTicker({
       className="theme-surface-muted rounded-lg border theme-border p-3 outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
     >
       <span id={kbHelpId} className="sr-only">
-        Keyboard shortcuts: Left Arrow for previous page, Right Arrow for next page, R to refresh prices.
+        Keyboard shortcuts: Left Arrow for previous page, Right Arrow for next
+        page, R to refresh prices.
       </span>
 
       <div className="flex items-center justify-between mb-2">
@@ -166,8 +167,13 @@ export default function PriceTicker({
 
           if (!priceData) {
             return (
-              <div key={symbol} className="flex items-center justify-between text-xs h-6 opacity-50">
-                <span className="theme-text-secondary font-medium">{symbol}</span>
+              <div
+                key={symbol}
+                className="flex items-center justify-between text-xs h-6 opacity-50"
+              >
+                <span className="theme-text-secondary font-medium">
+                  {symbol}
+                </span>
                 <span className="theme-text-secondary">--</span>
               </div>
             );
@@ -202,9 +208,7 @@ export default function PriceTicker({
               >
                 {isPositive && <TrendingUp className="w-3 h-3" aria-hidden />}
                 {isNegative && <TrendingDown className="w-3 h-3" aria-hidden />}
-                <span className="font-medium">
-                  {formatChange(change)}
-                </span>
+                <span className="font-medium">{formatChange(change)}</span>
               </div>
             </div>
           );
@@ -220,22 +224,49 @@ export default function PriceTicker({
             aria-label="Previous price page"
             className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-30"
           >
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            <svg
+              className="w-3 h-3"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              aria-hidden
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
             </svg>
           </button>
-          <span className="text-[10px] theme-text-secondary font-medium" aria-live="polite">
+          <span
+            className="text-[10px] theme-text-secondary font-medium"
+            aria-live="polite"
+          >
             {currentPage + 1} / {totalPages}
           </span>
           <button
             type="button"
-            onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
+            onClick={() =>
+              setCurrentPage((p) => Math.min(totalPages - 1, p + 1))
+            }
             disabled={currentPage === totalPages - 1}
             aria-label="Next price page"
             className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-30"
           >
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            <svg
+              className="w-3 h-3"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              aria-hidden
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 5l7 7-7 7"
+              />
             </svg>
           </button>
         </div>

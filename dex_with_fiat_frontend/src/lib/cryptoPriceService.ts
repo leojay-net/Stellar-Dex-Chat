@@ -204,7 +204,11 @@ export async function getTokenPrice(
 
   try {
     // Fetch fresh data
-    const priceData = await fetchCryptoPrices([tokenSymbol], [vsCurrency], signal);
+    const priceData = await fetchCryptoPrices(
+      [tokenSymbol],
+      [vsCurrency],
+      signal,
+    );
     const price =
       priceData[tokenSymbol.toUpperCase()]?.[vsCurrency.toLowerCase()] || 0;
 
@@ -331,7 +335,7 @@ export async function fetchTickerData(
       const tokenSymbol = Object.entries(TOKEN_IDS).find(
         ([, id]) => id === coinId,
       )?.[0];
-      
+
       const priceRecord = priceData as Record<string, number | undefined>;
       if (tokenSymbol && priceRecord[currencyLower] !== undefined) {
         tickerData[tokenSymbol] = {

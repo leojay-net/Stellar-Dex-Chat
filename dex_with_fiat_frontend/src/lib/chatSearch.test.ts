@@ -103,7 +103,10 @@ describe('splitByHighlights', () => {
 
   it('handles multiple highlights', () => {
     const text = 'abc def abc';
-    const highlights: Array<[number, number]> = [[0, 3], [8, 11]];
+    const highlights: Array<[number, number]> = [
+      [0, 3],
+      [8, 11],
+    ];
     const result = splitByHighlights(text, highlights);
     expect(result).toEqual([
       { text: 'abc', highlight: true },

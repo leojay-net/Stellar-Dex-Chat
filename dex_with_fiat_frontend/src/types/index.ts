@@ -216,7 +216,12 @@ export interface AuditEntry {
   id: string;
   timestamp: Date;
   adminAddress: string;
-  actionType: 'deposit' | 'payout' | 'reconciliation' | 'user_update' | 'settings_change';
+  actionType:
+    | 'deposit'
+    | 'payout'
+    | 'reconciliation'
+    | 'user_update'
+    | 'settings_change';
   actionDescription: string;
   txHash?: string;
   metadata: Record<string, unknown>;

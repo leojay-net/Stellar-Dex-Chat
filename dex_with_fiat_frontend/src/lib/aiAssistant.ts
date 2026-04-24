@@ -135,7 +135,8 @@ export class AIAssistant {
         throw new Error(`AI chat API returned ${response.status}`);
       }
 
-      const result: AIAnalysisResult = await response.json() as AIAnalysisResult;
+      const result: AIAnalysisResult =
+        (await response.json()) as AIAnalysisResult;
 
       // Record any guardrail triggers for telemetry
       if (result.guardrail?.triggered) {
@@ -532,8 +533,11 @@ Choose one of the next actions below and I'll keep it moving.`;
         signal: controllerSignal,
       });
       if (response.ok) {
-        const result = await response.json() as AIAnalysisResult;
-        return result.suggestedResponse || 'Could you provide more details about your request?';
+        const result = (await response.json()) as AIAnalysisResult;
+        return (
+          result.suggestedResponse ||
+          'Could you provide more details about your request?'
+        );
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {

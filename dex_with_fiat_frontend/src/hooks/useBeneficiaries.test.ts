@@ -56,13 +56,13 @@ describe('useBeneficiaries', () => {
         'TB',
         '123456789',
         'Test Account',
-        'Custom Name'
+        'Custom Name',
       );
     });
 
     expect(localStorageMock.setItem).toHaveBeenCalledWith(
       'stellar_beneficiaries',
-      expect.stringContaining('Custom Name')
+      expect.stringContaining('Custom Name'),
     );
   });
 

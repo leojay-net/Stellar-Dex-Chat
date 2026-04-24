@@ -143,11 +143,16 @@ export class ChatHistoryManager {
    * Generate a filename for exported chat sessions
    * Format: chat_SESSION_ID_YYYY-MM-DD_HHmmss
    */
-  static generateExportFilename(sessionId: string, format: 'json' | 'txt'): string {
+  static generateExportFilename(
+    sessionId: string,
+    format: 'json' | 'txt',
+  ): string {
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
     const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, ''); // HHmmss
-    const safeSessionId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 20);
+    const safeSessionId = sessionId
+      .replace(/[^a-zA-Z0-9_-]/g, '_')
+      .substring(0, 20);
     return `chat_${safeSessionId}_${dateStr}_${timeStr}.${format}`;
   }
 
@@ -218,7 +223,7 @@ export class ChatHistoryManager {
 
       // Include metadata if present
       if (msg.metadata) {
-        const hasRelevantMetadata = 
+        const hasRelevantMetadata =
           msg.metadata.transactionData ||
           msg.metadata.suggestedActions ||
           msg.metadata.guardrail ||
@@ -227,12 +232,18 @@ export class ChatHistoryManager {
         if (hasRelevantMetadata) {
           lines.push('Metadata:');
           if (msg.metadata.transactionData) {
-            lines.push(`  Transaction Type: ${msg.metadata.transactionData.type}`);
+            lines.push(
+              `  Transaction Type: ${msg.metadata.transactionData.type}`,
+            );
             if (msg.metadata.transactionData.amountIn) {
-              lines.push(`  Amount In: ${msg.metadata.transactionData.amountIn} ${msg.metadata.transactionData.tokenIn || 'XLM'}`);
+              lines.push(
+                `  Amount In: ${msg.metadata.transactionData.amountIn} ${msg.metadata.transactionData.tokenIn || 'XLM'}`,
+              );
             }
             if (msg.metadata.transactionData.fiatAmount) {
-              lines.push(`  Fiat Amount: ${msg.metadata.transactionData.fiatAmount} ${msg.metadata.transactionData.fiatCurrency || 'USD'}`);
+              lines.push(
+                `  Fiat Amount: ${msg.metadata.transactionData.fiatAmount} ${msg.metadata.transactionData.fiatCurrency || 'USD'}`,
+              );
             }
           }
           if (msg.metadata.guardrail?.triggered) {

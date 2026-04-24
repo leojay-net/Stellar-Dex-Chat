@@ -1,7 +1,7 @@
 /**
  * Admin Audit Log API Endpoint
  * Read-only endpoint for retrieving audit log entries with filtering
- * 
+ *
  * GET /api/admin-audit
  * Query Parameters:
  *   - actionType: Filter by action type (deposit|payout|reconciliation|user_update|settings_change)
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
       } catch {
         return NextResponse.json(
           { error: 'Invalid startDate format. Use ISO 8601 format.' },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
       } catch {
         return NextResponse.json(
           { error: 'Invalid endDate format. Use ISO 8601 format.' },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
     // Pagination parameters
     const limit = Math.min(
       parseInt(searchParams.get('limit') || '100', 10),
-      1000 // Max limit
+      1000, // Max limit
     );
     const offset = Math.max(parseInt(searchParams.get('offset') || '0', 10), 0);
 
@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
     // Sort by timestamp descending (most recent first)
     paginatedEntries.sort(
       (a, b) =>
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
     );
 
     return NextResponse.json(
@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
           'Cache-Control': 'no-store, no-cache, must-revalidate',
           'Content-Type': 'application/json',
         },
-      }
+      },
     );
   } catch (error) {
     console.error('Error retrieving audit entries:', error);
@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
         error: 'Failed to retrieve audit entries',
         message: error instanceof Error ? error.message : 'Unknown error',
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -119,20 +119,20 @@ export async function GET(request: NextRequest) {
 export async function POST() {
   return NextResponse.json(
     { error: 'Method not allowed. This endpoint is read-only.' },
-    { status: 405 }
+    { status: 405 },
   );
 }
 
 export async function PUT() {
   return NextResponse.json(
     { error: 'Method not allowed. This endpoint is read-only.' },
-    { status: 405 }
+    { status: 405 },
   );
 }
 
 export async function DELETE() {
   return NextResponse.json(
     { error: 'Method not allowed. This endpoint is read-only.' },
-    { status: 405 }
+    { status: 405 },
   );
 }
