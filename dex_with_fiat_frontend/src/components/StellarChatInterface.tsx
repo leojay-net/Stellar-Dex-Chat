@@ -203,7 +203,10 @@ function StellarChatInterfaceContent() {
 
   useEffect(() => {
     pollHealth();
-    healthIntervalRef.current = setInterval(pollHealth, HEALTH_POLL_INTERVAL_MS);
+    healthIntervalRef.current = setInterval(
+      pollHealth,
+      HEALTH_POLL_INTERVAL_MS,
+    );
     return () => {
       if (healthIntervalRef.current) clearInterval(healthIntervalRef.current);
     };
@@ -430,6 +433,7 @@ function StellarChatInterfaceContent() {
     },
   }[healthStatus];
   // ───────────────────────────────────────────────────────────────────────────
+  //fhj
   const withdrawalQueueTone =
     withdrawalQueueDepth === null
       ? isDarkMode
@@ -442,7 +446,16 @@ function StellarChatInterfaceContent() {
           : 'bg-red-500/15 text-red-400';
 
   return (
-    <div className="theme-app flex h-screen w-screen overflow-hidden transition-colors duration-300">
+    <ErrorBoundary
+      isDarkMode={isDarkMode}
+      title={t('common.error_boundary_title') || 'Interface Error'}
+      message={
+        t('common.error_boundary_message') ||
+        'The interface encountered an unexpected error.'
+      }
+      onRetry={() => window.location.reload()}
+    >
+      <div className="theme-app flex h-screen w-screen overflow-hidden transition-colors duration-300">
         {/* Desktop sidebar - only rendered on lg+ viewports or when toggled */}
         {!isMobile && (
           <div
@@ -503,7 +516,9 @@ function StellarChatInterfaceContent() {
                     : 'bg-gray-100 text-gray-600'
                 }`}
               >
-                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${healthBadge.dot}`} />
+                <span
+                  className={`w-2 h-2 rounded-full flex-shrink-0 ${healthBadge.dot}`}
+                />
                 {healthBadge.label}
               </div>
               {/* ─────────────────────────────────────────────────────────────── */}
@@ -526,7 +541,7 @@ function StellarChatInterfaceContent() {
                 title="Search chat history"
                 aria-label="Search chat history"
                 aria-pressed={showSearch}
-                className={`p-2 rounded-lg transition-colors ${showSearch ? (isDarkMode ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-900') : (isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}`}
+                className={`p-2 rounded-lg transition-colors ${showSearch ? (isDarkMode ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-900') : isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
               >
                 <Search className="w-5 h-5" />
               </button>
@@ -543,7 +558,7 @@ function StellarChatInterfaceContent() {
                 title="Compare threads side by side"
                 aria-label="Toggle split-view"
                 aria-pressed={splitView.state.isOpen}
-                className={`p-2 rounded-lg transition-colors ${splitView.state.isOpen ? (isDarkMode ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-900') : (isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}`}
+                className={`p-2 rounded-lg transition-colors ${splitView.state.isOpen ? (isDarkMode ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-900') : isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
               >
                 <Columns2 className="w-5 h-5" />
               </button>
@@ -580,7 +595,10 @@ function StellarChatInterfaceContent() {
 
               {connection.isConnected ? (
                 <div className="flex items-center gap-2">
-                  <div ref={accountDropdownRef} className="relative flex items-center gap-1">
+                  <div
+                    ref={accountDropdownRef}
+                    className="relative flex items-center gap-1"
+                  >
                     <button
                       onClick={() =>
                         accounts.length > 1 &&
@@ -696,7 +714,9 @@ function StellarChatInterfaceContent() {
                   <RefreshCcw className="w-4 h-4 animate-spin" />
                 )}
                 <span>
-                  {!isOnline ? t('common.offline_detected') : t('common.online')}
+                  {!isOnline
+                    ? t('common.offline_detected')
+                    : t('common.online')}
                   {queuedReadables > 0 &&
                     ` (${queuedReadables} ${t('common.queued')})`}
                 </span>
@@ -816,7 +836,9 @@ function StellarChatInterfaceContent() {
               {statsError ? (
                 <span className="text-red-400">{statsError}</span>
               ) : statsLoading ? (
-                <span className="text-gray-500">{t('common.loading_stats')}</span>
+                <span className="text-gray-500">
+                  {t('common.loading_stats')}
+                </span>
               ) : (
                 <div className="flex flex-col gap-1 sm:flex-row sm:gap-4 sm:items-center">
                   <span className="font-medium">
@@ -998,8 +1020,8 @@ function StellarChatInterfaceContent() {
                 <p
                   className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
                 >
-                  Your wallet session has expired after 24 hours. Please reconnect
-                  to continue.
+                  Your wallet session has expired after 24 hours. Please
+                  reconnect to continue.
                 </p>
               </div>
               <button

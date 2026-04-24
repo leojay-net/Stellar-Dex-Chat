@@ -38,9 +38,7 @@ async function copyTextToClipboard(value: string): Promise<boolean> {
 
     const selection = document.getSelection();
     const selectedRange =
-      selection && selection.rangeCount > 0
-        ? selection.getRangeAt(0)
-        : null;
+      selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
 
     textarea.focus();
     textarea.select();
@@ -99,9 +97,7 @@ export default function CopyButton({
   const tooltipBaseClass =
     'pointer-events-none absolute left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[10px] font-medium text-white shadow-md transition-all';
   const tooltipPositionClass =
-    tooltipPosition === 'bottom'
-      ? 'top-full mt-1.5'
-      : 'bottom-full mb-1.5';
+    tooltipPosition === 'bottom' ? 'top-full mt-1.5' : 'bottom-full mb-1.5';
 
   return (
     <button

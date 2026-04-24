@@ -1,11 +1,21 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useMemo,
+} from 'react';
 import en from '../locales/en.json';
 
 type TranslationKeys = typeof en;
 type NestedKeyOf<T> = T extends object
-  ? { [K in keyof T & string]: T[K] extends object ? `${K}.${NestedKeyOf<T[K]>}` : K }[keyof T & string]
+  ? {
+      [K in keyof T & string]: T[K] extends object
+        ? `${K}.${NestedKeyOf<T[K]>}`
+        : K;
+    }[keyof T & string]
   : never;
 
 export type TKey = NestedKeyOf<TranslationKeys>;
@@ -18,30 +28,39 @@ interface TranslationContextType {
 
 const translations: Record<string, TranslationKeys> = { en };
 
-const TranslationContext = createContext<TranslationContextType | undefined>(undefined);
+const TranslationContext = createContext<TranslationContextType | undefined>(
+  undefined,
+);
 
-export function TranslationProvider({ children }: { children: React.ReactNode }) {
+export function TranslationProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const [locale, setLocale] = useState('en');
 
-  const t = useCallback((key: string, params?: Record<string, string | number>) => {
-    const keys = key.split('.');
-    let value: unknown = translations[locale];
-    
-    for (const k of keys) {
-      value = (value as Record<string, unknown>)?.[k];
-    }
+  const t = useCallback(
+    (key: string, params?: Record<string, string | number>) => {
+      const keys = key.split('.');
+      let value: unknown = translations[locale];
 
-    if (typeof value !== 'string') return key;
+      for (const k of keys) {
+        value = (value as Record<string, unknown>)?.[k];
+      }
 
-    if (params) {
-      return Object.entries(params).reduce(
-        (acc: string, [k, v]) => acc.replace(`{${k}}`, String(v)),
-        value as string
-      );
-    }
+      if (typeof value !== 'string') return key;
 
-    return value;
-  }, [locale]);
+      if (params) {
+        return Object.entries(params).reduce(
+          (acc: string, [k, v]) => acc.replace(`{${k}}`, String(v)),
+          value as string,
+        );
+      }
+
+      return value;
+    },
+    [locale],
+  );
 
   const value = useMemo(() => ({ t, locale, setLocale }), [t, locale]);
 

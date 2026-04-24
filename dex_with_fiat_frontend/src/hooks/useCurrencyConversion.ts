@@ -96,7 +96,15 @@ export function useCurrencyConversion(
     });
 
     return `${amount} ${tokenSymbol} ≈ ${symbol}${formattedFiat} ${fiatCurrency.toUpperCase()}`;
-  }, [amount, tokenSymbol, fiatCurrency, fiatAmount, isLoading, hasError, getCurrencySymbolForCode]);
+  }, [
+    amount,
+    tokenSymbol,
+    fiatCurrency,
+    fiatAmount,
+    isLoading,
+    hasError,
+    getCurrencySymbolForCode,
+  ]);
 
   return {
     originalAmount: amount || 0,

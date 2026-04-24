@@ -4,7 +4,9 @@ import { createRoot } from 'react-dom/client';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+(
+  globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 type UseChatHook = typeof import('./useChat').default;
 
@@ -52,9 +54,10 @@ vi.mock('@/contexts/StellarWalletContext', () => ({
 }));
 
 vi.mock('./chatStateMachine', async () => {
-  const actual = await vi.importActual<typeof import('./chatStateMachine')>(
-    './chatStateMachine',
-  );
+  const actual =
+    await vi.importActual<typeof import('./chatStateMachine')>(
+      './chatStateMachine',
+    );
 
   return {
     ...actual,
@@ -107,9 +110,11 @@ async function setupHook() {
   let api: ReturnType<UseChatHook> | null = null;
   let renderError: unknown = null;
   const capturedConsoleErrors: unknown[][] = [];
-  const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...args) => {
-    capturedConsoleErrors.push(args);
-  });
+  const consoleErrorSpy = vi
+    .spyOn(console, 'error')
+    .mockImplementation((...args) => {
+      capturedConsoleErrors.push(args);
+    });
 
   function Harness() {
     const value = useChat();
@@ -191,7 +196,10 @@ describe('Message Retry UX', () => {
 
       expect(messageWithPayload.originalPayload).toBeDefined();
       expect(messageWithPayload.originalPayload?.content).toBe('Send message');
-      expect(messageWithPayload.originalPayload?.conversationContext?.isWalletConnected).toBe(true);
+      expect(
+        messageWithPayload.originalPayload?.conversationContext
+          ?.isWalletConnected,
+      ).toBe(true);
     });
 
     it('should track retry attempts incrementally', () => {
@@ -264,8 +272,12 @@ describe('Message Retry UX', () => {
         },
       };
 
-      expect(messageToRetry.originalPayload?.content).toEqual(messageToRetry.content);
-      expect(messageToRetry.originalPayload?.conversationContext?.messageCount).toBe(5);
+      expect(messageToRetry.originalPayload?.content).toEqual(
+        messageToRetry.content,
+      );
+      expect(
+        messageToRetry.originalPayload?.conversationContext?.messageCount,
+      ).toBe(5);
     });
 
     it('should handle retry with no original payload gracefully', () => {
@@ -428,7 +440,9 @@ describe('Message Retry UX', () => {
         },
       };
 
-      expect(failedMessage.error?.timestamp.getTime()).toBe(errorTime.getTime());
+      expect(failedMessage.error?.timestamp.getTime()).toBe(
+        errorTime.getTime(),
+      );
     });
   });
 
@@ -485,7 +499,9 @@ describe('Message Retry UX', () => {
         },
       };
 
-      expect(failedMessage.originalPayload?.conversationContext).toEqual(conversationContext);
+      expect(failedMessage.originalPayload?.conversationContext).toEqual(
+        conversationContext,
+      );
     });
 
     it('should show retry UI only for user messages with errors', () => {
@@ -508,7 +524,8 @@ describe('Message Retry UX', () => {
         timestamp: new Date(),
       };
 
-      const shouldShowRetry = (msg: ChatMessage) => msg.role === 'user' && !!msg.error;
+      const shouldShowRetry = (msg: ChatMessage) =>
+        msg.role === 'user' && !!msg.error;
 
       expect(shouldShowRetry(failedUserMessage)).toBe(true);
       expect(shouldShowRetry(normalAssistantMessage)).toBe(false);
@@ -542,9 +559,7 @@ describe('Message Retry UX', () => {
           isWalletConnected: true,
           walletAddress: '0xuser',
           messageCount: 2,
-          previousMessages: [
-            { role: 'user', content: 'Hello' },
-          ],
+          previousMessages: [{ role: 'user', content: 'Hello' }],
         },
       };
 
@@ -562,7 +577,9 @@ describe('Message Retry UX', () => {
       };
 
       // Original payload is complete and preserved
-      expect(failedMessage.originalPayload?.content).toBe(originalPayload.content);
+      expect(failedMessage.originalPayload?.content).toBe(
+        originalPayload.content,
+      );
       expect(failedMessage.originalPayload?.conversationContext).toBeDefined();
     });
 
@@ -684,10 +701,9 @@ describe('useChat flow state transitions', () => {
 
     expect(harness.api.isLoading).toBe(false);
     expect(
-      harness.api.messages[harness.api.messages.length - 1]?.metadata?.requestStatus,
-    ).toBe(
-      'cancelled',
-    );
+      harness.api.messages[harness.api.messages.length - 1]?.metadata
+        ?.requestStatus,
+    ).toBe('cancelled');
 
     harness.cleanup();
   });
@@ -734,8 +750,12 @@ describe('useChat flow state transitions', () => {
     warnSpy.mockRestore();
 
     expect(bailed).toBe(false);
-    expect(harness.api.conversationState.pendingTransactionData?.tokenIn).toBe('XLM');
-    expect(harness.api.conversationState.pendingTransactionData?.amountIn).toBe('10');
+    expect(harness.api.conversationState.pendingTransactionData?.tokenIn).toBe(
+      'XLM',
+    );
+    expect(harness.api.conversationState.pendingTransactionData?.amountIn).toBe(
+      '10',
+    );
 
     harness.cleanup();
   });

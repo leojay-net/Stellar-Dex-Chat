@@ -142,6 +142,7 @@ export default function BankDetailsModal({
   };
 
   const wasOpenRef = useRef(false);
+  const actionControllerRef = useRef<AbortController | null>(null);
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {
       chatTelemetry.fiatPayoutStep({ action: 'open', step: 1, xlmAmount });
@@ -154,12 +155,19 @@ export default function BankDetailsModal({
     chatTelemetry.fiatPayoutStep({ action: 'step_change', step, xlmAmount });
   }, [step, isOpen, xlmAmount]);
 
+  useEffect(() => {
+    return () => {
+      actionControllerRef.current?.abort();
+    };
+  }, []);
+
   // Fetch banks when modal opens
   useEffect(() => {
     if (!isOpen) return;
+    const controller = new AbortController();
     setBanksLoading(true);
     setBanksError('');
-    fetch('/api/banks')
+    fetch('/api/banks', { signal: controller.signal })
       .then((r) => r.json())
       .then((json: { success: boolean; data: Bank[]; message?: string }) => {
         if (json.success) {
@@ -168,32 +176,45 @@ export default function BankDetailsModal({
           setBanksError(json.message ?? 'Failed to load banks');
         }
       })
-      .catch(() => setBanksError('Failed to load banks. Please try again.'))
+      .catch((err) => {
+        if (err.name === 'AbortError') return;
+        setBanksError('Failed to load banks. Please try again.');
+      })
       .finally(() => setBanksLoading(false));
+
+    return () => controller.abort();
   }, [isOpen]);
 
   // Fetch a locked quote when the user reaches step 3
-  const fetchQuote = useCallback(() => {
-    if (xlmAmount <= 0) return;
-    setQuoteLoading(true);
-    setLockedQuote(null);
-    fetchLockedQuote('XLM', xlmAmount, 'ngn')
-      .then((quote) => {
-        setLockedQuote(quote);
-        setQuoteSecondsLeft(120);
-      })
-      .catch(() => setLockedQuote(null))
-      .finally(() => setQuoteLoading(false));
-  }, [xlmAmount]);
+  const fetchQuote = useCallback(
+    (signal?: AbortSignal) => {
+      if (xlmAmount <= 0) return;
+      setQuoteLoading(true);
+      setLockedQuote(null);
+      fetchLockedQuote('XLM', xlmAmount, 'ngn', signal)
+        .then((quote) => {
+          setLockedQuote(quote);
+          setQuoteSecondsLeft(120);
+        })
+        .catch((err) => {
+          if (err.name === 'AbortError') return;
+          setLockedQuote(null);
+        })
+        .finally(() => setQuoteLoading(false));
+    },
+    [xlmAmount],
+  );
 
   useEffect(() => {
-    if (step !== 3) return;
-    fetchQuote();
-  }, [step, fetchQuote]);
+    if (!isOpen || step !== 3) return;
+    const controller = new AbortController();
+    fetchQuote(controller.signal);
+    return () => controller.abort();
+  }, [step, isOpen, fetchQuote]);
 
   // Countdown timer — ticks every second while the quote is live
   useEffect(() => {
-    if (!lockedQuote || step !== 3) return;
+    if (!isOpen || !lockedQuote || step !== 3) return;
     const interval = setInterval(() => {
       const remaining = Math.max(
         0,
@@ -203,11 +224,12 @@ export default function BankDetailsModal({
       if (remaining === 0) clearInterval(interval);
     }, 1000);
     return () => clearInterval(interval);
-  }, [lockedQuote, step]);
+  }, [lockedQuote, step, isOpen]);
 
   // Poll for transfer status when on the success step
   useEffect(() => {
     if (
+      !isOpen ||
       step !== 4 ||
       !transferReference ||
       transferStatus === 'success' ||
@@ -217,9 +239,12 @@ export default function BankDetailsModal({
       return;
     }
 
+    const controller = new AbortController();
     const pollInterval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/transfer-status/${transferReference}`);
+        const res = await fetch(`/api/transfer-status/${transferReference}`, {
+          signal: controller.signal,
+        });
         if (res.ok) {
           const json = await res.json();
           if (json.success && json.data?.status) {
@@ -227,12 +252,16 @@ export default function BankDetailsModal({
           }
         }
       } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
         console.error('Error polling transfer status:', err);
       }
     }, 5000);
 
-    return () => clearInterval(pollInterval);
-  }, [step, transferReference, transferStatus]);
+    return () => {
+      clearInterval(pollInterval);
+      controller.abort();
+    };
+  }, [step, isOpen, transferReference, transferStatus]);
 
   const filteredBanks = banks.filter((b) =>
     b.name.toLowerCase().includes(bankSearch.toLowerCase()),
@@ -240,12 +269,18 @@ export default function BankDetailsModal({
 
   const handleVerifyAccount = useCallback(async () => {
     if (!accountNumber || !selectedBank) return;
+
+    actionControllerRef.current?.abort();
+    actionControllerRef.current = new AbortController();
+    const signal = actionControllerRef.current.signal;
+
     setVerifying(true);
     setVerifyError('');
     setVerifiedAccount(null);
     try {
       const res = await fetch('/api/verify-account', {
         method: 'POST',
+        signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           accountNumber,
@@ -273,7 +308,8 @@ export default function BankDetailsModal({
           errorMessage: json.message ?? 'Account verification failed',
         });
       }
-    } catch {
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') return;
       setVerifyError('Account verification failed. Please try again.');
       chatTelemetry.fiatPayoutStep({
         action: 'account_verify_fail',
@@ -284,7 +320,7 @@ export default function BankDetailsModal({
     } finally {
       setVerifying(false);
     }
-  }, [accountNumber, selectedBank]);
+  }, [accountNumber, selectedBank, xlmAmount]);
 
   const handleConfirmPayout = async () => {
     if (
@@ -297,6 +333,10 @@ export default function BankDetailsModal({
       return;
 
     await executePayoutConfirm(async (idempotencyKey) => {
+      actionControllerRef.current?.abort();
+      actionControllerRef.current = new AbortController();
+      const signal = actionControllerRef.current.signal;
+
       chatTelemetry.fiatPayoutStep({
         action: 'confirm_attempt',
         step: 3,
@@ -311,6 +351,7 @@ export default function BankDetailsModal({
         // 1. Create Paystack transfer recipient
         const recipientRes = await fetch('/api/create-recipient', {
           method: 'POST',
+          signal,
           headers: {
             'Content-Type': 'application/json',
             'X-Idempotency-Key': idempotencyKey,
@@ -343,6 +384,7 @@ export default function BankDetailsModal({
         const ngnValue = lockedQuote.ngnAmount;
         const transferRes = await fetch('/api/initiate-transfer', {
           method: 'POST',
+          signal,
           headers: {
             'Content-Type': 'application/json',
             'X-Idempotency-Key': idempotencyKey,
@@ -940,7 +982,7 @@ export default function BankDetailsModal({
                 </div>
                 <button
                   type="button"
-                  onClick={fetchQuote}
+                  onClick={() => fetchQuote()}
                   disabled={quoteLoading}
                   className="flex items-center gap-1 text-blue-400 hover:text-blue-300 whitespace-nowrap disabled:opacity-50"
                 >

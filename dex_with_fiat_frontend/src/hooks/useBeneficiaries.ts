@@ -99,54 +99,57 @@ export function useBeneficiaries() {
   );
 
   // Keyboard shortcuts handling
-  const handleKeyboardShortcut = useCallback((event: KeyboardEvent) => {
-    const { ctrlKey, shiftKey, key } = event;
+  const handleKeyboardShortcut = useCallback(
+    (event: KeyboardEvent) => {
+      const { ctrlKey, shiftKey, key } = event;
 
-    // Add beneficiary: Ctrl+B
-    if (ctrlKey && !shiftKey && key === 'b') {
-      event.preventDefault();
-      // This would typically trigger a UI action to add beneficiary
-      // For now, we'll just log or provide a callback
-      return 'add';
-    }
-
-    // Focus beneficiaries: Ctrl+Shift+B
-    if (ctrlKey && shiftKey && key === 'B') {
-      event.preventDefault();
-      return 'focus';
-    }
-
-    // Navigation: ArrowUp/ArrowDown when beneficiaries are focused
-    if (key === 'ArrowUp' && selectedIndex > 0) {
-      event.preventDefault();
-      setSelectedIndex(selectedIndex - 1);
-      return 'navigate-up';
-    }
-
-    if (key === 'ArrowDown' && selectedIndex < beneficiaries.length - 1) {
-      event.preventDefault();
-      setSelectedIndex(selectedIndex + 1);
-      return 'navigate-down';
-    }
-
-    // Select: Enter
-    if (key === 'Enter' && selectedIndex >= 0) {
-      event.preventDefault();
-      return 'select';
-    }
-
-    // Delete: Delete key
-    if (key === 'Delete' && selectedIndex >= 0) {
-      event.preventDefault();
-      const beneficiaryToDelete = beneficiaries[selectedIndex];
-      if (beneficiaryToDelete) {
-        deleteBeneficiary(beneficiaryToDelete.id);
+      // Add beneficiary: Ctrl+B
+      if (ctrlKey && !shiftKey && key === 'b') {
+        event.preventDefault();
+        // This would typically trigger a UI action to add beneficiary
+        // For now, we'll just log or provide a callback
+        return 'add';
       }
-      return 'delete';
-    }
 
-    return null;
-  }, [selectedIndex, beneficiaries, deleteBeneficiary]);
+      // Focus beneficiaries: Ctrl+Shift+B
+      if (ctrlKey && shiftKey && key === 'B') {
+        event.preventDefault();
+        return 'focus';
+      }
+
+      // Navigation: ArrowUp/ArrowDown when beneficiaries are focused
+      if (key === 'ArrowUp' && selectedIndex > 0) {
+        event.preventDefault();
+        setSelectedIndex(selectedIndex - 1);
+        return 'navigate-up';
+      }
+
+      if (key === 'ArrowDown' && selectedIndex < beneficiaries.length - 1) {
+        event.preventDefault();
+        setSelectedIndex(selectedIndex + 1);
+        return 'navigate-down';
+      }
+
+      // Select: Enter
+      if (key === 'Enter' && selectedIndex >= 0) {
+        event.preventDefault();
+        return 'select';
+      }
+
+      // Delete: Delete key
+      if (key === 'Delete' && selectedIndex >= 0) {
+        event.preventDefault();
+        const beneficiaryToDelete = beneficiaries[selectedIndex];
+        if (beneficiaryToDelete) {
+          deleteBeneficiary(beneficiaryToDelete.id);
+        }
+        return 'delete';
+      }
+
+      return null;
+    },
+    [selectedIndex, beneficiaries, deleteBeneficiary],
+  );
 
   useEffect(() => {
     if (typeof window === 'undefined') return;

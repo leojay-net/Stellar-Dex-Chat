@@ -1,6 +1,6 @@
 /**
  * Audit Logging Usage Examples
- * 
+ *
  * This file demonstrates how to use the AuditLogService throughout the application
  * to record admin actions and blockchain transactions.
  */
@@ -14,7 +14,7 @@ export function recordDepositAction(
   adminAddress: string,
   amount: string,
   recipientAddress: string,
-  txHash: string
+  txHash: string,
 ) {
   return AuditLogService.recordAction(
     adminAddress,
@@ -26,7 +26,7 @@ export function recordDepositAction(
       timestamp: new Date().toISOString(),
     },
     txHash,
-    'success'
+    'success',
   );
 }
 
@@ -38,7 +38,7 @@ export function recordPayoutAction(
   amount: string,
   bankAccount: string,
   reference: string,
-  txHash?: string
+  txHash?: string,
 ) {
   return AuditLogService.recordAction(
     adminAddress,
@@ -51,7 +51,7 @@ export function recordPayoutAction(
       timestamp: new Date().toISOString(),
     },
     txHash,
-    'success'
+    'success',
   );
 }
 
@@ -62,7 +62,7 @@ export function recordFailedTransaction(
   adminAddress: string,
   actionType: 'deposit' | 'payout' | 'reconciliation',
   description: string,
-  errorDetails: Record<string, unknown>
+  errorDetails: Record<string, unknown>,
 ) {
   return AuditLogService.recordAction(
     adminAddress,
@@ -73,7 +73,7 @@ export function recordFailedTransaction(
       timestamp: new Date().toISOString(),
     },
     undefined,
-    'failed'
+    'failed',
   );
 }
 
@@ -83,7 +83,7 @@ export function recordFailedTransaction(
 export function recordReconciliationAction(
   adminAddress: string,
   recordsProcessed: number,
-  discrepancies: number
+  discrepancies: number,
 ) {
   return AuditLogService.recordAction(
     adminAddress,
@@ -95,7 +95,7 @@ export function recordReconciliationAction(
       timestamp: new Date().toISOString(),
     },
     undefined,
-    'success'
+    'success',
   );
 }
 
@@ -105,7 +105,7 @@ export function recordReconciliationAction(
 export function recordUserUpdateAction(
   adminAddress: string,
   targetUserAddress: string,
-  updateDetails: Record<string, unknown>
+  updateDetails: Record<string, unknown>,
 ) {
   return AuditLogService.recordAction(
     adminAddress,
@@ -117,7 +117,7 @@ export function recordUserUpdateAction(
       timestamp: new Date().toISOString(),
     },
     undefined,
-    'success'
+    'success',
   );
 }
 
@@ -128,7 +128,7 @@ export function recordSettingsChangeAction(
   adminAddress: string,
   settingKey: string,
   oldValue: unknown,
-  newValue: unknown
+  newValue: unknown,
 ) {
   return AuditLogService.recordAction(
     adminAddress,
@@ -141,18 +141,18 @@ export function recordSettingsChangeAction(
       timestamp: new Date().toISOString(),
     },
     undefined,
-    'success'
+    'success',
   );
 }
 
 /**
  * Example usage in a transaction handler:
- * 
+ *
  * async function handleDeposit(adminAddress: string, amount: string) {
  *   try {
  *     // Process deposit...
  *     const txResult = await processDeposit(amount);
- *     
+ *
  *     // Record successful action
  *     recordDepositAction(
  *       adminAddress,
@@ -160,7 +160,7 @@ export function recordSettingsChangeAction(
  *       recipientAddress,
  *       txResult.hash
  *     );
- *     
+ *
  *     return { success: true, txHash: txResult.hash };
  *   } catch (error) {
  *     // Record failed action
@@ -170,7 +170,7 @@ export function recordSettingsChangeAction(
  *       `Failed to process deposit of ${amount} XLM`,
  *       { error: (error as Error).message }
  *     );
- *     
+ *
  *     throw error;
  *   }
  * }

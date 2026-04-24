@@ -9,7 +9,9 @@ import {
 } from './useFeatureFlag';
 import { getFeatureFlag } from '@/lib/featureFlags';
 
-function Harness(props: { flag: 'enableAdminReconciliation' | 'enableConversionReminders' }) {
+function Harness(props: {
+  flag: 'enableAdminReconciliation' | 'enableConversionReminders';
+}) {
   const isEnabled = useFeatureFlag(props.flag);
   return React.createElement('div', null, isEnabled ? 'enabled' : 'disabled');
 }
@@ -17,15 +19,20 @@ function Harness(props: { flag: 'enableAdminReconciliation' | 'enableConversionR
 describe('useFeatureFlag', () => {
   it('hydrates without mismatch warnings and resolves to the client flag value', async () => {
     const serverMarkup = renderToString(
-      React.createElement(Harness, { flag: 'enableAdminReconciliation' })
+      React.createElement(Harness, { flag: 'enableAdminReconciliation' }),
     );
     const container = document.createElement('div');
     container.innerHTML = serverMarkup;
 
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
 
     await act(async () => {
-      hydrateRoot(container, React.createElement(Harness, { flag: 'enableAdminReconciliation' }));
+      hydrateRoot(
+        container,
+        React.createElement(Harness, { flag: 'enableAdminReconciliation' }),
+      );
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
@@ -33,8 +40,8 @@ describe('useFeatureFlag', () => {
     expect(serverMarkup).toContain('disabled');
     expect(
       consoleErrorSpy.mock.calls.some((args) =>
-        String(args[0]).toLowerCase().includes('hydration')
-      )
+        String(args[0]).toLowerCase().includes('hydration'),
+      ),
     ).toBe(false);
 
     consoleErrorSpy.mockRestore();
@@ -42,10 +49,10 @@ describe('useFeatureFlag', () => {
 
   it('uses theme-aligned divider borders for feature-flag sections', () => {
     expect(featureFlagSectionDividerBorderClass(true)).toContain(
-      'border-gray-700',
+      'border-theme-border',
     );
     expect(featureFlagSectionDividerBorderClass(false)).toContain(
-      'border-gray-200',
+      'border-theme-border-light',
     );
   });
 
@@ -58,10 +65,12 @@ describe('useFeatureFlag', () => {
     const scrollIntoViewSpy = vi.spyOn(mockElement, 'scrollIntoView');
 
     // Mock the feature flag to return true
-    vi.mocked(getFeatureFlag).mockReturnValue(true);
+    vi.mocked(getFeatureFlag).mockImplementation(() => true);
 
     await act(async () => {
-      renderToString(React.createElement(Harness, { flag: 'enableAdminReconciliation' }));
+      renderToString(
+        React.createElement(Harness, { flag: 'enableAdminReconciliation' }),
+      );
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
@@ -69,18 +78,32 @@ describe('useFeatureFlag', () => {
     expect(scrollIntoViewSpy).not.toHaveBeenCalled();
 
     // Test with scrollTargetId
-    function HarnessWithScroll(props: { flag: 'enableAdminReconciliation' | 'enableConversionReminders' }) {
+    function HarnessWithScroll(props: {
+      flag: 'enableAdminReconciliation' | 'enableConversionReminders';
+    }) {
       const isEnabled = useFeatureFlag(props.flag, 'test-target');
-      return React.createElement('div', null, isEnabled ? 'enabled' : 'disabled');
+      return React.createElement(
+        'div',
+        null,
+        isEnabled ? 'enabled' : 'disabled',
+      );
     }
 
     await act(async () => {
       const container = document.createElement('div');
-      hydrateRoot(container, React.createElement(HarnessWithScroll, { flag: 'enableAdminReconciliation' }));
+      hydrateRoot(
+        container,
+        React.createElement(HarnessWithScroll, {
+          flag: 'enableAdminReconciliation',
+        }),
+      );
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    expect(scrollIntoViewSpy).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' });
+    expect(scrollIntoViewSpy).toHaveBeenCalledWith({
+      behavior: 'smooth',
+      block: 'center',
+    });
 
     // Cleanup
     document.body.removeChild(mockElement);

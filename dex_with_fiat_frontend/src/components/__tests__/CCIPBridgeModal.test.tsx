@@ -1,5 +1,11 @@
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CCIPBridgeModal from '../CCIPBridgeModal';
 
@@ -78,14 +84,13 @@ describe('CCIPBridgeModal', () => {
     expect(screen.getByText('Status: SUCCESS')).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: /view transaction in ccip explorer/i }),
-    ).toHaveAttribute(
-      'href',
-      'https://ccip.chain.link/status?search=0xabc123',
-    );
+    ).toHaveAttribute('href', 'https://ccip.chain.link/status?search=0xabc123');
   });
 
   it('times out after 10 minutes and shows an error state', async () => {
-    const fetchTransferStatus = vi.fn().mockResolvedValue({ status: 'PENDING' });
+    const fetchTransferStatus = vi
+      .fn()
+      .mockResolvedValue({ status: 'PENDING' });
 
     render(
       <CCIPBridgeModal
@@ -104,11 +109,7 @@ describe('CCIPBridgeModal', () => {
       vi.advanceTimersByTime(10 * 60 * 1000);
     });
 
-    expect(
-      await screen.findByText('CCIP transfer error'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/timed out after 10 minutes/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('CCIP transfer error')).toBeInTheDocument();
+    expect(screen.getByText(/timed out after 10 minutes/i)).toBeInTheDocument();
   });
 });

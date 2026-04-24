@@ -6,7 +6,18 @@ import { useUserPreferences } from '@/contexts/UserPreferencesContext';
 import { useMasking } from '@/hooks/useMasking';
 import { useCurrencyConversion } from '@/hooks/useCurrencyConversion';
 import { ChatMessage } from '@/types';
-import { AlertTriangle, Bot, Clock, Coins, Link, RotateCcw, User, Loader2, RefreshCcw, XCircle } from 'lucide-react';
+import {
+  AlertTriangle,
+  Bot,
+  Clock,
+  Coins,
+  Link,
+  RotateCcw,
+  User,
+  Loader2,
+  RefreshCcw,
+  XCircle,
+} from 'lucide-react';
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import { sanitizeUrl } from '@/lib/markdownSanitizer';
@@ -25,7 +36,12 @@ interface MessageProps {
   shouldAnimate?: boolean;
 }
 
-export default function Message({ message, onActionClick, onRetry, shouldAnimate = false }: MessageProps) {
+export default function Message({
+  message,
+  onActionClick,
+  onRetry,
+  shouldAnimate = false,
+}: MessageProps) {
   const { connection } = useStellarWallet();
   const { isDarkMode } = useTheme();
   const { maskingEnabled, maskingStyle } = useUserPreferences();
@@ -42,39 +58,37 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
   const isPending = message.metadata?.status === 'pending';
   const isFailed = message.metadata?.status === 'failed';
 
-
   // Currency conversion hook for transaction amounts
-  const amountForConversion = message.metadata?.transactionData?.amountIn 
+  const amountForConversion = message.metadata?.transactionData?.amountIn
     ? parseFloat(String(message.metadata.transactionData.amountIn))
     : undefined;
-  const tokenForConversion = message.metadata?.transactionData?.tokenIn || 'XLM';
+  const tokenForConversion =
+    message.metadata?.transactionData?.tokenIn || 'XLM';
   const { displayText: conversionDisplayText } = useCurrencyConversion(
     amountForConversion,
     tokenForConversion,
   );
 
-
-
   const variants = {
-    initial: { 
-      opacity: 0, 
+    initial: {
+      opacity: 0,
       y: shouldReduceMotion ? 0 : 20,
-      scale: shouldReduceMotion ? 1 : 0.95
+      scale: shouldReduceMotion ? 1 : 0.95,
     },
-    animate: { 
-      opacity: 1, 
+    animate: {
+      opacity: 1,
       y: 0,
       scale: 1,
       transition: {
         duration: 0.4,
-        ease: [0.23, 1, 0.32, 1] as const // Custom cubic-bezier for premium feel
-      }
-    }
+        ease: [0.23, 1, 0.32, 1] as const, // Custom cubic-bezier for premium feel
+      },
+    },
   };
 
   return (
     <motion.div
-      initial={shouldAnimate ? "initial" : false}
+      initial={shouldAnimate ? 'initial' : false}
       animate="animate"
       variants={variants}
       className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-8`}
@@ -117,7 +131,9 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
                 {isPending ? (
                   <div className="flex items-center space-x-2 text-gray-400">
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span className="text-sm italic">{t('common.loading')}</span>
+                    <span className="text-sm italic">
+                      {t('common.loading')}
+                    </span>
                   </div>
                 ) : isUser ? (
                   message.content
@@ -162,7 +178,13 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
                       h3: ({ children }) => (
                         <h3 className="text-sm font-bold mb-1">{children}</h3>
                       ),
-                      a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
+                      a: ({
+                        href,
+                        children,
+                      }: {
+                        href?: string;
+                        children?: React.ReactNode;
+                      }) => {
                         const safeHref = sanitizeUrl(href);
                         return (
                           <a
@@ -175,9 +197,14 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
                           </a>
                         );
                       },
-                      img: (props: React.ImgHTMLAttributes<HTMLImageElement> & { src?: string | Blob }) => {
+                      img: (
+                        props: React.ImgHTMLAttributes<HTMLImageElement> & {
+                          src?: string | Blob;
+                        },
+                      ) => {
                         const { src, alt, ...rest } = props;
-                        const srcStr = typeof src === 'string' ? src : undefined;
+                        const srcStr =
+                          typeof src === 'string' ? src : undefined;
                         const safeSrc = sanitizeUrl(srcStr);
                         void rest;
                         if (safeSrc === '#blocked') return null;
@@ -224,11 +251,12 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
                     {message.error?.message || 'Failed to send message'}
                   </span>
                 </div>
-                {message.error?.retryAttempts && message.error.retryAttempts > 0 && (
-                  <div className="text-xs opacity-75">
-                    Retry attempts: {message.error.retryAttempts}
-                  </div>
-                )}
+                {message.error?.retryAttempts &&
+                  message.error.retryAttempts > 0 && (
+                    <div className="text-xs opacity-75">
+                      Retry attempts: {message.error.retryAttempts}
+                    </div>
+                  )}
                 {onRetry && (
                   <button
                     onClick={() => onRetry(message.id)}
@@ -269,8 +297,8 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
               >
                 <XCircle className="h-4 w-4" />
                 <span>{t('chat.error_message')}</span>
-                <button 
-                  onClick={() => window.location.reload()} 
+                <button
+                  onClick={() => window.location.reload()}
                   className="ml-2 underline flex items-center gap-1"
                 >
                   <RefreshCcw className="w-3 h-3" />
@@ -359,7 +387,8 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
                     <div className="flex justify-between">
                       <span>Amount:</span>
                       <span className="theme-text-primary font-medium">
-                        {conversionDisplayText || message.metadata.transactionData.amountIn}
+                        {conversionDisplayText ||
+                          message.metadata.transactionData.amountIn}
                       </span>
                     </div>
                   )}
@@ -385,9 +414,14 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
                       <span>Request ID:</span>
                       <div className="flex items-center gap-1">
                         <span className="theme-text-primary font-mono text-xs">
-                          {message.metadata.transactionData.transactionId.slice(0, 6)}
+                          {message.metadata.transactionData.transactionId.slice(
+                            0,
+                            6,
+                          )}
                           ...
-                          {message.metadata.transactionData.transactionId.slice(-4)}
+                          {message.metadata.transactionData.transactionId.slice(
+                            -4,
+                          )}
                         </span>
                         <CopyButton
                           value={message.metadata.transactionData.transactionId}
@@ -419,7 +453,10 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
                       <span>Receipt ID:</span>
                       <div className="flex items-center gap-1">
                         <span className="theme-text-primary font-mono text-xs">
-                          {message.metadata.transactionData.receiptId.slice(0, 6)}
+                          {message.metadata.transactionData.receiptId.slice(
+                            0,
+                            6,
+                          )}
                           ...
                           {message.metadata.transactionData.receiptId.slice(-4)}
                         </span>

@@ -997,7 +997,10 @@ export default function StellarFiatModal({
                   Connected: {connection.address.slice(0, 8)}…
                   {connection.address.slice(-4)}
                 </span>
-                <CopyButton value={connection.address} iconClassName="w-3 h-3" />
+                <CopyButton
+                  value={connection.address}
+                  iconClassName="w-3 h-3"
+                />
               </span>
               <span>Network: {connection.network || 'TESTNET'}</span>
             </div>
@@ -1018,21 +1021,22 @@ export default function StellarFiatModal({
                 disabled={isSubmitDisabled || isTxProcessing}
                 className="theme-primary-button w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 rounded-lg font-semibold transition-all"
               >
-                {status === 'loading' || isTxProcessing ? (
-                  <>
-                    <Loader2
-                      data-testid="loading-spinner"
-                      className="w-4 h-4 animate-spin"
-                    />
-                    Signing & submitting…
-                  </>
-                ) : isAdminMode ? (
-                  'Withdraw'
-                ) : requiresPreSignConfirmation ? (
-                  'Awaiting Confirmation'
-                ) : (
-                  'Review Transaction'
-                ) // Assuming this is also from stellarContract
+                {
+                  status === 'loading' || isTxProcessing ? (
+                    <>
+                      <Loader2
+                        data-testid="loading-spinner"
+                        className="w-4 h-4 animate-spin"
+                      />
+                      Signing & submitting…
+                    </>
+                  ) : isAdminMode ? (
+                    'Withdraw'
+                  ) : requiresPreSignConfirmation ? (
+                    'Awaiting Confirmation'
+                  ) : (
+                    'Review Transaction'
+                  ) // Assuming this is also from stellarContract
                 }
               </button>
 

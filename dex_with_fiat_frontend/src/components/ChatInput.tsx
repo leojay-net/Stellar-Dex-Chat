@@ -43,17 +43,30 @@ export default function ChatInput({
   const [showPalette, setShowPalette] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
   const [paletteIndex, setPaletteIndex] = useState(0);
-  
-  const { execute: executeSubmit, isProcessing: isSubmitting } = useIdempotentAction({
-    cooldownMs: 1000,
-    logSuppressed: true,
-  });
+
+  const { execute: executeSubmit, isProcessing: isSubmitting } =
+    useIdempotentAction({
+      cooldownMs: 1000,
+      logSuppressed: true,
+    });
 
   const commands = [
-    { cmd: '/deposit', desc: t('common.deposit_desc') || 'Add funds to your Stellar account' },
-    { cmd: '/rates', desc: t('common.rates_desc') || 'Check current market conversion rates' },
-    { cmd: '/portfolio', desc: t('common.portfolio_desc') || 'View your asset balance and value' },
-    { cmd: '/help', desc: t('common.help_desc') || 'Get assistance with platform features' },
+    {
+      cmd: '/deposit',
+      desc: t('common.deposit_desc') || 'Add funds to your Stellar account',
+    },
+    {
+      cmd: '/rates',
+      desc: t('common.rates_desc') || 'Check current market conversion rates',
+    },
+    {
+      cmd: '/portfolio',
+      desc: t('common.portfolio_desc') || 'View your asset balance and value',
+    },
+    {
+      cmd: '/help',
+      desc: t('common.help_desc') || 'Get assistance with platform features',
+    },
   ];
 
   const handleInputChange = (val: string) => {
@@ -260,7 +273,9 @@ export default function ChatInput({
                 type="button"
                 onClick={() => executePaletteCommand(i)}
                 className={`w-full text-left px-3 py-2 text-sm ${
-                  i === paletteIndex ? 'bg-blue-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                  i === paletteIndex
+                    ? 'bg-blue-600 text-white'
+                    : 'hover:bg-gray-100 dark:hover:bg-gray-800'
                 }`}
               >
                 {cmd.label}
@@ -306,7 +321,9 @@ export default function ChatInput({
         <div className="flex-1 relative">
           <textarea
             value={message}
-            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleInputChange(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+              handleInputChange(e.target.value)
+            }
             onKeyDown={handleKeyDown}
             placeholder={activePlaceholder}
             disabled={isLoading}
@@ -344,7 +361,8 @@ export default function ChatInput({
       </div>
 
       <p id="chat-submit-shortcut" className="sr-only" aria-live="polite">
-        Send message with {submitShortcutLabel}. The send button stays disabled while a request is pending.
+        Send message with {submitShortcutLabel}. The send button stays disabled
+        while a request is pending.
       </p>
 
       {walletWarning && (

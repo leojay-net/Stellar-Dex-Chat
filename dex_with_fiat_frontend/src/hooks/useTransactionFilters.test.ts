@@ -1,7 +1,10 @@
 import { renderHook, act } from '@testing-library/react';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import type { TransactionHistoryEntry } from '@/types';
-import { KEYBOARD_SHORTCUTS, useTransactionFilters } from './useTransactionFilters';
+import {
+  KEYBOARD_SHORTCUTS,
+  useTransactionFilters,
+} from './useTransactionFilters';
 
 let mockSearchParams = new URLSearchParams('tab=history');
 const mockPush = vi.fn((url: string) => {
@@ -67,7 +70,7 @@ describe('useTransactionFilters', () => {
 
     expect(mockPush).toHaveBeenCalledTimes(1);
     expect(mockPush).toHaveBeenCalledWith(
-      '/transactions?tab=history&status=completed&asset=XLM',
+      '/transactions?tab=history&status=completed',
       { scroll: false },
     );
   });

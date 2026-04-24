@@ -42,8 +42,7 @@ vi.mock('@/hooks/useAccessibleModal', () => ({
 vi.mock('@/hooks/useIdempotentAction', () => ({
   useIdempotentAction: () => ({
     execute: async (
-      fn: (key: string) => Promise<void>,
-      _actionName?: string,
+      fn: (key: string) => Promise<unknown>
     ) => {
       await fn('test-key');
       return null;
@@ -82,9 +81,7 @@ describe('BankDetailsModal telemetry', () => {
   it('emits fiat payout open telemetry when the modal becomes visible', async () => {
     const spy = vi.spyOn(chatTelemetry, 'fiatPayoutStep');
 
-    render(
-      <BankDetailsModal isOpen onClose={vi.fn()} xlmAmount={12} />,
-    );
+    render(<BankDetailsModal isOpen onClose={vi.fn()} xlmAmount={12} />);
 
     await waitFor(() => {
       expect(spy).toHaveBeenCalledWith(
@@ -96,5 +93,4 @@ describe('BankDetailsModal telemetry', () => {
       );
     });
   });
-
 });

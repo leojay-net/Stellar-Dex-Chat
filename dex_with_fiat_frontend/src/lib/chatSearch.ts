@@ -4,7 +4,7 @@ export interface SearchFilters {
   keyword: string;
   walletAddress: string;
   dateFrom: string; // ISO date string YYYY-MM-DD
-  dateTo: string;   // ISO date string YYYY-MM-DD
+  dateTo: string; // ISO date string YYYY-MM-DD
 }
 
 export interface MessageMatch {
@@ -37,7 +37,10 @@ export function debounce<T extends (...args: unknown[]) => void>(
  * Finds all non-overlapping occurrences of `keyword` (case-insensitive)
  * in `text` and returns their [start, end) index pairs.
  */
-export function findHighlights(text: string, keyword: string): Array<[number, number]> {
+export function findHighlights(
+  text: string,
+  keyword: string,
+): Array<[number, number]> {
   if (!keyword.trim()) return [];
   const results: Array<[number, number]> = [];
   const lower = text.toLowerCase();
@@ -134,7 +137,9 @@ export function searchChatHistory(
       if (hasDate && !matchesDateRange(message, dateFrom, dateTo)) continue;
 
       // Keyword filter with highlight positions
-      const highlights = hasKeyword ? findHighlights(message.content, keyword.trim()) : [];
+      const highlights = hasKeyword
+        ? findHighlights(message.content, keyword.trim())
+        : [];
       if (hasKeyword && highlights.length === 0) continue;
 
       matches.push({

@@ -71,7 +71,10 @@ export async function GET(request: Request) {
     const totalPages = Math.max(Math.ceil(total / DEFAULT_PAGE_SIZE), 1);
     const boundedPage = Math.min(page, totalPages);
     const startIndex = (boundedPage - 1) * DEFAULT_PAGE_SIZE;
-    const entries = filteredEntries.slice(startIndex, startIndex + DEFAULT_PAGE_SIZE);
+    const entries = filteredEntries.slice(
+      startIndex,
+      startIndex + DEFAULT_PAGE_SIZE,
+    );
 
     return Response.json({
       entries,

@@ -123,7 +123,11 @@ describe('Event payload shapes', () => {
 
   it('tx_confirm has correct schema', async () => {
     const promise = captureNextEvent<TxConfirmPayload>();
-    chatTelemetry.txConfirm({ assetCode: 'XLM', amountXlm: 10, network: 'TESTNET' });
+    chatTelemetry.txConfirm({
+      assetCode: 'XLM',
+      amountXlm: 10,
+      network: 'TESTNET',
+    });
     const event = await promise;
 
     expect(event.name).toBe('tx_confirm');

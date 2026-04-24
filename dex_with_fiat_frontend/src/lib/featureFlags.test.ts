@@ -11,15 +11,17 @@ describe('FeatureFlags', () => {
 
   it('should return false and log an error for an invalid feature flag', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    
+
     // @ts-expect-error - Testing invalid input
     const result = getFeatureFlag('nonExistentFlag');
-    
+
     expect(result).toBe(false);
     expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Invalid feature flag requested: nonExistentFlag')
+      expect.stringContaining(
+        'Invalid feature flag requested: nonExistentFlag',
+      ),
     );
-    
+
     consoleSpy.mockRestore();
   });
 

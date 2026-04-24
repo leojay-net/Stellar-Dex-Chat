@@ -56,6 +56,7 @@ const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
 export async function fetchCryptoPrices(
   tokenSymbols: string[],
   vsCurrencies: string[] = ['usd', 'eur', 'gbp', 'ngn'],
+  signal?: AbortSignal,
 ): Promise<CryptoPrice> {
   try {
     // Map symbols to CoinGecko IDs
@@ -78,6 +79,7 @@ export async function fetchCryptoPrices(
     const url = `https://api.coingecko.com/api/v3/simple/price?ids=${idsParam}&vs_currencies=${currenciesParam}&include_24hr_change=true`;
 
     const response = await fetch(url, {
+      signal,
       headers: {
         Accept: 'application/json',
       },
@@ -190,6 +192,7 @@ function getFallbackPrices(
 export async function getTokenPrice(
   tokenSymbol: string,
   vsCurrency: string = 'usd',
+  signal?: AbortSignal,
 ): Promise<number> {
   const cacheKey = `${tokenSymbol.toUpperCase()}_${vsCurrency.toLowerCase()}`;
   const cached = priceCache.get(cacheKey);
@@ -201,7 +204,11 @@ export async function getTokenPrice(
 
   try {
     // Fetch fresh data
-    const priceData = await fetchCryptoPrices([tokenSymbol], [vsCurrency]);
+    const priceData = await fetchCryptoPrices(
+      [tokenSymbol],
+      [vsCurrency],
+      signal,
+    );
     const price =
       priceData[tokenSymbol.toUpperCase()]?.[vsCurrency.toLowerCase()] || 0;
 
@@ -228,9 +235,10 @@ export async function convertCryptoToFiat(
   tokenSymbol: string,
   amount: number,
   fiatCurrency: string = 'USD',
+  signal?: AbortSignal,
 ): Promise<number> {
   try {
-    const price = await getTokenPrice(tokenSymbol, fiatCurrency);
+    const price = await getTokenPrice(tokenSymbol, fiatCurrency, signal);
     return amount * price;
   } catch (error) {
     console.error('Error converting crypto to fiat:', error);
@@ -327,7 +335,7 @@ export async function fetchTickerData(
       const tokenSymbol = Object.entries(TOKEN_IDS).find(
         ([, id]) => id === coinId,
       )?.[0];
-      
+
       const priceRecord = priceData as Record<string, number | undefined>;
       if (tokenSymbol && priceRecord[currencyLower] !== undefined) {
         tickerData[tokenSymbol] = {
@@ -363,11 +371,13 @@ export async function fetchLockedQuote(
   tokenSymbol: string,
   amount: number,
   fiatCurrency: string = 'ngn',
+  signal?: AbortSignal,
 ): Promise<LockedQuote> {
   const ngnAmount = await convertCryptoToFiat(
     tokenSymbol,
     amount,
     fiatCurrency,
+    signal,
   );
   const lockedAt = Date.now();
   return {

@@ -48,17 +48,19 @@ function HelpCard({
 }: HelpCardProps) {
   return (
     <div
-      className={`relative group p-5 rounded-2xl border transition-all duration-300 transform hover:-translate-y-1 hover:shadow-xl ${isDarkMode
+      className={`relative group p-5 rounded-2xl border transition-all duration-300 transform hover:-translate-y-1 hover:shadow-xl ${
+        isDarkMode
           ? 'bg-gray-800/50 border-gray-700 hover:border-blue-500/50'
           : 'bg-white border-gray-100 hover:border-blue-200'
-        }`}
+      }`}
     >
       <button
         onClick={() => onDismiss(id)}
-        className={`absolute top-3 right-3 p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity ${isDarkMode
+        className={`absolute top-3 right-3 p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity ${
+          isDarkMode
             ? 'hover:bg-gray-700 text-gray-500 hover:text-gray-300'
             : 'hover:bg-gray-100 text-gray-400 hover:text-gray-600'
-          }`}
+        }`}
         aria-label="Dismiss"
       >
         <X className="w-4 h-4" />
@@ -66,34 +68,38 @@ function HelpCard({
 
       <div className="flex flex-col h-full">
         <div
-          className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 ${isDarkMode
+          className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 ${
+            isDarkMode
               ? 'bg-blue-500/10 text-blue-400'
               : 'bg-blue-50 text-blue-600'
-            }`}
+          }`}
         >
           {icon}
         </div>
 
         <h3
-          className={`text-base font-semibold mb-2 ${isDarkMode ? 'text-gray-100' : 'text-gray-900'
-            }`}
+          className={`text-base font-semibold mb-2 ${
+            isDarkMode ? 'text-gray-100' : 'text-gray-900'
+          }`}
         >
           {title}
         </h3>
 
         <p
-          className={`text-sm leading-relaxed mb-6 flex-grow ${isDarkMode ? 'text-gray-400' : 'text-gray-500'
-            }`}
+          className={`text-sm leading-relaxed mb-6 flex-grow ${
+            isDarkMode ? 'text-gray-400' : 'text-gray-500'
+          }`}
         >
           {description}
         </p>
 
         <button
           onClick={onAction}
-          className={`flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl text-sm font-medium transition-all ${isDarkMode
+          className={`flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl text-sm font-medium transition-all ${
+            isDarkMode
               ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/20'
               : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-200'
-            }`}
+          }`}
         >
           {actionLabel}
           <ChevronRight className="w-4 h-4" />
@@ -120,7 +126,7 @@ export default function ChatMessages({
   const [isLoaded, setIsLoaded] = useState(false);
   const [prevScrollHeight, setPrevScrollHeight] = useState(0);
   const [shouldPreserveScroll, setShouldPreserveScroll] = useState(false);
-  
+
   // Track messages that have already been rendered to avoid re-animating
   const seenMessageIds = useRef<Set<string>>(new Set());
   const [isReadyToAnimate, setIsReadyToAnimate] = useState(false);
@@ -135,10 +141,10 @@ export default function ChatMessages({
         console.error('Failed to parse dismissed cards', e);
       }
     }
-    
+
     // Mark initial messages as seen
-    allMessages.forEach(m => seenMessageIds.current.add(m.id));
-    
+    allMessages.forEach((m) => seenMessageIds.current.add(m.id));
+
     setIsLoaded(true);
     // Delay setting isReadyToAnimate to ensure initial history is processed
     const timer = setTimeout(() => setIsReadyToAnimate(true), 100);
@@ -148,7 +154,7 @@ export default function ChatMessages({
   // Update seen messages whenever visibleMessages changes, but don't trigger re-render
   useEffect(() => {
     if (isReadyToAnimate && !isLoadingMore) {
-      visibleMessages.forEach(m => seenMessageIds.current.add(m.id));
+      visibleMessages.forEach((m) => seenMessageIds.current.add(m.id));
     }
   }, [visibleMessages, isReadyToAnimate, isLoadingMore]);
 
@@ -180,7 +186,13 @@ export default function ChatMessages({
         return () => clearTimeout(timer);
       }
     }
-  }, [allMessages.length, isLoading, isLoadingMore, shouldPreserveScroll, scrollToBottom]);
+  }, [
+    allMessages.length,
+    isLoading,
+    isLoadingMore,
+    shouldPreserveScroll,
+    scrollToBottom,
+  ]);
 
   // Handle scroll preservation when loading more
   useEffect(() => {
@@ -201,7 +213,12 @@ export default function ChatMessages({
       }
       setShouldPreserveScroll(false);
     }
-  }, [visibleMessages.length, isLoadingMore, shouldPreserveScroll, prevScrollHeight]);
+  }, [
+    visibleMessages.length,
+    isLoadingMore,
+    shouldPreserveScroll,
+    prevScrollHeight,
+  ]);
 
   // Intersection Observer for Infinite Scroll
   useEffect(() => {
@@ -213,7 +230,7 @@ export default function ChatMessages({
           loadMore();
         }
       },
-      { threshold: 0.5 }
+      { threshold: 0.5 },
     );
 
     if (loaderRef.current) {
@@ -263,8 +280,9 @@ export default function ChatMessages({
   return (
     <div
       ref={containerRef}
-      className={`flex-1 overflow-y-auto p-6 transition-colors duration-300 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'
-        }`}
+      className={`flex-1 overflow-y-auto p-6 transition-colors duration-300 ${
+        isDarkMode ? 'bg-gray-900' : 'bg-gray-50'
+      }`}
       style={{
         height: '100%',
         minHeight: '0',
@@ -276,23 +294,26 @@ export default function ChatMessages({
           {/* Welcome Header */}
           <div className="text-center mb-12">
             <div
-              className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium mb-4 ${isDarkMode
+              className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium mb-4 ${
+                isDarkMode
                   ? 'bg-blue-500/10 text-blue-400'
                   : 'bg-blue-50 text-blue-600'
-                }`}
+              }`}
             >
               <Sparkles className="w-3 h-3" />
               AI-Powered Bridge
             </div>
             <h1
-              className={`text-4xl font-bold mb-4 tracking-tight ${isDarkMode ? 'text-white' : 'text-gray-900'
-                }`}
+              className={`text-4xl font-bold mb-4 tracking-tight ${
+                isDarkMode ? 'text-white' : 'text-gray-900'
+              }`}
             >
               Welcome to <span className="text-blue-600">DexFiat</span>
             </h1>
             <p
-              className={`text-lg max-w-xl mx-auto leading-relaxed ${isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                }`}
+              className={`text-lg max-w-xl mx-auto leading-relaxed ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-500'
+              }`}
             >
               The most intuitive way to convert your Stellar assets to fiat
               currency. Follow the steps below to get started.
@@ -331,7 +352,10 @@ export default function ChatMessages({
               className="flex justify-center py-4 text-gray-500"
             >
               {isLoadingMore ? (
-                <div className="w-full space-y-3 px-2 animate-in fade-in" aria-label="Loading older messages">
+                <div
+                  className="w-full space-y-3 px-2 animate-in fade-in"
+                  aria-label="Loading older messages"
+                >
                   {[...Array(3)].map((_, i) => (
                     <div key={i} className="flex gap-3">
                       <Skeleton className="h-8 w-8 rounded-full flex-shrink-0" />
@@ -343,7 +367,9 @@ export default function ChatMessages({
                   ))}
                 </div>
               ) : (
-                <span className="text-xs opacity-0">Scroll up to load more</span>
+                <span className="text-xs opacity-0">
+                  Scroll up to load more
+                </span>
               )}
             </div>
           )}
@@ -353,7 +379,11 @@ export default function ChatMessages({
               key={message.id}
               message={message}
               onActionClick={onActionClick}
-              shouldAnimate={isReadyToAnimate && !isLoadingMore && !seenMessageIds.current.has(message.id)}
+              shouldAnimate={
+                isReadyToAnimate &&
+                !isLoadingMore &&
+                !seenMessageIds.current.has(message.id)
+              }
             />
           ))}
         </div>

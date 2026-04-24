@@ -29,24 +29,34 @@ describe('LandingPage – accessibility', () => {
 
   it('wraps primary content in a labeled main landmark', () => {
     render(<LandingPage />);
-    expect(screen.getByRole('main', { name: /DexFiat product overview/i })).toBeDefined();
+    expect(
+      screen.getByRole('main', { name: /DexFiat product overview/i }),
+    ).toBeDefined();
   });
 
   it('associates the early-access email field with a label', () => {
     render(<LandingPage />);
-    expect(screen.getByLabelText(/email address for early access/i)).toBeDefined();
+    expect(
+      screen.getByLabelText(/email address for early access/i),
+    ).toBeDefined();
   });
 
   it('labels the Stellar Expert external link for screen readers', () => {
     render(<LandingPage />);
     expect(
-      screen.getByRole('link', { name: /View Stellar Testnet on Stellar Expert/i }),
+      screen.getByRole('link', {
+        name: /View Stellar Testnet on Stellar Expert/i,
+      }),
     ).toBeDefined();
   });
 
   it('labels footer social links', () => {
     render(<LandingPage />);
-    expect(screen.getByRole('link', { name: /DexFiat on Twitter/i })).toBeDefined();
-    expect(screen.getByRole('link', { name: /DexFiat on GitHub/i })).toBeDefined();
+    expect(
+      screen.getByRole('link', { name: /DexFiat on Twitter/i }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole('link', { name: /DexFiat on GitHub/i }),
+    ).toBeDefined();
   });
 });

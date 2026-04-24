@@ -46,7 +46,9 @@ describe('AdminDashboard - Dark Mode Support', () => {
   });
 
   it('renders with theme-aware classes', async () => {
-    render(<AdminDashboard />);
+    await act(async () => {
+      render(<AdminDashboard />);
+    });
 
     await waitFor(() => {
       expect(screen.getByText('Admin Dashboard')).toBeInTheDocument();
@@ -108,7 +110,9 @@ describe('AdminDashboard - Dark Mode Support', () => {
     });
 
     // Check chart has ARIA label
-    const chartContainer = screen.getByRole('img', { name: /transaction volume chart/i });
+    const chartContainer = screen.getByRole('img', {
+      name: /transaction volume chart/i,
+    });
     expect(chartContainer).toBeInTheDocument();
 
     // Check volume display has ARIA label
@@ -116,22 +120,28 @@ describe('AdminDashboard - Dark Mode Support', () => {
     expect(volumeDisplay).toBeInTheDocument();
 
     // Check export button has ARIA label
-    const exportButton = screen.getByRole('button', { name: /export audit log to csv file/i });
+    const exportButton = screen.getByRole('button', {
+      name: /export audit log to csv file/i,
+    });
     expect(exportButton).toBeInTheDocument();
 
     // Check table has ARIA label
-    const auditTable = screen.getByRole('table', { name: /admin audit log entries/i });
+    const auditTable = screen.getByRole('table', {
+      name: /admin audit log entries/i,
+    });
     expect(auditTable).toBeInTheDocument();
 
     // Check pagination buttons have ARIA labels
-    const prevButton = screen.getByRole('button', { name: /go to previous page/i });
+    const prevButton = screen.getByRole('button', {
+      name: /go to previous page/i,
+    });
     const nextButton = screen.getByRole('button', { name: /go to next page/i });
     expect(prevButton).toBeInTheDocument();
     expect(nextButton).toBeInTheDocument();
 
     // Check table headers have scope
     const headers = screen.getAllByRole('columnheader');
-    headers.forEach(header => {
+    headers.forEach((header) => {
       expect(header).toHaveAttribute('scope', 'col');
     });
   });

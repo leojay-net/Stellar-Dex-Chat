@@ -35,7 +35,12 @@ export default function WalletConnectionTimeline({
     {
       id: 'verify',
       label: 'Verify network',
-      status: isConnected && isNetworkMismatch ? 'error' : isConnected ? 'done' : 'pending',
+      status:
+        isConnected && isNetworkMismatch
+          ? 'error'
+          : isConnected
+            ? 'done'
+            : 'pending',
     },
     {
       id: 'ready',

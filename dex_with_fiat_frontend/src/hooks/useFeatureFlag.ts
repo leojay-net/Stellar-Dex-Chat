@@ -1,7 +1,11 @@
 'use client';
 
 import { useState, useEffect, useLayoutEffect } from 'react';
-import { FeatureFlag, getFeatureFlag, FeatureFlagNameSchema } from '@/lib/featureFlags';
+import {
+  FeatureFlag,
+  getFeatureFlag,
+  FeatureFlagNameSchema,
+} from '@/lib/featureFlags';
 
 const useIsomorphicLayoutEffect =
   typeof window !== 'undefined' ? useLayoutEffect : useEffect;
@@ -25,7 +29,7 @@ export function useFeatureFlag(flag: FeatureFlag, scrollTargetId?: string) {
     if (!validation.success) {
       console.error(
         `[useFeatureFlag] Invalid feature flag name: "${flag}". ` +
-        `Expected one of: ${Object.keys(FeatureFlagNameSchema.enum).join(', ')}`
+          `Expected one of: ${Object.keys(FeatureFlagNameSchema.enum).join(', ')}`,
       );
       setIsEnabled(false);
       return;
