@@ -52,6 +52,7 @@ export default function ReceiptDrawer({
     filterStats,
     toggleFilter,
     clearAllFilters,
+    getFilterChipTone,
   } = useTransactionFilters(transactions);
 
   // Determine which transactions to display
@@ -106,6 +107,7 @@ export default function ReceiptDrawer({
           <FilterChipBar
             filterState={filterState}
             filterStats={filterStats}
+            getFilterChipTone={getFilterChipTone}
             onFilterChange={toggleFilter}
             onClearAll={clearAllFilters}
           />
