@@ -45,19 +45,19 @@ export default function NotificationsCenter() {
   const getIconColor = (type: AppNotification['type']) => {
     switch (type) {
       case 'tx_submit':
-        return 'text-blue-500';
+        return 'text-[var(--color-primary)]';
       case 'tx_confirm':
-        return 'text-green-500';
+        return 'text-[var(--color-success)]';
       case 'payout_pending':
-        return 'text-yellow-500';
+        return 'text-[var(--color-warning)]';
       case 'payout_success':
-        return 'text-green-500';
+        return 'text-[var(--color-success)]';
       case 'payout_fail':
-        return 'text-red-500';
+        return 'text-[var(--color-danger)]';
       case 'risk_warning':
-        return 'text-amber-500';
+        return 'text-[var(--color-warning)]';
       default:
-        return 'text-gray-500';
+        return 'text-[var(--color-text-muted)]';
     }
   };
 
