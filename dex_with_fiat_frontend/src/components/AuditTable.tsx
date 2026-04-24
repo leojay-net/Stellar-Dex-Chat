@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { AuditEntry } from '@/types';
 
 interface AuditTableProps {
@@ -32,8 +32,14 @@ export default function AuditTable({}: AuditTableProps) {
   });
 
   const pageSize = 20;
+  const fetchAbortRef = useRef<AbortController | null>(null);
 
   const fetchAuditEntries = useCallback(async () => {
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    const { signal } = controller;
+
     setLoading(true);
     setError(null);
 
@@ -50,7 +56,9 @@ export default function AuditTable({}: AuditTableProps) {
       params.append('limit', pageSize.toString());
       params.append('offset', (currentPage * pageSize).toString());
 
-      const response = await fetch(`/api/admin-audit?${params.toString()}`);
+      const response = await fetch(`/api/admin-audit?${params.toString()}`, {
+        signal,
+      });
 
       if (!response.ok) {
         throw new Error(`API error: ${response.statusText}`);
@@ -63,15 +71,23 @@ export default function AuditTable({}: AuditTableProps) {
       })));
       setTotalEntries(data.total);
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        return;
+      }
       setError(err instanceof Error ? err.message : 'Failed to fetch audit entries');
       console.error('Audit fetch error:', err);
     } finally {
-      setLoading(false);
+      if (!signal.aborted) {
+        setLoading(false);
+      }
     }
   }, [filters, currentPage]);
 
   useEffect(() => {
-    fetchAuditEntries();
+    void fetchAuditEntries();
+    return () => {
+      fetchAbortRef.current?.abort();
+    };
   }, [fetchAuditEntries]);
 
   const handleFilterChange = (key: keyof FilterState, value: string) => {

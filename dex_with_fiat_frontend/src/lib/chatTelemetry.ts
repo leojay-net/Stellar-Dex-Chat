@@ -3,14 +3,15 @@
 // ── Schema ────────────────────────────────────────────────────────────────
 
 /** Bump when the event payload shape changes in a breaking way. */
-export const TELEMETRY_SCHEMA_VERSION = '1.0.0';
+export const TELEMETRY_SCHEMA_VERSION = '1.1.0';
 
 export type ChatEventName =
   | 'message_send'
   | 'message_retry'
   | 'wallet_connect'
   | 'bridge_open'
-  | 'tx_confirm';
+  | 'tx_confirm'
+  | 'fiat_payout_step';
 
 export interface ChatEvent<P extends object = Record<string, unknown>> {
   /** Normalized event name. */
@@ -48,6 +49,26 @@ export interface TxConfirmPayload {
   assetCode: string;
   amountXlm?: number;
   network: string;
+}
+
+/** Fiat payout modal funnel (BankDetailsModal). */
+export type FiatPayoutTelemetryAction =
+  | 'open'
+  | 'close'
+  | 'step_change'
+  | 'bank_selected'
+  | 'account_verify_success'
+  | 'account_verify_fail'
+  | 'confirm_attempt'
+  | 'confirm_success'
+  | 'confirm_error';
+
+export interface FiatPayoutStepPayload {
+  action: FiatPayoutTelemetryAction;
+  step?: number;
+  xlmAmount?: number;
+  bankCode?: string;
+  errorMessage?: string;
 }
 
 export interface AvatarColorTelemetryPayload {
@@ -216,7 +237,10 @@ function emit<P extends object>(
 ): void {
   if (!getTelemetryConsent()) return;
 
-  const normalizedPayload = withAccessibleAvatarContrast(payload);
+  const normalizedPayload =
+    name === 'fiat_payout_step'
+      ? payload
+      : withAccessibleAvatarContrast(payload);
 
   const event: ChatEvent<typeof normalizedPayload> = {
     name,
@@ -253,5 +277,9 @@ export const chatTelemetry = {
 
   txConfirm(payload: TxConfirmPayload): void {
     emit('tx_confirm', payload);
+  },
+
+  fiatPayoutStep(payload: FiatPayoutStepPayload): void {
+    emit('fiat_payout_step', payload);
   },
 };

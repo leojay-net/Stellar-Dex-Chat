@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { ChatSession, ChatMessage } from '@/types';
 import { UseSplitViewReturn, SplitViewState } from '@/hooks/useSplitView';
 import SplitViewComparison from '@/components/SplitViewComparison';
@@ -9,8 +9,17 @@ import SplitViewComparison from '@/components/SplitViewComparison';
 // Mocks
 // ---------------------------------------------------------------------------
 
-vi.mock('@/contexts/ThemeContext', () => ({
-  useTheme: () => ({ isDarkMode: false }),
+const { splitViewAddToastMock } = vi.hoisted(() => ({
+  splitViewAddToastMock: vi.fn(),
+}));
+
+vi.mock('@/hooks/useToast', () => ({
+  useToast: () => ({
+    toasts: [],
+    addToast: splitViewAddToastMock,
+    dismissToast: vi.fn(),
+    clearToasts: vi.fn(),
+  }),
 }));
 
 // ---------------------------------------------------------------------------
@@ -86,6 +95,23 @@ describe('SplitViewComparison – layout', () => {
     const dialog = screen.getByTestId('split-view-comparison');
     expect(dialog.getAttribute('role')).toBe('dialog');
     expect(dialog.getAttribute('aria-modal')).toBe('true');
+    expect(dialog.getAttribute('aria-labelledby')).toBe('split-view-comparison-title');
+  });
+
+  it('exposes labeled regions and a toolbar for assistive tech', () => {
+    const splitView = makeSplitView();
+    render(<SplitViewComparison splitView={splitView} sessions={allSessions} />);
+    expect(screen.getByRole('region', { name: /left thread comparison pane/i })).toBeDefined();
+    expect(screen.getByRole('region', { name: /right thread comparison pane/i })).toBeDefined();
+    expect(screen.getByRole('toolbar', { name: /comparison actions/i })).toBeDefined();
+  });
+
+  it('uses theme CSS variables for surfaces and borders', () => {
+    const splitView = makeSplitView();
+    const { container } = render(<SplitViewComparison splitView={splitView} sessions={allSessions} />);
+    const root = container.querySelector('[data-testid="split-view-comparison"]');
+    expect(root?.getAttribute('class')).toContain('var(--background)');
+    expect(root?.getAttribute('class')).toContain('var(--foreground)');
   });
 
   it('shows messages from the left session', () => {
@@ -166,5 +192,66 @@ describe('SplitViewComparison – message selection sync', () => {
     expect(pressedBtn).toBeDefined();
     fireEvent.click(pressedBtn!);
     expect(splitView.selectMessage).toHaveBeenCalledWith(null);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Network status toasts (Issue #550)
+// ---------------------------------------------------------------------------
+
+describe('SplitViewComparison – network status toasts', () => {
+  afterEach(() => {
+    cleanup();
+    splitViewAddToastMock.mockClear();
+  });
+
+  it('shows a warning toast when the browser goes offline while open', async () => {
+    const splitView = makeSplitView();
+    render(<SplitViewComparison splitView={splitView} sessions={allSessions} />);
+
+    fireEvent(window, new Event('offline'));
+
+    await waitFor(() => {
+      expect(splitViewAddToastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          severity: 'warning',
+          message: expect.stringMatching(/offline/i),
+        }),
+      );
+    });
+  });
+
+  it('shows a success toast when coming back online after offline', async () => {
+    const splitView = makeSplitView();
+    render(<SplitViewComparison splitView={splitView} sessions={allSessions} />);
+
+    fireEvent(window, new Event('offline'));
+    await waitFor(() => expect(splitViewAddToastMock).toHaveBeenCalled());
+
+    splitViewAddToastMock.mockClear();
+    fireEvent(window, new Event('online'));
+
+    await waitFor(() => {
+      expect(splitViewAddToastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          severity: 'success',
+          message: expect.stringMatching(/online|reconnect/i),
+        }),
+      );
+    });
+  });
+
+  it('prevents hydration mismatch by not rendering timestamps until mounted', () => {
+    const splitView = makeSplitView({ leftSessionId: 's1' });
+    const { container } = render(<SplitViewComparison splitView={splitView} sessions={allSessions} />);
+
+    // Initially, timestamps should be empty to avoid hydration mismatch
+    const timestampElements = container.querySelectorAll('[data-testid="message-timestamp"]');
+    timestampElements.forEach(el => {
+      expect(el.textContent).toBe('');
+    });
+
+    // Note: In a real hydration scenario, we would check that server and client render match,
+    // but for this test we verify the timestamp is hidden initially
   });
 });

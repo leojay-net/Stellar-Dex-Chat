@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useCallback, useRef, useEffect } from 'react';
+import { useMemo, useCallback, useRef, useEffect, useState } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import type {
   TransactionHistoryEntry,
@@ -15,6 +15,17 @@ import {
   deserializeFilters,
   mergeFilterParams,
 } from '@/lib/filterUrlSerializer';
+
+function areFilterStatesEqual(a: FilterState, b: FilterState): boolean {
+  return (
+    a.status.length === b.status.length &&
+    a.asset.length === b.asset.length &&
+    a.network.length === b.network.length &&
+    a.status.every((value, index) => value === b.status[index]) &&
+    a.asset.every((value, index) => value === b.asset[index]) &&
+    a.network.every((value, index) => value === b.network[index])
+  );
+}
 
 /**
  * Keyboard shortcut definitions exposed by the hook.
@@ -247,9 +258,14 @@ export function useTransactionFilters(
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingFilterStateRef = useRef<FilterState | null>(null);
+  const lastUpdateTimeRef = useRef<number>(0);
+  const [optimisticFilterState, setOptimisticFilterState] = useState<FilterState | null>(
+    null,
+  );
 
   // Parse filter state from URL (with fallback for SSR)
-  const filterState = useMemo(() => {
+  const urlFilterState = useMemo(() => {
     try {
       return deserializeFilters(searchParams);
     } catch {
@@ -257,6 +273,18 @@ export function useTransactionFilters(
       return { status: [], asset: [], network: [] };
     }
   }, [searchParams]);
+
+  const filterState = optimisticFilterState ?? urlFilterState;
+
+  useEffect(() => {
+    if (
+      pendingFilterStateRef.current &&
+      areFilterStatesEqual(pendingFilterStateRef.current, urlFilterState)
+    ) {
+      pendingFilterStateRef.current = null;
+      setOptimisticFilterState(null);
+    }
+  }, [urlFilterState, optimisticFilterState]);
 
   // Compute filtered transactions
   const filteredTransactions = useMemo(() => {
@@ -289,10 +317,19 @@ export function useTransactionFilters(
   // Update URL with new filter state (debounced)
   const updateUrl = useCallback(
     (newFilterState: FilterState) => {
+      const now = Date.now();
+      if (now - lastUpdateTimeRef.current < 50) {
+        return;
+      }
+      lastUpdateTimeRef.current = now;
+
       // Clear existing timer
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
+
+      pendingFilterStateRef.current = newFilterState;
+      setOptimisticFilterState(newFilterState);
 
       // Set new timer
       debounceTimerRef.current = setTimeout(() => {
@@ -308,13 +345,14 @@ export function useTransactionFilters(
   // Toggle a filter value
   const toggleFilter = useCallback(
     (category: FilterCategory, value: string) => {
-      const currentValues = filterState[category];
+      const currentFilterState = pendingFilterStateRef.current ?? filterState;
+      const currentValues = currentFilterState[category];
       const newValues = currentValues.includes(value as never)
         ? currentValues.filter((v) => v !== value)
         : [...currentValues, value as never];
 
       const newFilterState: FilterState = {
-        ...filterState,
+        ...currentFilterState,
         [category]: newValues,
       };
 
@@ -354,7 +392,8 @@ export function useTransactionFilters(
       const options = optionsMap[category];
       if (!options || options.length === 0) return;
 
-      const currentValues = filterState[category] as string[];
+      const currentFilterState = pendingFilterStateRef.current ?? filterState;
+      const currentValues = currentFilterState[category] as string[];
       const availableValues = options.map((o) => o.value);
 
       if (currentValues.length === 0) {
@@ -368,14 +407,14 @@ export function useTransactionFilters(
         if (nextIndex >= availableValues.length) {
           // Cycled through all -- clear category
           const newFilterState: FilterState = {
-            ...filterState,
+            ...currentFilterState,
             [category]: [],
           };
           updateUrl(newFilterState);
         } else {
           // Move to next value (replace selection with next single value)
           const newFilterState: FilterState = {
-            ...filterState,
+            ...currentFilterState,
             [category]: [availableValues[nextIndex] as never],
           };
           updateUrl(newFilterState);

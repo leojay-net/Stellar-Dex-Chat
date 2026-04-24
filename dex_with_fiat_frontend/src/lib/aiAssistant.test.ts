@@ -1,4 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+const { toastAddMock } = vi.hoisted(() => ({
+  toastAddMock: vi.fn(),
+}));
+
+vi.mock('./toastStore', () => ({
+  toastStore: {
+    addToast: toastAddMock,
+    dismissToast: vi.fn(),
+    clearToasts: vi.fn(),
+    subscribe: vi.fn(() => () => {}),
+    getSnapshot: vi.fn(() => []),
+  },
+}));
+
 import { AIAssistant } from './aiAssistant';
 import type { ChatMessage } from '@/types';
 
@@ -102,6 +117,7 @@ describe('AIAssistant abort signal support', () => {
   let assistant: AIAssistant;
 
   beforeEach(() => {
+    toastAddMock.mockClear();
     assistant = new AIAssistant();
     vi.stubGlobal(
       'fetch',
@@ -189,6 +205,40 @@ describe('AIAssistant abort signal support', () => {
     expect(result.intent).toBe('unknown');
     expect(result.confidence).toBe(0);
     expect(consoleErrorSpy).toHaveBeenCalled();
+    expect(toastAddMock).toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('should toast on network-style fetch failure in analyzeUserMessage', async () => {
+    toastAddMock.mockClear();
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockRejectedValue(new TypeError('Failed to fetch')),
+    );
+
+    const a = new AIAssistant();
+    await a.analyzeUserMessage('hello');
+
+    expect(toastAddMock).toHaveBeenCalledWith(
+      expect.stringContaining('network'),
+      'warning',
+    );
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('should toast on network failure in generateFollowUpQuestion', async () => {
+    toastAddMock.mockClear();
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockRejectedValue(new TypeError('Failed to fetch')),
+    );
+
+    const a = new AIAssistant();
+    await a.generateFollowUpQuestion('x', ['y']);
+
+    expect(toastAddMock).toHaveBeenCalled();
     consoleErrorSpy.mockRestore();
   });
 });

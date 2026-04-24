@@ -347,12 +347,13 @@ export default function AdminDashboard() {
               <h2 className="text-xl font-semibold theme-text-primary mb-6">
                 Daily Transaction Volume
               </h2>
-              <div className="h-80 w-full relative">
+              <div className="h-80 w-full relative" role="img" aria-label="Transaction volume chart showing volume over time in XLM">
                 {maxVolume > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart
                       data={metrics}
                       margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                      aria-hidden="true"
                     >
                       <defs>
                         <linearGradient
@@ -448,7 +449,7 @@ export default function AdminDashboard() {
               <h2 className="text-lg font-medium theme-text-secondary mb-2">
                 30-Day Volume (XLM)
               </h2>
-              <div className="text-4xl font-bold theme-text-primary">
+              <div className="text-4xl font-bold theme-text-primary" aria-label={`30-day transaction volume: ${totalVolume.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM`}>
                 {totalVolume.toLocaleString(undefined, {
                   maximumFractionDigits: 2,
                 })}
@@ -503,6 +504,8 @@ export default function AdminDashboard() {
                       backgroundColor: 'var(--color-success)',
                       color: '#fff',
                     }}
+                    aria-label={exportingCsv ? 'Exporting audit log to CSV file' : 'Export audit log to CSV file'}
+                    aria-describedby="audit-action-filter"
                   >
                     {exportingCsv ? 'Exporting...' : 'Export CSV'}
                   </button>
@@ -523,22 +526,22 @@ export default function AdminDashboard() {
             )}
 
             <div className="overflow-x-auto">
-              <table className="min-w-full">
+              <table className="min-w-full" role="table" aria-label="Admin audit log entries">
                 <thead className="theme-surface-muted">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider" scope="col">
                       Timestamp
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider" scope="col">
                       Action
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider" scope="col">
                       Admin Address
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider" scope="col">
                       Parameters
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-semibold theme-text-secondary uppercase tracking-wider" scope="col">
                       Result
                     </th>
                   </tr>
@@ -612,10 +615,11 @@ export default function AdminDashboard() {
                   }
                   disabled={auditPage <= 1 || auditLoading}
                   className="px-3 py-2 text-sm theme-border border rounded-md theme-text-primary theme-surface-muted hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label={`Go to previous page. Current page is ${auditPage} of ${auditTotalPages}`}
                 >
                   Previous
                 </button>
-                <span className="text-sm theme-text-secondary">
+                <span className="text-sm theme-text-secondary" aria-live="polite" aria-atomic="true">
                   Page {auditPage} of {auditTotalPages}
                 </span>
                 <button
@@ -627,6 +631,7 @@ export default function AdminDashboard() {
                   }
                   disabled={auditPage >= auditTotalPages || auditLoading}
                   className="px-3 py-2 text-sm theme-border border rounded-md theme-text-primary theme-surface-muted hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label={`Go to next page. Current page is ${auditPage} of ${auditTotalPages}`}
                 >
                   Next
                 </button>

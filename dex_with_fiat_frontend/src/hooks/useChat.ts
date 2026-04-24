@@ -635,6 +635,14 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
     [],
   );
 
+  const copyToClipboard = useCallback(async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+    }
+  }, []);
+
   // Update suggested actions when wallet connection changes
   useEffect(() => {
     const machine = machineRef.current;
@@ -683,6 +691,7 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
     setTransactionReadyCallback,
     setIsAdmin: setIsAdminState,
     cancelPendingRequest,
+    copyToClipboard,
     addMessage: (message: ChatMessage) => {
       const newMessages = [...messages, message];
       setMessages((prev: ChatMessage[]) => [...prev, message]);

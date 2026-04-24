@@ -95,7 +95,9 @@ export default function ReceiptDrawer({
                 </button>
               )}
               <button
+                type="button"
                 onClick={onClose}
+                aria-label="Close transaction receipts"
                 className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
               >
                 <X className="w-6 h-6" />

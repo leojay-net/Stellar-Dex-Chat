@@ -61,7 +61,7 @@ type HealthStatus = 'checking' | 'ok' | 'degraded';
 
 const HEALTH_POLL_INTERVAL_MS = 60_000;
 
-export default function StellarChatInterface() {
+function StellarChatInterfaceContent() {
   const { t } = useTranslation();
   const {
     connection,
@@ -430,7 +430,6 @@ export default function StellarChatInterface() {
     },
   }[healthStatus];
   // ───────────────────────────────────────────────────────────────────────────
-//fhj
   const withdrawalQueueTone =
     withdrawalQueueDepth === null
       ? isDarkMode
@@ -443,13 +442,7 @@ export default function StellarChatInterface() {
           : 'bg-red-500/15 text-red-400';
 
   return (
-    <ErrorBoundary
-      isDarkMode={isDarkMode}
-      title={t('common.error_boundary_title') || 'Interface Error'}
-      message={t('common.error_boundary_message') || 'The interface encountered an unexpected error.'}
-      onRetry={() => window.location.reload()}
-    >
-      <div className="theme-app flex h-screen w-screen overflow-hidden transition-colors duration-300">
+    <div className="theme-app flex h-screen w-screen overflow-hidden transition-colors duration-300">
         {/* Desktop sidebar - only rendered on lg+ viewports or when toggled */}
         {!isMobile && (
           <div
@@ -556,8 +549,10 @@ export default function StellarChatInterface() {
               </button>
 
               <button
+                type="button"
                 onClick={() => setIsReceiptDrawerOpen(true)}
                 title={t('header.receipts')}
+                aria-label={t('header.receipts')}
                 className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
               >
                 <Receipt className="w-5 h-5" />
@@ -1026,6 +1021,21 @@ export default function StellarChatInterface() {
           </div>
         )}
       </div>
+  );
+}
+
+/** Top-level error boundary: wraps the full interface tree so render errors are contained. */
+export default function StellarChatInterface() {
+  const { isDarkMode } = useTheme();
+  const { t } = useTranslation();
+  return (
+    <ErrorBoundary
+      isDarkMode={isDarkMode}
+      title={t('common.error_boundary_title') || 'Interface Error'}
+      message={t('common.error_boundary_message') || 'The interface encountered an unexpected error.'}
+      onRetry={() => window.location.reload()}
+    >
+      <StellarChatInterfaceContent />
     </ErrorBoundary>
   );
 }
