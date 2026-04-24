@@ -61,7 +61,7 @@ type HealthStatus = 'checking' | 'ok' | 'degraded';
 
 const HEALTH_POLL_INTERVAL_MS = 60_000;
 
-export default function StellarChatInterface() {
+function StellarChatInterfaceContent() {
   const { t } = useTranslation();
   const {
     connection,
@@ -1043,6 +1043,21 @@ export default function StellarChatInterface() {
           </div>
         )}
       </div>
+  );
+}
+
+/** Top-level error boundary: wraps the full interface tree so render errors are contained. */
+export default function StellarChatInterface() {
+  const { isDarkMode } = useTheme();
+  const { t } = useTranslation();
+  return (
+    <ErrorBoundary
+      isDarkMode={isDarkMode}
+      title={t('common.error_boundary_title') || 'Interface Error'}
+      message={t('common.error_boundary_message') || 'The interface encountered an unexpected error.'}
+      onRetry={() => window.location.reload()}
+    >
+      <StellarChatInterfaceContent />
     </ErrorBoundary>
   );
 }

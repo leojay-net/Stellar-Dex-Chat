@@ -1,12 +1,15 @@
 #![cfg(test)]
 
-use crate::{FiatBridge, FiatBridgeClient, Error};
+use crate::{Error, FiatBridge, FiatBridgeClient};
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     token, Address, Env, Vec,
 };
 
-fn create_token_contract<'a>(env: &Env, admin: &Address) -> (token::Client<'a>, token::StellarAssetClient<'a>) {
+fn create_token_contract<'a>(
+    env: &Env,
+    admin: &Address,
+) -> (token::Client<'a>, token::StellarAssetClient<'a>) {
     let contract_address = env.register_stellar_asset_contract_v2(admin.clone());
     (
         token::Client::new(env, &contract_address.address()),

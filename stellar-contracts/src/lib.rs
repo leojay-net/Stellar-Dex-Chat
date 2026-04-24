@@ -2198,6 +2198,9 @@ impl FiatBridge {
     /// - stale values return `Error::StaleNonce`, skipped/future values return `Error::InvalidNonce`
     pub fn heartbeat(env: Env, operator: Address, nonce: u64) -> Result<(), Error> {
         operator.require_auth();
+        if Self::is_circuit_breaker_tripped(env.clone()) {
+            return Err(Error::CircuitBreakerActive);
+        }
         if !env
             .storage()
             .instance()

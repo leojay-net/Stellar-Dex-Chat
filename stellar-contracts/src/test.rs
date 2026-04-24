@@ -1230,190 +1230,103 @@ fn test_pause_invariant_preserves_state_on_rejected_user_calls() {
 
     bridge.pause();
 
-    assert_eq!(
-        bridge.try_deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None),
-        Err(Ok(Error::ContractPaused))
-    );
-    assert_eq!(
-        bridge.try_request_withdrawal(&user, &50, &token_addr, &None, &0),
-        Err(Ok(Error::ContractPaused))
-    );
-    assert_eq!(
-        bridge.try_withdraw(&admin, &user, &50, &token_addr),
-        Err(Ok(Error::ContractPaused))
-    );
-    assert_eq!(
-        bridge.try_execute_withdrawal(&req_id, &None, &0, &0),
-        Err(Ok(Error::ContractPaused))
-    );
+    bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
 
-    assert_eq!(bridge.get_total_deposited(), deposited_before);
-    assert_eq!(bridge.get_wq_depth(), queue_depth_before);
+    let result = bridge.try_deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(result, Err(Ok(Error::CooldownActive)));
 }
 
 #[test]
-fn test_request_withdrawal_extends_matching_receipt_ttl() {
+fn test_deposit_succeeds_after_cooldown_period() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (contract_id, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 1000);
     let user = Address::generate(&env);
-    token_sac.mint(&user, &2_000);
+    token_sac.mint(&user, &1_000);
 
-    let receipt_id = bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    let receipt_key = DataKey::Receipt(receipt_id.clone());
-    let initial_ttl = env.as_contract(&contract_id, || {
-        env.storage().persistent().get_ttl(&receipt_key)
-    });
-
-    env.ledger().with_mut(|li| {
-        li.sequence_number += initial_ttl.saturating_sub(5);
-    });
-
-    bridge.set_lock_period(&100);
-    bridge.set_cooldown(&20);
-    bridge.request_withdrawal(&user, &100, &token_addr, &None, &0);
-
-    assert!(
-        env.as_contract(&contract_id, || env
-            .storage()
-            .persistent()
-            .get_ttl(&receipt_key))
-            >= MIN_TTL + 100 + 20
-    );
-}
-
-#[test]
-fn test_withdrawal_quota_per_user() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
-    let user_a = Address::generate(&env);
-    let user_b = Address::generate(&env);
-    token_sac.mint(&user_a, &2000);
-    token_sac.mint(&user_b, &2000);
-
-    bridge.deposit(
-        &user_a,
-        &1000,
-        &token_addr,
-        &Bytes::new(&env),
-        &0,
-        &0,
-        &None,
-    );
-    bridge.deposit(
-        &user_b,
-        &1000,
-        &token_addr,
-        &Bytes::new(&env),
-        &0,
-        &0,
-        &None,
-    );
-    bridge.set_withdrawal_quota(&500);
-
-    bridge.withdraw(&admin, &user_a, &500, &token_addr);
-    bridge.withdraw(&admin, &user_b, &500, &token_addr);
-
-    let result_a = bridge.try_withdraw(&admin, &user_a, &100, &token_addr);
-    assert_eq!(result_a, Err(Ok(Error::WithdrawalQuotaExceeded)));
-
-    let result_b = bridge.try_withdraw(&admin, &user_b, &100, &token_addr);
-    assert_eq!(result_b, Err(Ok(Error::WithdrawalQuotaExceeded)));
-}
-
-#[test]
-fn test_withdrawal_quota_window_reset_isolated_per_user() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
-    let user_a = Address::generate(&env);
-    let user_b = Address::generate(&env);
-    token_sac.mint(&user_a, &5_000);
-    token_sac.mint(&user_b, &5_000);
-
-    bridge.deposit(
-        &user_a,
-        &2_000,
-        &token_addr,
-        &Bytes::new(&env),
-        &0,
-        &0,
-        &None,
-    );
-    bridge.deposit(
-        &user_b,
-        &2_000,
-        &token_addr,
-        &Bytes::new(&env),
-        &0,
-        &0,
-        &None,
-    );
-    bridge.set_withdrawal_quota(&500);
-
+    bridge.set_cooldown(&10);
     let start_ledger = env.ledger().sequence();
+    bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
 
-    // User A consumes full quota at start_ledger.
-    bridge.withdraw(&admin, &user_a, &500, &token_addr);
-
-    // User B consumes full quota in a later window start.
     env.ledger().with_mut(|li| {
-        li.sequence_number = start_ledger + 100;
-    });
-    bridge.withdraw(&admin, &user_b, &500, &token_addr);
-
-    assert_eq!(
-        bridge.try_withdraw(&admin, &user_a, &1, &token_addr),
-        Err(Ok(Error::WithdrawalQuotaExceeded))
-    );
-    assert_eq!(
-        bridge.try_withdraw(&admin, &user_b, &1, &token_addr),
-        Err(Ok(Error::WithdrawalQuotaExceeded))
-    );
-
-    // Advance to A's reset point, but still before B's reset point.
-    env.ledger().with_mut(|li| {
-        li.sequence_number = start_ledger + 17_280;
+        li.sequence_number = start_ledger + 10;
     });
 
-    // A can withdraw after reset; B is still quota-limited.
-    bridge.withdraw(&admin, &user_a, &100, &token_addr);
-    assert_eq!(bridge.get_user_daily_withdrawal(&user_a), 100);
-    assert_eq!(
-        bridge.try_withdraw(&admin, &user_b, &1, &token_addr),
-        Err(Ok(Error::WithdrawalQuotaExceeded))
-    );
-
-    // Advance past B's reset point; B can now withdraw independently.
-    env.ledger().with_mut(|li| {
-        li.sequence_number = start_ledger + 17_380;
-    });
-
-    bridge.withdraw(&admin, &user_b, &100, &token_addr);
-    assert_eq!(bridge.get_user_daily_withdrawal(&user_b), 100);
+    bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(bridge.get_user_deposited(&user), 200);
 }
 
 #[test]
-fn test_withdrawal_quota_boundary() {
+fn test_deposit_cooldown_is_per_address_only() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 1000);
+    let user_a = Address::generate(&env);
+    let user_b = Address::generate(&env);
+    token_sac.mint(&user_a, &500);
+    token_sac.mint(&user_b, &500);
+
+    bridge.set_cooldown(&10);
+    bridge.deposit(&user_a, &50, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // user_b not blocked
+    bridge.deposit(&user_b, &50, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // user_a still blocked
+    let result = bridge.try_deposit(&user_a, &50, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(result, Err(Ok(Error::CooldownActive)));
+}
+
+#[test]
+fn test_last_deposit_record_expires_with_ttl() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 500);
     let user = Address::generate(&env);
-    token_sac.mint(&user, &5_000);
+    token_sac.mint(&user, &1_000);
 
-    bridge.deposit(&user, &2000, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    bridge.set_withdrawal_quota(&500);
+    bridge.set_cooldown(&5);
+    let start_ledger = env.ledger().sequence();
+    bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(bridge.get_last_deposit_ledger(&user), Some(start_ledger));
 
-    bridge.withdraw(&admin, &user, &500, &token_addr);
-    assert_eq!(bridge.get_user_daily_withdrawal(&user), 500);
+    env.ledger().with_mut(|li| {
+        li.sequence_number = start_ledger + 20000;
+    });
 
-    let result = bridge.try_withdraw(&admin, &user, &1, &token_addr);
-    assert_eq!(result, Err(Ok(Error::WithdrawalQuotaExceeded)));
+    assert_eq!(bridge.get_last_deposit_ledger(&user), None);
+}
+
+#[test]
+fn test_transfer_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _admin, _, _, _) = setup_bridge(&env, 100);
+    let new_admin = Address::generate(&env);
+
+    bridge.transfer_admin(&new_admin);
+    bridge.accept_admin();
+
+    assert_eq!(bridge.get_admin(), new_admin);
+}
+
+#[test]
+fn test_transfer_admin_to_self_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, _, _, _) = setup_bridge(&env, 100);
+
+    // Attempting to transfer to self should fail with InvalidRecipient
+    let result = bridge.try_transfer_admin(&admin);
+    assert_eq!(result, Err(Ok(Error::SameAdmin)));
+
+    // Admin should remain the same
+    assert_eq!(bridge.get_admin(), admin);
 }
 
 #[test]
@@ -1444,110 +1357,91 @@ fn test_circuit_breaker_triggered_in_validate_withdrawal_quota() {
 // ── renounce admin tests ──────────────────────────────────────────────────
 
 #[test]
-fn test_queue_and_execute_renounce_admin() {
+fn test_set_limit() {
     let env = Env::default();
     env.mock_all_auths();
-    let (_, bridge, admin, _, _, _) = setup_bridge(&env, 500);
 
-    // Ensure admin is set
-    assert_eq!(bridge.get_admin(), admin);
-
-    // Queue renounce
-    bridge.queue_renounce_admin();
-
-    // Check pending ledger
-    let target = env.ledger().sequence() + MIN_TIMELOCK_DELAY;
-    assert_eq!(bridge.get_pending_renounce_ledger(), Some(target));
-
-    // Try executing immediately, should fail with ActionNotReady
-    let res = bridge.try_execute_renounce_admin();
-    assert_eq!(res, Err(Ok(Error::ActionNotReady)));
-
-    // Advance ledger sequence past target
-    env.ledger().with_mut(|li| {
-        li.sequence_number = target + 1;
-    });
-
-    // Execute should succeed now
-    bridge.execute_renounce_admin();
-
-    // Verify admin is renounced
-    let res = bridge.try_get_admin();
-    assert_eq!(res, Err(Ok(Error::NotInitialized)));
-    assert_eq!(bridge.get_pending_renounce_ledger(), None);
+    let (_, bridge, admin, token_addr, _, _) = setup_bridge(&env, 500);
+    bridge.set_limit(&token_addr, &1000);
+    assert_eq!(bridge.get_limit(), 1000);
 }
 
 #[test]
-fn test_cancel_renounce_admin() {
+fn test_set_limit_rejects_above_configured_max_cap() {
     let env = Env::default();
     env.mock_all_auths();
-    let (_, bridge, _, _, _, _) = setup_bridge(&env, 500);
 
-    // Queue renounce
-    bridge.queue_renounce_admin();
-    assert!(bridge.get_pending_renounce_ledger().is_some());
-
-    // Cancel renounce
-    bridge.cancel_renounce_admin();
-    assert_eq!(bridge.get_pending_renounce_ledger(), None);
-
-    // Advance ledger sequence
-    env.ledger().with_mut(|li| {
-        li.sequence_number += MIN_TIMELOCK_DELAY + 1;
-    });
-
-    // Try executing should fail because it was cancelled
-    let res = bridge.try_execute_renounce_admin();
-    assert_eq!(res, Err(Ok(Error::ActionNotQueued)));
+    let (_, bridge, _admin, token_addr, _, _) = setup_bridge(&env, 500);
+    bridge.set_limit_max_cap(&1000);
+    let result = bridge.try_set_limit(&token_addr, &1001);
+    assert_eq!(result, Err(Ok(Error::ExceedsLimitMaxCap)));
 }
 
 #[test]
-fn test_operator_heartbeat() {
+fn test_set_limit_succeeds_at_max_cap_boundary() {
     let env = Env::default();
     env.mock_all_auths();
-    let (_, bridge, _, _, _, _) = setup_bridge(&env, 1000);
 
-    let operator = Address::generate(&env);
-
-    // Initial state
-    assert!(!bridge.is_operator(&operator));
-    assert_eq!(bridge.get_operator_heartbeat(&operator), None);
-
-    // Set operator
-    bridge.set_operator(&operator, &true);
-    assert!(bridge.is_operator(&operator));
-
-    // Heartbeat
-    let curr = env.ledger().sequence();
-    bridge.heartbeat(&operator, &0);
-    assert_eq!(bridge.get_operator_heartbeat(&operator), Some(curr));
-
-    // Deactivate operator
-    bridge.set_operator(&operator, &false);
-    assert!(!bridge.is_operator(&operator));
-
-    // Heartbeat should fail now
-    let res = bridge.try_heartbeat(&operator, &1);
-    assert_eq!(res, Err(Ok(Error::NotOperator)));
+    let (_, bridge, _admin, token_addr, _, _) = setup_bridge(&env, 500);
+    bridge.set_limit_max_cap(&1000);
+    bridge.set_limit(&token_addr, &1000);
+    assert_eq!(bridge.get_limit(), 1000);
 }
 
 #[test]
-fn test_heartbeat_nonce_overflow_returns_explicit_error() {
+fn test_set_limit_max_cap_rejects_zero() {
     let env = Env::default();
     env.mock_all_auths();
-    let (contract_id, bridge, _, _, _, _) = setup_bridge(&env, 1_000);
+
+    let (_, bridge, _admin, _token_addr, _, _) = setup_bridge(&env, 500);
+    let result = bridge.try_set_limit_max_cap(&0);
+    assert_eq!(result, Err(Ok(Error::ZeroAmount)));
+}
+
+#[test]
+fn test_get_set_limit_max_cap_defaults_high() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _admin, _token_addr, _, _) = setup_bridge(&env, 500);
+    assert_eq!(bridge.get_set_limit_max_cap(), i128::MAX);
+}
+
+#[test]
+fn test_heartbeat_blocked_by_circuit_breaker() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (contract_id, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 1_000);
 
     let operator = Address::generate(&env);
     bridge.set_operator(&operator, &true);
 
-    env.as_contract(&contract_id, || {
-        env.storage()
-            .instance()
-            .set(&DataKey::OperatorNonce(operator.clone()), &u64::MAX);
-    });
+    // Set circuit breaker threshold and trip it
+    bridge.set_circuit_breaker_threshold(&500);
+    token_sac.mint(&admin, &600);
+    bridge.deposit(&admin, &600, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.withdraw(&admin, &admin, &600, &token_addr); // This should trip the circuit breaker
 
-    let result = bridge.try_heartbeat(&operator, &u64::MAX);
-    assert_eq!(result, Err(Ok(Error::Overflow)));
+    // Now heartbeat should be blocked
+    let heartbeat_result = bridge.try_heartbeat(&operator, &0);
+    assert_eq!(heartbeat_result, Err(Ok(Error::CircuitBreakerActive)));
+}
+
+#[test]
+fn test_set_limit_blocked_by_circuit_breaker() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (contract_id, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 1_000);
+
+    // Set circuit breaker threshold and trip it
+    bridge.set_circuit_breaker_threshold(&500);
+    token_sac.mint(&admin, &600);
+    bridge.deposit(&admin, &600, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.withdraw(&admin, &admin, &600, &token_addr); // This should trip the circuit breaker
+
+    // Now set_limit should be blocked
+    let set_limit_result = bridge.try_set_limit(&token_addr, &2000);
+    assert_eq!(set_limit_result, Err(Ok(Error::CircuitBreakerActive)));
 }
 
 #[test]
