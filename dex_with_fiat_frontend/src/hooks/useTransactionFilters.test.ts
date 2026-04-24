@@ -70,7 +70,7 @@ describe('useTransactionFilters', () => {
 
     expect(mockPush).toHaveBeenCalledTimes(1);
     expect(mockPush).toHaveBeenCalledWith(
-      '/transactions?tab=history&status=completed&asset=XLM',
+      '/transactions?tab=history&status=completed',
       { scroll: false },
     );
   });

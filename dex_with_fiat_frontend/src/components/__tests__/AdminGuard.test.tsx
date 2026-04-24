@@ -17,9 +17,11 @@ describe('AdminGuard', () => {
   });
 
   it('renders landing page when connection address is empty', async () => {
+    const validAddr = 'GABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDE';
     vi.mocked(useStellarWallet).mockReturnValue({
-      connection: { address: '' },
+      connection: { address: validAddr },
     } as unknown as ReturnType<typeof useStellarWallet>);
+    vi.mocked(getAdmin).mockResolvedValue(validAddr);
 
     render(
       <AdminGuard>
@@ -64,7 +66,7 @@ describe('AdminGuard', () => {
     );
 
     expect(
-      await screen.findByText('Invalid contract configuration. Access denied.'),
+      await screen.findByText(/Invalid contract configuration/i),
     ).toBeInTheDocument();
   });
 

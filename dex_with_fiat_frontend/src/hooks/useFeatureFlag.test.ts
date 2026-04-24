@@ -49,10 +49,10 @@ describe('useFeatureFlag', () => {
 
   it('uses theme-aligned divider borders for feature-flag sections', () => {
     expect(featureFlagSectionDividerBorderClass(true)).toContain(
-      'border-gray-700',
+      'border-theme-border',
     );
     expect(featureFlagSectionDividerBorderClass(false)).toContain(
-      'border-gray-200',
+      'border-theme-border-light',
     );
   });
 
@@ -65,7 +65,7 @@ describe('useFeatureFlag', () => {
     const scrollIntoViewSpy = vi.spyOn(mockElement, 'scrollIntoView');
 
     // Mock the feature flag to return true
-    vi.mocked(getFeatureFlag).mockReturnValue(true);
+    vi.mocked(getFeatureFlag).mockImplementation(() => true);
 
     await act(async () => {
       renderToString(
