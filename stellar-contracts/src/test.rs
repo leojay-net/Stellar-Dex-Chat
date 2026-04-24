@@ -5001,10 +5001,7 @@ fn test_execute_batch_admin_invariant_success_plus_failure_equals_total_ops() {
 
     let r = bridge.execute_batch_admin(&ops);
     assert_eq!(r.total_ops, 6);
-    assert_eq!(
-        r.success_count.saturating_add(r.failure_count),
-        r.total_ops
-    );
+    assert_eq!(r.success_count.saturating_add(r.failure_count), r.total_ops);
     assert_eq!(r.success_count, 5);
     assert_eq!(r.failure_count, 1);
     assert_eq!(r.failed_index, Some(4));
