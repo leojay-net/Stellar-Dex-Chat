@@ -4363,7 +4363,7 @@ fn test_set_operator_invariant_emits_event() {
     let raw = events.events();
 
     // Should have SetOperatorEvent
-    assert!(raw.len() > 0);
+    assert!(!raw.is_empty());
 }
 
 #[test]
