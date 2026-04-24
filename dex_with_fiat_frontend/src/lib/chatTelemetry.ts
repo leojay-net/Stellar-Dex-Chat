@@ -3,16 +3,17 @@
 // ── Schema ────────────────────────────────────────────────────────────────
 
 /** Bump when the event payload shape changes in a breaking way. */
-export const TELEMETRY_SCHEMA_VERSION = '1.0.0';
+export const TELEMETRY_SCHEMA_VERSION = '1.1.0';
 
 export type ChatEventName =
   | 'message_send'
   | 'message_retry'
   | 'wallet_connect'
   | 'bridge_open'
-  | 'tx_confirm';
+  | 'tx_confirm'
+  | 'fiat_payout_step';
 
-export interface ChatEvent<P extends Record<string, unknown> = Record<string, unknown>> {
+export interface ChatEvent<P extends object = Record<string, unknown>> {
   /** Normalized event name. */
   name: ChatEventName;
   /** Schema version for this payload shape. */
@@ -50,9 +51,161 @@ export interface TxConfirmPayload {
   network: string;
 }
 
+/** Fiat payout modal funnel (BankDetailsModal). */
+export type FiatPayoutTelemetryAction =
+  | 'open'
+  | 'close'
+  | 'step_change'
+  | 'bank_selected'
+  | 'account_verify_success'
+  | 'account_verify_fail'
+  | 'confirm_attempt'
+  | 'confirm_success'
+  | 'confirm_error';
+
+export interface FiatPayoutStepPayload {
+  action: FiatPayoutTelemetryAction;
+  step?: number;
+  xlmAmount?: number;
+  bankCode?: string;
+  errorMessage?: string;
+}
+
+export interface AvatarColorTelemetryPayload {
+  avatarBackgroundColor: string;
+  avatarTextColor?: string;
+}
+
+export interface AccessibleAvatarColorTelemetryPayload
+  extends AvatarColorTelemetryPayload {
+  avatarTextColor: string;
+  avatarContrastRatio: number;
+  avatarContrastCompliant: boolean;
+}
+
 // ── Consent key ───────────────────────────────────────────────────────────
 
 const CONSENT_KEY = 'nova_telemetry_consent';
+const MIN_CONTRAST_RATIO = 4.5;
+const FALLBACK_LIGHT_TEXT = '#FFFFFF';
+const FALLBACK_DARK_TEXT = '#111827';
+
+function normalizeHexColor(color: string): string | null {
+  const trimmed = color.trim();
+
+  if (/^#[\da-f]{3}$/i.test(trimmed)) {
+    const [, r, g, b] = trimmed;
+    return `#${r}${r}${g}${g}${b}${b}`.toUpperCase();
+  }
+
+  if (/^#[\da-f]{6}$/i.test(trimmed)) {
+    return trimmed.toUpperCase();
+  }
+
+  return null;
+}
+
+function getRelativeLuminance(color: string): number | null {
+  const normalizedColor = normalizeHexColor(color);
+  if (!normalizedColor) return null;
+
+  const hex = normalizedColor.slice(1);
+  const channels = [0, 2, 4].map((offset) => {
+    const sRGB = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
+    return sRGB <= 0.03928
+      ? sRGB / 12.92
+      : ((sRGB + 0.055) / 1.055) ** 2.4;
+  });
+
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+}
+
+export function calculateContrastRatio(
+  foregroundColor: string,
+  backgroundColor: string,
+): number | null {
+  const foregroundLuminance = getRelativeLuminance(foregroundColor);
+  const backgroundLuminance = getRelativeLuminance(backgroundColor);
+
+  if (
+    foregroundLuminance === null ||
+    backgroundLuminance === null
+  ) {
+    return null;
+  }
+
+  const lighter = Math.max(foregroundLuminance, backgroundLuminance);
+  const darker = Math.min(foregroundLuminance, backgroundLuminance);
+  const ratio = (lighter + 0.05) / (darker + 0.05);
+
+  return Number(ratio.toFixed(2));
+}
+
+export function getAccessibleAvatarTextColor(
+  backgroundColor: string,
+  preferredTextColor = FALLBACK_LIGHT_TEXT,
+): string {
+  const normalizedBackgroundColor = normalizeHexColor(backgroundColor);
+  const normalizedPreferredTextColor =
+    normalizeHexColor(preferredTextColor) ?? FALLBACK_LIGHT_TEXT;
+
+  if (!normalizedBackgroundColor) {
+    return normalizedPreferredTextColor;
+  }
+
+  const candidateColors = [
+    normalizedPreferredTextColor,
+    FALLBACK_LIGHT_TEXT,
+    FALLBACK_DARK_TEXT,
+  ].filter((color, index, allColors) => allColors.indexOf(color) === index);
+
+  let bestColor = candidateColors[0];
+  let bestRatio =
+    calculateContrastRatio(bestColor, normalizedBackgroundColor) ?? 0;
+
+  for (const candidateColor of candidateColors.slice(1)) {
+    const candidateRatio =
+      calculateContrastRatio(candidateColor, normalizedBackgroundColor) ?? 0;
+
+    if (candidateRatio > bestRatio) {
+      bestColor = candidateColor;
+      bestRatio = candidateRatio;
+    }
+  }
+
+  return bestRatio >= MIN_CONTRAST_RATIO ? bestColor : normalizedPreferredTextColor;
+}
+
+export function withAccessibleAvatarContrast<
+  P extends object,
+>(payload: P): P | (P & AccessibleAvatarColorTelemetryPayload) {
+  const avatarPayload = payload as Partial<AvatarColorTelemetryPayload>;
+  const backgroundColor =
+    typeof avatarPayload.avatarBackgroundColor === 'string'
+      ? normalizeHexColor(avatarPayload.avatarBackgroundColor)
+      : null;
+
+  if (!backgroundColor) {
+    return payload;
+  }
+
+  const accessibleTextColor = getAccessibleAvatarTextColor(
+    backgroundColor,
+    typeof avatarPayload.avatarTextColor === 'string'
+      ? avatarPayload.avatarTextColor
+      : FALLBACK_LIGHT_TEXT,
+  );
+  const contrastRatio =
+    calculateContrastRatio(accessibleTextColor, backgroundColor) ?? 0;
+
+  return {
+    ...payload,
+    avatarBackgroundColor: backgroundColor,
+    avatarTextColor: accessibleTextColor,
+    avatarContrastRatio: contrastRatio,
+    avatarContrastCompliant: contrastRatio >= MIN_CONTRAST_RATIO,
+  };
+}
 
 export function getTelemetryConsent(): boolean {
   if (typeof window === 'undefined') return false;
@@ -89,11 +242,16 @@ function emit<P extends object>(
 ): void {
   if (!getTelemetryConsent()) return;
 
+  const normalizedPayload =
+    name === 'fiat_payout_step'
+      ? payload
+      : withAccessibleAvatarContrast(payload);
+
   const event: ChatEvent = {
     name,
     version: TELEMETRY_SCHEMA_VERSION,
     timestamp: Date.now(),
-    payload: payload as Record<string, unknown>,
+    payload: normalizedPayload,
   };
 
   if (typeof window !== 'undefined') {
@@ -101,7 +259,7 @@ function emit<P extends object>(
       new CustomEvent('chat:telemetry', { detail: event }),
     );
   }
-}
+}   
 
 // ── Public API ────────────────────────────────────────────────────────────
 
@@ -124,5 +282,9 @@ export const chatTelemetry = {
 
   txConfirm(payload: TxConfirmPayload): void {
     emit('tx_confirm', payload);
+  },
+
+  fiatPayoutStep(payload: FiatPayoutStepPayload): void {
+    emit('fiat_payout_step', payload);
   },
 };

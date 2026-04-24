@@ -556,8 +556,10 @@ export default function StellarChatInterface() {
               </button>
 
               <button
+                type="button"
                 onClick={() => setIsReceiptDrawerOpen(true)}
                 title={t('header.receipts')}
+                aria-label={t('header.receipts')}
                 className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
               >
                 <Receipt className="w-5 h-5" />

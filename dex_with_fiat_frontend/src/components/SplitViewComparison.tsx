@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { ArrowLeftRight, X, ChevronDown } from 'lucide-react';
-import { useTheme } from '@/contexts/ThemeContext';
 import { ChatSession, ChatMessage } from '@/types';
 import { UseSplitViewReturn } from '@/hooks/useSplitView';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useToast } from '@/hooks/useToast';
 
 interface SplitViewComparisonProps {
   splitView: UseSplitViewReturn;
@@ -22,7 +23,6 @@ interface ThreadPaneProps {
   allSessions: ChatSession[];
   onSelectSession: (id: string) => void;
   onSelectMessage: (id: string | null) => void;
-  isDarkMode: boolean;
 }
 
 function ThreadPane({
@@ -32,9 +32,14 @@ function ThreadPane({
   allSessions,
   onSelectSession,
   onSelectMessage,
-  isDarkMode,
 }: ThreadPaneProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const paneId = `split-pane-${label.toLowerCase()}-region`;
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const scrollToMessage = (id: string) => {
     const el = scrollRef.current?.querySelector(`[data-message-id="${id}"]`);
@@ -49,14 +54,27 @@ function ThreadPane({
     if (newId) scrollToMessage(newId);
   };
 
+  const formatTimestamp = (timestamp: number) => {
+    if (!mounted) return ''; // Avoid hydration mismatch by not rendering on server
+    return new Date(timestamp).toLocaleString([], {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
   return (
     <div
-      className={`flex flex-col flex-1 min-w-0 border-r last:border-r-0 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+      id={paneId}
+      role="region"
+      aria-label={`${label} thread comparison pane`}
+      className="flex flex-col flex-1 min-w-0 border-r border-[var(--color-border)] last:border-r-0"
       data-testid={`split-pane-${label.toLowerCase()}`}
     >
       {/* Pane header */}
-      <div className={`flex items-center gap-2 px-3 py-2 border-b flex-shrink-0 ${isDarkMode ? 'border-gray-700 bg-gray-800/60' : 'border-gray-200 bg-gray-50'}`}>
-        <span className={`text-xs font-semibold uppercase tracking-wider ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--color-border)] bg-[var(--color-surface-muted)] flex-shrink-0">
+        <span className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
           {label}
         </span>
 
@@ -65,7 +83,7 @@ function ThreadPane({
           <select
             value={session?.id ?? ''}
             onChange={(e) => onSelectSession(e.target.value)}
-            className={`w-full text-xs pl-2 pr-6 py-1 rounded border appearance-none outline-none focus:ring-1 focus:ring-blue-500 truncate ${isDarkMode ? 'bg-gray-700 border-gray-600 text-gray-200' : 'bg-white border-gray-300 text-gray-800'}`}
+            className="w-full text-xs pl-2 pr-6 py-1 rounded border border-[var(--color-border)] appearance-none outline-none focus:ring-2 focus:ring-[var(--color-primary)] truncate bg-[var(--color-surface)] text-[var(--color-text-primary)]"
             aria-label={`Select ${label} thread`}
           >
             <option value="">— choose a thread —</option>
@@ -75,18 +93,27 @@ function ThreadPane({
               </option>
             ))}
           </select>
-          <ChevronDown className={`absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+          <ChevronDown
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none text-[var(--color-text-muted)]"
+            aria-hidden
+          />
         </div>
       </div>
 
       {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+      <div
+        ref={scrollRef}
+        role="log"
+        aria-relevant="additions"
+        aria-label={`${label} thread messages`}
+        className="flex-1 overflow-y-auto px-3 py-3 space-y-2"
+      >
         {!session ? (
-          <div className={`flex items-center justify-center h-full text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+          <div className="flex items-center justify-center h-full text-sm text-[var(--color-text-muted)]">
             Select a thread above
           </div>
         ) : session.messages.filter((m) => m.role !== 'system').length === 0 ? (
-          <div className={`flex items-center justify-center h-full text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+          <div className="flex items-center justify-center h-full text-sm text-[var(--color-text-muted)]">
             No messages in this thread
           </div>
         ) : (
@@ -102,30 +129,25 @@ function ThreadPane({
                   onClick={() => handleMessageClick(msg)}
                   className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-all border ${
                     isSelected
-                      ? isDarkMode
-                        ? 'border-blue-500 bg-blue-900/30 ring-1 ring-blue-500'
-                        : 'border-blue-400 bg-blue-50 ring-1 ring-blue-400'
-                      : isDarkMode
-                        ? 'border-gray-700 hover:border-gray-600 hover:bg-gray-800'
-                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                      ? 'border-[var(--color-primary)] bg-[var(--color-primary-soft)] ring-1 ring-[var(--color-primary)]'
+                      : 'border-[var(--color-border)] hover:border-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)]'
                   }`}
                   aria-pressed={isSelected}
                   aria-label={`${isUser ? 'User' : 'Assistant'} message`}
                 >
-                  <span className={`font-semibold ${isUser ? (isDarkMode ? 'text-blue-400' : 'text-blue-600') : (isDarkMode ? 'text-green-400' : 'text-green-700')}`}>
+                  <span
+                    className={`font-semibold ${
+                      isUser ? 'text-[var(--color-primary)]' : 'text-[var(--color-success)]'
+                    }`}
+                  >
                     {isUser ? 'You' : 'Assistant'}
                   </span>
-                  <p className={`mt-1 line-clamp-3 leading-relaxed ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  <p className="mt-1 line-clamp-3 leading-relaxed text-[var(--color-text-secondary)]">
                     {msg.content}
                   </p>
-                  <p className={`mt-1 text-[10px] ${isDarkMode ? 'text-gray-600' : 'text-gray-400'}`}>
-                    {new Date(msg.timestamp).toLocaleString([], {
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </p>
+                   <p className="mt-1 text-[10px] text-[var(--color-text-muted)]" data-testid="message-timestamp">
+                     {formatTimestamp(msg.timestamp)}
+                   </p>
                 </button>
               );
             })
@@ -143,28 +165,60 @@ export default function SplitViewComparison({
   splitView,
   sessions,
 }: SplitViewComparisonProps) {
-  const { isDarkMode } = useTheme();
-  const { state, close, setLeftSession, setRightSession, swapSessions, selectMessage, leftSession, rightSession } = splitView;
+  const { state, close, setLeftSession, setRightSession, swapSessions, selectMessage, leftSession, rightSession } =
+    splitView;
+
+  const { isOnline, wasOffline, resetWasOffline } = useOnlineStatus();
+  const { addToast } = useToast();
+  const wasOnlineRef = useRef(isOnline);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const wasOnline = wasOnlineRef.current;
+    if (wasOnline && !isOnline) {
+      addToast({
+        message:
+          "You're offline. Thread comparison won't update until you reconnect.",
+        severity: 'warning',
+        durationMs: 4500,
+      });
+    } else if (!wasOnline && isOnline && wasOffline) {
+      addToast({
+        message: 'Back online. Comparison panes will use the latest thread data.',
+        severity: 'success',
+        durationMs: 3000,
+      });
+      resetWasOffline();
+    }
+    wasOnlineRef.current = isOnline;
+  }, [isOnline, wasOffline, addToast, resetWasOffline]);
 
   if (!state.isOpen) return null;
 
+  const dialogTitleId = 'split-view-comparison-title';
+
   return (
     <div
-      className={`fixed inset-0 z-50 flex flex-col ${isDarkMode ? 'bg-gray-900' : 'bg-white'}`}
+      className="fixed inset-0 z-50 flex flex-col bg-[var(--background)] text-[var(--foreground)]"
       role="dialog"
       aria-modal="true"
-      aria-label="Split-view thread comparison"
+      aria-labelledby={dialogTitleId}
       data-testid="split-view-comparison"
     >
       {/* Toolbar */}
-      <div className={`flex items-center justify-between px-4 py-2 border-b flex-shrink-0 ${isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
-        <h2 className={`text-sm font-semibold ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+      <div
+        role="toolbar"
+        aria-label="Comparison actions"
+        className="flex items-center justify-between px-4 py-2 border-b border-[var(--color-border)] bg-[var(--color-surface-muted)] flex-shrink-0"
+      >
+        <h2 id={dialogTitleId} className="text-sm font-semibold text-[var(--color-text-primary)]">
           Compare Threads
         </h2>
 
         <div className="flex items-center gap-2">
           {state.selectedMessageId && (
-            <span className={`text-xs px-2 py-0.5 rounded ${isDarkMode ? 'bg-blue-900/40 text-blue-400' : 'bg-blue-100 text-blue-700'}`}>
+            <span className="text-xs px-2 py-0.5 rounded bg-[var(--color-primary-soft)] text-[var(--color-primary)]">
               Message selected
             </span>
           )}
@@ -174,10 +228,10 @@ export default function SplitViewComparison({
             onClick={swapSessions}
             title="Swap threads"
             aria-label="Swap left and right threads"
-            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${isDarkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-200' : 'bg-white hover:bg-gray-100 text-gray-700 border border-gray-300'}`}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-[var(--color-surface)] hover:bg-[var(--color-surface-elevated)] text-[var(--color-text-primary)] border border-[var(--color-border)]"
             data-testid="swap-threads-btn"
           >
-            <ArrowLeftRight className="w-3.5 h-3.5" />
+            <ArrowLeftRight className="w-3.5 h-3.5" aria-hidden />
             Swap
           </button>
 
@@ -186,16 +240,16 @@ export default function SplitViewComparison({
             onClick={close}
             title="Close comparison"
             aria-label="Close split-view"
-            className={`p-1.5 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-200 text-gray-500'}`}
+            className="p-1.5 rounded-lg transition-colors hover:bg-[var(--color-surface-elevated)] text-[var(--color-text-muted)]"
             data-testid="close-split-view-btn"
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4" aria-hidden />
           </button>
         </div>
       </div>
 
       {/* Two panes */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div className="flex flex-1 min-h-0 overflow-hidden flex-col md:flex-row">
         <ThreadPane
           session={leftSession}
           label="Left"
@@ -203,7 +257,6 @@ export default function SplitViewComparison({
           allSessions={sessions}
           onSelectSession={setLeftSession}
           onSelectMessage={selectMessage}
-          isDarkMode={isDarkMode}
         />
         <ThreadPane
           session={rightSession}
@@ -212,7 +265,6 @@ export default function SplitViewComparison({
           allSessions={sessions}
           onSelectSession={setRightSession}
           onSelectMessage={selectMessage}
-          isDarkMode={isDarkMode}
         />
       </div>
     </div>

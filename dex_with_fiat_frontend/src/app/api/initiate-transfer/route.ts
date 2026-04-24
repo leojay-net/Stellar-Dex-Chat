@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import * as Sentry from '@sentry/nextjs';
 import { getPayoutProvider } from '@/lib/payout/providers/registry';
 import { telemetry } from '@/lib/telemetry';
 import { applyRateLimit, getClientIp } from '@/lib/rateLimit';
@@ -93,6 +94,19 @@ export async function POST(request: NextRequest) {
       data,
     });
   } catch (error: unknown) {
+    // Capture error in Sentry
+    Sentry.captureException(error, {
+      tags: {
+        endpoint: '/api/initiate-transfer',
+        operation: 'transfer_initiation',
+      },
+      extra: {
+        ip,
+        traceId: traceContext.traceId,
+        spanId: span.spanId,
+      },
+    });
+
     telemetry.addLog(
       span.spanId,
       'error',

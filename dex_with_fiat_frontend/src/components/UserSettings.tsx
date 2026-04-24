@@ -8,7 +8,10 @@ import {
   FiatCurrencyCode,
   useUserPreferences,
 } from '@/contexts/UserPreferencesContext';
-import { useFeatureFlag } from '@/hooks/useFeatureFlag';
+import {
+  useFeatureFlag,
+  featureFlagSectionDividerBorderClass,
+} from '@/hooks/useFeatureFlag';
 import { useAccessibleModal } from '@/hooks/useAccessibleModal';
 import { useChatTelemetry } from '@/hooks/useChatTelemetry';
 import { useBeneficiaries, Beneficiary } from '@/hooks/useBeneficiaries';
@@ -365,7 +368,7 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
           </section>
           {/* Telemetry section */}
           <section
-            className={`pt-6 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-100'}`}
+            className={`pt-6 border-t ${featureFlagSectionDividerBorderClass(isDarkMode)}`}
           >
             <h3
               className={`text-xs font-semibold uppercase tracking-wider mb-3 ${
@@ -408,7 +411,7 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
 
           {enableConversionReminders && (
             <section
-              className={`pt-6 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-100'}`}
+              className={`pt-6 border-t ${featureFlagSectionDividerBorderClass(isDarkMode)}`}
             >
               <h3
                 className={`text-xs font-semibold uppercase tracking-wider mb-3 ${
