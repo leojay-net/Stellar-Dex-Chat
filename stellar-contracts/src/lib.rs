@@ -2284,15 +2284,16 @@ impl FiatBridge {
         }
 
         // Increment nonce
+        let next_nonce = current_nonce.checked_add(1).ok_or(Error::Overflow)?;
         env.storage().instance().set(
             &DataKey::OperatorNonce(operator.clone()),
-            &(current_nonce + 1),
+            &next_nonce,
         );
 
         NonceIncrementedEvent {
             version: EVENT_VERSION,
             operator: operator.clone(),
-            new_nonce: current_nonce + 1,
+            new_nonce: next_nonce,
         }
         .publish(env);
 
