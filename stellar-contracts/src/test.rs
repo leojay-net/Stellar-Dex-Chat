@@ -4367,3 +4367,280 @@ fn test_withdrawal_quota_invariant_window_reset() {
     let daily_amount = bridge.get_user_daily_withdrawal(&user);
     assert_eq!(daily_amount, 500);
 }
+
+// ── Issue #524: execute_batch_admin — additional invariant tests ──────────
+
+/// Invariant: an all-valid batch must have failure_count == 0 and
+/// failed_index == None.
+#[test]
+fn test_execute_batch_admin_invariant_all_valid_no_failures() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+
+    let mut ops = soroban_sdk::Vec::new(&env);
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "set_cooldown"),
+        payload: Bytes::from_array(&env, &5u32.to_be_bytes()),
+    });
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "set_lock"),
+        payload: Bytes::from_array(&env, &20u32.to_be_bytes()),
+    });
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "set_sandwich"),
+        payload: Bytes::from_array(&env, &3u32.to_be_bytes()),
+    });
+
+    let r = bridge.execute_batch_admin(&ops);
+    assert_eq!(r.total_ops, 3);
+    assert_eq!(r.success_count, 3);
+    assert_eq!(r.failure_count, 0);
+    assert_eq!(r.failed_index, None);
+    // State mutations must have taken effect
+    assert_eq!(bridge.get_cooldown(), 5);
+    assert_eq!(bridge.get_lock_period(), 20);
+}
+
+/// Invariant: an all-invalid batch must have success_count == 0 and
+/// failed_index == Some(0).
+#[test]
+fn test_execute_batch_admin_invariant_all_invalid_all_failures() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+
+    let mut ops = soroban_sdk::Vec::new(&env);
+    for _ in 0..3 {
+        ops.push_back(BatchAdminOp {
+            op_type: Symbol::new(&env, "unknown_op"),
+            payload: Bytes::new(&env),
+        });
+    }
+
+    let r = bridge.execute_batch_admin(&ops);
+    assert_eq!(r.total_ops, 3);
+    assert_eq!(r.success_count, 0);
+    assert_eq!(r.failure_count, 3);
+    assert_eq!(r.failed_index, Some(0));
+}
+
+/// Invariant: failed_index always points to the FIRST failure, not the last.
+#[test]
+fn test_execute_batch_admin_invariant_failed_index_is_first_failure() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+
+    let mut ops = soroban_sdk::Vec::new(&env);
+    // op 0: valid
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "set_cooldown"),
+        payload: Bytes::from_array(&env, &1u32.to_be_bytes()),
+    });
+    // op 1: invalid — first failure
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "bad_op"),
+        payload: Bytes::new(&env),
+    });
+    // op 2: invalid — second failure
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "also_bad"),
+        payload: Bytes::new(&env),
+    });
+    // op 3: valid
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "set_lock"),
+        payload: Bytes::from_array(&env, &10u32.to_be_bytes()),
+    });
+
+    let r = bridge.execute_batch_admin(&ops);
+    assert_eq!(r.total_ops, 4);
+    assert_eq!(r.success_count, 2);
+    assert_eq!(r.failure_count, 2);
+    // Must be the index of the FIRST failure (1), not the last (2)
+    assert_eq!(r.failed_index, Some(1));
+}
+
+/// Invariant: batch continues executing after a failure (no early abort).
+#[test]
+fn test_execute_batch_admin_invariant_continues_after_failure() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+
+    let mut ops = soroban_sdk::Vec::new(&env);
+    // op 0: invalid
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "bad_op"),
+        payload: Bytes::new(&env),
+    });
+    // op 1: valid — must still execute
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "set_cooldown"),
+        payload: Bytes::from_array(&env, &42u32.to_be_bytes()),
+    });
+
+    let r = bridge.execute_batch_admin(&ops);
+    assert_eq!(r.success_count, 1);
+    assert_eq!(r.failure_count, 1);
+    // The valid op after the failure must have been applied
+    assert_eq!(bridge.get_cooldown(), 42);
+}
+
+/// Invariant: pause op in a batch blocks deposits; unpause restores them.
+/// Verifies that batch state mutations are immediately visible to other calls.
+#[test]
+fn test_execute_batch_admin_invariant_state_mutations_are_immediate() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &2_000);
+    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // Batch: pause only
+    let mut ops = soroban_sdk::Vec::new(&env);
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "pause"),
+        payload: Bytes::new(&env),
+    });
+    bridge.execute_batch_admin(&ops);
+
+    // Deposit must be blocked immediately after the batch
+    assert_eq!(
+        bridge.try_deposit(&user, &50, &token_addr, &Bytes::new(&env), &0, &0, &None),
+        Err(Ok(Error::ContractPaused))
+    );
+
+    // Batch: unpause only
+    let mut ops2 = soroban_sdk::Vec::new(&env);
+    ops2.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "unpause"),
+        payload: Bytes::new(&env),
+    });
+    bridge.execute_batch_admin(&ops2);
+
+    // Deposit must succeed again
+    bridge.deposit(&user, &50, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(bridge.get_total_deposited(), 550);
+}
+
+/// Invariant: set_quota op in a batch is reflected in get_withdrawal_quota.
+#[test]
+fn test_execute_batch_admin_invariant_quota_op_persists() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+
+    let quota: i128 = 999;
+    let mut ops = soroban_sdk::Vec::new(&env);
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "set_quota"),
+        payload: Bytes::from_array(&env, &quota.to_be_bytes()),
+    });
+
+    let r = bridge.execute_batch_admin(&ops);
+    assert_eq!(r.success_count, 1);
+    assert_eq!(bridge.get_withdrawal_quota(), quota);
+}
+
+/// Invariant: malformed payload (too short) counts as a failure, not a panic.
+#[test]
+fn test_execute_batch_admin_invariant_malformed_payload_is_failure_not_panic() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+
+    let mut ops = soroban_sdk::Vec::new(&env);
+    // set_cooldown expects 4 bytes; give it 2
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "set_cooldown"),
+        payload: Bytes::from_array(&env, &[0u8, 1u8]),
+    });
+
+    let r = bridge.execute_batch_admin(&ops);
+    assert_eq!(r.total_ops, 1);
+    assert_eq!(r.failure_count, 1);
+    assert_eq!(r.success_count, 0);
+}
+
+// ── Issue #525: set_operator — edge case boundary checks ─────────────────
+
+/// Fix: admin must not be grantable the operator role (role confusion).
+#[test]
+fn test_set_operator_rejects_admin_as_operator() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, _, _, _) = setup_bridge(&env, 1_000);
+
+    let result = bridge.try_set_operator(&admin, &true);
+    assert_eq!(result, Err(Ok(Error::NotAllowed)));
+    assert!(!bridge.is_operator(&admin));
+}
+
+/// Fix: the contract address itself must not be an operator.
+#[test]
+fn test_set_operator_rejects_contract_address_as_operator() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, _, _, _, _) = setup_bridge(&env, 1_000);
+
+    let result = bridge.try_set_operator(&contract_id, &true);
+    assert_eq!(result, Err(Ok(Error::InvalidRecipient)));
+    assert!(!bridge.is_operator(&contract_id));
+}
+
+/// Deactivating the admin (who was never an operator) must also be rejected.
+#[test]
+fn test_set_operator_rejects_deactivating_admin_as_operator() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, _, _, _) = setup_bridge(&env, 1_000);
+
+    // Attempt to deactivate admin as operator — should still be rejected
+    let result = bridge.try_set_operator(&admin, &false);
+    assert_eq!(result, Err(Ok(Error::NotAllowed)));
+}
+
+/// A normal (non-admin, non-contract) address must still be activatable.
+#[test]
+fn test_set_operator_still_accepts_valid_operator() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 1_000);
+    let operator = Address::generate(&env);
+
+    bridge.set_operator(&operator, &true);
+    assert!(bridge.is_operator(&operator));
+}
+
+/// Circuit breaker must not be trippable via an operator that is also admin
+/// (regression guard for the state-transition concern in issue #525).
+#[test]
+fn test_set_operator_circuit_breaker_not_affected_by_admin_role_confusion() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+
+    // Confirm admin cannot be operator
+    assert_eq!(
+        bridge.try_set_operator(&admin, &true),
+        Err(Ok(Error::NotAllowed))
+    );
+
+    // Circuit breaker state should be unaffected
+    assert!(!bridge.is_circuit_breaker_tripped());
+}

@@ -255,3 +255,63 @@ describe('SplitViewComparison – network status toasts', () => {
     // but for this test we verify the timestamp is hidden initially
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression tests for Issue #523 — race condition in online/offline handling
+// ---------------------------------------------------------------------------
+
+describe('SplitViewComparison – race condition regression (#523)', () => {
+  afterEach(() => {
+    cleanup();
+    splitViewAddToastMock.mockClear();
+  });
+
+  it('detects offline→online transition even when events fire in rapid succession', async () => {
+    const splitView = makeSplitView();
+    render(<SplitViewComparison splitView={splitView} sessions={allSessions} />);
+
+    // Rapid: go offline then immediately back online
+    fireEvent(window, new Event('offline'));
+    fireEvent(window, new Event('online'));
+
+    await waitFor(() => {
+      const calls = splitViewAddToastMock.mock.calls;
+      const severities = calls.map((c: [{ severity: string }]) => c[0].severity);
+      // Both the warning and the success toast must have been emitted
+      expect(severities).toContain('warning');
+      expect(severities).toContain('success');
+    });
+  });
+
+  it('does not emit a success toast when coming online without a prior offline event', async () => {
+    const splitView = makeSplitView();
+    render(<SplitViewComparison splitView={splitView} sessions={allSessions} />);
+
+    // Fire online without a preceding offline — should not trigger any toast
+    fireEvent(window, new Event('online'));
+
+    // Give React time to flush effects
+    await new Promise((r) => setTimeout(r, 50));
+    expect(splitViewAddToastMock).not.toHaveBeenCalled();
+  });
+
+  it('ref is updated after conditional logic so stale reads cannot skip toasts', async () => {
+    const splitView = makeSplitView();
+    render(<SplitViewComparison splitView={splitView} sessions={allSessions} />);
+
+    // First offline/online cycle
+    fireEvent(window, new Event('offline'));
+    await waitFor(() => expect(splitViewAddToastMock).toHaveBeenCalledTimes(1));
+
+    splitViewAddToastMock.mockClear();
+    fireEvent(window, new Event('online'));
+    await waitFor(() => expect(splitViewAddToastMock).toHaveBeenCalledTimes(1));
+
+    splitViewAddToastMock.mockClear();
+
+    // Second offline/online cycle — must still work (ref not stale)
+    fireEvent(window, new Event('offline'));
+    await waitFor(() => expect(splitViewAddToastMock).toHaveBeenCalledTimes(1));
+    expect(splitViewAddToastMock.mock.calls[0][0].severity).toBe('warning');
+  });
+});

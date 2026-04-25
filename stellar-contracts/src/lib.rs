@@ -2331,6 +2331,18 @@ impl FiatBridge {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+
+        // Boundary checks (fix #525): prevent role confusion that could affect
+        // circuit breaker state transitions.
+        // The admin must not be granted the operator role — conflating both roles
+        // bypasses the separation of concerns between governance and operations.
+        require!(operator != admin, Error::NotAllowed);
+        // The contract itself must never be an operator.
+        require!(
+            operator != env.current_contract_address(),
+            Error::InvalidRecipient
+        );
+
         Self::prune_inactive_operators_internal(&env);
         let was_active = env
             .storage()
