@@ -17,7 +17,7 @@ import {
   type CCIPTransferStartResult,
 } from '@/lib/ccipExplorer';
 
-type BridgeState = 'idle' | 'initiating' | 'polling' | 'success' | 'error';
+type BridgeState = 'idle' | 'optimistic' | 'initiating' | 'polling' | 'success' | 'error';
 
 export interface CCIPBridgeModalProps {
   isOpen: boolean;
@@ -62,7 +62,8 @@ export default function CCIPBridgeModal({
   }, [isOpen, resetState]);
 
   const handleStartTransfer = useCallback(async () => {
-    setBridgeState('initiating');
+    // Immediately show optimistic UI
+    setBridgeState('optimistic');
     setErrorMessage('');
 
     // Optimistic UI update: immediately show pending state
@@ -164,6 +165,7 @@ export default function CCIPBridgeModal({
       !isOpen ||
       !transactionHash ||
       bridgeState === 'idle' ||
+      bridgeState === 'optimistic' ||
       bridgeState === 'success' ||
       bridgeState === 'error'
     ) {
@@ -227,6 +229,26 @@ export default function CCIPBridgeModal({
           >
             Start CCIP Transfer
           </button>
+        )}
+
+        {bridgeState === 'optimistic' && (
+          <div className="text-center py-6">
+            <div className="w-14 h-14 bg-blue-500 rounded-full mx-auto mb-4 flex items-center justify-center">
+              <CheckCircle className="w-8 h-8 text-white" />
+            </div>
+            <p className="theme-text-primary font-semibold text-lg mb-2">
+              Transfer Initiated!
+            </p>
+            <p className="theme-text-secondary text-sm mb-4">
+              Processing your CCIP transfer request...
+            </p>
+            <div className="flex items-center justify-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
+              <span className="theme-text-secondary text-xs">
+                Preparing transaction
+              </span>
+            </div>
+          </div>
         )}
 
         {bridgeState === 'initiating' && (
