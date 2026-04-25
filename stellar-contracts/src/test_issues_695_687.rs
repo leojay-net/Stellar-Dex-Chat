@@ -41,7 +41,10 @@ fn test_withdraw_fees_replay_protection() {
     // Simulate fee accrual by depositing
     token_admin.mint(&user, &5_000);
     let reference = soroban_sdk::Bytes::from_slice(&env, b"test");
-    client.deposit(&user, &5_000, &token_address, &reference, &100, &500, &None);
+    client.deposit(&user, &5_000, &token_address, &reference, &0, &0, &None);
+
+    // Accrue fees so the vault has a balance to withdraw against
+    client.accrue_fee(&token_address, &500);
 
     // Get initial nonce (should be 0)
     let nonce = client.get_fee_withdrawal_nonce(&admin);
@@ -85,7 +88,7 @@ fn test_withdraw_fees_nonce_skipping_fails() {
     token_admin.mint(&contract_id, &10_000);
     token_admin.mint(&user, &5_000);
     let reference = soroban_sdk::Bytes::from_slice(&env, b"test");
-    client.deposit(&user, &5_000, &token_address, &reference, &100, &500, &None);
+    client.deposit(&user, &5_000, &token_address, &reference, &0, &0, &None);
 
     // Try to use nonce 5 when current is 0 - should fail
     let result = client.try_withdraw_fees(&user, &token_address, &100, &5);
@@ -117,7 +120,7 @@ fn test_request_withdrawal_edge_cases() {
     // Test 2: Deposit some funds
     token_admin.mint(&user, &5_000);
     let reference = soroban_sdk::Bytes::from_slice(&env, b"test");
-    client.deposit(&user, &5_000, &token_address, &reference, &100, &500, &None);
+    client.deposit(&user, &5_000, &token_address, &reference, &0, &0, &None);
 
     // Test 3: Request withdrawal to contract itself should fail
     let result = client.try_request_withdrawal(&contract_id, &1_000, &token_address, &None, &0);
@@ -153,7 +156,7 @@ fn test_request_withdrawal_liability_overflow() {
     // Deposit funds
     token_admin.mint(&user, &5_000);
     let reference = soroban_sdk::Bytes::from_slice(&env, b"test");
-    client.deposit(&user, &5_000, &token_address, &reference, &100, &500, &None);
+    client.deposit(&user, &5_000, &token_address, &reference, &0, &0, &None);
 
     // Request withdrawal that would exceed net deposited
     // This should fail because liabilities can't exceed net deposits

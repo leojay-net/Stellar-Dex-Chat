@@ -3933,6 +3933,12 @@ impl FiatBridge {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+        // Reject delays below the protocol minimum: storing a tiny default
+        // here would let an admin route around the timelock for any future
+        // proposal that reuses the stored value.
+        if ledgers < MIN_UPGRADE_DELAY {
+            return Err(Error::UpgradeDelayTooShort);
+        }
         env.storage()
             .instance()
             .set(&DataKey::UpgradeDelay, &ledgers);

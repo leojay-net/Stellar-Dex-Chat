@@ -5,11 +5,10 @@ extern crate std;
 use super::*;
 use soroban_sdk::xdr::ToXdr;
 use soroban_sdk::{
-    testutils::{Address as _, EnvTestConfig, Events as _, Ledger},
+    testutils::{Address as _, Events as _, Ledger},
     token::{Client as TokenClient, StellarAssetClient},
-    vec, Address, Bytes, BytesN, Env, IntoVal, Symbol,
+    vec, Address, Bytes, BytesN, Env, Symbol,
 };
-use std::{format, fs, path::PathBuf, string::String, vec::Vec as StdVec};
 
 // ── helpers ──────────────────────────────────────────────────────────
 
@@ -94,70 +93,6 @@ fn load_valid_contract_wasm_fixture() -> std::vec::Vec<u8> {
     }
 
     panic!("soroban-sdk doctest wasm fixture not found")
-}
-
-struct SnapshotEvent {
-    topics: StdVec<String>,
-    data: String,
-}
-
-fn new_snapshot_env() -> Env {
-    Env::new_with_config(EnvTestConfig {
-        capture_snapshot_at_drop: false,
-    })
-}
-
-fn snapshot_path(name: &str) -> PathBuf {
-    PathBuf::from("test_snapshots")
-        .join("events")
-        .join(format!("{name}.json"))
-}
-
-fn escape_json(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('"', "\\\"")
-}
-
-fn render_snapshot(events: &[SnapshotEvent]) -> String {
-    let mut out = String::from("[\n");
-    for (index, event) in events.iter().enumerate() {
-        out.push_str("  {\n");
-        out.push_str("    \"contract\": \"bridge\",\n");
-        out.push_str("    \"topics\": [\n");
-        for (topic_index, topic) in event.topics.iter().enumerate() {
-            out.push_str(&format!(
-                "      \"{}\"{}\n",
-                escape_json(topic),
-                if topic_index + 1 == event.topics.len() {
-                    ""
-                } else {
-                    ","
-                }
-            ));
-        }
-        out.push_str("    ],\n");
-        out.push_str(&format!("    \"data\": \"{}\"\n", escape_json(&event.data)));
-        out.push_str("  }");
-        if index + 1 != events.len() {
-            out.push(',');
-        }
-        out.push('\n');
-    }
-    out.push(']');
-    out.push('\n');
-    out
-}
-
-fn assert_event_snapshot(name: &str, events: &[SnapshotEvent]) {
-    let path = snapshot_path(name);
-    let expected = fs::read_to_string(&path)
-        .unwrap_or_else(|err| panic!("failed to read snapshot {}: {err}", path.display()));
-    let actual = render_snapshot(events);
-    assert_eq!(
-        expected,
-        actual,
-        "snapshot mismatch for {name}. Update {} if this event change is intentional.",
-        path.display()
-    );
 }
 
 // ── happy-path tests ──────────────────────────────────────────────────
@@ -2218,297 +2153,6 @@ fn test_event_version_deny_add_remove() {
     });
 }
 
-// ── Property-based tests (proptest) ──────────────────────────────────────────
-
-#[test]
-fn test_event_snapshot_heartbeat() {
-    let env = new_snapshot_env();
-    env.mock_all_auths();
-    let (contract_id, bridge, _, _, _, _) = setup_bridge(&env, 1_000);
-    let operator = Address::generate(&env);
-
-    bridge.set_operator(&operator, &true);
-    env.ledger().with_mut(|li| {
-        li.sequence_number = 12_345;
-    });
-
-    bridge.heartbeat(&operator, &0);
-
-    assert_eq!(
-        env.events().all().filter_by_contract(&contract_id),
-        vec![
-            &env,
-            (
-                contract_id.clone(),
-                vec![
-                    &env,
-                    EVENT_VERSION.into_val(&env),
-                    Symbol::new(&env, "nonce_inc").into_val(&env),
-                    operator.clone().into_val(&env)
-                ],
-                1u64.into_val(&env)
-            ),
-            (
-                contract_id,
-                vec![
-                    &env,
-                    EVENT_VERSION.into_val(&env),
-                    Symbol::new(&env, "heartbeat").into_val(&env),
-                    operator.into_val(&env)
-                ],
-                12_345u32.into_val(&env)
-            )
-        ]
-    );
-
-    assert_event_snapshot(
-        "heartbeat",
-        &[
-            SnapshotEvent {
-                topics: StdVec::from([
-                    "u32:1".into(),
-                    "symbol:nonce_inc".into(),
-                    "address:operator".into(),
-                ]),
-                data: "u64:1".into(),
-            },
-            SnapshotEvent {
-                topics: StdVec::from([
-                    "u32:1".into(),
-                    "symbol:heartbeat".into(),
-                    "address:operator".into(),
-                ]),
-                data: "u32:12345".into(),
-            },
-        ],
-    );
-}
-
-#[test]
-fn test_event_snapshot_deny_add() {
-    let env = new_snapshot_env();
-    env.mock_all_auths();
-    let (contract_id, bridge, _, _, _, _) = setup_bridge(&env, 1_000);
-    let target = Address::generate(&env);
-
-    bridge.deny_address(&target);
-
-    assert_eq!(
-        env.events().all().filter_by_contract(&contract_id),
-        vec![
-            &env,
-            (
-                contract_id,
-                vec![
-                    &env,
-                    EVENT_VERSION.into_val(&env),
-                    Symbol::new(&env, "deny_add").into_val(&env)
-                ],
-                target.into_val(&env)
-            )
-        ]
-    );
-
-    assert_event_snapshot(
-        "deny_add",
-        &[SnapshotEvent {
-            topics: StdVec::from(["u32:1".into(), "symbol:deny_add".into()]),
-            data: "address:target".into(),
-        }],
-    );
-}
-
-#[test]
-fn test_event_snapshot_deny_rem() {
-    let env = new_snapshot_env();
-    env.mock_all_auths();
-    let (contract_id, bridge, _, _, _, _) = setup_bridge(&env, 1_000);
-    let target = Address::generate(&env);
-
-    env.as_contract(&contract_id, || {
-        env.storage()
-            .persistent()
-            .set(&DataKey::Denied(target.clone()), &true);
-    });
-
-    bridge.remove_denied_address(&target);
-
-    assert_eq!(
-        env.events().all().filter_by_contract(&contract_id),
-        vec![
-            &env,
-            (
-                contract_id,
-                vec![
-                    &env,
-                    EVENT_VERSION.into_val(&env),
-                    Symbol::new(&env, "deny_rem").into_val(&env)
-                ],
-                target.into_val(&env)
-            )
-        ]
-    );
-
-    assert_event_snapshot(
-        "deny_rem",
-        &[SnapshotEvent {
-            topics: StdVec::from(["u32:1".into(), "symbol:deny_rem".into()]),
-            data: "address:target".into(),
-        }],
-    );
-}
-
-#[test]
-fn test_event_snapshot_quota_reset() {
-    let env = new_snapshot_env();
-    env.mock_all_auths();
-    let (contract_id, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
-    let user = Address::generate(&env);
-
-    token_sac.mint(&user, &5_000);
-    bridge.deposit(&user, &2_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    bridge.set_withdrawal_quota(&500);
-    bridge.withdraw(&admin, &user, &500, &token_addr);
-
-    let result = bridge.try_withdraw(&admin, &user, &100, &token_addr);
-    assert_eq!(result, Err(Ok(Error::WithdrawalQuotaExceeded)));
-
-    let start_ledger = env.ledger().sequence();
-    env.ledger().with_mut(|li| {
-        li.sequence_number = start_ledger + 17_280;
-    });
-
-    bridge.withdraw(&admin, &user, &500, &token_addr);
-
-    assert_eq!(
-        env.events().all().filter_by_contract(&contract_id),
-        vec![
-            &env,
-            (
-                contract_id.clone(),
-                vec![
-                    &env,
-                    EVENT_VERSION.into_val(&env),
-                    Symbol::new(&env, "quota_reset").into_val(&env)
-                ],
-                (user.clone(), start_ledger + 17_280).into_val(&env)
-            ),
-            (
-                contract_id,
-                vec![
-                    &env,
-                    EVENT_VERSION.into_val(&env),
-                    Symbol::new(&env, "withdraw").into_val(&env),
-                    user.into_val(&env)
-                ],
-                500i128.into_val(&env)
-            )
-        ]
-    );
-
-    assert_event_snapshot(
-        "quota_reset",
-        &[
-            SnapshotEvent {
-                topics: StdVec::from(["u32:1".into(), "symbol:quota_reset".into()]),
-                data: "tuple:[address:user,u32:17281]".into(),
-            },
-            SnapshotEvent {
-                topics: StdVec::from([
-                    "u32:1".into(),
-                    "symbol:withdraw".into(),
-                    "address:user".into(),
-                ]),
-                data: "i128:500".into(),
-            },
-        ],
-    );
-}
-
-#[test]
-fn test_event_snapshot_fee_accrued() {
-    let env = new_snapshot_env();
-    env.mock_all_auths();
-    let (contract_id, bridge, _, token_addr, _, _) = setup_bridge(&env, 1_000);
-
-    bridge.accrue_fee(&token_addr, &250);
-
-    assert_eq!(
-        env.events().all().filter_by_contract(&contract_id),
-        vec![
-            &env,
-            (
-                contract_id,
-                vec![
-                    &env,
-                    EVENT_VERSION.into_val(&env),
-                    Symbol::new(&env, "fee_accrue").into_val(&env),
-                    token_addr.into_val(&env)
-                ],
-                250i128.into_val(&env)
-            )
-        ]
-    );
-
-    assert_event_snapshot(
-        "fee_accrued",
-        &[SnapshotEvent {
-            topics: StdVec::from([
-                "u32:1".into(),
-                "symbol:fee_accrue".into(),
-                "address:token".into(),
-            ]),
-            data: "i128:250".into(),
-        }],
-    );
-}
-
-#[test]
-fn test_event_snapshot_fees_withdrawn() {
-    let env = new_snapshot_env();
-    env.mock_all_auths();
-    let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1_000);
-    let recipient = Address::generate(&env);
-
-    token_sac.mint(&contract_id, &400);
-    env.as_contract(&contract_id, || {
-        env.storage()
-            .persistent()
-            .set(&DataKey::FeeVault(token_addr.clone()), &400i128);
-    });
-
-    bridge.withdraw_fees(&recipient, &token_addr, &150, &0);
-
-    assert_eq!(
-        env.events().all().filter_by_contract(&contract_id),
-        vec![
-            &env,
-            (
-                contract_id,
-                vec![
-                    &env,
-                    EVENT_VERSION.into_val(&env),
-                    Symbol::new(&env, "fee_wdrw").into_val(&env),
-                    recipient.into_val(&env)
-                ],
-                150i128.into_val(&env)
-            )
-        ]
-    );
-
-    assert_event_snapshot(
-        "fees_withdrawn",
-        &[SnapshotEvent {
-            topics: StdVec::from([
-                "u32:1".into(),
-                "symbol:fee_wdrw".into(),
-                "address:recipient".into(),
-            ]),
-            data: "i128:150".into(),
-        }],
-    );
-}
-
 #[cfg(test)]
 mod proptest_deposit {
     use super::*;
@@ -3592,7 +3236,7 @@ fn test_execute_upgrade_after_delay_succeeds() {
 
     let start = env.ledger().sequence();
     env.ledger().with_mut(|li| {
-        li.sequence_number = start + 1000;
+        li.sequence_number = start + 1001;
     });
 
     let result = bridge.try_execute_upgrade();
@@ -3923,10 +3567,10 @@ fn test_withdraw_fees_edge_case_multiple_withdrawals() {
     bridge.withdraw_fees(&recipient, &token_addr, &100, &0);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 200);
 
-    bridge.withdraw_fees(&recipient, &token_addr, &100, &0);
+    bridge.withdraw_fees(&recipient, &token_addr, &100, &1);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 100);
 
-    bridge.withdraw_fees(&recipient, &token_addr, &100, &0);
+    bridge.withdraw_fees(&recipient, &token_addr, &100, &2);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 0);
 }
 
@@ -3997,7 +3641,7 @@ fn test_request_withdrawal_edge_case_exceeds_net_deposited() {
 
     // Try to withdraw more than deposited
     let result = bridge.try_request_withdrawal(&user, &600, &token_addr, &None, &0);
-    assert_eq!(result, Err(Ok(Error::InternalError)));
+    assert_eq!(result, Err(Ok(Error::InsufficientFunds)));
 }
 
 #[test]

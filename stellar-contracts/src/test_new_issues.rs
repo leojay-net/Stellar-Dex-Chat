@@ -131,13 +131,15 @@ fn propose_upgrade_overflow_prevention() {
     env.mock_all_auths();
     let (_, bridge, _, _, _, _) = setup_bridge(&env);
 
-    // Set the ledger sequence close to u32::MAX so that adding any
-    // meaningful delay overflows.
-    env.ledger()
-        .set_sequence_number(u32::MAX - MIN_UPGRADE_DELAY + 1);
+    // Pin the ledger sequence to a small value so we can compute a delay
+    // that will overflow `current_ledger + delay`. We can't push the ledger
+    // close to u32::MAX (host-level TTL math overflows), so we move on the
+    // delay axis instead.
+    env.ledger().set_sequence_number(100);
 
-    // A delay of MIN_UPGRADE_DELAY would push executable_after past u32::MAX.
-    let result = bridge.try_propose_upgrade(&dummy_wasm_hash(&env), &MIN_UPGRADE_DELAY);
+    // current_ledger (100) + delay > u32::MAX → checked_add returns None.
+    let overflowing_delay = u32::MAX - 99;
+    let result = bridge.try_propose_upgrade(&dummy_wasm_hash(&env), &overflowing_delay);
     assert_eq!(result, Err(Ok(Error::Overflow)));
 }
 
