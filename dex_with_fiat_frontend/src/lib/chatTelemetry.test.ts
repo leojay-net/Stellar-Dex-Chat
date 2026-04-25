@@ -6,6 +6,7 @@ import {
   getTelemetryConsent,
   setTelemetryConsent,
   TELEMETRY_SCHEMA_VERSION,
+  telemetryMotionVariants,
   type ChatEvent,
   type AccessibleAvatarColorTelemetryPayload,
   type MessageSendPayload,
@@ -184,5 +185,13 @@ describe('Avatar contrast helpers', () => {
     const payload = { messageLength: 10, hasWallet: true };
 
     expect(withAccessibleAvatarContrast(payload)).toEqual(payload);
+  });
+});
+
+describe('Telemetry motion variants', () => {
+  it('exposes framer-motion variants for hidden/visible/exit', () => {
+    expect(telemetryMotionVariants.hidden).toBeDefined();
+    expect(telemetryMotionVariants.visible).toBeDefined();
+    expect(telemetryMotionVariants.exit).toBeDefined();
   });
 });

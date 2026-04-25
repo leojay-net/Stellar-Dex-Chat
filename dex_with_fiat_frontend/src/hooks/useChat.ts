@@ -49,6 +49,7 @@ const useChat = () => {
     currentSessionId,
     currentSession,
   } = useChatHistory();
+  const [hasHydrated, setHasHydrated] = useState(false);
 
   // State machine for chat lifecycle
   const machineRef = useRef<ReturnType<typeof createChatStateMachine>>(createChatStateMachine());
@@ -124,6 +125,10 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
   const replayingQueueRef = useRef(false);
 
   useEffect(() => {
+    setHasHydrated(true);
+  }, []);
+
+  useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
 
@@ -162,6 +167,7 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
 
   // Initialize chat session
   useEffect(() => {
+    if (!hasHydrated) return;
     const machine = machineRef.current;
     const machineState = machine.getState();
 
@@ -175,7 +181,7 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
         machine.transition(ChatEvent.INITIALIZE_SESSION);
       }
     }
-  }, [currentSession, currentSessionId, createNewSession]);
+  }, [currentSession, currentSessionId, createNewSession, hasHydrated]);
 
   // Persist messages to session
   useEffect(() => {
@@ -645,6 +651,7 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
 
   // Update suggested actions when wallet connection changes
   useEffect(() => {
+    if (!hasHydrated) return;
     const machine = machineRef.current;
     if (machine.getState().state !== ChatState.UNINITIALIZED) {
       setMessages((prevMessages: ChatMessage[]) => {
@@ -662,7 +669,7 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
         return prevMessages;
       });
     }
-  }, [connection.isConnected, getInitialSuggestedActions]);
+  }, [connection.isConnected, getInitialSuggestedActions, hasHydrated]);
 
   // Derive conversationState from machine for backward compatibility
   const conversationState = useMemo((): ConversationState => {

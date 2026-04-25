@@ -164,6 +164,15 @@ fn propose_upgrade_overflow_prevention() {
 
 ---
 
+## Fuzz boundary notes
+
+When adding fuzz/property tests for arithmetic, prefer bounded domains around the contract's
+operational ranges rather than unrestricted full-range `i128` generation. See
+[`docs/fuzz-test-boundary.md`](../../docs/fuzz-test-boundary.md) for recommended ranges and
+"just below / at / just above" edge strategy.
+
+---
+
 ## Checklist for New Arithmetic
 
 When adding new arithmetic to the contract, verify:
