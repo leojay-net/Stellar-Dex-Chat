@@ -18,6 +18,7 @@ type AnalyzeResult = {
 };
 
 let analyzeQueue: Array<AnalyzeResult | Promise<AnalyzeResult>> = [];
+const createNewSessionSpy = vi.fn(() => 'session-1');
 
 class MockAIAssistant {
   static readonly LOW_CONFIDENCE_THRESHOLD = 0.7;
@@ -80,7 +81,7 @@ async function flushEffects(ticks: number = 1) {
 
 vi.mock('./useChatHistory', () => ({
   useChatHistory: () => ({
-    createNewSession: vi.fn(() => 'session-1'),
+    createNewSession: createNewSessionSpy,
     updateCurrentSession: vi.fn(),
     loadSession: vi.fn(() => null),
     currentSessionId: 'session-1',
@@ -643,6 +644,7 @@ describe('Message Retry UX', () => {
 describe('useChat flow state transitions', () => {
   beforeEach(() => {
     analyzeQueue = [];
+    createNewSessionSpy.mockClear();
   });
 
   afterEach(() => {
@@ -689,6 +691,13 @@ describe('useChat flow state transitions', () => {
       'cancelled',
     );
 
+    harness.cleanup();
+  });
+
+  it('hydration-safe init: does not throw and eventually initializes session', async () => {
+    const harness = await setupHook();
+    await flushEffects(3);
+    expect(createNewSessionSpy).toHaveBeenCalled();
     harness.cleanup();
   });
 
