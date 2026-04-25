@@ -2,7 +2,7 @@
 
 use crate::{Error, FiatBridge, FiatBridgeClient};
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
+    testutils::Address as _,
     token, Address, Env, Vec,
 };
 

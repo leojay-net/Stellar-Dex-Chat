@@ -573,6 +573,51 @@ pub struct CircuitBreakerAutoResetEvent {
     pub reset_at: u32,
 }
 
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct UpgradeProposedEvent {
+    pub version: u32,
+    pub wasm_hash: BytesN<32>,
+    pub executable_after: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct UpgradeExecutedEvent {
+    pub version: u32,
+    pub wasm_hash: BytesN<32>,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct UpgradeCancelledEvent {
+    pub version: u32,
+    pub wasm_hash: BytesN<32>,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct MultisigProposedEvent {
+    pub version: u32,
+    pub id: u64,
+    pub proposer: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct MultisigApprovedEvent {
+    pub version: u32,
+    pub id: u64,
+    pub signer: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct MultisigExecutedEvent {
+    pub version: u32,
+    pub id: u64,
+}
+
 // ── Storage keys ──────────────────────────────────────────────────────────
 #[contracttype]
 pub enum DataKey {
@@ -3985,10 +4030,12 @@ impl FiatBridge {
         env.storage()
             .instance()
             .set(&DataKey::UpgradeProposal, &proposal);
-        env.events().publish(
-            (EVENT_VERSION, Symbol::new(&env, "upg_prop")),
-            (wasm_hash, executable_after),
-        );
+        UpgradeProposedEvent {
+            version: EVENT_VERSION,
+            wasm_hash,
+            executable_after,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -4057,10 +4104,11 @@ impl FiatBridge {
         env.deployer()
             .update_current_contract_wasm(proposal.wasm_hash.clone());
 
-        env.events().publish(
-            (EVENT_VERSION, Symbol::new(&env, "upg_exec")),
-            proposal.wasm_hash,
-        );
+        UpgradeExecutedEvent {
+            version: EVENT_VERSION,
+            wasm_hash: proposal.wasm_hash,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -4090,10 +4138,11 @@ impl FiatBridge {
             .ok_or(Error::UpgradeProposalMissing)?;
 
         env.storage().instance().remove(&DataKey::UpgradeProposal);
-        env.events().publish(
-            (EVENT_VERSION, Symbol::new(&env, "upg_can")),
-            proposal.wasm_hash,
-        );
+        UpgradeCancelledEvent {
+            version: EVENT_VERSION,
+            wasm_hash: proposal.wasm_hash,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -4143,10 +4192,12 @@ impl FiatBridge {
             .instance()
             .set(&DataKey::MultisigProposal(id), &proposal);
 
-        env.events().publish(
-            (EVENT_VERSION, Symbol::new(&env, "multisig_proposed")),
-            (id, proposer),
-        );
+        MultisigProposedEvent {
+            version: EVENT_VERSION,
+            id,
+            proposer,
+        }
+        .publish(&env);
 
         Ok(id)
     }
@@ -4178,10 +4229,12 @@ impl FiatBridge {
             .instance()
             .set(&DataKey::MultisigProposal(id), &proposal);
 
-        env.events().publish(
-            (EVENT_VERSION, Symbol::new(&env, "multisig_approved")),
-            (id, signer),
-        );
+        MultisigApprovedEvent {
+            version: EVENT_VERSION,
+            id,
+            signer,
+        }
+        .publish(&env);
 
         Ok(())
     }
@@ -4243,8 +4296,11 @@ impl FiatBridge {
             .instance()
             .set(&DataKey::MultisigProposal(id), &proposal);
 
-        env.events()
-            .publish((EVENT_VERSION, Symbol::new(&env, "multisig_executed")), id);
+        MultisigExecutedEvent {
+            version: EVENT_VERSION,
+            id,
+        }
+        .publish(&env);
 
         Ok(())
     }

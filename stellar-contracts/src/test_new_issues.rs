@@ -37,12 +37,12 @@ fn create_token<'a>(
 fn setup_bridge(
     env: &Env,
 ) -> (
-    Address,            // contract_id
-    FiatBridgeClient,   // bridge client
-    Address,            // admin
-    Address,            // token_addr
-    TokenClient,        // token client
-    StellarAssetClient, // token SAC client
+    Address,                // contract_id
+    FiatBridgeClient<'_>,   // bridge client
+    Address,                // admin
+    Address,                // token_addr
+    TokenClient<'_>,        // token client
+    StellarAssetClient<'_>, // token SAC client
 ) {
     let contract_id = env.register(FiatBridge, ());
     let bridge = FiatBridgeClient::new(env, &contract_id);

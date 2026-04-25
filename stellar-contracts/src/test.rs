@@ -5,7 +5,7 @@ extern crate std;
 use super::*;
 use soroban_sdk::xdr::ToXdr;
 use soroban_sdk::{
-    testutils::{storage::Persistent as _, Address as _, EnvTestConfig, Events as _, Ledger},
+    testutils::{Address as _, EnvTestConfig, Events as _, Ledger},
     token::{Client as TokenClient, StellarAssetClient},
     vec, Address, Bytes, BytesN, Env, IntoVal, Symbol,
 };
@@ -3778,7 +3778,7 @@ fn test_set_operator_invariant_emits_event() {
     let raw = events.events();
 
     // Should have SetOperatorEvent
-    assert!(raw.len() > 0);
+    assert!(!raw.is_empty());
 }
 
 #[test]
@@ -3949,7 +3949,7 @@ fn test_withdraw_fees_edge_case_emits_event() {
     let raw = events.events();
 
     // Should have FeeWithdrawnEvent
-    assert!(raw.len() > 0);
+    assert!(!raw.is_empty());
 }
 
 // ── Issue #619: Edge case validation for request_withdrawal ────────────
@@ -4013,7 +4013,6 @@ fn test_request_withdrawal_edge_case_exact_deposited_amount() {
 
     // Request exactly the deposited amount
     let req_id = bridge.request_withdrawal(&user, &500, &token_addr, &None, &0);
-    assert!(req_id >= 0);
 
     let req = bridge.get_withdrawal_request(&req_id).unwrap();
     assert_eq!(req.amount, 500);
@@ -4054,7 +4053,7 @@ fn test_request_withdrawal_edge_case_emits_event() {
     let raw = events.events();
 
     // Should have WithdrawalRequestedEvent
-    assert!(raw.len() > 0);
+    assert!(!raw.is_empty());
 }
 
 #[test]
