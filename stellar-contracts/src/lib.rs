@@ -41,6 +41,8 @@ const DEFAULT_INACTIVITY_THRESHOLD: u32 = 1_555_200;
 /// is rejected with [`Error::UpgradeDelayTooShort`] to prevent surprise
 /// upgrades that bypass the governance timelock.
 const MIN_UPGRADE_DELAY: u32 = 1_000;
+/// Maximum number of signers allowed in the multi-signature configuration.
+const MAX_SIGNERS: u32 = 20;
 /// Version tag embedded in all contract events for indexer compatibility.
 pub const EVENT_VERSION: u32 = 1;
 /// Current escrow storage schema version used by the migration system.
@@ -128,6 +130,7 @@ pub enum Error {
     AlreadyApproved = 1105,
     ProposalAlreadyExecuted = 1106,
     ThresholdNotMet = 1107,
+    MaxSignersReached = 1108,
 }
 
 // ── Models ────────────────────────────────────────────────────────────────
@@ -721,9 +724,18 @@ impl FiatBridge {
         signers: Vec<Address>,
         threshold: u32,
     ) -> Result<(), Error> {
-        if env.storage().instance().has(&DataKey::Admin) {
+        // Boundary check (fix #214): ensure contract is not already initialized.
+        // We check SchemaVersion instead of Admin because Admin can be removed
+        // during renounce_admin, which would otherwise allow re-initialization.
+        if env.storage().instance().has(&DataKey::SchemaVersion) {
             return Err(Error::AlreadyInitialized);
         }
+
+        // Boundary check: admin cannot be the contract itself to prevent lockout.
+        if admin == env.current_contract_address() {
+            return Err(Error::Unauthorized);
+        }
+
         if limit <= 0 {
             return Err(Error::ZeroAmount);
         }
@@ -732,9 +744,16 @@ impl FiatBridge {
         }
 
         // Validate multisig config
-        if threshold == 0 || threshold > signers.len() {
+        if threshold == 0 {
             return Err(Error::InvalidThreshold);
         }
+        if signers.is_empty() || threshold > signers.len() {
+            return Err(Error::InvalidThreshold);
+        }
+        if signers.len() > MAX_SIGNERS {
+            return Err(Error::MaxSignersReached);
+        }
+
         // Ensure no duplicate signers
         let mut seen = Vec::<Address>::new(&env);
         for s in signers.iter() {
@@ -4338,3 +4357,6 @@ mod test_new_issues;
 
 #[cfg(test)]
 mod test_issues_695_687;
+
+#[cfg(test)]
+mod test_init_validation;

@@ -31,6 +31,13 @@ import { useAccessibleModal } from '@/hooks/useAccessibleModal';
 import { useIdempotentAction } from '@/hooks/useIdempotentAction';
 import { getOrCreateClientSessionId } from '@/lib/clientSession';
 import { chatTelemetry } from '@/lib/chatTelemetry';
+import { z } from 'zod';
+
+export const bankDetailsSchema = z.object({
+  accountNumber: z.string().regex(/^\d{10}$/, 'Account number must be exactly 10 digits'),
+  saveCustomName: z.string().max(50, 'Beneficiary name must be less than 50 characters').optional(),
+  payoutNote: z.string().max(160, 'Note must be less than 160 characters').optional(),
+});
 
 interface Bank {
   id: number;
@@ -240,6 +247,13 @@ export default function BankDetailsModal({
 
   const handleVerifyAccount = useCallback(async () => {
     if (!accountNumber || !selectedBank) return;
+    
+    const validation = bankDetailsSchema.pick({ accountNumber: true }).safeParse({ accountNumber });
+    if (!validation.success) {
+      setVerifyError(validation.error.issues[0].message);
+      return;
+    }
+
     setVerifying(true);
     setVerifyError('');
     setVerifiedAccount(null);
@@ -295,6 +309,12 @@ export default function BankDetailsModal({
       isPayoutProcessing
     )
       return;
+
+    const noteValidation = bankDetailsSchema.pick({ payoutNote: true }).safeParse({ payoutNote });
+    if (!noteValidation.success) {
+      setPayoutError(noteValidation.error.issues[0].message);
+      return;
+    }
 
     await executePayoutConfirm(async (idempotencyKey) => {
       chatTelemetry.fiatPayoutStep({
@@ -479,6 +499,13 @@ export default function BankDetailsModal({
 
   const handleSaveBeneficiary = () => {
     if (!selectedBank || !verifiedAccount) return;
+
+    const validation = bankDetailsSchema.pick({ saveCustomName: true }).safeParse({ saveCustomName });
+    if (!validation.success) {
+      addNotification('payout_fail', validation.error.issues[0].message);
+      return;
+    }
+
     addBeneficiary(
       selectedBank.id,
       selectedBank.name,

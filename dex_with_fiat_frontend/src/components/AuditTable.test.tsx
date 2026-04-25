@@ -60,7 +60,7 @@ describe('AuditTable', () => {
           signal?.addEventListener('abort', () => {
             clearTimeout(t);
             reject(new DOMException('Aborted', 'AbortError'));
-          });
+          }, { once: true });
         });
       }),
     );
