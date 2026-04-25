@@ -275,7 +275,7 @@ function emit<P extends object>(
       ? payload
       : withAccessibleAvatarContrast(payload);
 
-  const event: ChatEvent = {
+  const event: ChatEvent<typeof normalizedPayload> = {
     name,
     version: TELEMETRY_SCHEMA_VERSION,
     timestamp: Date.now(),

@@ -9,6 +9,8 @@ interface FilterChipProps {
   selected: boolean;
   onToggle: (value: string) => void;
   disabled?: boolean;
+  chipClassName?: string;
+  countClassName?: string;
 }
 
 export function FilterChip({
@@ -18,6 +20,8 @@ export function FilterChip({
   selected,
   onToggle,
   disabled = false,
+  chipClassName,
+  countClassName,
 }: FilterChipProps) {
   const handleClick = () => {
     if (!disabled) {
@@ -42,13 +46,14 @@ export function FilterChip({
       onClick={handleClick}
       onKeyDown={handleKeyDown}
       className={`
-        inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium
+        inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm font-medium
         transition-all duration-200 ease-in-out
         focus:outline-none focus:ring-2 focus:ring-offset-2
         ${
-          selected
+          chipClassName ??
+          (selected
             ? 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500'
-            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 focus:ring-gray-400 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+            : 'border-gray-200 bg-gray-100 text-gray-700 hover:bg-gray-200 focus:ring-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700')
         }
         ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
       `}
@@ -58,9 +63,10 @@ export function FilterChip({
         className={`
           inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold
           ${
-            selected
+            countClassName ??
+            (selected
               ? 'bg-blue-500 text-white'
-              : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+              : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400')
           }
         `}
       >
