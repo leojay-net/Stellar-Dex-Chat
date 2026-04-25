@@ -1,4 +1,4 @@
-#![no_std]
+﻿#![no_std]
 #![allow(clippy::too_many_arguments)]
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, token, xdr::ToXdr, Address,
@@ -2082,22 +2082,48 @@ impl FiatBridge {
 
     /// Enforces `max_slippage_bps` on **downward** price moves only.
     ///
-    /// # Model
+    /// # Parameters
     ///
-    /// - `expected_price` — benchmark (e.g. oracle) price used for the check.
-    /// - `actual_price` — effective price for the current deposit/withdraw path.
-    /// - `max_slippage_bps` — cap in **basis points** (10_000 BPS = 100%). Only
+    /// - `expected_price` - benchmark (e.g. oracle) price used for the check.
+    ///   Skipped entirely when `<= 0` (no benchmark available).
+    /// - `actual_price` - effective price for the current deposit/withdraw path.
+    /// - `max_slippage_bps` - cap in **basis points** (10_000 BPS = 100%). Only
     ///   applies when `actual_price < expected_price`.
     ///
     /// # Display vs assertion
     ///
     /// The emitted `SlippageEvent` uses **floor** BPS:
-    /// `⌊(expected - actual) * 10_000 / expected⌋` when `actual < expected`, else `0`.
+    /// `floor((expected - actual) * 10_000 / expected)` when `actual < expected`, else `0`.
     ///
     /// The revert decision uses **integer cross-multiplication** and a
     /// **remainder guard** when the floored quotient equals `max_slippage_bps`,
-    /// so boundary tests at “exactly max” vs “max + 1 bps” stay stable without
+    /// so boundary tests at "exactly max" vs "max + 1 bps" stay stable without
     /// floating point. See `docs/slippage-threshold.md` at the repo root.
+    ///
+    /// # Algorithm (step-by-step)
+    ///
+    /// 1. If `actual_price >= expected_price` - slippage is zero; return `Ok(())`.
+    /// 2. Compute `diff = expected_price - actual_price`.
+    /// 3. **Fast reject**: if `diff * 10_000 > max_slippage_bps * expected_price`
+    ///    the slippage is clearly over the cap; return `Err(SlippageTooHigh)`.
+    /// 4. Compute `quotient = (diff * 10_000) / expected_price` (integer floor).
+    /// 5. If `quotient > max_slippage_bps` - return `Err(SlippageTooHigh)`.
+    /// 6. **Boundary guard**: if `quotient == max_slippage_bps`, inspect the
+    ///    remainder `r = (diff * 10_000) % expected_price`. If `r >= expected_price / 2`
+    ///    the true (ceiling) value would exceed the cap - return `Err(SlippageTooHigh)`.
+    /// 7. Otherwise return `Ok(())`.
+    ///
+    /// # Overflow safety
+    ///
+    /// `diff * 10_000` and `max_slippage_bps * expected_price` are both `i128`
+    /// multiplications. Given that `expected_price` is bounded by the fiat limit
+    /// (see `validate_fiat_limit`) and `max_slippage_bps <= 10_000`, neither
+    /// product can overflow `i128`. See `docs/OVERFLOW_PREVENTION.md`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::SlippageTooHigh`] when the effective downward slippage
+    /// exceeds `max_slippage_bps`.
     fn check_slippage(
         env: &Env,
         expected_price: i128,

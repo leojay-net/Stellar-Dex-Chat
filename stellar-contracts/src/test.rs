@@ -4367,3 +4367,119 @@ fn test_withdrawal_quota_invariant_window_reset() {
     let daily_amount = bridge.get_user_daily_withdrawal(&user);
     assert_eq!(daily_amount, 500);
 }
+
+// ── Issue #527: pause — additional Soroban invariant tests ──────────────────
+
+#[test]
+fn test_pause_invariant_withdraw_blocked_while_paused() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &2_000);
+
+    bridge.deposit(&user, &1_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.pause();
+
+    // withdraw must be blocked
+    let result = bridge.try_withdraw(&admin, &user, &100, &token_addr);
+    assert_eq!(result, Err(Ok(Error::ContractPaused)));
+
+    // unpause restores withdraw
+    bridge.unpause();
+    bridge.withdraw(&admin, &user, &100, &token_addr);
+    assert_eq!(bridge.get_total_deposited(), 900);
+}
+
+#[test]
+fn test_pause_invariant_request_withdrawal_blocked_while_paused() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &2_000);
+
+    bridge.deposit(&user, &1_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.pause();
+
+    let result = bridge.try_request_withdrawal(&user, &100, &token_addr, &None, &0);
+    assert_eq!(result, Err(Ok(Error::ContractPaused)));
+}
+
+#[test]
+fn test_pause_invariant_total_deposited_unchanged_across_pause_unpause_cycle() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+
+    bridge.deposit(&user, &2_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    let before = bridge.get_total_deposited();
+
+    // pause → attempt deposit → unpause: total must be unchanged
+    bridge.pause();
+    let _ = bridge.try_deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.unpause();
+
+    assert_eq!(bridge.get_total_deposited(), before);
+}
+
+#[test]
+fn test_pause_invariant_only_admin_can_pause() {
+    let env = Env::default();
+    // Do NOT mock_all_auths — require explicit auth
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let non_admin = Address::generate(&env);
+    token_sac.mint(&non_admin, &1_000);
+
+    // Admin can pause
+    env.mock_auths(&[soroban_sdk::auth::MockAuth {
+        address: &admin,
+        invoke: &soroban_sdk::auth::MockAuthInvoke {
+            contract: &bridge.address,
+            fn_name: "pause",
+            args: soroban_sdk::vec![&env].into(),
+            sub_invokes: &[],
+        },
+    }]);
+    bridge.pause();
+    assert_eq!(
+        bridge.try_deposit(&non_admin, &100, &token_addr, &Bytes::new(&env), &0, &0, &None),
+        Err(Ok(Error::ContractPaused))
+    );
+}
+
+#[test]
+fn test_pause_invariant_paused_flag_persists_across_multiple_blocked_calls() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+
+    bridge.deposit(&user, &1_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.pause();
+
+    // Multiple blocked calls must not clear the paused flag
+    for _ in 0..5 {
+        assert_eq!(
+            bridge.try_deposit(&user, &10, &token_addr, &Bytes::new(&env), &0, &0, &None),
+            Err(Ok(Error::ContractPaused))
+        );
+        assert_eq!(
+            bridge.try_withdraw(&admin, &user, &10, &token_addr),
+            Err(Ok(Error::ContractPaused))
+        );
+    }
+
+    // Still paused after all those rejections
+    assert_eq!(
+        bridge.try_deposit(&user, &1, &token_addr, &Bytes::new(&env), &0, &0, &None),
+        Err(Ok(Error::ContractPaused))
+    );
+}

@@ -41,7 +41,22 @@ Together, these rules give **predictable boundary behaviour** at exactly `max_sl
 
 When the check fails, the contract returns `Error::SlippageTooHigh` (see `ERROR_CODES.md` / `SlippageExceeded` in product docs where applicable).
 
+## Architectural notes
+
+### Why cross-multiplication instead of division?
+
+Integer division truncates. If we simply computed `(diff * 10_000) / expected` and compared to `max_slippage_bps`, a price that is fractionally over the cap could pass because the floor rounds it down. Cross-multiplication (`diff * 10_000 > max_slippage_bps * expected`) avoids that truncation entirely for the fast-reject path.
+
+### Why the remainder guard?
+
+After the fast-reject, the floored quotient is computed. When `quotient == max_slippage_bps` the floor value is exactly at the cap, but the true rational value might be `max + ε`. The remainder guard (`remainder >= expected / 2`) catches cases where ceiling-rounding would push the value over the cap, keeping boundary behaviour deterministic for tests that construct prices at exactly `max_slippage_bps` BPS.
+
+### Where is this called?
+
+`check_slippage` is a private helper invoked inside `deposit` and `execute_withdrawal` whenever the caller supplies a non-zero `expected_price`. Passing `expected_price = 0` skips the check entirely (no oracle benchmark available).
+
 ## Further reading
 
+- Inline Rustdoc: `stellar-contracts/src/lib.rs` — `FiatBridge::check_slippage`.
 - Contract tests: `stellar-contracts/src/test.rs` — `test_slippage_*` and boundary suites.
 - Overflow / fixed-point context: `stellar-contracts/docs/OVERFLOW_PREVENTION.md`.
