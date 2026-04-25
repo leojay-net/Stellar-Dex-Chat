@@ -477,11 +477,11 @@ function StellarChatInterfaceContent() {
               </button>
 
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full bg-[var(--color-primary)] flex items-center justify-center">
                   <Star className="w-4 h-4 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                  <h1 className="text-xl font-bold text-[var(--color-primary)]">
                     {t('header.title')}
                   </h1>
                   <p
@@ -659,7 +659,7 @@ function StellarChatInterfaceContent() {
               ) : (
                 <button
                   onClick={connect}
-                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white text-sm font-medium rounded-lg transition-all"
+                  className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-sm font-medium rounded-lg transition-all"
                 >
                   <Wallet className="w-4 h-4" />
                   {t('header.connect_freighter')}
