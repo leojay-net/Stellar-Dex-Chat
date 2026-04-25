@@ -113,123 +113,144 @@ const FALLBACK_LIGHT_TEXT = '#FFFFFF';
 const FALLBACK_DARK_TEXT = '#111827';
 
 function normalizeHexColor(color: string): string | null {
-  const trimmed = color.trim();
+  try {
+    const trimmed = color.trim();
 
-  if (/^#[\da-f]{3}$/i.test(trimmed)) {
-    const [, r, g, b] = trimmed;
-    return `#${r}${r}${g}${g}${b}${b}`.toUpperCase();
+    if (/^#[\da-f]{3}$/i.test(trimmed)) {
+      const [, r, g, b] = trimmed;
+      return `#${r}${r}${g}${g}${b}${b}`.toUpperCase();
+    }
+
+    if (/^#[\da-f]{6}$/i.test(trimmed)) {
+      return trimmed.toUpperCase();
+    }
+
+    return null;
+  } catch {
+    return null;
   }
-
-  if (/^#[\da-f]{6}$/i.test(trimmed)) {
-    return trimmed.toUpperCase();
-  }
-
-  return null;
 }
 
 function getRelativeLuminance(color: string): number | null {
-  const normalizedColor = normalizeHexColor(color);
-  if (!normalizedColor) return null;
+  try {
+    const normalizedColor = normalizeHexColor(color);
+    if (!normalizedColor) return null;
 
-  const hex = normalizedColor.slice(1);
-  const channels = [0, 2, 4].map((offset) => {
-    const sRGB = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
-    return sRGB <= 0.03928
-      ? sRGB / 12.92
-      : ((sRGB + 0.055) / 1.055) ** 2.4;
-  });
+    const hex = normalizedColor.slice(1);
+    const channels = [0, 2, 4].map((offset) => {
+      const sRGB = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
+      return sRGB <= 0.03928
+        ? sRGB / 12.92
+        : ((sRGB + 0.055) / 1.055) ** 2.4;
+    });
 
-  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+  } catch {
+    return null;
+  }
 }
 
 export function calculateContrastRatio(
   foregroundColor: string,
   backgroundColor: string,
 ): number | null {
-  const foregroundLuminance = getRelativeLuminance(foregroundColor);
-  const backgroundLuminance = getRelativeLuminance(backgroundColor);
+  try {
+    const foregroundLuminance = getRelativeLuminance(foregroundColor);
+    const backgroundLuminance = getRelativeLuminance(backgroundColor);
 
-  if (
-    foregroundLuminance === null ||
-    backgroundLuminance === null
-  ) {
+    if (
+      foregroundLuminance === null ||
+      backgroundLuminance === null
+    ) {
+      return null;
+    }
+
+    const lighter = Math.max(foregroundLuminance, backgroundLuminance);
+    const darker = Math.min(foregroundLuminance, backgroundLuminance);
+    const ratio = (lighter + 0.05) / (darker + 0.05);
+
+    return Number(ratio.toFixed(2));
+  } catch {
     return null;
   }
-
-  const lighter = Math.max(foregroundLuminance, backgroundLuminance);
-  const darker = Math.min(foregroundLuminance, backgroundLuminance);
-  const ratio = (lighter + 0.05) / (darker + 0.05);
-
-  return Number(ratio.toFixed(2));
 }
 
 export function getAccessibleAvatarTextColor(
   backgroundColor: string,
   preferredTextColor = FALLBACK_LIGHT_TEXT,
 ): string {
-  const normalizedBackgroundColor = normalizeHexColor(backgroundColor);
-  const normalizedPreferredTextColor =
-    normalizeHexColor(preferredTextColor) ?? FALLBACK_LIGHT_TEXT;
+  try {
+    const normalizedBackgroundColor = normalizeHexColor(backgroundColor);
+    const normalizedPreferredTextColor =
+      normalizeHexColor(preferredTextColor) ?? FALLBACK_LIGHT_TEXT;
 
-  if (!normalizedBackgroundColor) {
-    return normalizedPreferredTextColor;
-  }
-
-  const candidateColors = [
-    normalizedPreferredTextColor,
-    FALLBACK_LIGHT_TEXT,
-    FALLBACK_DARK_TEXT,
-  ].filter((color, index, allColors) => allColors.indexOf(color) === index);
-
-  let bestColor = candidateColors[0];
-  let bestRatio =
-    calculateContrastRatio(bestColor, normalizedBackgroundColor) ?? 0;
-
-  for (const candidateColor of candidateColors.slice(1)) {
-    const candidateRatio =
-      calculateContrastRatio(candidateColor, normalizedBackgroundColor) ?? 0;
-
-    if (candidateRatio > bestRatio) {
-      bestColor = candidateColor;
-      bestRatio = candidateRatio;
+    if (!normalizedBackgroundColor) {
+      return normalizedPreferredTextColor;
     }
-  }
 
-  return bestRatio >= MIN_CONTRAST_RATIO ? bestColor : normalizedPreferredTextColor;
+    const candidateColors = [
+      normalizedPreferredTextColor,
+      FALLBACK_LIGHT_TEXT,
+      FALLBACK_DARK_TEXT,
+    ].filter((color, index, allColors) => allColors.indexOf(color) === index);
+
+    let bestColor = candidateColors[0];
+    let bestRatio =
+      calculateContrastRatio(bestColor, normalizedBackgroundColor) ?? 0;
+
+    for (const candidateColor of candidateColors.slice(1)) {
+      const candidateRatio =
+        calculateContrastRatio(candidateColor, normalizedBackgroundColor) ?? 0;
+
+      if (candidateRatio > bestRatio) {
+        bestColor = candidateColor;
+        bestRatio = candidateRatio;
+      }
+    }
+
+    return bestRatio >= MIN_CONTRAST_RATIO ? bestColor : normalizedPreferredTextColor;
+  } catch {
+    return FALLBACK_LIGHT_TEXT;
+  }
 }
 
 export function withAccessibleAvatarContrast<
   P extends object,
 >(payload: P): P | (P & AccessibleAvatarColorTelemetryPayload) {
-  const avatarPayload = payload as Partial<AvatarColorTelemetryPayload>;
-  const backgroundColor =
-    typeof avatarPayload.avatarBackgroundColor === 'string'
-      ? normalizeHexColor(avatarPayload.avatarBackgroundColor)
-      : null;
+  try {
+    const avatarPayload = payload as Partial<AvatarColorTelemetryPayload>;
+    const backgroundColor =
+      typeof avatarPayload.avatarBackgroundColor === 'string'
+        ? normalizeHexColor(avatarPayload.avatarBackgroundColor)
+        : null;
 
-  // Fix rendering overflow: return original payload reference if no avatar colors
-  if (!backgroundColor) {
+    // Fix rendering overflow: return original payload reference if no avatar colors
+    if (!backgroundColor) {
+      return payload;
+    }
+
+    const accessibleTextColor = getAccessibleAvatarTextColor(
+      backgroundColor,
+      typeof avatarPayload.avatarTextColor === 'string'
+        ? avatarPayload.avatarTextColor
+        : FALLBACK_LIGHT_TEXT,
+    );
+    const contrastRatio =
+      calculateContrastRatio(accessibleTextColor, backgroundColor) ?? 0;
+
+    // Fix rendering overflow: only create new object when avatar colors exist
+    // This prevents unnecessary object creation and potential re-render cycles
+    return {
+      ...payload,
+      avatarBackgroundColor: backgroundColor,
+      avatarTextColor: accessibleTextColor,
+      avatarContrastRatio: contrastRatio,
+      avatarContrastCompliant: contrastRatio >= MIN_CONTRAST_RATIO,
+    } as P & AccessibleAvatarColorTelemetryPayload;
+  } catch {
+    // Error boundary: return original payload if contrast calculation fails
     return payload;
   }
-
-  const accessibleTextColor = getAccessibleAvatarTextColor(
-    backgroundColor,
-    typeof avatarPayload.avatarTextColor === 'string'
-      ? avatarPayload.avatarTextColor
-      : FALLBACK_LIGHT_TEXT,
-  );
-  const contrastRatio =
-    calculateContrastRatio(accessibleTextColor, backgroundColor) ?? 0;
-
-  // Fix rendering overflow: only create new object when avatar colors exist
-  // This prevents unnecessary object creation and potential re-render cycles
-  return {
-    ...payload,
-    avatarBackgroundColor: backgroundColor,
-    avatarTextColor: accessibleTextColor,
-    avatarContrastRatio: contrastRatio,
-    avatarContrastCompliant: contrastRatio >= MIN_CONTRAST_RATIO,
-  } as P & AccessibleAvatarColorTelemetryPayload;
 }
 
 export function getTelemetryConsent(): boolean {
@@ -260,7 +281,10 @@ export function setTelemetryConsent(enabled: boolean): void {
  * Emit a telemetry event. No-ops if the user has not consented.
  * Dispatches a CustomEvent on window so any listener can react
  * (analytics adapters, logging, etc.) without tight coupling.
- * 
+ *
+ * Error boundary: Catches any errors during event emission to prevent
+ * telemetry failures from affecting the main application flow.
+ *
  * Fix for rendering overflow: Uses requestAnimationFrame to defer event
  * dispatch and prevent blocking the main render cycle.
  */
@@ -268,27 +292,37 @@ function emit<P extends object>(
   name: ChatEventName,
   payload: P,
 ): void {
-  if (!getTelemetryConsent()) return;
+  try {
+    if (!getTelemetryConsent()) return;
 
-  const normalizedPayload =
-    name === 'fiat_payout_step'
-      ? payload
-      : withAccessibleAvatarContrast(payload);
+    const normalizedPayload =
+      name === 'fiat_payout_step'
+        ? payload
+        : withAccessibleAvatarContrast(payload);
 
-  const event: ChatEvent = {
-    name,
-    version: TELEMETRY_SCHEMA_VERSION,
-    timestamp: Date.now(),
-    payload: normalizedPayload,
-  };
+    const event: ChatEvent = {
+      name,
+      version: TELEMETRY_SCHEMA_VERSION,
+      timestamp: Date.now(),
+      payload: normalizedPayload,
+    };
 
-  // Fix rendering overflow: defer event dispatch to prevent blocking renders
-  if (typeof window !== 'undefined') {
-    requestAnimationFrame(() => {
-      window.dispatchEvent(
-        new CustomEvent('chat:telemetry', { detail: event }),
-      );
-    });
+    // Fix rendering overflow: defer event dispatch to prevent blocking renders
+    if (typeof window !== 'undefined') {
+      requestAnimationFrame(() => {
+        try {
+          window.dispatchEvent(
+            new CustomEvent('chat:telemetry', { detail: event }),
+          );
+        } catch {
+          // Error boundary: silently ignore event dispatch errors
+          // to prevent telemetry failures from affecting the app
+        }
+      });
+    }
+  } catch {
+    // Error boundary: silently ignore any errors during event emission
+    // to prevent telemetry failures from affecting the app
   }
 }   
 
