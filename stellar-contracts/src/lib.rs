@@ -2247,6 +2247,40 @@ impl FiatBridge {
     }
 
     // ── Timelock ──────────────────────────────────────────────────────────
+    /// Queue an admin action to be executed after the mandatory timelock delay.
+    ///
+    /// All privileged governance operations (parameter changes, operator
+    /// management, etc.) must be queued here first and can only be executed
+    /// once the timelock has elapsed.  This prevents surprise changes and
+    /// gives observers time to react.
+    ///
+    /// # Role check
+    /// Only the contract admin may call this function.  The admin address is
+    /// read from instance storage and `require_auth()` is called against it,
+    /// so the transaction must be signed by the admin key.  Operators and
+    /// other addresses are explicitly excluded — they hold a narrower role
+    /// that does not include governance authority.
+    ///
+    /// # Timelock enforcement
+    /// `delay` must be at least [`MIN_TIMELOCK_DELAY`] (34 560 ledgers ≈ 48 h).
+    /// Shorter delays are rejected with [`Error::ActionNotReady`] to prevent
+    /// governance actions from bypassing the mandatory waiting period.
+    ///
+    /// # Arguments
+    /// * `env`         – The contract environment.
+    /// * `action_type` – A [`Symbol`] identifying the action kind (used for
+    ///                   event emission and off-chain indexing).
+    /// * `payload`     – Arbitrary bytes encoding the action parameters.
+    /// * `delay`       – Number of ledgers to wait before the action becomes
+    ///                   executable.  Must be ≥ `MIN_TIMELOCK_DELAY`.
+    ///
+    /// # Returns
+    /// The numeric ID assigned to the queued action.  Pass this ID to
+    /// [`execute_admin_action`] once the timelock has elapsed.
+    ///
+    /// # Errors
+    /// * [`Error::NotInitialized`] – Contract has not been initialised.
+    /// * [`Error::ActionNotReady`] – `delay` is below `MIN_TIMELOCK_DELAY`.
     pub fn queue_admin_action(
         env: Env,
         action_type: Symbol,
@@ -2289,6 +2323,30 @@ impl FiatBridge {
         Ok(id)
     }
 
+    /// Execute a previously queued admin action once its timelock has elapsed.
+    ///
+    /// # Role check
+    /// Only the contract admin may execute queued actions.  The same
+    /// `require_auth()` guard used in [`queue_admin_action`] applies here,
+    /// ensuring that the entity that queued the action is also the one that
+    /// executes it.  This prevents a scenario where an attacker who gains
+    /// temporary access to the queue could trigger execution without the
+    /// admin's continued authorisation.
+    ///
+    /// # Timelock enforcement
+    /// The action is only executable once `env.ledger().sequence()` is
+    /// strictly greater than `action.target_ledger` (i.e. `>`, not `>=`).
+    /// This adds one extra ledger of safety margin and is consistent with
+    /// the off-by-one fix documented in [`execute_upgrade`].
+    ///
+    /// # Arguments
+    /// * `env` – The contract environment.
+    /// * `id`  – The action ID returned by [`queue_admin_action`].
+    ///
+    /// # Errors
+    /// * [`Error::NotInitialized`]  – Contract has not been initialised.
+    /// * [`Error::ActionNotQueued`] – No action exists for the given `id`.
+    /// * [`Error::ActionNotReady`]  – The timelock has not yet elapsed.
     pub fn execute_admin_action(env: Env, id: u64) -> Result<(), Error> {
         let admin: Address = env
             .storage()
@@ -2324,6 +2382,37 @@ impl FiatBridge {
     /// Operators are restricted roles that can perform low-stakes actions like
     /// heartbeats but cannot change core contract parameters.
     /// Admin-only function.
+    ///
+    /// # Role separation (timelock role check)
+    /// The admin and operator roles are intentionally kept separate:
+    ///
+    /// * **Admin** – governance role; can queue/execute timelock actions,
+    ///   pause/unpause the contract, and manage operators.
+    /// * **Operator** – operational role; limited to heartbeat and similar
+    ///   low-stakes actions that do not require a timelock.
+    ///
+    /// Conflating both roles on a single address would allow an operator key
+    /// compromise to bypass the governance timelock entirely.  Therefore:
+    ///
+    /// 1. The admin address **must not** be granted the operator role
+    ///    (`operator != admin` is enforced; violation → [`Error::NotAllowed`]).
+    /// 2. The contract itself **must not** be an operator
+    ///    (`operator != current_contract_address()`; violation →
+    ///    [`Error::InvalidRecipient`]).
+    ///
+    /// These checks are the canonical *timelock role check* referenced
+    /// throughout the codebase and test suite (fix #525).
+    ///
+    /// # Arguments
+    /// * `env`      – The contract environment.
+    /// * `operator` – The address to grant or revoke the operator role for.
+    /// * `active`   – `true` to grant, `false` to revoke.
+    ///
+    /// # Errors
+    /// * [`Error::NotInitialized`]    – Contract has not been initialised.
+    /// * [`Error::NotAllowed`]        – `operator` is the admin address.
+    /// * [`Error::InvalidRecipient`]  – `operator` is the contract address.
+    /// * [`Error::OperatorCapReached`] – Maximum operator count already reached.
     pub fn set_operator(env: Env, operator: Address, active: bool) -> Result<(), Error> {
         let admin: Address = env
             .storage()

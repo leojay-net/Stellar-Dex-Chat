@@ -273,4 +273,45 @@ describe('Rendering overflow fix (issue #539)', () => {
     
     window.removeEventListener('chat:telemetry', handler);
   });
+
+  // ── avatar_color_check event (issue #521) ─────────────────────────────
+
+  it('avatarColorCheck emits avatar_color_check event with enriched payload', async () => {
+    const promise = captureNextEvent<AccessibleAvatarColorTelemetryPayload>();
+    chatTelemetry.avatarColorCheck({ avatarBackgroundColor: '#1a1a2e' });
+    const event = await promise;
+
+    expect(event.name).toBe('avatar_color_check');
+    expect(event.payload).toHaveProperty('avatarBackgroundColor');
+    expect(event.payload).toHaveProperty('avatarTextColor');
+    expect(event.payload).toHaveProperty('avatarContrastRatio');
+    expect(event.payload).toHaveProperty('avatarContrastCompliant');
+  });
+
+  it('avatarColorCheck marks dark background as contrast-compliant with white text', async () => {
+    const promise = captureNextEvent<AccessibleAvatarColorTelemetryPayload>();
+    chatTelemetry.avatarColorCheck({ avatarBackgroundColor: '#000000' });
+    const event = await promise;
+
+    expect(event.payload.avatarContrastCompliant).toBe(true);
+    expect(event.payload.avatarContrastRatio).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('avatarColorCheck marks light background as contrast-compliant with dark text', async () => {
+    const promise = captureNextEvent<AccessibleAvatarColorTelemetryPayload>();
+    chatTelemetry.avatarColorCheck({ avatarBackgroundColor: '#FFFFFF' });
+    const event = await promise;
+
+    expect(event.payload.avatarContrastCompliant).toBe(true);
+    expect(event.payload.avatarContrastRatio).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('avatarColorCheck does not emit when consent is not given', () => {
+    setTelemetryConsent(false);
+    const handler = vi.fn();
+    window.addEventListener('chat:telemetry', handler);
+    chatTelemetry.avatarColorCheck({ avatarBackgroundColor: '#FF0000' });
+    window.removeEventListener('chat:telemetry', handler);
+    expect(handler).not.toHaveBeenCalled();
+  });
 });

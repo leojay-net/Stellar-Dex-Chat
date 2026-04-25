@@ -12,7 +12,8 @@ export type ChatEventName =
   | 'wallet_connect'
   | 'bridge_open'
   | 'tx_confirm'
-  | 'fiat_payout_step';
+  | 'fiat_payout_step'
+  | 'avatar_color_check';
 
 export interface ChatEvent<P extends object = Record<string, unknown>> {
   /** Normalized event name. */
@@ -317,5 +318,20 @@ export const chatTelemetry = {
 
   fiatPayoutStep(payload: FiatPayoutStepPayload): void {
     emit('fiat_payout_step', payload);
+  },
+
+  /**
+   * Emit an `avatar_color_check` event that records whether the avatar
+   * foreground/background colour pair meets WCAG AA contrast (4.5:1).
+   *
+   * The payload is automatically enriched with the accessible text colour,
+   * the computed contrast ratio, and a compliance flag via
+   * `withAccessibleAvatarContrast` before dispatch.
+   *
+   * Issue #521: surfaces colour-contrast telemetry so design tooling can
+   * detect non-compliant avatar palettes in production.
+   */
+  avatarColorCheck(payload: AvatarColorTelemetryPayload): void {
+    emit('avatar_color_check', payload);
   },
 };

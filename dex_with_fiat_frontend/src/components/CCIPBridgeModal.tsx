@@ -38,16 +38,26 @@ export default function CCIPBridgeModal({
 }: CCIPBridgeModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
   const pollingStartedAtRef = useRef<number | null>(null);
+  // Fix #520: keep a ref in sync with transactionHash state so the polling
+  // callback always reads the latest value without being re-created on every
+  // hash change (avoids stale-closure race condition).
+  const transactionHashRef = useRef('');
   const [bridgeState, setBridgeState] = useState<BridgeState>('idle');
   const [transactionHash, setTransactionHash] = useState('');
   const [explorerUrl, setExplorerUrl] = useState('');
   const [latestStatus, setLatestStatus] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState('');
 
+  // Keep ref in sync with state.
+  useEffect(() => {
+    transactionHashRef.current = transactionHash;
+  }, [transactionHash]);
+
   useAccessibleModal(isOpen, modalRef, onClose);
 
   const resetState = useCallback(() => {
     pollingStartedAtRef.current = null;
+    transactionHashRef.current = '';
     setBridgeState('idle');
     setTransactionHash('');
     setExplorerUrl('');
@@ -98,16 +108,19 @@ export default function CCIPBridgeModal({
     }
   }, [onStartTransfer]);
 
-  const pollTransferStatus = useCallback(async () => {
-    if (!transactionHash) {
-      return;
-    }
+  // Fix #520: pollTransferStatus reads the hash from a ref instead of closing
+  // over the state value.  This means the callback identity is stable and the
+  // polling interval never fires with a stale hash.
+  const pollTransferStatus = useCallback(async (signal: { aborted: boolean }) => {
+    const hash = transactionHashRef.current;
+    if (!hash) return;
 
     const pollingStartedAt = pollingStartedAtRef.current;
     if (
       pollingStartedAt !== null &&
       Date.now() - pollingStartedAt >= timeoutMs
     ) {
+      if (signal.aborted) return;
       setBridgeState('error');
       setErrorMessage(
         'CCIP confirmation timed out after 10 minutes. Please verify the transaction in the explorer and try again.',
@@ -116,8 +129,9 @@ export default function CCIPBridgeModal({
     }
 
     try {
-      const result = await fetchTransferStatus(transactionHash);
-      
+      const result = await fetchTransferStatus(hash);
+      if (signal.aborted) return;
+
       // Optimistic UI: update status immediately
       setLatestStatus(result.status);
       if (result.explorerUrl) {
@@ -125,13 +139,11 @@ export default function CCIPBridgeModal({
       }
 
       if (result.status === 'SUCCESS') {
-        // Optimistic UI: transition to success state immediately
         setBridgeState('success');
         return;
       }
 
       if (result.status === 'FAILED' || result.status === 'ERROR') {
-        // Optimistic UI: transition to error state immediately
         setBridgeState('error');
         setErrorMessage(
           result.errorMessage ??
@@ -140,10 +152,10 @@ export default function CCIPBridgeModal({
         return;
       }
 
-      // Optimistic UI: keep polling state for intermediate statuses
       setBridgeState('polling');
     } catch (error) {
-      // Optimistic UI: maintain PENDING status during transient errors
+      if (signal.aborted) return;
+      // Maintain PENDING status during transient errors
       setLatestStatus('PENDING');
       setBridgeState('polling');
       if (
@@ -158,7 +170,7 @@ export default function CCIPBridgeModal({
         );
       }
     }
-  }, [fetchTransferStatus, timeoutMs, transactionHash]);
+  }, [fetchTransferStatus, timeoutMs]);
 
   useEffect(() => {
     if (
@@ -172,12 +184,18 @@ export default function CCIPBridgeModal({
       return;
     }
 
-    void pollTransferStatus();
+    // Fix #520: each effect invocation gets its own abort signal so that
+    // in-flight async calls from a previous render cycle cannot mutate state
+    // after the effect has been cleaned up.
+    const signal = { aborted: false };
+
+    void pollTransferStatus(signal);
     const intervalId = window.setInterval(() => {
-      void pollTransferStatus();
+      void pollTransferStatus(signal);
     }, pollIntervalMs);
 
     return () => {
+      signal.aborted = true;
       window.clearInterval(intervalId);
     };
   }, [

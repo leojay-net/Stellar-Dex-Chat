@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, act } from '@testing-library/react';
 import { TransactionAmountDisplay } from '../TransactionAmountDisplay';
 
 // Mock the hook
@@ -70,5 +70,53 @@ describe('TransactionAmountDisplay', () => {
     render(<TransactionAmountDisplay amount={-50} />);
     expect(screen.getByText(/Amount must be positive/i)).toBeDefined();
     consoleSpy.mockRestore();
+  });
+
+  // ── Auto-scroll behaviour (issue #522) ────────────────────────────────
+
+  it('calls scrollIntoView on mount', () => {
+    const scrollIntoView = vi.fn();
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoView;
+
+    render(<TransactionAmountDisplay amount={100} asset="XLM" />);
+
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'nearest' });
+  });
+
+  it('calls scrollIntoView again when displayText changes', async () => {
+    const scrollIntoView = vi.fn();
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoView;
+
+    const { useCurrencyConversion } = await import('@/hooks/useCurrencyConversion');
+    const mockHook = vi.mocked(useCurrencyConversion);
+
+    mockHook.mockReturnValueOnce({
+      displayText: '100 XLM ≈ $12.40 USD',
+      originalAmount: 100,
+      originalCurrency: 'XLM',
+      fiatAmount: 12.4,
+      fiatCurrency: 'USD',
+      isLoading: false,
+      hasError: false,
+    });
+
+    const { rerender } = render(<TransactionAmountDisplay amount={100} asset="XLM" />);
+    const callsBefore = scrollIntoView.mock.calls.length;
+
+    mockHook.mockReturnValueOnce({
+      displayText: '200 XLM ≈ $24.80 USD',
+      originalAmount: 200,
+      originalCurrency: 'XLM',
+      fiatAmount: 24.8,
+      fiatCurrency: 'USD',
+      isLoading: false,
+      hasError: false,
+    });
+
+    await act(async () => {
+      rerender(<TransactionAmountDisplay amount={200} asset="XLM" />);
+    });
+
+    expect(scrollIntoView.mock.calls.length).toBeGreaterThan(callsBefore);
   });
 });
