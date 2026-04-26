@@ -1,23 +1,24 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
 import ChatInput from '../ChatInput';
 
 // Mock the translation context
-jest.mock('@/contexts/TranslationContext', () => ({
+vi.mock('@/contexts/TranslationContext', () => ({
   useTranslation: () => ({
     t: (key: string) => key,
   }),
 }));
 
 // Mock draft utils
-jest.mock('@/lib/draftUtils', () => ({
-  saveDraft: jest.fn(),
-  getDraft: jest.fn(() => ''),
-  clearDraft: jest.fn(),
+vi.mock('@/lib/draftUtils', () => ({
+  saveDraft: vi.fn(),
+  getDraft: vi.fn(() => ''),
+  clearDraft: vi.fn(),
 }));
 
 // Mock StellarWalletContext
-jest.mock('@/contexts/StellarWalletContext', () => ({
+vi.mock('@/contexts/StellarWalletContext', () => ({
   useStellarWallet: () => ({
     connection: {
       isConnected: true,
@@ -30,11 +31,11 @@ jest.mock('@/contexts/StellarWalletContext', () => ({
 }));
 
 describe('ChatInput - Keyboard Shortcuts', () => {
-  const mockOnSendMessage = jest.fn();
-  const mockOnCancelRequest = jest.fn();
-  const mockOnNewChat = jest.fn();
-  const mockOnOpenHistory = jest.fn();
-  const mockOnOpenBridgeModal = jest.fn();
+  const mockOnSendMessage = vi.fn();
+  const mockOnCancelRequest = vi.fn();
+  const mockOnNewChat = vi.fn();
+  const mockOnOpenHistory = vi.fn();
+  const mockOnOpenBridgeModal = vi.fn();
 
   const defaultProps = {
     onSendMessage: mockOnSendMessage,
@@ -47,7 +48,7 @@ describe('ChatInput - Keyboard Shortcuts', () => {
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   it('should trigger new chat with Cmd+N', () => {
