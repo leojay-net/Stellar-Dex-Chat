@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   X,
   Receipt,
@@ -34,6 +34,24 @@ export default function ReceiptDrawer({
   const { isDarkMode } = useTheme();
 
   const [isLoading, setIsLoading] = useState(true);
+
+  // Keyboard shortcuts: Escape closes, Backspace/Delete clears history (issue #528)
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (!isOpen) return;
+      if (e.key === 'Escape') {
+        onClose();
+      } else if ((e.key === 'Backspace' || e.key === 'Delete') && onClearHistory) {
+        onClearHistory();
+      }
+    },
+    [isOpen, onClose, onClearHistory],
+  );
+
+  useEffect(() => {
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
 
   useEffect(() => {
     if (isOpen) {
@@ -74,6 +92,9 @@ export default function ReceiptDrawer({
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
         aria-busy={isLoading}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Transaction receipts — press Escape to close"
       >
         <div className="flex flex-col h-full">
           {/* Header */}
@@ -89,7 +110,7 @@ export default function ReceiptDrawer({
                 <button
                   onClick={onClearHistory}
                   className="p-2 text-gray-500 hover:text-red-500 transition-colors"
-                  title="Clear history"
+                  title="Clear history (Backspace)"
                 >
                   <Trash2 className="w-5 h-5" />
                 </button>
