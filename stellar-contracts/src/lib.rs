@@ -245,6 +245,33 @@ pub struct UserDailyDeposit {
     pub window_start: u32,
 }
 
+/// Versioned escrow record with migration metadata.
+///
+/// This struct represents an escrow record that has been migrated to the versioned
+/// storage schema. It includes metadata about the migration process and the original
+/// transaction details.
+///
+/// # Fields
+///
+/// * `version` - Schema version of this record (e.g., 1 for v1 schema)
+/// * `depositor` - Address of the original depositor who created the escrow
+/// * `token` - Token address for the escrowed amount
+/// * `amount` - Escrowed amount in token units
+/// * `ledger` - Stellar ledger number when the escrow was created
+/// * `migrated` - Flag indicating if this record has been successfully migrated
+///
+/// # Example
+///
+/// ```rust
+/// let record = EscrowRecord {
+///     version: 1,
+///     depositor: Address::from_string(&String::from_str(&env, "G...")),
+///     token: Address::from_string(&String::from_str(&env, "G...")),
+///     amount: 100_000_000,
+///     ledger: 12345,
+///     migrated: true,
+/// };
+/// ```
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EscrowRecord {
@@ -513,6 +540,30 @@ pub struct QuotaResetEvent {
     pub window_start: u32,
 }
 
+/// Event emitted during escrow storage migration to track progress.
+///
+/// This event is published after each batch of records is migrated, allowing
+/// indexers and monitoring systems to track the migration progress in real-time.
+///
+/// # Fields
+///
+/// * `version` - Event schema version (e.g., 1 for v1 events)
+/// * `cursor` - Current migration cursor position (last processed record ID)
+/// * `migrated_count` - Number of records migrated in this batch
+///
+/// # Event Topics
+///
+/// `(Symbol::short("migration"), Symbol::short("v1"))`
+///
+/// # Example
+///
+/// ```rust
+/// MigrationEvent {
+///     version: 1,
+///     cursor: 5000,
+///     migrated_count: 100,
+/// }.publish(&env);
+/// ```
 #[contractevent]
 #[derive(Clone, Debug)]
 pub struct MigrationEvent {
@@ -3529,6 +3580,29 @@ impl FiatBridge {
     }
 
     // ── Escrow Migration ──────────────────────────────────────────────────
+    /// Retrieves the current escrow storage version.
+    ///
+    /// # Returns
+    ///
+    /// * `u32` - The current storage version. Returns 0 if no migration has been performed.
+    ///
+    /// # Description
+    ///
+    /// This function queries the contract's instance storage for the current escrow
+    /// storage schema version. The version indicates which storage schema is currently
+    /// in use for escrow records. A value of 0 indicates that no migration has been
+    /// performed and the legacy storage format is still in use.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// let version = bridge.get_escrow_storage_version(&env);
+    /// if version == 0 {
+    ///     println!("Migration needed");
+    /// } else {
+    ///     println!("Migration complete, version: {}", version);
+    /// }
+    /// ```
     pub fn get_escrow_storage_version(env: Env) -> u32 {
         env.storage()
             .instance()
@@ -3536,6 +3610,64 @@ impl FiatBridge {
             .unwrap_or(0)
     }
 
+    /// Migrates escrow records from legacy storage to versioned schema.
+    ///
+    /// # Arguments
+    ///
+    /// * `env` - The contract environment
+    /// * `batch_size` - Maximum number of records to migrate in this call
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(u32)` - Number of records successfully migrated in this batch
+    /// * `Err(Error::MigrationAlreadyComplete)` - Migration is already complete
+    /// * `Err(Error::NotAuthorized)` - Caller is not the admin
+    /// * `Err(Error::NotInitialized)` - Contract has not been initialized
+    ///
+    /// # Description
+    ///
+    /// This function performs a cursor-based batch migration of escrow records from
+    /// the legacy storage format to the versioned schema. The migration is designed to
+    /// be:
+    ///
+    /// - **Resumable**: Can be called multiple times until all records are migrated
+    /// - **Idempotent**: Safe to call after completion (returns error)
+    /// - **Atomic**: Each batch is processed atomically with rollback on failure
+    ///
+    /// # Migration Process
+    ///
+    /// 1. Verifies caller is authorized (admin only)
+    /// 2. Checks current storage version; returns error if already at target
+    /// 3. Retrieves migration cursor (last processed record ID)
+    /// 4. Processes up to `batch_size` records starting from cursor
+    /// 5. For each record:
+    ///    - Looks up receipt hash from temporary storage index
+    ///    - Retrieves receipt from persistent storage
+    ///    - Creates versioned EscrowRecord with migration metadata
+    ///    - Stores in persistent storage
+    /// 6. Updates cursor to new position
+    /// 7. Sets storage version to target if all records processed
+    /// 8. Emits migration event with progress information
+    ///
+    /// # Performance Considerations
+    ///
+    /// - Each record migration consumes gas; monitor during testing
+    /// - Recommended batch sizes: 10-100 for safety, 100-1000 for speed
+    /// - Use migration events to track progress in production
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// // Migrate 100 records at a time
+    /// let migrated = bridge.migrate_escrow(&env, 100)?;
+    /// println!("Migrated {} records", migrated);
+    ///
+    /// // Check if migration is complete
+    /// let version = bridge.get_escrow_storage_version(&env);
+    /// if version == ESCROW_STORAGE_VERSION {
+    ///     println!("Migration complete");
+    /// }
+    /// ```
     pub fn migrate_escrow(env: Env, batch_size: u32) -> Result<u32, Error> {
         let admin: Address = env
             .storage()
@@ -3624,10 +3756,64 @@ impl FiatBridge {
         Ok(migrated_count)
     }
 
+    /// Retrieves a migrated escrow record by its ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `env` - The contract environment
+    /// * `id` - The unique identifier of the escrow record to retrieve
+    ///
+    /// # Returns
+    ///
+    /// * `Some(EscrowRecord)` - The escrow record if it exists and has been migrated
+    /// * `None` - Record not found or not yet migrated
+    ///
+    /// # Description
+    ///
+    /// This function queries persistent storage for an escrow record with the given ID.
+    /// The record will only be present if it has been migrated to the versioned schema.
+    /// Records that have not yet been migrated will return `None`.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// if let Some(record) = bridge.get_escrow_record(&env, 123) {
+    ///     println!("Depositor: {:?}", record.depositor);
+    ///     println!("Amount: {}", record.amount);
+    ///     println!("Version: {}", record.version);
+    /// }
+    /// ```
     pub fn get_escrow_record(env: Env, id: u64) -> Option<EscrowRecord> {
         env.storage().persistent().get(&DataKey::EscrowRecord(id))
     }
 
+    /// Gets the current migration progress cursor.
+    ///
+    /// # Returns
+    ///
+    /// * `u64` - The last processed record ID. Returns 0 if migration has not started.
+    ///
+    /// # Description
+    ///
+    /// This function retrieves the migration cursor, which indicates the last record
+    /// ID that was successfully processed during the escrow storage migration.
+    /// The cursor is used to enable resumable migrations - if a migration is
+    /// interrupted, it can be resumed from the last processed position.
+    ///
+    /// # Usage
+    ///
+    /// - Monitor migration progress by comparing cursor to total record count
+    /// - Determine if migration is complete (cursor >= total records)
+    /// - Debug migration issues by checking cursor position
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// let cursor = bridge.get_migration_cursor(&env);
+    /// let total = bridge.get_receipt_counter(&env);
+    /// let progress = (cursor as f64 / total as f64) * 100.0;
+    /// println!("Migration progress: {:.2}%", progress);
+    /// ```
     pub fn get_migration_cursor(env: Env) -> u64 {
         env.storage()
             .instance()

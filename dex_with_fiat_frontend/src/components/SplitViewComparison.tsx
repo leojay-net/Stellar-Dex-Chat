@@ -54,7 +54,7 @@ function ThreadPane({
     if (newId) scrollToMessage(newId);
   };
 
-  const formatTimestamp = (timestamp: number) => {
+  const formatTimestamp = (timestamp: number | Date) => {
     if (!mounted) return ''; // Avoid hydration mismatch by not rendering on server
     return new Date(timestamp).toLocaleString([], {
       month: 'short',

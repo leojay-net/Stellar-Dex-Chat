@@ -102,6 +102,10 @@ export default function StellarFiatModal({
   const [walletBalance, setWalletBalance] = useState<string | null>(null);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
 
+  // Helper to avoid type narrowing issues
+  const isStatusPending = (status as TxStatus) === 'pending';
+  const isStatusLoading = (status as TxStatus) === 'loading';
+
   useEffect(() => {
     if (!isOpen || !connection.isConnected || !connection.publicKey) {
       setWalletBalance(null);
@@ -163,14 +167,7 @@ export default function StellarFiatModal({
     setAmount(String(value));
     setActivePreset(value);
   };
-  const [status, setStatus] = useState<TxStatus>('idle');
-  const [txHash, setTxHash] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
-  const [isLoadingUI, setIsLoadingUI] = useState(true);
   const isMounted = useRef(true);
-  const [bridgeLimit, setBridgeLimit] = useState<bigint | null>(null);
-  const [bridgeLimitError, setBridgeLimitError] = useState('');
-  const [isLoadingBridgeLimit, setIsLoadingBridgeLimit] = useState(false);
 
   useEffect(() => {
     isMounted.current = true;
@@ -405,7 +402,7 @@ export default function StellarFiatModal({
       : BigInt(0);
   const isSubmitDisabled =
     status === 'loading' ||
-    status === 'pending' ||
+    isStatusPending ||
     !connection.isConnected ||
     isAmountInvalid ||
     (isDepositFlow &&
@@ -500,7 +497,7 @@ export default function StellarFiatModal({
     }
     if (isDepositFlow && bridgeLimit !== null && stroopsAmount > bridgeLimit) {
       setErrorMsg(
-        `Requested amount exceeds the current bridge limit of ${stroopsToDisplay(bridgeLimit)} XLM.`,
+        `Requested amount exceeds the current bridge limit of ${stroopsToDisplay(bridgeLimit ?? BigInt(0))} XLM.`,
       );
       setStatus('error');
       return;
@@ -705,7 +702,7 @@ export default function StellarFiatModal({
               </button>
             )}
           </div>
-        ) : status === 'pending' ? (
+        ) : isStatusPending ? (
           <div className="text-center py-6">
             <Loader2 className="w-14 h-14 text-blue-400 mx-auto mb-4 animate-spin" />
             <p className="text-white font-semibold text-lg mb-2">
@@ -717,7 +714,7 @@ export default function StellarFiatModal({
                 : 'Your deposit is being submitted to the Stellar bridge.'}
             </p>
             <p className="text-gray-500 text-xs">
-              {stroopsToDisplay(stroopsAmount)} XLM is being processed. You will see confirmation once the transaction completes.
+              {stroopsToDisplay(stroopsAmount ?? BigInt(0))} XLM is being processed. You will see confirmation once the transaction completes.
             </p>
           </div>
         ) : isLoadingUI ? (
@@ -734,12 +731,12 @@ export default function StellarFiatModal({
                     key={preset}
                     type="button"
                     onClick={() => handlePreset(preset)}
-                    disabled={status === 'pending' || status === 'loading'}
+                    disabled={isStatusPending || status === 'loading'}
                     className={`flex-1 py-1.5 rounded-md text-xs font-medium border transition-colors ${
                       activePreset === preset
                         ? 'bg-blue-600 border-blue-500 text-white'
                         : 'bg-gray-800 border-gray-600 text-gray-300 hover:border-blue-500 hover:text-white'
-                    } ${status === 'pending' || status === 'loading' ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    } ${isStatusPending || status === 'loading' ? 'opacity-60 cursor-not-allowed' : ''}`}
                   >
                     {preset}
                   </button>
@@ -755,7 +752,7 @@ export default function StellarFiatModal({
                   setActivePreset(null);
                 }}
                 placeholder="0.00"
-                disabled={status === 'pending' || status === 'loading'}
+                disabled={isStatusPending || status === 'loading'}
                 aria-invalid={isAmountInvalid || isOverLimit ? true : undefined}
                 className={`w-full bg-gray-800 border rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed ${
                   isAmountInvalid || isOverLimit
@@ -947,7 +944,7 @@ export default function StellarFiatModal({
                         {isLoadingBridgeLimit
                           ? 'Loading...'
                           : bridgeLimit !== null
-                            ? `${stroopsToDisplay(bridgeLimit)} XLM`
+                            ? `${stroopsToDisplay(bridgeLimit ?? BigInt(0))} XLM`
                             : 'Unavailable'}
                       </span>
                     </div>
@@ -973,7 +970,7 @@ export default function StellarFiatModal({
                       </span>
                       <span>
                         {hasValidAmount && bridgeLimit !== null
-                          ? `${stroopsToDisplay(remainingLimit)} XLM available`
+                          ? `${stroopsToDisplay(remainingLimit ?? BigInt(0))} XLM available`
                           : ''}
                       </span>
                     </div>
@@ -1019,7 +1016,7 @@ export default function StellarFiatModal({
                   value={recipient}
                   onChange={(e) => setRecipient(e.target.value)}
                   placeholder="G..."
-                  disabled={status === 'pending' || status === 'loading'}
+                  disabled={isStatusPending || status === 'loading'}
                   className="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 disabled:opacity-60 disabled:cursor-not-allowed font-mono text-sm"
                 />
               </div>
