@@ -112,6 +112,80 @@ describe('CCIPBridgeModal', () => {
     ).toBeInTheDocument();
   });
 
+  // ── Race condition regression tests (issue #520) ─────────────────────
+
+  describe('Race condition fix (issue #520)', () => {
+    it('does not call fetchTransferStatus after modal is closed mid-poll', async () => {
+      let resolveStatus!: (v: { status: string }) => void;
+      const fetchTransferStatus = vi.fn().mockImplementationOnce(
+        () => new Promise((resolve) => { resolveStatus = resolve; }),
+      );
+
+      const { rerender } = render(
+        <CCIPBridgeModal
+          {...defaultProps}
+          fetchTransferStatus={fetchTransferStatus}
+        />,
+      );
+
+      fireEvent.click(screen.getByText('Start CCIP Transfer'));
+      await screen.findByText('Waiting for CCIP confirmation…');
+
+      // Close the modal while the first poll is still in-flight
+      rerender(
+        <CCIPBridgeModal
+          {...defaultProps}
+          isOpen={false}
+          fetchTransferStatus={fetchTransferStatus}
+        />,
+      );
+
+      // Resolve the in-flight request after the modal closed
+      await act(async () => {
+        resolveStatus({ status: 'SUCCESS' });
+      });
+
+      // The modal is closed — success state must NOT be rendered
+      expect(screen.queryByText('CCIP transfer confirmed')).not.toBeInTheDocument();
+    });
+
+    it('does not apply stale status from a previous hash after hash changes', async () => {
+      // First call returns slowly; second call returns quickly with SUCCESS
+      let resolveFirst!: (v: { status: string }) => void;
+      const fetchTransferStatus = vi
+        .fn()
+        .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+        .mockResolvedValue({ status: 'SUCCESS' });
+
+      render(
+        <CCIPBridgeModal
+          {...defaultProps}
+          fetchTransferStatus={fetchTransferStatus}
+        />,
+      );
+
+      fireEvent.click(screen.getByText('Start CCIP Transfer'));
+      await screen.findByText('Waiting for CCIP confirmation…');
+
+      // Advance timer to trigger a second poll (which resolves to SUCCESS)
+      await act(async () => {
+        vi.advanceTimersByTime(15_000);
+      });
+
+      // Confirm success from the fast second poll
+      await screen.findByText('CCIP transfer confirmed');
+
+      // Now resolve the stale first poll — it should be a no-op
+      await act(async () => {
+        resolveFirst({ status: 'FAILED' });
+      });
+
+      // Should still show success, not error
+      expect(screen.getByText('CCIP transfer confirmed')).toBeInTheDocument();
+      expect(screen.queryByText('CCIP transfer error')).not.toBeInTheDocument();
+    });
+  });
+
   // ── Optimistic UI tests for issue #536 ────────────────────────────────
 
   describe('Optimistic UI updates (issue #536)', () => {

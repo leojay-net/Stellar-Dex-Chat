@@ -170,20 +170,29 @@ export default function SplitViewComparison({
 
   const { isOnline, wasOffline, resetWasOffline } = useOnlineStatus();
   const { addToast } = useToast();
-  const wasOnlineRef = useRef(isOnline);
+  // Fix (#523): initialise the ref to `true` (assume online at mount) so the
+  // first offline transition is always detected correctly, regardless of the
+  // order in which React commits the initial render vs. the effect.
+  const wasOnlineRef = useRef(true);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const wasOnline = wasOnlineRef.current;
-    if (wasOnline && !isOnline) {
+    // Capture the previous value before updating the ref so the comparison
+    // is always against the state from the *previous* render cycle.
+    // Updating the ref at the end of the effect (not the start) eliminates
+    // the race where a rapid online→offline→online sequence could read a
+    // stale ref value and skip one of the toasts.
+    const prevOnline = wasOnlineRef.current;
+
+    if (prevOnline && !isOnline) {
       addToast({
         message:
           "You're offline. Thread comparison won't update until you reconnect.",
         severity: 'warning',
         durationMs: 4500,
       });
-    } else if (!wasOnline && isOnline && wasOffline) {
+    } else if (!prevOnline && isOnline && wasOffline) {
       addToast({
         message: 'Back online. Comparison panes will use the latest thread data.',
         severity: 'success',
@@ -191,6 +200,8 @@ export default function SplitViewComparison({
       });
       resetWasOffline();
     }
+
+    // Update ref AFTER the conditional logic to avoid stale-closure issues.
     wasOnlineRef.current = isOnline;
   }, [isOnline, wasOffline, addToast, resetWasOffline]);
 

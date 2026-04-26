@@ -17,6 +17,7 @@ import {
   Clock,
   RefreshCw,
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { fetchLockedQuote, type LockedQuote } from '@/lib/cryptoPriceService';
 import SkeletonWallet from '@/components/ui/skeleton/SkeletonWallet';
 import { useNotifications } from '@/hooks/useNotifications';
@@ -70,6 +71,63 @@ export interface BankDetailsModalProps {
   onClose: () => void;
   xlmAmount: number;
 }
+
+// Animation variants
+const modalVariants = {
+  hidden: {
+    opacity: 0,
+    scale: 0.95,
+    y: 20,
+  },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    y: 0,
+    transition: {
+      duration: 0.2,
+    },
+  },
+  exit: {
+    opacity: 0,
+    scale: 0.95,
+    y: 20,
+    transition: {
+      duration: 0.15,
+    },
+  },
+};
+
+const stepVariants = {
+  hidden: {
+    opacity: 0,
+    x: 20,
+  },
+  visible: {
+    opacity: 1,
+    x: 0,
+    transition: {
+      duration: 0.3,
+    },
+  },
+  exit: {
+    opacity: 0,
+    x: -20,
+    transition: {
+      duration: 0.2,
+    },
+  },
+};
+
+const fadeInVariants = {
+  hidden: { opacity: 0, y: 10 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.3,
+    },
+  },
+};
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -523,14 +581,24 @@ export default function BankDetailsModal({
   if (!isOpen) return null;
 
   return (
-    <div className="theme-overlay fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm">
-      <div
+    <motion.div
+      className="theme-overlay fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+    >
+      <motion.div
         ref={modalRef}
         role="dialog"
         aria-modal="true"
         aria-label="Fiat payout"
         tabIndex={-1}
         className="theme-surface theme-border relative w-full max-w-md mx-4 border rounded-2xl shadow-2xl p-6"
+        variants={modalVariants}
+        initial="hidden"
+        animate="visible"
+        exit="exit"
       >
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -575,8 +643,16 @@ export default function BankDetailsModal({
         )}
 
         {/* ── Step 1: Bank Selection ── */}
-        {step === 1 && (
-          <div>
+        <AnimatePresence mode="wait">
+          {step === 1 && (
+            <motion.div
+              key="step1"
+              variants={stepVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+            >
+              <div>
             {/* Saved Beneficiaries Toggle */}
             {beneficiariesLoaded && beneficiaries.length > 0 && (
               <div className="mb-4">
@@ -595,7 +671,13 @@ export default function BankDetailsModal({
                 </button>
 
                 {showSavedBeneficiaries && (
-                  <div className="mt-2 max-h-40 overflow-y-auto space-y-1 pr-1">
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="mt-2 max-h-40 overflow-y-auto space-y-1 pr-1"
+                  >
                     {beneficiaries.map((beneficiary) => (
                       <div
                         key={beneficiary.id}
@@ -664,7 +746,7 @@ export default function BankDetailsModal({
                         )}
                       </div>
                     ))}
-                  </div>
+                  </motion.div>
                 )}
               </div>
             )}
@@ -733,11 +815,21 @@ export default function BankDetailsModal({
               Next <ChevronRight className="w-4 h-4" />
             </button>
           </div>
+        </motion.div>
         )}
+        </AnimatePresence>
 
         {/* ── Step 2: Account Details ── */}
-        {step === 2 && (
-          <div>
+        <AnimatePresence mode="wait">
+          {step === 2 && (
+            <motion.div
+              key="step2"
+              variants={stepVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+            >
+              <div>
             <p className="text-sm text-gray-400 mb-1">
               Bank:{' '}
               <span className="text-white font-medium">
@@ -769,21 +861,36 @@ export default function BankDetailsModal({
             </div>
 
             {verifying && (
-              <div className="flex items-center gap-2 text-blue-400 text-sm mb-3">
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="flex items-center gap-2 text-blue-400 text-sm mb-3"
+              >
                 <Loader2 className="w-4 h-4 animate-spin" />
                 <span>Verifying account…</span>
-              </div>
+              </motion.div>
             )}
 
             {verifyError && !verifying && (
-              <div className="flex items-center gap-2 text-red-400 text-sm mb-3 bg-red-400/10 rounded-lg px-3 py-2">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="flex items-center gap-2 text-red-400 text-sm mb-3 bg-red-400/10 rounded-lg px-3 py-2"
+              >
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
                 <span>{verifyError}</span>
-              </div>
+              </motion.div>
             )}
 
             {verifiedAccount && !verifying && (
-              <div className="space-y-3">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="space-y-3"
+              >
                 <div className="flex items-center gap-2 text-green-400 text-sm mb-3 bg-green-400/10 rounded-lg px-3 py-2">
                   <CheckCircle className="w-4 h-4 flex-shrink-0" />
                   <span>
@@ -805,7 +912,13 @@ export default function BankDetailsModal({
                 )}
 
                 {showSavePrompt && (
-                  <div className="bg-gray-800 rounded-lg p-3 space-y-2">
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{ duration: 0.2 }}
+                    className="bg-gray-800 rounded-lg p-3 space-y-2"
+                  >
                     <label className="block text-xs text-gray-400">
                       Beneficiary name (optional)
                     </label>
@@ -836,9 +949,9 @@ export default function BankDetailsModal({
                         Cancel
                       </button>
                     </div>
-                  </div>
+                  </motion.div>
                 )}
-              </div>
+              </motion.div>
             )}
 
             <div className="flex gap-3 mt-4">
@@ -859,11 +972,21 @@ export default function BankDetailsModal({
               </button>
             </div>
           </div>
+        </motion.div>
         )}
+        </AnimatePresence>
 
         {/* ── Step 3: Confirm Payout ── */}
-        {step === 3 && (
-          <div>
+        <AnimatePresence mode="wait">
+          {step === 3 && (
+            <motion.div
+              key="step3"
+              variants={stepVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+            >
+              <div>
             <p className="theme-text-secondary text-sm mb-4">
               Review your payout details
             </p>
@@ -960,7 +1083,12 @@ export default function BankDetailsModal({
 
             {/* Quote expiry warning */}
             {lockedQuote && quoteSecondsLeft === 0 && (
-              <div className="flex items-center justify-between gap-2 text-red-400 text-sm mb-4 bg-red-400/10 rounded-lg px-3 py-2 border border-red-400/30">
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="flex items-center justify-between gap-2 text-red-400 text-sm mb-4 bg-red-400/10 rounded-lg px-3 py-2 border border-red-400/30"
+              >
                 <div className="flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
                   <span>Quote expired. Refresh to continue.</span>
@@ -976,14 +1104,19 @@ export default function BankDetailsModal({
                   />
                   Refresh
                 </button>
-              </div>
+              </motion.div>
             )}
 
             {payoutError && (
-              <div className="theme-soft-danger flex items-center gap-2 text-sm mb-4 rounded-lg px-3 py-2 border">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="theme-soft-danger flex items-center gap-2 text-sm mb-4 rounded-lg px-3 py-2 border"
+              >
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
                 <span>{payoutError}</span>
-              </div>
+              </motion.div>
             )}
 
             <div className="flex gap-3">
@@ -1020,7 +1153,12 @@ export default function BankDetailsModal({
 
             {/* Payout Status Timeline — visible while processing */}
             {statusEvents.length > 0 && (
-              <div className="mt-6">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 20 }}
+                className="mt-6"
+              >
                 <p className="theme-text-muted text-xs font-semibold uppercase tracking-wider mb-3">
                   Transfer Status
                 </p>
@@ -1031,20 +1169,48 @@ export default function BankDetailsModal({
                   }))}
                   isPolling={isPollingStatus}
                 />
-              </div>
+              </motion.div>
             )}
           </div>
+        </motion.div>
         )}
+        </AnimatePresence>
 
         {/* ── Step 4: Success ── */}
-        {step === 4 && (
-          <div className="text-center py-4">
+        <AnimatePresence mode="wait">
+          {step === 4 && (
+            <motion.div
+              key="step4"
+              variants={stepVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+            >
+              <div className="text-center py-4">
             {transferStatus === 'success' ? (
-              <CheckCircle className="w-14 h-14 text-green-400 mx-auto mb-4" />
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
+              >
+                <CheckCircle className="w-14 h-14 text-green-400 mx-auto mb-4" />
+              </motion.div>
             ) : transferStatus === 'failed' || transferStatus === 'reversed' ? (
-              <AlertCircle className="w-14 h-14 text-red-400 mx-auto mb-4" />
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
+              >
+                <AlertCircle className="w-14 h-14 text-red-400 mx-auto mb-4" />
+              </motion.div>
             ) : (
-              <Loader2 className="w-14 h-14 text-blue-400 mx-auto mb-4 animate-spin" />
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
+              >
+                <Loader2 className="w-14 h-14 text-blue-400 mx-auto mb-4 animate-spin" />
+              </motion.div>
             )}
 
             <p className="text-white font-semibold text-lg mb-2 capitalize">
@@ -1083,7 +1249,12 @@ export default function BankDetailsModal({
 
             {/* Timeline showing all status transitions */}
             {statusEvents.length > 0 && (
-              <div className="mb-6 text-left">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 20 }}
+                className="mb-6 text-left"
+              >
                 <p className="theme-text-muted text-xs font-semibold uppercase tracking-wider mb-3">
                   Transfer History
                 </p>
@@ -1094,7 +1265,7 @@ export default function BankDetailsModal({
                   }))}
                   isPolling={false}
                 />
-              </div>
+              </motion.div>
             )}
 
             {/* Cancel Payout Button within 2 mins */}
@@ -1136,8 +1307,10 @@ export default function BankDetailsModal({
               Close
             </button>
           </div>
+        </motion.div>
         )}
-      </div>
-    </div>
+        </AnimatePresence>
+      </motion.div>
+    </motion.div>
   );
 }
