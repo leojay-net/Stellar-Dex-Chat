@@ -425,6 +425,7 @@ pub struct SetMinDepositEvent {
 
 #[contractevent]
 #[derive(Clone, Debug)]
+/// Emitted when the admin updates the global per-token limit ceiling.
 pub struct SetLimitMaxCapEvent {
     pub version: u32,
     pub max_cap: i128,
@@ -726,7 +727,10 @@ pub enum DataKey {
     NextMultisigID,
     // ── Issue #695: replay protection for withdraw_fees ──────────────────
     FeeWithdrawalNonce(Address),
-    /// Maximum value allowed for per-token liability limits via `set_limit`.
+    /// Global ceiling for per-token liability limits assigned by `set_limit`.
+    ///
+    /// This value defaults to `i128::MAX` and may be lowered by
+    /// `set_limit_max_cap` to enforce a production risk ceiling.
     SetLimitMaxCap,
 }
 
@@ -1757,6 +1761,11 @@ impl FiatBridge {
     ///
     /// This function can only be called by the current contract administrator.
     /// It ensures that the bridge does not exceed its risk capacity for the given asset.
+    ///
+    /// If an admin-configured global cap has been set via `set_limit_max_cap`,
+    /// this call rejects values above that ceiling with
+    /// [`Error::ExceedsLimitMaxCap`]. The cap applies to new or updated token
+    /// limits only; existing per-token limits are not retroactively reduced.
     pub fn set_limit(env: Env, token: Address, limit: i128) -> Result<(), Error> {
         let admin: Address = env
             .storage()
@@ -1793,7 +1802,12 @@ impl FiatBridge {
         Ok(())
     }
 
-    /// Sets the maximum value that `set_limit` may assign for any token.
+    /// Sets the global ceiling for per-token liability limits assigned by
+    /// [`set_limit`].
+    ///
+    /// This global max cap is a risk control: it prevents any subsequent
+    /// `set_limit(token, limit)` call from assigning `limit` above `max_cap`.
+    /// It does not retroactively lower already-configured token limits.
     ///
     /// Defaults to `i128::MAX` after `init` (no practical ceiling). Admins should
     /// set this to a risk-appropriate cap in production.
@@ -1819,6 +1833,10 @@ impl FiatBridge {
         Ok(())
     }
 
+    /// Returns the current configured global ceiling for token limits.
+    ///
+    /// If no cap has been explicitly set, this returns `i128::MAX`, which means
+    /// `set_limit` is effectively unrestricted by the global ceiling.
     pub fn get_set_limit_max_cap(env: Env) -> i128 {
         env.storage()
             .instance()
@@ -2987,7 +3005,7 @@ impl FiatBridge {
 
         let key = DataKey::FeeVault(token.clone());
         let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
-        
+
         require!(current > 0, Error::NoFeesToWithdraw);
         require!(amount <= current, Error::FeeWithdrawalExceedsBalance);
 
@@ -3003,9 +3021,7 @@ impl FiatBridge {
 
         // Increment nonce after successful withdrawal
         let next_nonce = expected_nonce.checked_add(1).ok_or(Error::Overflow)?;
-        env.storage()
-            .persistent()
-            .set(&nonce_key, &next_nonce);
+        env.storage().persistent().set(&nonce_key, &next_nonce);
 
         FeeWithdrawnEvent {
             version: EVENT_VERSION,

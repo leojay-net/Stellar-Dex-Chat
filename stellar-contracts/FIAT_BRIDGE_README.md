@@ -131,8 +131,9 @@ A GitHub Actions step validates that the error table stays in sync with the cont
 | `execute_withdrawal(id, partial?)` | — | Execute a queued withdrawal after unlock |
 | `cancel_withdrawal(id)` | admin | Cancel a queued withdrawal |
 | `set_limit(token, limit)` | admin | Update per-token deposit limit |
+| `set_limit_max_cap(max_cap)` | admin | Set the global ceiling for future per-token liability limits |
+| `get_set_limit_max_cap()` | — | Read the current global per-token limit ceiling |
 | `set_cooldown(ledgers)` | admin | Set per-user deposit cooldown |
-| `set_lock_period(ledgers)` | admin | Set withdrawal lock period |
 | `transfer_admin(new_admin)` | admin | Initiate two-step admin transfer |
 | `accept_admin()` | pending admin | Complete admin transfer |
 | `set_oracle(oracle)` | admin | Set oracle contract address |
