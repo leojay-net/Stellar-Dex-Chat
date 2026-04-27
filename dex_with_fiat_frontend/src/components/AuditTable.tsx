@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { AuditEntry } from '@/types';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useToast } from '@/hooks/useToast';
 
 interface AuditTableProps {
   onRefresh?: () => void;
@@ -89,6 +91,33 @@ export default function AuditTable({}: AuditTableProps) {
       fetchAbortRef.current?.abort();
     };
   }, [fetchAuditEntries]);
+
+  const { isOnline, wasOffline, resetWasOffline } = useOnlineStatus();
+  const { addToast } = useToast();
+  const wasOnlineRef = useRef(true);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const prevOnline = wasOnlineRef.current;
+
+    if (prevOnline && !isOnline) {
+      addToast({
+        message: "You're offline. Audit entries may not update until you reconnect.",
+        severity: 'warning',
+        durationMs: 4500,
+      });
+    } else if (!prevOnline && isOnline && wasOffline) {
+      addToast({
+        message: 'Back online. Audit table will refresh with the latest data.',
+        severity: 'success',
+        durationMs: 3000,
+      });
+      resetWasOffline();
+    }
+
+    wasOnlineRef.current = isOnline;
+  }, [isOnline, wasOffline, addToast, resetWasOffline]);
 
   const handleFilterChange = (key: keyof FilterState, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));

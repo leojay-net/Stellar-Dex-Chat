@@ -107,7 +107,7 @@ export class ToastStore {
       durationMs: duration,
     };
 
-    this.toasts.push(toast);
+    this.toasts = [...this.toasts, toast];
     
     if (duration > 0) {
       const timer = setTimeout(() => {
@@ -126,7 +126,7 @@ export class ToastStore {
   removeToast(id: string): void {
     const index = this.toasts.findIndex((t) => t.id === id);
     if (index > -1) {
-      this.toasts.splice(index, 1);
+      this.toasts = [...this.toasts.slice(0, index), ...this.toasts.slice(index + 1)];
       
       const timer = this.timers.get(id);
       if (timer) {
@@ -154,18 +154,18 @@ export class ToastStore {
    * Get current toasts snapshot
    */
   getToasts(): AppToast[] {
-    return [...this.toasts];
+    return this.toasts;
   }
 
   getSnapshot(): AppToast[] {
-    return this.getToasts();
+    return this.toasts;
   }
 
   /**
    * Clear all toasts
    */
   clearToasts(): void {
-    this.toasts.length = 0;
+    this.toasts = [];
     this.timers.forEach((timer) => clearTimeout(timer));
     this.timers.clear();
     this.notifyListeners();
