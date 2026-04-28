@@ -76,10 +76,13 @@ async function processQueue(): Promise<void> {
 }
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('online', () => {
-    console.log('Network is back online; flushing read queue.');
-    void processQueue();
-  });
+  if (!(window as any).__networkQueueListenerAdded) {
+    window.addEventListener('online', () => {
+      console.log('Network is back online; flushing read queue.');
+      void processQueue();
+    });
+    (window as any).__networkQueueListenerAdded = true;
+  }
 }
 
 export function subscribeToQueue(fn: (count: number) => void) {

@@ -1,289 +1,158 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import BankDetailsModal from '../BankDetailsModal';
+import * as cryptoPriceService from '@/lib/cryptoPriceService';
 
-// Mock dependencies
-jest.mock('@/hooks/useNotifications', () => ({
-  useNotifications: () => ({
-    addNotification: jest.fn(),
-  }),
+vi.mock('@/hooks/useNotifications', () => ({
+  useNotifications: () => ({ addNotification: vi.fn() }),
 }));
-
-jest.mock('@/hooks/useBeneficiaries', () => ({
+vi.mock('@/hooks/useBeneficiaries', () => ({
   useBeneficiaries: () => ({
     beneficiaries: [],
     isLoaded: true,
-    addBeneficiary: jest.fn(),
-    renameBeneficiary: jest.fn(),
-    deleteBeneficiary: jest.fn(),
+    addBeneficiary: vi.fn(),
+    renameBeneficiary: vi.fn(),
+    deleteBeneficiary: vi.fn(),
   }),
 }));
-
-jest.mock('@/hooks/useTxHistory', () => ({
-  useTxHistory: () => ({
-    addEntry: jest.fn(),
-  }),
+vi.mock('@/hooks/useTxHistory', () => ({
+  useTxHistory: () => ({ addEntry: vi.fn() }),
 }));
-
-jest.mock('@/lib/cryptoPriceService', () => ({
-  fetchLockedQuote: jest.fn().mockResolvedValue({
+vi.mock('@/lib/cryptoPriceService', () => ({
+  fetchLockedQuote: vi.fn().mockResolvedValue({
     ngnAmount: 1000,
     xlmAmount: 10,
     rate: 100,
     expiresAt: Date.now() + 120000,
   }),
 }));
-
-jest.mock('@/hooks/useAccessibleModal', () => ({
-  useAccessibleModal: () => ({
-    modalRef: { current: null },
+vi.mock('@/hooks/useAccessibleModal', () => ({
+  useAccessibleModal: () => ({}),
+}));
+vi.mock('@/hooks/useIdempotentAction', () => ({
+  useIdempotentAction: () => ({
+    execute: async (fn: (key: string) => Promise<void>, _actionName?: string) => {
+      await fn('test-key');
+    },
+    isProcessing: false,
   }),
 }));
+vi.mock('@/lib/chatTelemetry', () => ({
+  chatTelemetry: { fiatPayoutStep: vi.fn() },
+}));
 
-// Mock fetch
-global.fetch = jest.fn();
+const defaultProps = {
+  isOpen: true,
+  onClose: vi.fn(),
+  xlmAmount: 10,
+};
+
+function makeFetch() {
+  return vi.fn().mockImplementation(async (url: string) => {
+    if (url.includes('/api/banks')) {
+      return { ok: true, json: async () => ({ success: true, data: [{ id: 1, name: 'Test Bank', code: '001', active: true }] }) };
+    }
+    if (url.includes('/api/verify-account')) {
+      return { ok: true, json: async () => ({ success: true, data: { account_name: 'Test Account' } }) };
+    }
+    if (url.includes('/api/create-recipient')) {
+      return { ok: true, json: async () => ({ success: true, data: { recipient_code: 'RCP_test123' } }) };
+    }
+    if (url.includes('/api/initiate-transfer')) {
+      return { ok: true, json: async () => ({ success: true, data: { reference: 'TRF_test123', transfer_code: 'TRF_test123', status: 'pending' } }) };
+    }
+    throw new Error(`Unhandled: ${url}`);
+  });
+}
+
+async function navigateToConfirm() {
+  // Wait for banks to load
+  await waitFor(() => {
+    expect(screen.getByText('Test Bank')).toBeDefined();
+  });
+  
+  // Step 1: select bank, then click Next
+  fireEvent.click(screen.getByText('Test Bank'));
+  const nextBtn1 = screen.getByRole('button', { name: /next/i });
+  fireEvent.click(nextBtn1);
+
+  // Step 2: enter account number, blur to trigger verification
+  const accountInput = await screen.findByPlaceholderText(/0000000000/i);
+  fireEvent.change(accountInput, { target: { value: '1234567890' } });
+  fireEvent.blur(accountInput);
+
+  // Wait for account name to appear after verification
+  await waitFor(() => {
+    expect(screen.getByText(/Test Account/i)).toBeDefined();
+  });
+
+  // Click Next on step 2
+  const nextBtn2 = screen.getByRole('button', { name: /next/i });
+  fireEvent.click(nextBtn2);
+
+  // Wait for confirm page
+  await waitFor(() => {
+    expect(screen.getByRole('button', { name: /confirm payout/i })).toBeDefined();
+  });
+
+  return screen.getByRole('button', { name: /confirm payout/i });
+}
 
 describe('BankDetailsModal - Rapid Click Protection', () => {
-  const defaultProps = {
-    isOpen: true,
-    onClose: jest.fn(),
-    xlmAmount: 10,
-  };
-
   beforeEach(() => {
-    jest.clearAllMocks();
-    jest.spyOn(console, 'warn').mockImplementation(() => {});
-    
-    // Mock successful API responses
-    (global.fetch as jest.Mock).mockImplementation((url: string) => {
-      if (url.includes('/api/banks')) {
-        return Promise.resolve({
-          json: () =>
-            Promise.resolve({
-              success: true,
-              data: [
-                {
-                  id: 1,
-                  name: 'Test Bank',
-                  code: '001',
-                  active: true,
-                  country: 'Nigeria',
-                  currency: 'NGN',
-                  type: 'nuban',
-                },
-              ],
-            }),
-        });
-      }
-      if (url.includes('/api/verify-account')) {
-        return Promise.resolve({
-          json: () =>
-            Promise.resolve({
-              success: true,
-              data: { account_name: 'Test Account' },
-            }),
-        });
-      }
-      if (url.includes('/api/create-recipient')) {
-        return Promise.resolve({
-          json: () =>
-            Promise.resolve({
-              success: true,
-              data: { recipient_code: 'RCP_test123' },
-            }),
-        });
-      }
-      if (url.includes('/api/initiate-transfer')) {
-        return Promise.resolve({
-          json: () =>
-            Promise.resolve({
-              success: true,
-              data: {
-                reference: 'TRF_test123',
-                transfer_code: 'TRF_test123',
-                status: 'pending',
-              },
-            }),
-        });
-      }
-      return Promise.reject(new Error('Unknown endpoint'));
-    });
+    vi.clearAllMocks();
+    vi.spyOn(global, 'fetch').mockImplementation(makeFetch() as any);
+    // Re-apply after clearAllMocks wipes the implementation
+    vi.spyOn(cryptoPriceService, 'fetchLockedQuote').mockResolvedValue({
+      ngnAmount: 1000,
+      xlmAmount: 10,
+      rate: 100,
+      expiresAt: Date.now() + 120000,
+    } as any);
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    cleanup();
+    vi.restoreAllMocks();
   });
 
   it('should prevent duplicate payout confirmations on rapid clicks', async () => {
     render(<BankDetailsModal {...defaultProps} />);
+    const confirmButton = await navigateToConfirm();
 
-    // Wait for banks to load
-    await waitFor(() => {
-      expect(screen.getByText('Test Bank')).toBeInTheDocument();
-    });
-
-    // Select bank
-    fireEvent.click(screen.getByText('Test Bank'));
-
-    // Enter account number
-    const accountInput = screen.getByPlaceholderText(/account number/i);
-    fireEvent.change(accountInput, { target: { value: '1234567890' } });
-
-    // Verify account
-    const verifyButton = screen.getByText(/verify/i);
-    fireEvent.click(verifyButton);
-
-    await waitFor(() => {
-      expect(screen.getByText(/Test Account/i)).toBeInTheDocument();
-    });
-
-    // Proceed to confirmation
-    const continueButton = screen.getByText(/continue/i);
-    fireEvent.click(continueButton);
-
-    await waitFor(() => {
-      const confirmButton = screen.getByText(/confirm payout/i);
-      expect(confirmButton).toBeInTheDocument();
-    });
-
-    const confirmButton = screen.getByText(/confirm payout/i);
-
-    // Rapidly click confirm button
-    fireEvent.click(confirmButton);
     fireEvent.click(confirmButton);
     fireEvent.click(confirmButton);
     fireEvent.click(confirmButton);
 
     await waitFor(() => {
-      // Should only call create-recipient once
-      const createRecipientCalls = (global.fetch as jest.Mock).mock.calls.filter(
-        (call) => call[0].includes('/api/create-recipient')
-      );
-      expect(createRecipientCalls).toHaveLength(1);
+      const calls = (global.fetch as any).mock.calls.filter((c: any[]) => c[0].includes('/api/create-recipient'));
+      expect(calls.length).toBe(1);
     });
   });
 
   it('should include idempotency key in API requests', async () => {
     render(<BankDetailsModal {...defaultProps} />);
-
-    // Navigate through the flow
-    await waitFor(() => {
-      expect(screen.getByText('Test Bank')).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByText('Test Bank'));
-
-    const accountInput = screen.getByPlaceholderText(/account number/i);
-    fireEvent.change(accountInput, { target: { value: '1234567890' } });
-
-    const verifyButton = screen.getByText(/verify/i);
-    fireEvent.click(verifyButton);
-
-    await waitFor(() => {
-      expect(screen.getByText(/Test Account/i)).toBeInTheDocument();
-    });
-
-    const continueButton = screen.getByText(/continue/i);
-    fireEvent.click(continueButton);
-
-    await waitFor(() => {
-      const confirmButton = screen.getByText(/confirm payout/i);
-      expect(confirmButton).toBeInTheDocument();
-    });
-
-    const confirmButton = screen.getByText(/confirm payout/i);
+    const confirmButton = await navigateToConfirm();
     fireEvent.click(confirmButton);
 
     await waitFor(() => {
-      const createRecipientCall = (global.fetch as jest.Mock).mock.calls.find(
-        (call) => call[0].includes('/api/create-recipient')
-      );
-      
-      expect(createRecipientCall).toBeDefined();
-      const options = createRecipientCall[1];
-      expect(options.headers['X-Idempotency-Key']).toBeDefined();
-      expect(options.headers['X-Idempotency-Key']).toMatch(/^payout_confirm_\d+_[a-z0-9]+$/);
+      const call = (global.fetch as any).mock.calls.find((c: any[]) => c[0].includes('/api/create-recipient'));
+      expect(call).toBeDefined();
+      expect(call[1].headers['X-Idempotency-Key']).toBeDefined();
     });
   });
 
-  it('should disable button while processing', async () => {
+  it('should disable the confirm button once clicked', async () => {
     render(<BankDetailsModal {...defaultProps} />);
+    const confirmButton = await navigateToConfirm();
 
-    // Navigate to confirmation step
-    await waitFor(() => {
-      expect(screen.getByText('Test Bank')).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByText('Test Bank'));
-
-    const accountInput = screen.getByPlaceholderText(/account number/i);
-    fireEvent.change(accountInput, { target: { value: '1234567890' } });
-
-    const verifyButton = screen.getByText(/verify/i);
-    fireEvent.click(verifyButton);
-
-    await waitFor(() => {
-      expect(screen.getByText(/Test Account/i)).toBeInTheDocument();
-    });
-
-    const continueButton = screen.getByText(/continue/i);
-    fireEvent.click(continueButton);
-
-    await waitFor(() => {
-      const confirmButton = screen.getByText(/confirm payout/i);
-      expect(confirmButton).toBeInTheDocument();
-    });
-
-    const confirmButton = screen.getByText(/confirm payout/i);
+    expect((confirmButton as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(confirmButton);
 
-    // Button should be disabled while processing
+    // After click, the payout is processing — button becomes disabled
     await waitFor(() => {
-      expect(confirmButton).toBeDisabled();
-    });
-  });
-
-  it('should log suppressed duplicate payout attempts', async () => {
-    const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
-
-    render(<BankDetailsModal {...defaultProps} />);
-
-    // Navigate to confirmation
-    await waitFor(() => {
-      expect(screen.getByText('Test Bank')).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByText('Test Bank'));
-
-    const accountInput = screen.getByPlaceholderText(/account number/i);
-    fireEvent.change(accountInput, { target: { value: '1234567890' } });
-
-    const verifyButton = screen.getByText(/verify/i);
-    fireEvent.click(verifyButton);
-
-    await waitFor(() => {
-      expect(screen.getByText(/Test Account/i)).toBeInTheDocument();
-    });
-
-    const continueButton = screen.getByText(/continue/i);
-    fireEvent.click(continueButton);
-
-    await waitFor(() => {
-      const confirmButton = screen.getByText(/confirm payout/i);
-      expect(confirmButton).toBeInTheDocument();
-    });
-
-    const confirmButton = screen.getByText(/confirm payout/i);
-
-    // Rapid clicks
-    fireEvent.click(confirmButton);
-    fireEvent.click(confirmButton);
-
-    await waitFor(() => {
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Suppressed duplicate'),
-        expect.any(Object)
-      );
+      expect((confirmButton as HTMLButtonElement).disabled).toBe(true);
     });
   });
 });

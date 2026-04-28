@@ -17,7 +17,7 @@ import {
   type CCIPTransferStartResult,
 } from '@/lib/ccipExplorer';
 
-type BridgeState = 'idle' | 'initiating' | 'polling' | 'success' | 'error';
+type BridgeState = 'idle' | 'optimistic' | 'initiating' | 'polling' | 'success' | 'error';
 
 export interface CCIPBridgeModalProps {
   isOpen: boolean;
@@ -38,16 +38,26 @@ export default function CCIPBridgeModal({
 }: CCIPBridgeModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
   const pollingStartedAtRef = useRef<number | null>(null);
+  // Fix #520: keep a ref in sync with transactionHash state so the polling
+  // callback always reads the latest value without being re-created on every
+  // hash change (avoids stale-closure race condition).
+  const transactionHashRef = useRef('');
   const [bridgeState, setBridgeState] = useState<BridgeState>('idle');
   const [transactionHash, setTransactionHash] = useState('');
   const [explorerUrl, setExplorerUrl] = useState('');
   const [latestStatus, setLatestStatus] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState('');
 
+  // Keep ref in sync with state.
+  useEffect(() => {
+    transactionHashRef.current = transactionHash;
+  }, [transactionHash]);
+
   useAccessibleModal(isOpen, modalRef, onClose);
 
   const resetState = useCallback(() => {
     pollingStartedAtRef.current = null;
+    transactionHashRef.current = '';
     setBridgeState('idle');
     setTransactionHash('');
     setExplorerUrl('');
@@ -62,8 +72,12 @@ export default function CCIPBridgeModal({
   }, [isOpen, resetState]);
 
   const handleStartTransfer = useCallback(async () => {
-    setBridgeState('initiating');
+    // Immediately show optimistic UI
+    setBridgeState('optimistic');
     setErrorMessage('');
+
+    // Optimistic UI update: immediately show pending state
+    setLatestStatus('PENDING');
 
     try {
       const result = await onStartTransfer();
@@ -75,12 +89,16 @@ export default function CCIPBridgeModal({
 
       pollingStartedAtRef.current = Date.now();
       setTransactionHash(nextHash);
-      setExplorerUrl(
-        result.explorerUrl ?? buildCCIPExplorerTransactionUrl(nextHash),
-      );
-      setLatestStatus('PENDING');
+      
+      // Optimistic UI: set explorer URL immediately for better UX
+      const explorerUrlValue = result.explorerUrl ?? buildCCIPExplorerTransactionUrl(nextHash);
+      setExplorerUrl(explorerUrlValue);
+      
+      // Optimistic UI: transition to polling state immediately
       setBridgeState('polling');
     } catch (error) {
+      // Rollback optimistic updates on error
+      setLatestStatus('');
       setBridgeState('error');
       setErrorMessage(
         error instanceof Error
@@ -90,16 +108,19 @@ export default function CCIPBridgeModal({
     }
   }, [onStartTransfer]);
 
-  const pollTransferStatus = useCallback(async () => {
-    if (!transactionHash) {
-      return;
-    }
+  // Fix #520: pollTransferStatus reads the hash from a ref instead of closing
+  // over the state value.  This means the callback identity is stable and the
+  // polling interval never fires with a stale hash.
+  const pollTransferStatus = useCallback(async (signal: { aborted: boolean }) => {
+    const hash = transactionHashRef.current;
+    if (!hash) return;
 
     const pollingStartedAt = pollingStartedAtRef.current;
     if (
       pollingStartedAt !== null &&
       Date.now() - pollingStartedAt >= timeoutMs
     ) {
+      if (signal.aborted) return;
       setBridgeState('error');
       setErrorMessage(
         'CCIP confirmation timed out after 10 minutes. Please verify the transaction in the explorer and try again.',
@@ -108,7 +129,10 @@ export default function CCIPBridgeModal({
     }
 
     try {
-      const result = await fetchTransferStatus(transactionHash);
+      const result = await fetchTransferStatus(hash);
+      if (signal.aborted) return;
+
+      // Optimistic UI: update status immediately
       setLatestStatus(result.status);
       if (result.explorerUrl) {
         setExplorerUrl(result.explorerUrl);
@@ -130,6 +154,8 @@ export default function CCIPBridgeModal({
 
       setBridgeState('polling');
     } catch (error) {
+      if (signal.aborted) return;
+      // Maintain PENDING status during transient errors
       setLatestStatus('PENDING');
       setBridgeState('polling');
       if (
@@ -144,25 +170,32 @@ export default function CCIPBridgeModal({
         );
       }
     }
-  }, [fetchTransferStatus, timeoutMs, transactionHash]);
+  }, [fetchTransferStatus, timeoutMs]);
 
   useEffect(() => {
     if (
       !isOpen ||
       !transactionHash ||
       bridgeState === 'idle' ||
+      bridgeState === 'optimistic' ||
       bridgeState === 'success' ||
       bridgeState === 'error'
     ) {
       return;
     }
 
-    void pollTransferStatus();
+    // Fix #520: each effect invocation gets its own abort signal so that
+    // in-flight async calls from a previous render cycle cannot mutate state
+    // after the effect has been cleaned up.
+    const signal = { aborted: false };
+
+    void pollTransferStatus(signal);
     const intervalId = window.setInterval(() => {
-      void pollTransferStatus();
+      void pollTransferStatus(signal);
     }, pollIntervalMs);
 
     return () => {
+      signal.aborted = true;
       window.clearInterval(intervalId);
     };
   }, [
@@ -214,6 +247,26 @@ export default function CCIPBridgeModal({
           >
             Start CCIP Transfer
           </button>
+        )}
+
+        {bridgeState === 'optimistic' && (
+          <div className="text-center py-6">
+            <div className="w-14 h-14 bg-blue-500 rounded-full mx-auto mb-4 flex items-center justify-center">
+              <CheckCircle className="w-8 h-8 text-white" />
+            </div>
+            <p className="theme-text-primary font-semibold text-lg mb-2">
+              Transfer Initiated!
+            </p>
+            <p className="theme-text-secondary text-sm mb-4">
+              Processing your CCIP transfer request...
+            </p>
+            <div className="flex items-center justify-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
+              <span className="theme-text-secondary text-xs">
+                Preparing transaction
+              </span>
+            </div>
+          </div>
         )}
 
         {bridgeState === 'initiating' && (

@@ -176,7 +176,7 @@ export function recordSettingsChangeAction(
  * }
  */
 
-export default {
+const auditLogExamples = {
   recordDepositAction,
   recordPayoutAction,
   recordFailedTransaction,
@@ -184,3 +184,5 @@ export default {
   recordUserUpdateAction,
   recordSettingsChangeAction,
 };
+
+export default auditLogExamples;

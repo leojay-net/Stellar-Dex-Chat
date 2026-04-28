@@ -97,6 +97,17 @@ The `heartbeat` function is called by operators to maintain their active status 
 pub fn heartbeat(env: Env, operator: Address, nonce: u64) -> Result<(), Error>
 ```
 
+### Replay Protection Architecture
+
+For each operator, the contract keeps an independent nonce counter:
+
+1. Client reads `get_operator_nonce(operator)` to get the **next expected nonce**
+2. Client submits `heartbeat(operator, nonce)`
+3. Contract accepts only exact matches, then increments the stored nonce
+4. Reusing an old nonce fails with `StaleNonce`; skipping ahead fails with `InvalidNonce`
+
+This design guarantees each signed operator action can be accepted only once.
+
 ### TypeScript Implementation
 
 ```typescript
@@ -105,6 +116,20 @@ interface HeartbeatParams {
   nonce: number;
   adminPublicKey: string;
   signTx: (xdr: string) => Promise<string>;
+}
+
+export async function getOperatorNonce(operatorAddress: string): Promise<number> {
+  const contract = new Contract(CONTRACT_ID);
+  const op = contract.call('get_operator_nonce', new Address(operatorAddress).toScVal());
+  const { assembledXdr } = await buildAndSimulate(DUMMY_SOURCE, op);
+  const tx = TransactionBuilder.fromXDR(assembledXdr, NETWORK_PASSPHRASE);
+  const sim = await server.simulateTransaction(tx);
+  if (rpc.Api.isSimulationError(sim)) {
+    throw new Error(`Failed to fetch operator nonce: ${sim.error}`);
+  }
+  const retval = (sim as rpc.Api.SimulateTransactionSuccessResponse).result?.retval;
+  if (!retval) throw new Error('No nonce value returned');
+  return Number(scValToNative(retval));
 }
 
 export async function submitHeartbeat(params: HeartbeatParams): Promise<string> {
@@ -148,9 +173,12 @@ export async function submitHeartbeat(params: HeartbeatParams): Promise<string> 
 
 // Usage example
 try {
+  // Recommended: fetch the current on-chain nonce first.
+  const nextNonce = await getOperatorNonce('GB...operator-address');
+
   const hash = await submitHeartbeat({
     operatorAddress: 'GB...operator-address',
-    nonce: 1,
+    nonce: nextNonce,
     adminPublicKey: 'GB...admin-public-key',
     signTx: async (xdr) => {
       // Implement your signing logic here
@@ -663,7 +691,7 @@ adminOperations();
 2. **Use proper error handling** to provide meaningful feedback to users
 3. **Implement retry logic** for network-related failures
 4. **Cache view-only results** to improve performance
-5. **Use nonces** for replay protection in operator functions
+5. **Always read nonce from chain right before signing** operator actions
 6. **Monitor transaction status** and provide feedback to users
 7. **Handle edge cases** like network timeouts and insufficient funds
 8. **Validate admin permissions** before executing sensitive operations

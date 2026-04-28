@@ -8,7 +8,10 @@ import {
   FiatCurrencyCode,
   useUserPreferences,
 } from '@/contexts/UserPreferencesContext';
-import { useFeatureFlag } from '@/hooks/useFeatureFlag';
+import {
+  useFeatureFlag,
+  featureFlagSectionDividerBorderClass,
+} from '@/hooks/useFeatureFlag';
 import { useAccessibleModal } from '@/hooks/useAccessibleModal';
 import { useChatTelemetry } from '@/hooks/useChatTelemetry';
 import { useBeneficiaries, Beneficiary } from '@/hooks/useBeneficiaries';
@@ -30,7 +33,7 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
     setReminderFrequency,
   } = useUserPreferences();
   const { consented: telemetryConsented, setConsent: setTelemetryConsent } = useChatTelemetry();
-  const { beneficiaries, addBeneficiary, deleteBeneficiary, renameBeneficiary } = useBeneficiaries();
+  const { beneficiaries, isLoaded, addBeneficiary, deleteBeneficiary, renameBeneficiary } = useBeneficiaries();
   const panelRef = useRef<HTMLDivElement>(null);
   
   // Beneficiary management states
@@ -235,60 +238,70 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
               </div>
             )}
 
-            {beneficiaries.length === 0 ? (
+            {isLoaded ? (
+              beneficiaries.length === 0 ? (
+                <p
+                  className={`text-xs italic ${
+                    isDarkMode ? 'text-gray-500' : 'text-gray-400'
+                  }`}
+                >
+                  No saved beneficiaries yet.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {beneficiaries.map((beneficiary) => (
+                    <div
+                      key={beneficiary.id}
+                      className={`p-2 rounded-lg border flex items-center justify-between group ${
+                        isDarkMode
+                          ? 'bg-gray-800 border-gray-700 hover:border-gray-600'
+                          : 'bg-gray-50 border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className={`text-xs font-medium truncate ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>
+                          {beneficiary.name}
+                        </p>
+                        <p className={`text-[10px] truncate ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                          {beneficiary.accountName}
+                        </p>
+                      </div>
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => handleEditBeneficiary(beneficiary)}
+                          aria-label={`Edit ${beneficiary.name}`}
+                          className={`p-1.5 rounded transition-colors ${
+                            isDarkMode
+                              ? 'text-blue-400 hover:bg-blue-900/20'
+                              : 'text-blue-600 hover:bg-blue-100'
+                          }`}
+                        >
+                          <Edit2 className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteBeneficiary(beneficiary.id)}
+                          aria-label={`Delete ${beneficiary.name}`}
+                          className={`p-1.5 rounded transition-colors ${
+                            isDarkMode
+                              ? 'text-red-400 hover:bg-red-900/20'
+                              : 'text-red-600 hover:bg-red-100'
+                          }`}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : (
               <p
                 className={`text-xs italic ${
                   isDarkMode ? 'text-gray-500' : 'text-gray-400'
                 }`}
               >
-                No saved beneficiaries yet.
+                Loading beneficiaries...
               </p>
-            ) : (
-              <div className="space-y-2">
-                {beneficiaries.map((beneficiary) => (
-                  <div
-                    key={beneficiary.id}
-                    className={`p-2 rounded-lg border flex items-center justify-between group ${
-                      isDarkMode
-                        ? 'bg-gray-800 border-gray-700 hover:border-gray-600'
-                        : 'bg-gray-50 border-gray-200 hover:border-gray-300'
-                    }`}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className={`text-xs font-medium truncate ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>
-                        {beneficiary.name}
-                      </p>
-                      <p className={`text-[10px] truncate ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                        {beneficiary.accountName}
-                      </p>
-                    </div>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => handleEditBeneficiary(beneficiary)}
-                        aria-label={`Edit ${beneficiary.name}`}
-                        className={`p-1.5 rounded transition-colors ${
-                          isDarkMode
-                            ? 'text-blue-400 hover:bg-blue-900/20'
-                            : 'text-blue-600 hover:bg-blue-100'
-                        }`}
-                      >
-                        <Edit2 className="w-3 h-3" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteBeneficiary(beneficiary.id)}
-                        aria-label={`Delete ${beneficiary.name}`}
-                        className={`p-1.5 rounded transition-colors ${
-                          isDarkMode
-                            ? 'text-red-400 hover:bg-red-900/20'
-                            : 'text-red-600 hover:bg-red-100'
-                        }`}
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
             )}
           </section>
 
@@ -365,7 +378,7 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
           </section>
           {/* Telemetry section */}
           <section
-            className={`pt-6 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-100'}`}
+            className={`pt-6 border-t ${featureFlagSectionDividerBorderClass(isDarkMode)}`}
           >
             <h3
               className={`text-xs font-semibold uppercase tracking-wider mb-3 ${
@@ -408,7 +421,7 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
 
           {enableConversionReminders && (
             <section
-              className={`pt-6 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-100'}`}
+              className={`pt-6 border-t ${featureFlagSectionDividerBorderClass(isDarkMode)}`}
             >
               <h3
                 className={`text-xs font-semibold uppercase tracking-wider mb-3 ${

@@ -4,6 +4,21 @@
 
 This implementation adds nonce-based replay protection to operator-authorized actions in the Stellar smart contract, preventing replay attacks and ensuring that operator actions can only be executed once.
 
+## Developer Quick Reference
+
+### Nonce lifecycle
+
+1. Read the next expected nonce with `get_operator_nonce(operator)`
+2. Submit the signed operator action with that exact nonce
+3. Contract accepts once, increments stored nonce, and emits `NonceIncrementedEvent`
+4. Reusing old nonce returns `StaleNonce`; skipping ahead returns `InvalidNonce`
+
+### Recommended client flow
+
+- Treat nonce as on-chain state (not local-only state)
+- Re-fetch nonce right before signing every operator action
+- After a nonce error, re-read nonce before retrying
+
 ## Changes Made
 
 ### 1. Storage Key Addition (`stellar-contracts/src/lib.rs`)

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { AlertTriangle, WifiOff } from 'lucide-react';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useToast } from '@/hooks/useToast';
+import { offlineStatusToastSchema } from '@/lib/offlineStatusSchema';
 
 /**
  * Offline Status Banner Component
@@ -20,11 +21,23 @@ export default function OfflineStatusBanner() {
       setShowBanner(true);
     } else if (wasOffline && isOnline) {
       // Show toast when coming back online
-      addToast({
+      const toastOptions = {
         message: 'Your connection has been restored. Queued messages will be sent.',
         severity: 'success',
         durationMs: 3000,
-      });
+      };
+
+      // Validate toast options with Zod
+      const result = offlineStatusToastSchema.safeParse(toastOptions);
+      
+      if (result.success) {
+        addToast(result.data);
+      } else {
+        const errorMessage = result.error.issues[0]?.message || 'Connection restored';
+        console.error('OfflineStatusBanner: Invalid toast options', result.error.format());
+        addToast(errorMessage);
+      }
+
       setShowBanner(false);
       resetWasOffline();
     }
