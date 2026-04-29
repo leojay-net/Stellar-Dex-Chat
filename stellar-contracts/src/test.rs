@@ -150,7 +150,7 @@ mod tests {
     extern crate std;
 
     use super::*;
-    use crate::{DataKey, Error, FiatBridge, FiatBridgeClient};
+    use crate::{DataKey, Error, FiatBridge, FiatBridgeClient, UserDailyVolume};
     use soroban_sdk::testutils::{Events, Ledger};
     use soroban_sdk::{
         testutils::Address as _,
@@ -814,4 +814,258 @@ mod tests {
         let result = bridge.try_deposit(&user, &100, &token_addr, &Bytes::new(&env));
         assert_eq!(result, Err(Ok(Error::OracleNotSet)));
     }
-}
+
+    // ── Allowlist tests ───────────────────────────────────────────────
+
+    #[test]
+    fn test_allowlist_disabled_anyone_can_deposit() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 500);
+        // Allowlist is disabled by default — any address may deposit
+        let user = Address::generate(&env);
+        token_sac.mint(&user, &1_000);
+        bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env));
+        assert_eq!(bridge.get_balance(), 100);
+    }
+
+    #[test]
+    fn test_allowlist_enabled_blocks_unlisted_address() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 500);
+        bridge.set_allowlist_enabled(&true);
+        assert!(bridge.get_allowlist_enabled());
+
+        let user = Address::generate(&env);
+        token_sac.mint(&user, &1_000);
+        // User is not on the allowlist — deposit must be rejected
+        let result = bridge.try_deposit(&user, &100, &token_addr, &Bytes::new(&env));
+        assert_eq!(result, Err(Ok(Error::NotAllowed)));
+    }
+
+    #[test]
+    fn test_allowlist_add_then_deposit_succeeds() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 500);
+        bridge.set_allowlist_enabled(&true);
+
+        let user = Address::generate(&env);
+        token_sac.mint(&user, &1_000);
+        bridge.allowlist_add(&user);
+        assert!(bridge.is_allowed(&user));
+
+        // Now the user is on the allowlist — deposit must succeed
+        bridge.deposit(&user, &200, &token_addr, &Bytes::new(&env));
+        assert_eq!(bridge.get_balance(), 200);
+    }
+
+    #[test]
+    fn test_allowlist_remove_blocks_deposit() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 500);
+        bridge.set_allowlist_enabled(&true);
+
+        let user = Address::generate(&env);
+        token_sac.mint(&user, &1_000);
+        bridge.allowlist_add(&user);
+        bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env));
+
+        // Remove from allowlist — subsequent deposit must fail
+        bridge.allowlist_remove(&user);
+        assert!(!bridge.is_allowed(&user));
+        let result = bridge.try_deposit(&user, &50, &token_addr, &Bytes::new(&env));
+        assert_eq!(result, Err(Ok(Error::NotAllowed)));
+    }
+
+    #[test]
+    fn test_allowlist_toggle_off_reenables_deposits() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 500);
+        bridge.set_allowlist_enabled(&true);
+
+        let user = Address::generate(&env);
+        token_sac.mint(&user, &1_000);
+        // Blocked while enabled
+        assert_eq!(
+            bridge.try_deposit(&user, &100, &token_addr, &Bytes::new(&env)),
+            Err(Ok(Error::NotAllowed))
+        );
+
+        // Disable allowlist — now anyone can deposit again
+        bridge.set_allowlist_enabled(&false);
+        assert!(!bridge.get_allowlist_enabled());
+        bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env));
+        assert_eq!(bridge.get_balance(), 100);
+    }
+
+    #[test]
+    fn test_allowlist_batch_add_and_remove() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 500);
+        bridge.set_allowlist_enabled(&true);
+
+        let user_a = Address::generate(&env);
+        let user_b = Address::generate(&env);
+        let user_c = Address::generate(&env);
+        token_sac.mint(&user_a, &1_000);
+        token_sac.mint(&user_b, &1_000);
+        token_sac.mint(&user_c, &1_000);
+
+        let mut batch = soroban_sdk::Vec::new(&env);
+        batch.push_back(user_a.clone());
+        batch.push_back(user_b.clone());
+        bridge.allowlist_add_batch(&batch);
+
+        assert!(bridge.is_allowed(&user_a));
+        assert!(bridge.is_allowed(&user_b));
+        assert!(!bridge.is_allowed(&user_c));
+
+        bridge.deposit(&user_a, &100, &token_addr, &Bytes::new(&env));
+        bridge.deposit(&user_b, &100, &token_addr, &Bytes::new(&env));
+        assert_eq!(
+            bridge.try_deposit(&user_c, &100, &token_addr, &Bytes::new(&env)),
+            Err(Ok(Error::NotAllowed))
+        );
+
+        // Batch remove user_a and user_b
+        bridge.allowlist_remove_batch(&batch);
+        assert!(!bridge.is_allowed(&user_a));
+        assert!(!bridge.is_allowed(&user_b));
+        assert_eq!(
+            bridge.try_deposit(&user_a, &50, &token_addr, &Bytes::new(&env)),
+            Err(Ok(Error::NotAllowed))
+        );
+    }
+
+    // ── Pause tests ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_deposit_fails_when_paused() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 500);
+        let user = Address::generate(&env);
+        token_sac.mint(&user, &1_000);
+
+        bridge.pause();
+        assert!(bridge.is_paused());
+
+        let result = bridge.try_deposit(&user, &100, &token_addr, &Bytes::new(&env));
+        assert_eq!(result, Err(Ok(Error::Paused)));
+    }
+
+    #[test]
+    fn test_deposit_and_withdraw_succeed_after_unpause() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 500);
+        let user = Address::generate(&env);
+        token_sac.mint(&user, &1_000);
+
+        bridge.pause();
+        bridge.unpause();
+        assert!(!bridge.is_paused());
+
+        bridge.deposit(&user, &200, &token_addr, &Bytes::new(&env));
+        assert_eq!(bridge.get_balance(), 200);
+    }
+
+    #[test]
+    fn test_non_admin_cannot_pause_or_unpause() {
+        let env = Env::default();
+        // Do NOT mock all auths — only the admin is authorised
+        let (_, bridge, _, _, _, _) = setup_bridge(&env, 500);
+        assert!(bridge.try_pause().is_err());
+        assert!(bridge.try_unpause().is_err());
+    }
+
+    // ── is_denied overflow-safety tests ──────────────────────────────
+
+    #[test]
+    fn test_fiat_limit_overflow_in_usd_cents_multiplication_is_rejected() {
+        // Verifies that amount * price overflow in validate_fiat_limit is caught
+        // and returns ExceedsFiatLimit rather than panicking or wrapping.
+        let env = Env::default();
+        env.mock_all_auths();
+        // Use a very large deposit limit so the limit itself doesn't trigger first
+        let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, i128::MAX);
+
+        // Register a mock oracle that returns i128::MAX as the price
+        mod overflow_oracle {
+            use soroban_sdk::{contract, contractimpl, Address, Env};
+            #[contract]
+            pub struct OverflowOracle;
+            #[contractimpl]
+            impl OverflowOracle {
+                pub fn get_price(_env: Env, _token: Address) -> Option<i128> {
+                    Some(i128::MAX)
+                }
+            }
+        }
+        let oracle_addr = env.register(overflow_oracle::OverflowOracle, ());
+        bridge.set_oracle(&oracle_addr);
+        // Set a very large fiat limit so only the multiplication overflow triggers
+        bridge.set_fiat_limit(&i128::MAX);
+
+        let user = Address::generate(&env);
+        // Mint enough tokens; amount=2 with price=i128::MAX will overflow on multiply
+        token_sac.mint(&user, &i128::MAX);
+        let result = bridge.try_deposit(&user, &2, &token_addr, &Bytes::new(&env));
+        // Must be rejected as ExceedsFiatLimit (overflow caught by checked_mul)
+        assert_eq!(result, Err(Ok(Error::ExceedsFiatLimit)));
+    }
+
+    #[test]
+    fn test_fiat_limit_overflow_in_volume_accumulation_is_rejected() {
+        // Verifies that volume.usd_cents + usd_cents overflow is caught via
+        // checked_add and returns ExceedsFiatLimit rather than wrapping.
+        //
+        // Strategy: pre-seed the user's daily volume to i128::MAX - 1 directly
+        // in storage, then attempt a deposit whose usd_cents = 2, causing
+        // (i128::MAX - 1) + 2 to overflow i128.
+        let env = Env::default();
+        env.mock_all_auths();
+        let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, i128::MAX);
+
+        mod unit_price_oracle {
+            use soroban_sdk::{contract, contractimpl, Address, Env};
+            #[contract]
+            pub struct UnitPriceOracle;
+            #[contractimpl]
+            impl UnitPriceOracle {
+                pub fn get_price(_env: Env, _token: Address) -> Option<i128> {
+                    // price = divisor = ORACLE_PRICE_DECIMALS / 100 = 100_000
+                    // → usd_cents = amount * 100_000 / 100_000 = amount
+                    Some(100_000)
+                }
+            }
+        }
+        let oracle_addr = env.register(unit_price_oracle::UnitPriceOracle, ());
+        bridge.set_oracle(&oracle_addr);
+        bridge.set_fiat_limit(&i128::MAX);
+
+        let user = Address::generate(&env);
+        token_sac.mint(&user, &1_000);
+
+        // Pre-seed the user's daily volume to i128::MAX - 1 so the next deposit
+        // of amount=2 (usd_cents=2) causes checked_add to overflow.
+        env.as_contract(&contract_id, || {
+            env.storage().instance().set(
+                &DataKey::UserDailyVolume(user.clone()),
+                &UserDailyVolume {
+                    usd_cents: i128::MAX - 1,
+                    window_start: env.ledger().sequence(),
+                },
+            );
+        });
+
+        // Deposit amount=2 → usd_cents=2; (i128::MAX - 1) + 2 overflows → rejected
+        let result = bridge.try_deposit(&user, &2, &token_addr, &Bytes::new(&env));
+        assert_eq!(result, Err(Ok(Error::ExceedsFiatLimit)));
+    }
+} // end mod tests

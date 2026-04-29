@@ -54,6 +54,10 @@ pub enum Error {
     ExceedsFiatLimit = 20,
     /// No oracle contract has been configured yet.
     OracleNotSet = 21,
+    /// The depositor address is not on the allowlist (when allowlist is enabled).
+    NotAllowed = 22,
+    /// The contract is paused; deposits and withdrawals are disabled.
+    Paused = 23,
 }
 
 // ── Models ────────────────────────────────────────────────────────────────
@@ -179,6 +183,14 @@ pub enum DataKey {
     FiatLimit,
     /// Rolling 24-hour USD-equivalent deposit volume per user.
     UserDailyVolume(Address),
+
+    // ── Added for allowlist and pause ──
+    /// Whether the depositor allowlist is currently enforced.
+    AllowlistEnabled,
+    /// Per-address allowlist entry. Present and `true` means the address is allowed.
+    Allowed(Address),
+    /// Whether the contract is paused (deposits/withdrawals disabled).
+    Paused,
 }
 
 /// Approximate number of ledgers in a 24-hour window (5-second close time).
@@ -209,6 +221,21 @@ impl FiatBridge {
     ) -> Result<u64, Error> {
         env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
         payer.require_auth();
+
+        // ── Pause check ───────────────────────────────────────────────
+        if env
+            .storage()
+            .instance()
+            .get::<DataKey, bool>(&DataKey::Paused)
+            .unwrap_or(false)
+        {
+            return Err(Error::Paused);
+        }
+
+        // ── Allowlist check (applies to beneficiary) ──────────────────
+        if Self::is_denied(&env, &beneficiary) {
+            return Err(Error::NotAllowed);
+        }
 
         // ── Cooldown check (applies to beneficiary) ───────────────
         let cooldown: u32 = env
@@ -420,6 +447,21 @@ impl FiatBridge {
     ) -> Result<u64, Error> {
         env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
         from.require_auth();
+
+        // ── Pause check ───────────────────────────────────────────────
+        if env
+            .storage()
+            .instance()
+            .get::<DataKey, bool>(&DataKey::Paused)
+            .unwrap_or(false)
+        {
+            return Err(Error::Paused);
+        }
+
+        // ── Allowlist check ───────────────────────────────────────────
+        if Self::is_denied(&env, &from) {
+            return Err(Error::NotAllowed);
+        }
 
         // ── Cooldown check ────────────────────────────────────────────
         let cooldown: u32 = env
@@ -876,7 +918,14 @@ impl FiatBridge {
         // Oracle returns price per token unit in USD with 7 decimal places.
         // usd_value = amount * price / ORACLE_PRICE_DECIMALS
         // usd_cents = usd_value * 100 = (amount * price) / (ORACLE_PRICE_DECIMALS / 100)
-        let usd_cents = (amount * price) / (ORACLE_PRICE_DECIMALS / 100);
+        //
+        // Overflow safety: both `amount` and `price` are i128. Their product can
+        // overflow if both are near i128::MAX. We use checked_mul and fall back to
+        // ExceedsFiatLimit (conservative rejection) to prevent silent wrapping.
+        let usd_cents = amount
+            .checked_mul(price)
+            .map(|product| product / (ORACLE_PRICE_DECIMALS / 100))
+            .ok_or(Error::ExceedsFiatLimit)?;
 
         let current_ledger = env.ledger().sequence();
         let vol_key = DataKey::UserDailyVolume(depositor.clone());
@@ -894,14 +943,194 @@ impl FiatBridge {
             volume.window_start = current_ledger;
         }
 
-        if volume.usd_cents + usd_cents > fiat_limit {
+        // Overflow safety: use checked_add so that a near-max accumulated volume
+        // cannot wrap around and bypass the fiat limit check.
+        let new_total = volume
+            .usd_cents
+            .checked_add(usd_cents)
+            .ok_or(Error::ExceedsFiatLimit)?;
+
+        if new_total > fiat_limit {
             return Err(Error::ExceedsFiatLimit);
         }
 
-        volume.usd_cents += usd_cents;
+        volume.usd_cents = new_total;
         env.storage().instance().set(&vol_key, &volume);
 
         Ok(())
+    }
+
+    // ── Allowlist management ─────────────────────────────────────────────
+
+    /// Check whether `addr` is denied from depositing.
+    ///
+    /// Returns `true` (denied) when the allowlist is enabled AND the address
+    /// does not have an explicit `Allowed` entry.
+    ///
+    /// # Overflow safety
+    /// The function only reads boolean flags and performs no arithmetic, so
+    /// there is no numeric overflow risk here. The overflow-safe accumulation
+    /// for USD-cent volumes is handled separately in `validate_fiat_limit`.
+    fn is_denied(env: &Env, addr: &Address) -> bool {
+        let enabled: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::AllowlistEnabled)
+            .unwrap_or(false);
+        if !enabled {
+            return false;
+        }
+        // Allowed entry must be explicitly present and true
+        !env.storage()
+            .persistent()
+            .get::<DataKey, bool>(&DataKey::Allowed(addr.clone()))
+            .unwrap_or(false)
+    }
+
+    /// Enable or disable the depositor allowlist. Admin only.
+    ///
+    /// When enabled, only addresses explicitly added via `allowlist_add` or
+    /// `allowlist_add_batch` may deposit. When disabled, any address may deposit.
+    pub fn set_allowlist_enabled(env: Env, enabled: bool) -> Result<(), Error> {
+        env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::AllowlistEnabled, &enabled);
+        env.events()
+            .publish((Symbol::new(&env, "allowlist_set"),), enabled);
+        Ok(())
+    }
+
+    /// Add a single address to the allowlist. Admin only.
+    pub fn allowlist_add(env: Env, addr: Address) -> Result<(), Error> {
+        env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage()
+            .persistent()
+            .set(&DataKey::Allowed(addr.clone()), &true);
+        env.events()
+            .publish((Symbol::new(&env, "allowlist_add"),), addr);
+        Ok(())
+    }
+
+    /// Remove a single address from the allowlist. Admin only.
+    pub fn allowlist_remove(env: Env, addr: Address) -> Result<(), Error> {
+        env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage()
+            .persistent()
+            .remove(&DataKey::Allowed(addr.clone()));
+        env.events()
+            .publish((Symbol::new(&env, "allowlist_remove"),), addr);
+        Ok(())
+    }
+
+    /// Add multiple addresses to the allowlist in one call. Admin only.
+    pub fn allowlist_add_batch(env: Env, addrs: Vec<Address>) -> Result<(), Error> {
+        env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        for addr in addrs.iter() {
+            env.storage()
+                .persistent()
+                .set(&DataKey::Allowed(addr.clone()), &true);
+        }
+        env.events()
+            .publish((Symbol::new(&env, "allowlist_batch_add"),), addrs.len());
+        Ok(())
+    }
+
+    /// Remove multiple addresses from the allowlist in one call. Admin only.
+    pub fn allowlist_remove_batch(env: Env, addrs: Vec<Address>) -> Result<(), Error> {
+        env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        for addr in addrs.iter() {
+            env.storage()
+                .persistent()
+                .remove(&DataKey::Allowed(addr.clone()));
+        }
+        env.events()
+            .publish((Symbol::new(&env, "allowlist_batch_remove"),), addrs.len());
+        Ok(())
+    }
+
+    /// Returns `true` if `addr` is explicitly on the allowlist.
+    pub fn is_allowed(env: Env, addr: Address) -> bool {
+        env.storage()
+            .persistent()
+            .get::<DataKey, bool>(&DataKey::Allowed(addr))
+            .unwrap_or(false)
+    }
+
+    /// Returns `true` if the allowlist is currently enabled.
+    pub fn get_allowlist_enabled(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::AllowlistEnabled)
+            .unwrap_or(false)
+    }
+
+    // ── Pause management ─────────────────────────────────────────────────
+
+    /// Pause the contract, blocking all deposits and withdrawals. Admin only.
+    pub fn pause(env: Env) -> Result<(), Error> {
+        env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::Paused, &true);
+        env.events().publish((Symbol::new(&env, "paused"),), ());
+        Ok(())
+    }
+
+    /// Unpause the contract, re-enabling deposits and withdrawals. Admin only.
+    pub fn unpause(env: Env) -> Result<(), Error> {
+        env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::Paused, &false);
+        env.events().publish((Symbol::new(&env, "unpaused"),), ());
+        Ok(())
+    }
+
+    /// Returns `true` if the contract is currently paused.
+    pub fn is_paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
     }
 
     /// Hand admin rights to a new address. Current admin must authorise.
