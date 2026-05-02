@@ -10,3 +10,5 @@ stellar-contracts/target/
 # Contract build artifacts
 *.wasm
 
+issue.md
+pr.md

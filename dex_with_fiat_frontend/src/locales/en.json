@@ -1,0 +1,56 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "send": "Send",
+    "copy": "Copy",
+    "copied": "Copied!",
+    "offline": "Offline detected. Actions queued.",
+    "online": "Back online. Replaying actions...",
+    "offline_detected": "Offline detected. Read-only operations are queued and will retry when online.",
+    "queued": "queued",
+    "retry_now": "Retry Now",
+    "network": "Network",
+    "unknown": "Unknown",
+    "expected": "expected",
+    "withdraw_xlm": "Withdraw XLM",
+    "deposit_xlm": "Deposit XLM",
+    "network_mismatch_warning": "Deposits and withdrawals are disabled. Switch to {expectedNetwork} in Freighter: Settings → Network → {expectedNetwork}.",
+    "loading_stats": "Loading stats…",
+    "bridge_balance": "Bridge Balance",
+    "deposit_limit": "Deposit Limit",
+    "deposit_desc": "Add funds to your Stellar account",
+    "rates_desc": "Check current market conversion rates",
+    "portfolio_desc": "View your asset balance and value",
+    "help_desc": "Get assistance with platform features"
+  },
+  "chat": {
+    "placeholder": "Ask about XLM rates, deposit, or anything Stellar...",
+    "new_chat": "New Chat",
+    "commands": "Commands",
+    "suggestions": {
+      "rates": "Check conversion rates",
+      "portfolio": "View transaction history",
+      "convert": "Convert 100 USDC to USD"
+    },
+    "error_message": "Message failed to send. Please check your connection.",
+    "cancelled_message": "Request cancelled by user."
+  },
+  "header": {
+    "title": "DexFiat · Stellar",
+    "subtitle": "AI-Powered XLM-to-Fiat",
+    "connect": "Connect Freighter",
+    "disconnect": "Disconnect",
+    "settings": "Settings",
+    "receipts": "Receipts"
+  },
+  "receipt": {
+    "title": "Transaction Receipts",
+    "no_receipts": "No recent transactions found.",
+    "hash": "Tx Hash",
+    "amount": "Amount",
+    "status": "Status",
+    "date": "Date"
+  }
+}

@@ -1,5 +1,7 @@
 'use client';
 
+import { toastStore } from './toastStore';
+
 type QueuedRequest = {
   id: number;
   name?: string;
@@ -12,6 +14,11 @@ type QueuedRequest = {
 const queue: QueuedRequest[] = [];
 let nextId = 1;
 let processing = false;
+const listeners: Set<(count: number) => void> = new Set();
+
+function notifyListeners() {
+  listeners.forEach((fn) => fn(queue.length));
+}
 
 const MAX_RETRY = 5;
 
@@ -44,16 +51,22 @@ async function processQueue(): Promise<void> {
   while (queue.length > 0) {
     const request = queue.shift();
     if (!request) break;
+    notifyListeners();
 
     try {
       const result = await request.task();
       request.resolve(result as never);
+      // Notify user of successful retry
+      toastStore.addToast('Message sent!', 'success');
     } catch (error) {
       if (request.attempts < MAX_RETRY && isNetworkError(error)) {
         request.attempts += 1;
         queue.push(request);
+        notifyListeners();
         break;
       } else {
+        // Notify user of final failure
+        toastStore.addToast('Could not send. Please try again.', 'error');
         request.reject(error);
       }
     }
@@ -63,15 +76,22 @@ async function processQueue(): Promise<void> {
 }
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('online', () => {
-    console.log('Network is back online; flushing read queue.');
-    void processQueue();
-  });
-
-  window.addEventListener('offline', () => {
-    console.log('Network offline; read requests will be queued.');
-  });
+  if (!(window as any).__networkQueueListenerAdded) {
+    window.addEventListener('online', () => {
+      console.log('Network is back online; flushing read queue.');
+      void processQueue();
+    });
+    (window as any).__networkQueueListenerAdded = true;
+  }
 }
+
+export function subscribeToQueue(fn: (count: number) => void) {
+  listeners.add(fn);
+  fn(queue.length);
+  return () => listeners.delete(fn);
+}
+
+export { processQueue };
 
 export function getQueuedReadRequestsCount(): number {
   return queue.length;
@@ -92,6 +112,7 @@ export function withNetworkReadQueue<T>(
         reject,
         attempts: 0,
       });
+      notifyListeners();
       console.warn(`Queued read request [${name || id}] until online.`);
       return;
     }
@@ -110,6 +131,7 @@ export function withNetworkReadQueue<T>(
           reject,
           attempts: 1,
         });
+        notifyListeners();
         console.warn(
           `Network read failed, queued request [${name || id}] for retry.`,
         );

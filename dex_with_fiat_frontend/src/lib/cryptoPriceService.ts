@@ -15,10 +15,22 @@ export interface TokenPriceData {
   lastUpdated: number;
 }
 
+export interface TokenPriceWithChange {
+  symbol: string;
+  price: number;
+  change24h?: number;
+  currency: string;
+}
+
+export interface TickerData {
+  [symbol: string]: TokenPriceWithChange;
+}
+
 // Token ID mapping for CoinGecko API
 const TOKEN_IDS: Record<string, string> = {
   XLM: 'stellar',
   ETH: 'ethereum',
+  BTC: 'bitcoin',
   USDC: 'usd-coin',
   USDT: 'tether',
 };
@@ -63,7 +75,7 @@ export async function fetchCryptoPrices(
     const idsParam = tokenIds.join(',');
     const currenciesParam = validCurrencies.join(',');
 
-    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${idsParam}&vs_currencies=${currenciesParam}&include_24hr_change=false`;
+    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${idsParam}&vs_currencies=${currenciesParam}&include_24hr_change=true`;
 
     const response = await fetch(url, {
       headers: {
@@ -266,6 +278,72 @@ export async function getMultipleTokenPrices(
  */
 export function clearPriceCache(): void {
   priceCache.clear();
+}
+
+/**
+ * Fetch ticker data with 24h change for live price display
+ */
+export async function fetchTickerData(
+  tokenSymbols: string[] = ['XLM', 'ETH', 'BTC'],
+  vsCurrency: string = 'usd',
+): Promise<TickerData> {
+  try {
+    // Map symbols to CoinGecko IDs
+    const tokenIds = tokenSymbols
+      .map((symbol) => TOKEN_IDS[symbol.toUpperCase()])
+      .filter(Boolean);
+
+    if (tokenIds.length === 0) {
+      throw new Error('No valid token IDs found');
+    }
+
+    const idsParam = tokenIds.join(',');
+    const currencyLower = vsCurrency.toLowerCase();
+
+    // Only include supported currencies
+    if (!SUPPORTED_CURRENCIES.includes(currencyLower)) {
+      throw new Error(`Unsupported currency: ${vsCurrency}`);
+    }
+
+    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${idsParam}&vs_currencies=${currencyLower}&include_24hr_change=true`;
+
+    const response = await fetch(url, {
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `CoinGecko API error: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    const data = await response.json();
+
+    // Convert to ticker format
+    const tickerData: TickerData = {};
+    Object.entries(data).forEach(([coinId, priceData]) => {
+      const tokenSymbol = Object.entries(TOKEN_IDS).find(
+        ([, id]) => id === coinId,
+      )?.[0];
+      
+      const priceRecord = priceData as Record<string, number | undefined>;
+      if (tokenSymbol && priceRecord[currencyLower] !== undefined) {
+        tickerData[tokenSymbol] = {
+          symbol: tokenSymbol,
+          price: priceRecord[currencyLower]!,
+          change24h: priceRecord[`${currencyLower}_24h_change`],
+          currency: vsCurrency,
+        };
+      }
+    });
+
+    return tickerData;
+  } catch (error) {
+    console.error('Error fetching ticker data:', error);
+    return {}; // Return empty object to trigger fallback UI
+  }
 }
 
 export const QUOTE_LOCK_DURATION_MS = 120 * 1000; // 120 seconds

@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { toastStore, ToastSeverity } from '@/lib/toastStore';
 
 export type NotificationType =
   | 'tx_submit'
@@ -16,6 +17,16 @@ export interface AppNotification {
   timestamp: number;
   read: boolean;
 }
+
+const NOTIFICATION_TO_SEVERITY: Record<NotificationType, ToastSeverity> = {
+  tx_submit: 'info',
+  tx_confirm: 'success',
+  payout_pending: 'warning',
+  payout_success: 'success',
+  payout_fail: 'error',
+  payout_cancelled: 'warning',
+  risk_warning: 'warning',
+};
 
 class NotificationStore {
   private notifications: AppNotification[] = [];
@@ -66,6 +77,11 @@ class NotificationStore {
 
     this.notifications = [newNotif, ...this.notifications].slice(0, 50); // Keep last 50
     this.emit();
+
+    toastStore.addToast({
+      message,
+      severity: NOTIFICATION_TO_SEVERITY[type],
+    });
   }
 
   markAsRead(id: string) {

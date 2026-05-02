@@ -1,13 +1,21 @@
 'use client';
 
 import { useMemo } from 'react';
-import { ChatMessage } from '@/types';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Bot, User, AlertTriangle, Link, Clock, Coins } from 'lucide-react';
+import { useUserPreferences } from '@/contexts/UserPreferencesContext';
+import { useMasking } from '@/hooks/useMasking';
+import { useCurrencyConversion } from '@/hooks/useCurrencyConversion';
+import { ChatMessage } from '@/types';
+import { AlertTriangle, Bot, Clock, Coins, Link, RotateCcw, User, Loader2, RefreshCcw, XCircle } from 'lucide-react';
+import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 import { toDate } from '@/lib/messageUtils';
+import { sanitizeUrl } from '@/lib/markdownSanitizer';
+import { useTranslation } from '@/contexts/TranslationContext';
+import { motion, useReducedMotion } from 'framer-motion';
+import CopyButton from '@/components/ui/CopyButton';
 
 interface MessageProps {
   message: ChatMessage;
@@ -16,12 +24,56 @@ interface MessageProps {
     actionType: string,
     data?: Record<string, unknown>,
   ) => void;
+  onRetry?: (messageId: string) => void;
+  shouldAnimate?: boolean;
 }
 
-export default function Message({ message, onActionClick }: MessageProps) {
+export default function Message({ message, onActionClick, onRetry, shouldAnimate = false }: MessageProps) {
   const { connection } = useStellarWallet();
   const { isDarkMode } = useTheme();
+  const { maskingEnabled, maskingStyle } = useUserPreferences();
   const isUser = message.role === 'user';
+  const hasError = !!message.error;
+  const shouldReduceMotion = useReducedMotion();
+
+  // Apply masking to message content
+  const maskedContent = useMasking(message.content, {
+    enabled: maskingEnabled,
+    style: maskingStyle,
+  });
+  const { t } = useTranslation();
+  const isPending = message.metadata?.status === 'pending';
+  const isFailed = message.metadata?.status === 'failed';
+
+
+  // Currency conversion hook for transaction amounts
+  const amountForConversion = message.metadata?.transactionData?.amountIn 
+    ? parseFloat(String(message.metadata.transactionData.amountIn))
+    : undefined;
+  const tokenForConversion = message.metadata?.transactionData?.tokenIn || 'XLM';
+  const { displayText: conversionDisplayText } = useCurrencyConversion(
+    amountForConversion,
+    tokenForConversion,
+  );
+
+
+
+  const variants = {
+    initial: { 
+      opacity: 0, 
+      y: shouldReduceMotion ? 0 : 20,
+      scale: shouldReduceMotion ? 1 : 0.95
+    },
+    animate: { 
+      opacity: 1, 
+      y: 0,
+      scale: 1,
+      transition: {
+        duration: 0.4,
+        ease: [0.23, 1, 0.32, 1] as const // Custom cubic-bezier for premium feel
+      }
+    }
+  };
 
   // Memoize the ReactMarkdown components map so it is stable across renders.
   // Recreating this object on every render causes the entire markdown subtree
@@ -64,8 +116,11 @@ export default function Message({ message, onActionClick }: MessageProps) {
   const timestamp = toDate(message.timestamp);
 
   return (
-    <div
-      className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-8 animate-fadeIn`}
+    <motion.div
+      initial={shouldAnimate ? "initial" : false}
+      animate="animate"
+      variants={variants}
+      className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-8`}
     >
       <div className={`max-w-[80%] ${isUser ? 'order-2' : 'order-1'}`}>
         {/* Avatar */}
@@ -90,22 +145,30 @@ export default function Message({ message, onActionClick }: MessageProps) {
           <div className={`flex-1 ${isUser ? 'text-right' : 'text-left'}`}>
             {/* Message bubble */}
             <div
-              className={`inline-block px-4 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 ${isUser
-                ? 'bg-blue-600 text-white'
-                : isDarkMode
-                  ? 'bg-gray-800 text-gray-100 border border-gray-700'
-                  : 'bg-gray-100 text-gray-900 border border-gray-200'
-                }`}
+              className={`inline-block px-4 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 ${
+                isUser
+                  ? 'bg-blue-600 text-white'
+                  : hasError
+                    ? 'bg-red-50 border-red-200 text-red-900 shadow-red-100'
+                    : isDarkMode
+                      ? 'bg-gray-800 text-gray-100 border border-gray-700'
+                      : 'bg-gray-100 text-gray-900 border border-gray-200'
+              }`}
             >
-              <div className="whitespace-pre-wrap break-words">
-                {isUser ? (
+              <div className="whitespace-pre-wrap break-words min-h-[20px] flex items-center">
+                {isPending ? (
+                  <div className="flex items-center space-x-2 text-gray-400">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span className="text-sm italic">{t('common.loading')}</span>
+                  </div>
+                ) : isUser ? (
                   message.content
                 ) : (
                   <ReactMarkdown
                     className="prose prose-sm max-w-none"
                     components={markdownComponents}
                   >
-                    {message.content}
+                    {maskedContent}
                   </ReactMarkdown>
                 )}
               </div>
@@ -121,6 +184,42 @@ export default function Message({ message, onActionClick }: MessageProps) {
                 minute: '2-digit',
               })}
             </div>
+
+            {/* Error State */}
+            {hasError && (
+              <div
+                className={`mt-3 inline-flex flex-col gap-2 rounded-lg border px-3 py-2 text-xs ${
+                  isDarkMode
+                    ? 'border-red-700 bg-red-950/40 text-red-200'
+                    : 'border-red-200 bg-red-50 text-red-800'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  <span>
+                    {message.error?.message || 'Failed to send message'}
+                  </span>
+                </div>
+                {message.error?.retryAttempts && message.error.retryAttempts > 0 && (
+                  <div className="text-xs opacity-75">
+                    Retry attempts: {message.error.retryAttempts}
+                  </div>
+                )}
+                {onRetry && (
+                  <button
+                    onClick={() => onRetry(message.id)}
+                    className={`mt-2 flex items-center justify-center gap-2 px-3 py-1 rounded-lg text-xs font-medium transition-all transform hover:scale-105 active:scale-95 ${
+                      isDarkMode
+                        ? 'bg-red-700/40 hover:bg-red-700/60 border border-red-600'
+                        : 'bg-red-100 hover:bg-red-200 border border-red-300'
+                    }`}
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    Retry
+                  </button>
+                )}
+              </div>
+            )}
             {message.metadata?.guardrail?.triggered && (
               <div
                 className={`mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${isDarkMode
@@ -133,6 +232,37 @@ export default function Message({ message, onActionClick }: MessageProps) {
                   Guardrail:{' '}
                   {message.metadata.guardrail.category.replaceAll('_', ' ')}
                 </span>
+              </div>
+            )}
+            {isFailed && (
+              <div
+                className={`mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${
+                  isDarkMode
+                    ? 'border-red-700 bg-red-950/40 text-red-200'
+                    : 'border-red-200 bg-red-50 text-red-800'
+                }`}
+              >
+                <XCircle className="h-4 w-4" />
+                <span>{t('chat.error_message')}</span>
+                <button 
+                  onClick={() => window.location.reload()} 
+                  className="ml-2 underline flex items-center gap-1"
+                >
+                  <RefreshCcw className="w-3 h-3" />
+                  {t('common.retry')}
+                </button>
+              </div>
+            )}
+            {message.metadata?.requestStatus === 'cancelled' && (
+              <div
+                className={`mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${
+                  isDarkMode
+                    ? 'border-sky-700 bg-sky-950/40 text-sky-200'
+                    : 'border-sky-200 bg-sky-50 text-sky-800'
+                }`}
+              >
+                <AlertTriangle className="h-4 w-4" />
+                <span>{t('chat.cancelled_message')}</span>
               </div>
             )}
             {message.metadata?.suggestedActions &&
@@ -203,7 +333,7 @@ export default function Message({ message, onActionClick }: MessageProps) {
                     <div className="flex justify-between">
                       <span>Amount:</span>
                       <span className="theme-text-primary font-medium">
-                        {message.metadata.transactionData.amountIn}
+                        {conversionDisplayText || message.metadata.transactionData.amountIn}
                       </span>
                     </div>
                   )}
@@ -222,6 +352,57 @@ export default function Message({ message, onActionClick }: MessageProps) {
                       <span className="theme-text-primary font-medium">
                         {message.metadata.transactionData.note}
                       </span>
+                    </div>
+                  )}
+                  {message.metadata.transactionData.transactionId && (
+                    <div className="flex justify-between items-center gap-2">
+                      <span>Request ID:</span>
+                      <div className="flex items-center gap-1">
+                        <span className="theme-text-primary font-mono text-xs">
+                          {message.metadata.transactionData.transactionId.slice(0, 6)}
+                          ...
+                          {message.metadata.transactionData.transactionId.slice(-4)}
+                        </span>
+                        <CopyButton
+                          value={message.metadata.transactionData.transactionId}
+                          className="flex-shrink-0 p-0.5"
+                          iconClassName="w-3 h-3"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {message.metadata.transactionData.txHash && (
+                    <div className="flex justify-between items-center gap-2">
+                      <span>Tx Hash:</span>
+                      <div className="flex items-center gap-1">
+                        <span className="theme-text-primary font-mono text-xs">
+                          {message.metadata.transactionData.txHash.slice(0, 6)}
+                          ...
+                          {message.metadata.transactionData.txHash.slice(-4)}
+                        </span>
+                        <CopyButton
+                          value={message.metadata.transactionData.txHash}
+                          className="flex-shrink-0 p-0.5"
+                          iconClassName="w-3 h-3"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {message.metadata.transactionData.receiptId && (
+                    <div className="flex justify-between items-center gap-2">
+                      <span>Receipt ID:</span>
+                      <div className="flex items-center gap-1">
+                        <span className="theme-text-primary font-mono text-xs">
+                          {message.metadata.transactionData.receiptId.slice(0, 6)}
+                          ...
+                          {message.metadata.transactionData.receiptId.slice(-4)}
+                        </span>
+                        <CopyButton
+                          value={message.metadata.transactionData.receiptId}
+                          className="flex-shrink-0 p-0.5"
+                          iconClassName="w-3 h-3"
+                        />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -258,6 +439,6 @@ export default function Message({ message, onActionClick }: MessageProps) {
           </div>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

@@ -15,7 +15,7 @@ export { stroopsToXlm as stroopsToDisplay } from '@/lib/stroops';
 
 const RPC_URL =
   env.NEXT_PUBLIC_STELLAR_RPC_URL || 'https://soroban-testnet.stellar.org';
-const CONTRACT_ID =
+export const CONTRACT_ID =
   env.NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT ||
   'CAWYXBN4PSVXD7NIYEWVFFIIIEUCC6PUN3IMG3J2WHKDB4NVIISMXBPR';
 // XLM SAC address — the token used by the bridge (stored on-chain after init)
@@ -84,6 +84,7 @@ declare global {
     getBridgeLimit: () => Promise<bigint>;
     getContractBalance: () => Promise<bigint>;
     getTotalDeposited: () => Promise<bigint>;
+    getWithdrawalQueueDepth: () => Promise<number>;
   }
 }
 
@@ -93,6 +94,7 @@ try {
     window.getBridgeLimit = async () => getBridgeLimit();
     window.getContractBalance = async () => getContractBalance();
     window.getTotalDeposited = async () => getTotalDeposited();
+    window.getWithdrawalQueueDepth = async () => getWithdrawalQueueDepth();
   }
 } catch {
   // ignore
@@ -138,10 +140,20 @@ async function buildAndSimulate(
   };
 }
 
-export async function pollTransaction(hash: string): Promise<string> {
+export async function pollTransaction(
+  hash: string,
+  maxRetries: number = 20,
+): Promise<string> {
   let getResult = await server.getTransaction(hash);
+  let retries = 0;
   while (getResult.status === rpc.Api.GetTransactionStatus.NOT_FOUND) {
+    if (retries >= maxRetries) {
+      throw new Error(
+        `Transaction confirmation timed out after ${maxRetries} attempts`,
+      );
+    }
     await new Promise((r) => setTimeout(r, 1500));
+    retries += 1;
     getResult = await server.getTransaction(hash);
   }
   if (getResult.status === rpc.Api.GetTransactionStatus.FAILED) {
@@ -154,6 +166,7 @@ export async function pollTransaction(hash: string): Promise<string> {
 async function submitAndWait(
   signedXdr: string,
   onHashKnown?: (hash: string) => void,
+  maxRetries: number = 20,
 ): Promise<string> {
   const tx = TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE);
   const sendResult = await server.sendTransaction(tx);
@@ -163,7 +176,7 @@ async function submitAndWait(
     );
   }
   onHashKnown?.(sendResult.hash);
-  return pollTransaction(sendResult.hash);
+  return pollTransaction(sendResult.hash, maxRetries);
 }
 
 // ── Write functions (require wallet signature) ────────────────────────────
@@ -304,7 +317,18 @@ export async function getContractBalance(): Promise<bigint> {
   return viewCall<bigint>('get_balance');
 }
 
-/** Returns the authorized admin address of the contract. */
+/**
+ * Returns the authorized admin address of the contract.
+ * 
+ * @returns {Promise<string>} The Stellar public key of the current admin.
+ * 
+ * **Authentication Architecture:**
+ * The bridge contract stores the admin address in its instance storage.
+ * All sensitive administrative operations (e.g., withdrawals, setting limits)
+ * require the transaction to be signed by this exact address. This function
+ * fetches the current state directly from the blockchain to ensure front-end
+ * routing and UI states accurately reflect the source of truth.
+ */
 export async function getAdmin(): Promise<string> {
   return viewCall<string>('get_admin');
 }
@@ -331,4 +355,49 @@ export async function validateBridgeAmountLimit(
 /** Returns the running total of all deposits ever made. */
 export async function getTotalDeposited(): Promise<bigint> {
   return viewCall<bigint>('get_total_deposited');
+}
+
+export async function getWithdrawalQueueDepth(): Promise<number> {
+  const value = await viewCall<bigint | number>('get_wq_depth');
+  return Number(value);
+}
+
+/** Returns the accrued fees for the specified token. */
+export async function getAccruedFees(tokenAddress: string): Promise<bigint> {
+  // Check in-memory cache first
+  const functionName = `get_accrued_fees:${tokenAddress}`;
+  const cached = getCachedValue<bigint>(functionName);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const contract = new Contract(CONTRACT_ID);
+  let account;
+  try {
+    account = await server.getAccount(DUMMY_SOURCE);
+  } catch {
+    const { Account } = await import('@stellar/stellar-sdk');
+    account = new Account(DUMMY_SOURCE, '0');
+  }
+
+  const tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(
+      contract.call('get_accrued_fees', new Address(tokenAddress).toScVal()),
+    )
+    .setTimeout(30)
+    .build();
+
+  const sim = await server.simulateTransaction(tx);
+  if (rpc.Api.isSimulationError(sim)) {
+    throw new Error(`View call failed: ${sim.error}`);
+  }
+  const retval = (sim as rpc.Api.SimulateTransactionSuccessResponse).result
+    ?.retval;
+  if (!retval) throw new Error('No return value');
+  const result = scValToNative(retval) as bigint;
+  setCachedValue(functionName, result);
+  return result;
 }

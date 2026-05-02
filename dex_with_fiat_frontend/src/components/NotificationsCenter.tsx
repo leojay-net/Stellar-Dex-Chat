@@ -45,19 +45,19 @@ export default function NotificationsCenter() {
   const getIconColor = (type: AppNotification['type']) => {
     switch (type) {
       case 'tx_submit':
-        return 'text-blue-500';
+        return 'text-[var(--color-primary)]';
       case 'tx_confirm':
-        return 'text-green-500';
+        return 'text-[var(--color-success)]';
       case 'payout_pending':
-        return 'text-yellow-500';
+        return 'text-[var(--color-warning)]';
       case 'payout_success':
-        return 'text-green-500';
+        return 'text-[var(--color-success)]';
       case 'payout_fail':
-        return 'text-red-500';
+        return 'text-[var(--color-danger)]';
       case 'risk_warning':
-        return 'text-amber-500';
+        return 'text-[var(--color-warning)]';
       default:
-        return 'text-gray-500';
+        return 'text-[var(--color-text-muted)]';
     }
   };
 
@@ -129,7 +129,7 @@ export default function NotificationsCenter() {
           <div className="max-h-[400px] overflow-y-auto">
             {notifications.length === 0 ? (
               <div
-                className={`px-4 py-8 text-center text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}
+                className={`px-4 py-8 text-center text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
               >
                 No notifications yet
               </div>

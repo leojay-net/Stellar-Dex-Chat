@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPayoutProvider } from '@/lib/payout/providers/registry';
 import { telemetry } from '@/lib/telemetry';
 import { applyRateLimit, getClientIp } from '@/lib/rateLimit';
+import { verifyAccountSchema } from '@/lib/apiSchemas';
 
 const RATE_LIMIT = { maxRequests: 10, windowMs: 60_000 };
 
@@ -22,31 +23,37 @@ export async function POST(request: NextRequest) {
       endpoint: '/api/verify-account',
     });
 
-    const { accountNumber, bankCode } = await request.json();
+    const body = await request.json();
 
-    telemetry.addLog(span.spanId, 'info', 'Request parsed', {
-      hasAccountNumber: !!accountNumber,
-      hasBankCode: !!bankCode,
-      bankCode: bankCode,
-    });
+    // Validate with Zod
+    const validationResult = verifyAccountSchema.safeParse(body);
 
-    if (!accountNumber || !bankCode) {
-      telemetry.addLog(span.spanId, 'warn', 'Validation failed', {
-        missingFields: { accountNumber: !accountNumber, bankCode: !bankCode },
+    if (!validationResult.success) {
+      telemetry.addLog(span.spanId, 'warn', 'Zod validation failed', {
+        errors: validationResult.error.issues,
       });
       telemetry.finishSpan(span.spanId, {
         success: false,
-        error: 'Missing required fields',
+        error: 'Validation failed',
       });
 
       return NextResponse.json(
         {
           success: false,
-          message: 'Account number and bank code are required',
+          message: 'Validation failed',
+          errors: validationResult.error.issues,
         },
         { status: 400 },
       );
     }
+
+    const { accountNumber, bankCode } = validationResult.data;
+
+    telemetry.addLog(span.spanId, 'info', 'Request validated', {
+      hasAccountNumber: !!accountNumber,
+      hasBankCode: !!bankCode,
+      bankCode: bankCode,
+    });
 
     const provider = getPayoutProvider();
     const data = await provider.verifyAccount({ accountNumber, bankCode });
