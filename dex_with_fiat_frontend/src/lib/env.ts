@@ -36,10 +36,10 @@ const processEnvVars = () => {
 
   const clientVars = {
     NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT:
-      process.env.NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT,
-    NEXT_PUBLIC_XLM_SAC_CONTRACT: process.env.NEXT_PUBLIC_XLM_SAC_CONTRACT,
-    NEXT_PUBLIC_STELLAR_RPC_URL: process.env.NEXT_PUBLIC_STELLAR_RPC_URL,
-    NEXT_PUBLIC_GEMINI_API_KEY: process.env.NEXT_PUBLIC_GEMINI_API_KEY,
+      (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT : undefined),
+    NEXT_PUBLIC_XLM_SAC_CONTRACT: (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_XLM_SAC_CONTRACT : undefined),
+    NEXT_PUBLIC_STELLAR_RPC_URL: (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_STELLAR_RPC_URL : undefined),
+    NEXT_PUBLIC_GEMINI_API_KEY: (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_GEMINI_API_KEY : undefined),
   };
 
   const parsedClient = clientSchema.safeParse(clientVars);
@@ -54,8 +54,8 @@ const processEnvVars = () => {
 
   if (isServer) {
     const serverVars = {
-      PAYSTACK_SECRET_KEY: process.env.PAYSTACK_SECRET_KEY,
-      PAYOUT_PROVIDER: process.env.PAYOUT_PROVIDER,
+      PAYSTACK_SECRET_KEY: (typeof process !== 'undefined' ? process.env.PAYSTACK_SECRET_KEY : undefined),
+      PAYOUT_PROVIDER: (typeof process !== 'undefined' ? process.env.PAYOUT_PROVIDER : undefined),
     };
 
     const parsedServer = serverSchema.safeParse(serverVars);
