@@ -3,7 +3,7 @@
 use crate::{Error, FiatBridge, FiatBridgeClient};
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
-    token, Address, Env, Vec,
+    token, Address, Bytes, Env, Vec,
 };
 
 fn create_token_contract<'a>(
@@ -33,7 +33,7 @@ fn test_withdraw_fees_replay_protection() {
     let mut signers = Vec::new(&env);
     signers.push_back(admin.clone());
 
-    let reference = Bytes::from_slice(env, b"test_reference");
+    let reference = Bytes::from_slice(&env, b"test_reference");
     client.init(&admin, &token_address, &reference);
 
     // Mint tokens to contract
@@ -81,7 +81,7 @@ fn test_withdraw_fees_nonce_skipping_fails() {
     let mut signers = Vec::new(&env);
     signers.push_back(admin.clone());
 
-    let reference = Bytes::from_slice(env, b"test_reference");
+    let reference = Bytes::from_slice(&env, b"test_reference");
     client.init(&admin, &token_address, &reference);
 
     token_admin.mint(&contract_id, &10_000);
@@ -110,7 +110,7 @@ fn test_request_withdrawal_edge_cases() {
     let mut signers = Vec::new(&env);
     signers.push_back(admin.clone());
 
-    let reference = Bytes::from_slice(env, b"test_reference");
+    let reference = Bytes::from_slice(&env, b"test_reference");
     client.init(&admin, &token_address, &reference);
 
     // Test 1: Request withdrawal with no balance should fail
@@ -151,7 +151,7 @@ fn test_request_withdrawal_liability_overflow() {
     let mut signers = Vec::new(&env);
     signers.push_back(admin.clone());
 
-    let reference = Bytes::from_slice(env, b"test_reference");
+    let reference = Bytes::from_slice(&env, b"test_reference");
     client.init(&admin, &token_address, &reference);
 
     // Deposit funds
@@ -185,7 +185,7 @@ fn test_request_withdrawal_unwhitelisted_token() {
     let mut signers = Vec::new(&env);
     signers.push_back(admin.clone());
 
-    let reference = Bytes::from_slice(env, b"test_reference");
+    let reference = Bytes::from_slice(&env, b"test_reference");
     client.init(&admin, &token_address, &reference);
 
     // Try to request withdrawal for unwhitelisted token

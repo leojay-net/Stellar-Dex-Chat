@@ -2532,7 +2532,6 @@ impl FiatBridge {
     ///
     /// Returns `true` (denied) when the allowlist is enabled AND the address
     /// does not have an explicit `Allowed` entry.
-    
     /// Enable or disable the depositor allowlist. Admin only.
     ///
     /// When enabled, only addresses explicitly added via `allowlist_add` or
