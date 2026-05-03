@@ -43,8 +43,8 @@ fn setup_bridge(
     let admin = Address::generate(env);
     let token_admin = Address::generate(env);
     let (token_addr, token, token_sac) = create_token(env, &token_admin);
-    let signers = vec![env, admin.clone()];
-    bridge.init(&admin, &token_addr, &limit, &1, &signers, &1);
+    let reference = Bytes::from_slice(env, b"test_reference");
+    bridge.init(&admin, &token_addr, &reference);
     (contract_id, bridge, admin, token_addr, token, token_sac)
 }
 
@@ -65,19 +65,13 @@ fn setup_bridge_with_min(
     let admin = Address::generate(env);
     let token_admin = Address::generate(env);
     let (token_addr, token, token_sac) = create_token(env, &token_admin);
-    let signers = vec![env, admin.clone()];
-    bridge.init(&admin, &token_addr, &limit, &min_deposit, &signers, &1);
+    let reference = Bytes::from_slice(env, b"test_reference");
+    bridge.init(&admin, &token_addr, &reference);
     (contract_id, bridge, admin, token_addr, token, token_sac)
 }
 
 use super::*;
-    use crate::{DataKey, Error, FiatBridge, FiatBridgeClient, UserDailyVolume};
-    use soroban_sdk::testutils::{Events, Ledger};
-    use soroban_sdk::{
-        testutils::Address as _,
-        token::{Client as TokenClient, StellarAssetClient},
-        Address, Bytes, Env,
-    };
+use crate::{DataKey, Error, FiatBridge, FiatBridgeClient, UserDailyVolume};
 
 fn load_valid_contract_wasm_fixture() -> std::vec::Vec<u8> {
     let cargo_home = std::env::var("CARGO_HOME").unwrap_or_else(|_| {

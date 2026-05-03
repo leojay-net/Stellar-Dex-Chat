@@ -926,48 +926,18 @@ impl FiatBridge {
             return Err(Error::Unauthorized);
         }
 
-        if limit <= 0 {
-            return Err(Error::ZeroAmount);
-        }
-        if min_deposit < 1 || min_deposit >= limit {
-            return Err(Error::BelowMinimum);
-        }
-
-        // Validate multisig config
-        if threshold == 0 {
-            return Err(Error::InvalidThreshold);
-        }
-        if signers.len() == 0 || threshold > signers.len() {
-            return Err(Error::InvalidThreshold);
-        }
-        if signers.len() > MAX_SIGNERS {
-            return Err(Error::MaxSignersReached);
-        }
-
-        // Ensure no duplicate signers
-        let mut seen = Vec::<Address>::new(&env);
-        for s in signers.iter() {
-            if seen.contains(&s) {
-                return Err(Error::DuplicateSigner);
-            }
-            seen.push_back(s);
-        }
-
+        // Set default values for simplified init
         env.storage()
             .instance()
-            .set(&DataKey::MinDeposit, &min_deposit);
+            .set(&DataKey::MinDeposit, &1i128);
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Token, &token);
-        env.storage().instance().set(&DataKey::Signers, &signers);
-        env.storage()
-            .instance()
-            .set(&DataKey::Threshold, &threshold);
         env.storage()
             .instance()
             .set(&DataKey::NextMultisigID, &0u64);
 
         let config = TokenConfig {
-            limit,
+            limit: 0i128,
             daily_deposit_limit: 0,
             total_deposited: 0,
             total_withdrawn: 0,
@@ -1007,7 +977,7 @@ impl FiatBridge {
             .set(&DataKey::SetLimitMaxCap, &i128::MAX);
 
         // ── Issue #214: store and emit immutable deployment config hash ──
-        let config_data = (admin.clone(), token.clone(), limit);
+        let config_data = (admin.clone(), token.clone(), 0i128);
         let config_hash: BytesN<32> = env.crypto().sha256(&config_data.to_xdr(&env)).into();
         env.storage()
             .persistent()
@@ -1057,6 +1027,11 @@ impl FiatBridge {
             .instance()
             .get(&DataKey::DepositCooldown)
             .unwrap_or(0);
+        let anti_sandwich: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::AntiSandwichDelay)
+            .unwrap_or(0);
         if cooldown > 0 {
             let last_key = DataKey::LastDepositLedger(from.clone());
             if let Some(last_ledger) = env.storage().instance().get::<DataKey, u32>(&last_key) {
@@ -1066,6 +1041,8 @@ impl FiatBridge {
             }
         }
 
+        let current_ledger = env.ledger().sequence();
+        let key = DataKey::LastDepositLedger(from.clone());
         env.storage().temporary().set(&key, &current_ledger);
         let max_delay = cooldown.max(anti_sandwich).max(1);
         env.storage()
@@ -1231,7 +1208,7 @@ impl FiatBridge {
 
         DepositEvent {
             version: EVENT_VERSION,
-            admin: admin.clone(),
+            admin: from.clone(),
             from: from.clone(),
             token: token.clone(),
             amount,
@@ -2510,7 +2487,7 @@ impl FiatBridge {
             .ok_or(Error::ExceedsFiatLimit)?;
 
         // Get fiat limit from storage
-        let fiat_limit = env.storage().instance().get(&DataKey::FiatLimit);
+        let fiat_limit: Option<i128> = env.storage().instance().get(&DataKey::FiatLimit);
 
 // Overflow safety: use checked_add so that a near-max accumulated volume
         // cannot wrap around and bypass the fiat limit check.

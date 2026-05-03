@@ -33,7 +33,8 @@ fn test_withdraw_fees_replay_protection() {
     let mut signers = Vec::new(&env);
     signers.push_back(admin.clone());
 
-    client.init(&admin, &token_address, &1_000_000, &100, &signers, &1);
+    let reference = Bytes::from_slice(env, b"test_reference");
+    client.init(&admin, &token_address, &reference);
 
     // Mint tokens to contract
     token_admin.mint(&contract_id, &10_000);
@@ -80,7 +81,8 @@ fn test_withdraw_fees_nonce_skipping_fails() {
     let mut signers = Vec::new(&env);
     signers.push_back(admin.clone());
 
-    client.init(&admin, &token_address, &1_000_000, &100, &signers, &1);
+    let reference = Bytes::from_slice(env, b"test_reference");
+    client.init(&admin, &token_address, &reference);
 
     token_admin.mint(&contract_id, &10_000);
     token_admin.mint(&user, &5_000);
@@ -108,7 +110,8 @@ fn test_request_withdrawal_edge_cases() {
     let mut signers = Vec::new(&env);
     signers.push_back(admin.clone());
 
-    client.init(&admin, &token_address, &1_000_000, &100, &signers, &1);
+    let reference = Bytes::from_slice(env, b"test_reference");
+    client.init(&admin, &token_address, &reference);
 
     // Test 1: Request withdrawal with no balance should fail
     let result = client.try_request_withdrawal(&user, &1_000, &token_address, &None, &0);
@@ -148,7 +151,8 @@ fn test_request_withdrawal_liability_overflow() {
     let mut signers = Vec::new(&env);
     signers.push_back(admin.clone());
 
-    client.init(&admin, &token_address, &1_000_000, &100, &signers, &1);
+    let reference = Bytes::from_slice(env, b"test_reference");
+    client.init(&admin, &token_address, &reference);
 
     // Deposit funds
     token_admin.mint(&user, &5_000);
@@ -181,7 +185,8 @@ fn test_request_withdrawal_unwhitelisted_token() {
     let mut signers = Vec::new(&env);
     signers.push_back(admin.clone());
 
-    client.init(&admin, &token_address, &1_000_000, &100, &signers, &1);
+    let reference = Bytes::from_slice(env, b"test_reference");
+    client.init(&admin, &token_address, &reference);
 
     // Try to request withdrawal for unwhitelisted token
     let result = client.try_request_withdrawal(&user, &1_000, &unwhitelisted_address, &None, &0);

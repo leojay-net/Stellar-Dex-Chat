@@ -50,7 +50,8 @@ fn setup_bridge(
     let token_admin = Address::generate(env);
     let (token_addr, token, token_sac) = create_token(env, &token_admin);
     let signers = vec![env, admin.clone()];
-    bridge.init(&admin, &token_addr, &1_000_000, &1, &signers, &1);
+    let reference = Bytes::from_slice(env, b"test_reference");
+    bridge.init(&admin, &token_addr, &reference);
     (contract_id, bridge, admin, token_addr, token, token_sac)
 }
 
