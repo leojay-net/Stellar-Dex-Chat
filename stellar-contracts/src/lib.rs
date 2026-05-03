@@ -23,6 +23,8 @@ pub const MIN_TTL: u32 = 518_400;
 pub const MAX_TTL: u32 = 535_680;
 /// Maximum byte length of a deposit reference string.
 const MAX_REFERENCE_LEN: u32 = 64;
+/// Oracle prices are returned with 7 decimal places (matching Stellar precision).
+pub const ORACLE_PRICE_DECIMALS: i128 = 10_000_000;
 /// Number of ledgers in a 24-hour rolling window (~5 s/ledger × 17 280 = 24 h).
 ///
 /// Used for daily deposit limits, fiat volume caps, and withdrawal quotas.
@@ -113,6 +115,10 @@ pub enum Error {
     MaxDeniedReached = 315,
     /// `set_limit` would exceed the admin-configured ceiling from `set_limit_max_cap`.
     ExceedsLimitMaxCap = 316,
+    /// Fiat deposit limit exceeded
+    ExceedsFiatLimit = 317,
+    /// Address is denied from depositing
+    AddressDenied = 318,
 
     // --- 400 series: Funds & Balances ---
     NoFeesToWithdraw = 402,
@@ -552,11 +558,6 @@ pub struct QuotaResetEvent {
     pub window_start: u32,
 }
 
-/// Oracle prices are returned with 7 decimal places (matching Stellar precision).
-pub const ORACLE_PRICE_DECIMALS: i128 = 10_000_000;
-
-/// Maximum allowed length for a deposit reference (bytes).
-const MAX_REFERENCE_LEN: u32 = 64;
 
 // ── Storage keys ──────────────────────────────────────────────────────────
 /// All persistent and instance storage keys used by FiatBridge.
@@ -578,18 +579,24 @@ pub enum DataKey {
     LockPeriod,
     /// Auto-incrementing counter used to generate withdrawal request IDs.
     NextRequestID,
+    /// Minimum deposit amount
+    MinDeposit,
     /// Per-token configuration (`TokenConfig`) keyed by token address.
     TokenRegistry(Address),
     /// Auto-incrementing counter used to generate deposit receipt IDs.
     ReceiptCounter,
     /// A deposit receipt identified by its sequential ID.
-    Receipt(u64),
+    Receipt(BytesN<32>),
+    /// Temporary receipt index for mapping receipt IDs to hashes
+    ReceiptIndex(u64),
     /// Optional daily withdrawal cap enforced across the rolling 24 h window.
     DailyWithdrawLimit,
     /// Minimum ledger gap required between successive deposits from the same address.
     DepositCooldown,
     /// Ledger sequence of the last deposit made by a specific address.
     LastDepositLedger(Address),
+    /// Last deposit by address
+    LastDeposit(Address),
     /// Contract schema version for safe migrations. Always bump on breaking storage changes.
     SchemaVersion,
 
@@ -604,6 +611,8 @@ pub enum DataKey {
     QueuedAdminAction(u64),
     /// Emergency recovery address
     EmergencyRecoveryAddress,
+    /// Emergency recovery cap
+    EmergencyRecoveryCap,
 
     // ── Added for oracle-based fiat deposit limits (#159) ──
     /// Address of the price oracle contract.
@@ -628,6 +637,100 @@ pub enum DataKey {
     Signers,
     /// Threshold of signatures required for multisig
     Threshold,
+    /// Next multisig ID counter
+    NextMultisigID,
+
+    // ── Added for upgrade functionality ──
+    /// Upgrade proposal data
+    UpgradeProposal,
+    /// Upgrade delay period
+    UpgradeDelay,
+
+    // ── Added for operator functionality ──
+    /// Withdraw operator address
+    WithdrawOperator,
+
+    // ── Additional missing variants ──
+    /// Withdrawal queue by ID
+    WithdrawQueue(u64),
+    /// Tier queue head by tier level
+    TierQueueHead(u32),
+    /// Tier queue length by tier level
+    TierQueueLen(u32),
+    /// Withdrawal queue length
+    WithdrawQueueLen,
+    /// Withdrawal queue head
+    WithdrawQueueHead,
+    /// Window start for daily limits
+    WindowStart,
+    /// Window withdrawn amount
+    WindowWithdrawn,
+    /// Cooldown ledgers
+    CooldownLedgers,
+    /// Withdrawal cooldown ledgers
+    WithdrawCooldownLedgers,
+    /// Withdrawal cooldown threshold
+    WithdrawCooldownThreshold,
+    /// Withdrawal expiry window
+    WithdrawalExpiryWindow,
+    /// Last large deposit by address
+    LastLargeDeposit(Address),
+    /// User daily deposit by address and token
+    UserDailyDeposit(Address, Address),
+    /// Token allowlist enabled by address
+    TokenAllowlistEnabled(Address),
+    /// Token allowed by address and token
+    TokenAllowed(Address, Address),
+    /// User daily withdrawal by address
+    UserDailyWithdrawal(Address),
+    /// Escrow storage version
+    EscrowStorageVersion,
+    /// Escrow record by ID
+    EscrowRecord(u64),
+    /// Escrow migration cursor
+    EscrowMigrationCursor,
+    /// Pending renounce ledger
+    PendingRenounceLedger,
+    /// Operator by address
+    Operator(Address),
+    /// Operator count
+    OperatorCount,
+    /// Max operators
+    MaxOperators,
+    /// Operator list
+    OperatorList,
+    /// Operator nonce by address
+    OperatorNonce(Address),
+    /// Operator heartbeat by address
+    OperatorHeartbeat(Address),
+    /// Fee withdrawal nonce by address
+    FeeWithdrawalNonce(Address),
+    /// Denied address
+    Denied(Address),
+    /// Denied index by ID
+    DeniedIndex(u64),
+    /// Denied count
+    DeniedCount,
+    /// Anti sandwich delay
+    AntiSandwichDelay,
+    /// Withdrawal quota
+    WithdrawalQuota,
+    /// Fee vault by address
+    FeeVault(Address),
+    /// Deploy config hash
+    DeployConfigHash,
+    /// Circuit breaker threshold
+    CircuitBreakerThreshold,
+    /// Circuit breaker tripped
+    CircuitBreakerTripped,
+    /// Circuit breaker tripped at
+    CircuitBreakerTrippedAt,
+    /// Circuit breaker reset window
+    CircuitBreakerResetWindow,
+    /// Global daily withdrawn
+    GlobalDailyWithdrawn,
+    /// Set limit max cap
+    SetLimitMaxCap,
 }
 
 /// Event emitted during escrow storage migration to track progress.
@@ -734,96 +837,41 @@ pub struct CircuitBreakerAutoResetEvent {
     pub reset_at: u32,
 }
 
-// ── Storage keys ──────────────────────────────────────────────────────────
+// ── Helper structs ─────────────────────────────────────────────────────────
+
 #[contracttype]
-pub enum DataKey {
-    Admin,
-    PendingAdmin,
-    Paused,
-    Token, // Default token
-    TokenRegistry(Address),
-    AllowlistEnabled,
-    Allowed(Address),
-    LastDeposit(Address),
-    ReceiptCounter,
-    Receipt(BytesN<32>),
-    MinDeposit,
-    LockPeriod,
-    NextRequestID,
-    WithdrawQueueLen,
-    WithdrawQueueHead,
-    WithdrawQueue(u64),
-    DailyWithdrawLimit,
-    WindowStart,
-    WindowWithdrawn,
-    CooldownLedgers,
-    // Withdrawal cooldown after large deposit
-    WithdrawCooldownLedgers,
-    WithdrawCooldownThreshold,
-    WithdrawalExpiryWindow,
-    LastLargeDeposit(Address),
-    UserDeposited(Address),
-    NextActionID,
-    QueuedAdminAction(u64),
-    LastAdminActionLedger,
-    InactivityThreshold,
-    EmergencyRecoveryAddress,
-    EmergencyRecoveryCap,
-    SchemaVersion,
-    Oracle,
-    FiatLimit,
-    UserDailyVolume(Address),
-    AntiSandwichDelay,
-    WithdrawalQuota,
-    UserDailyDeposit(Address, Address),
-    TokenAllowlistEnabled(Address),
-    TokenAllowed(Address, Address),
-    UserDailyWithdrawal(Address),
-    EscrowStorageVersion,
-    EscrowRecord(u64),
-    EscrowMigrationCursor,
-    PendingRenounceLedger,
-    Operator(Address),
-    OperatorCount,
-    MaxOperators,
-    OperatorList,
-    OperatorHeartbeat(Address),
-    OperatorNonce(Address),
-    WithdrawOperator,
-    Denied(Address),
-    DeniedIndex(u64),
-    DeniedCount,
-    FeeVault(Address),
-    ReceiptIndex(u64),
-    // ── Issue #214: deployment config hash ────────────────────────────────
-    DeployConfigHash,
-    // ── Issue #209: global circuit breaker ───────────────────────────────
-    CircuitBreakerThreshold,
-    CircuitBreakerTripped,
-    CircuitBreakerTrippedAt,
-    CircuitBreakerResetWindow,
-    GlobalDailyWithdrawn,
-    // ── Issue #226: withdrawal queue risk tiers ───────────────────────────
-    TierQueueHead(u32),
-    TierQueueLen(u32),
-    // ── Issue #107: governed upgrade mechanism ───────────────────────────
-    UpgradeProposal,
-    UpgradeDelay,
-    // ── Issue #100: M-of-N multi-signature admin control ─────────────────
-    Signers,
-    Threshold,
-    MultisigProposal(u64),
-    NextMultisigID,
-    // ── Issue #695: replay protection for withdraw_fees ──────────────────
-    FeeWithdrawalNonce(Address),
-    /// Global ceiling for per-token liability limits assigned by `set_limit`.
-    ///
-    /// This value defaults to `i128::MAX` and may be lowered by
-    /// `set_limit_max_cap` to enforce a production risk ceiling.
-    SetLimitMaxCap,
+#[derive(Clone, Debug, PartialEq)]
+pub struct UserDailyDepositRecord {
+    pub window_start: u32,
+    pub amount: i128,
 }
 
-const ORACLE_PRICE_DECIMALS: i128 = 10_000_000;
+// ── Helper functions ───────────────────────────────────────────────────────
+
+/// Check whether `addr` is denied from depositing.
+///
+/// Returns `true` (denied) when the allowlist is enabled AND the address
+/// does not have an explicit `Allowed` entry.
+///
+/// # Overflow safety
+/// The function only reads boolean flags and performs no arithmetic, so
+/// there is no numeric overflow risk here. The overflow-safe accumulation
+/// for USD-cent volumes is handled separately in `validate_fiat_limit`.
+fn is_denied(env: &Env, addr: &Address) -> bool {
+    let enabled: bool = env
+        .storage()
+        .instance()
+        .get(&DataKey::AllowlistEnabled)
+        .unwrap_or(false);
+    if !enabled {
+        return false;
+    }
+    // Allowed entry must be explicitly present and true
+    !env.storage()
+        .persistent()
+        .get::<DataKey, bool>(&DataKey::Allowed(addr.clone()))
+        .unwrap_or(false)
+}
 
 // ── Contract ──────────────────────────────────────────────────────────────
 #[contract]
@@ -851,8 +899,8 @@ impl FiatBridge {
         }
 
         // ── Allowlist check (applies to beneficiary) ──────────────────
-        if Self::is_denied(&env, &admin) {
-            return Err(Error::NotAllowed);
+        if is_denied(&env, &admin) {
+            return Err(Error::AddressDenied);
         }
 
         // ── Cooldown check (applies to beneficiary) ───────────────
@@ -971,7 +1019,7 @@ impl FiatBridge {
         .publish(&env);
 
         env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
-        Ok(())
+        Ok(0u64)
     }
 
     pub fn deposit(
@@ -999,8 +1047,8 @@ impl FiatBridge {
         }
 
         // ── Allowlist check ───────────────────────────────────────────
-        if Self::is_denied(&env, &from) {
-            return Err(Error::NotAllowed);
+        if is_denied(&env, &from) {
+            return Err(Error::AddressDenied);
         }
 
         // ── Cooldown check ────────────────────────────────────────────
@@ -1013,14 +1061,6 @@ impl FiatBridge {
             let last_key = DataKey::LastDepositLedger(from.clone());
             if let Some(last_ledger) = env.storage().instance().get::<DataKey, u32>(&last_key) {
                 if env.ledger().sequence() - last_ledger < cooldown {
-                    return Err(Error::CooldownActive);
-                }
-            }
-        }
-            .unwrap_or(0);
-        if cooldown > 0 {
-            if let Some(last) = env.storage().temporary().get::<DataKey, u32>(&key) {
-                if current_ledger < last.saturating_add(cooldown) {
                     return Err(Error::CooldownActive);
                 }
             }
@@ -2440,6 +2480,38 @@ impl FiatBridge {
             return Ok(());
         }
 
+        // Get current ledger for window calculations
+        let curr = env.ledger().sequence();
+        
+        // Get user daily volume record
+        let vol_key = DataKey::UserDailyVolume(depositor.clone());
+        let mut volume = env.storage().instance().get(&vol_key).unwrap_or(UserDailyVolume {
+            window_start: curr.saturating_sub(WINDOW_LEDGERS),
+            usd_cents: 0,
+        });
+
+// Get oracle price for USD conversion
+        let oracle_addr = env.storage().instance().get(&DataKey::Oracle);
+        let price = if let Some(addr) = oracle_addr {
+            let oracle = crate::oracle::OracleClient::new(env, &addr);
+            let p = oracle.get_price(token).unwrap_or(0);
+            if p <= 0 {
+                return Err(Error::OraclePriceInvalid);
+            }
+            p
+        } else {
+            return Err(Error::OracleNotSet);
+        };
+
+        // Calculate USD cents from amount and price
+        let usd_cents = amount
+            .checked_mul(price)
+            .map(|product| product / (ORACLE_PRICE_DECIMALS / 100))
+            .ok_or(Error::ExceedsFiatLimit)?;
+
+        // Get fiat limit from storage
+        let fiat_limit = env.storage().instance().get(&DataKey::FiatLimit);
+
 // Overflow safety: use checked_add so that a near-max accumulated volume
         // cannot wrap around and bypass the fiat limit check.
         let new_total = volume
@@ -2447,12 +2519,21 @@ impl FiatBridge {
             .checked_add(usd_cents)
             .ok_or(Error::ExceedsFiatLimit)?;
 
-        if new_total > fiat_limit {
-            return Err(Error::ExceedsFiatLimit);
+        if let Some(limit) = fiat_limit {
+            if new_total > limit {
+                return Err(Error::ExceedsFiatLimit);
+            }
         }
 
         volume.usd_cents = new_total;
         env.storage().instance().set(&vol_key, &volume);
+
+        // Check daily deposit limit
+        let key = DataKey::UserDailyDeposit(depositor.clone(), token.clone());
+        let mut record = env.storage().instance().get(&key).unwrap_or(UserDailyDepositRecord {
+            window_start: curr.saturating_sub(WINDOW_LEDGERS),
+            amount: 0,
+        });
 
         if curr >= record.window_start.saturating_add(WINDOW_LEDGERS) {
             record.amount = 0;
@@ -2474,27 +2555,7 @@ impl FiatBridge {
     ///
     /// Returns `true` (denied) when the allowlist is enabled AND the address
     /// does not have an explicit `Allowed` entry.
-    ///
-    /// # Overflow safety
-    /// The function only reads boolean flags and performs no arithmetic, so
-    /// there is no numeric overflow risk here. The overflow-safe accumulation
-    /// for USD-cent volumes is handled separately in `validate_fiat_limit`.
-    fn is_denied(env: &Env, addr: &Address) -> bool {
-        let enabled: bool = env
-            .storage()
-            .instance()
-            .get(&DataKey::AllowlistEnabled)
-            .unwrap_or(false);
-        if !enabled {
-            return false;
-        }
-        // Allowed entry must be explicitly present and true
-        !env.storage()
-            .persistent()
-            .get::<DataKey, bool>(&DataKey::Allowed(addr.clone()))
-            .unwrap_or(false)
-    }
-
+    
     /// Enable or disable the depositor allowlist. Admin only.
     ///
     /// When enabled, only addresses explicitly added via `allowlist_add` or
@@ -2603,65 +2664,8 @@ impl FiatBridge {
             .unwrap_or(false)
     }
 
-    // ── Pause management ─────────────────────────────────────────────────
-
-    /// Pause the contract, blocking all deposits and withdrawals. Admin only.
-    pub fn pause(env: Env) -> Result<(), Error> {
-        env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(Error::NotInitialized)?;
-        admin.require_auth();
-        env.storage().instance().set(&DataKey::Paused, &true);
-        env.events().publish((Symbol::new(&env, "paused"),), ());
-        Ok(())
-    }
-
-    /// Unpause the contract, re-enabling deposits and withdrawals. Admin only.
-    pub fn unpause(env: Env) -> Result<(), Error> {
-        env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(Error::NotInitialized)?;
-        admin.require_auth();
-        env.storage().instance().set(&DataKey::Paused, &false);
-        env.events().publish((Symbol::new(&env, "unpaused"),), ());
-        Ok(())
-    }
-
-    /// Returns `true` if the contract is currently paused.
-    pub fn is_paused(env: Env) -> bool {
-        env.storage()
-            .instance()
-            .get(&DataKey::Paused)
-            .unwrap_or(false)
-    }
-
-    /// Hand admin rights to a new address. Current admin must authorise.
-    pub fn transfer_admin(env: Env, new_admin: Address) -> Result<(), Error> {
-        env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(Error::NotInitialized)?;
-        admin.require_auth();
-        // Nominate a pending admin rather than immediately replacing the active admin
-        env.storage()
-            .instance()
-            .set(&DataKey::PendingAdmin, &new_admin);
-
-        // Emit event for off-chain indexing/observability
-        env.events()
-            .publish((Symbol::new(&env, "admin_nominated"),), new_admin.clone());
-
-        Ok(())
-    }
-
+    
+    
     
     /// Cancel a pending admin nomination. Admin only.
     pub fn cancel_admin_transfer(env: Env) -> Result<(), Error> {

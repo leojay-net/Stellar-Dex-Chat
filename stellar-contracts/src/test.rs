@@ -4942,4 +4942,3 @@ fn test_set_operator_circuit_breaker_not_affected_by_admin_role_confusion() {
     // Circuit breaker state should be unaffected
     assert!(!bridge.is_circuit_breaker_tripped());
 }
->>>>>>> main
