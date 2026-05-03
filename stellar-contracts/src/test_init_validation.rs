@@ -15,7 +15,7 @@ fn test_reinitialization_blocked_after_renounce() {
 
     let admin = Address::generate(&env);
     let token = Address::generate(&env);
-    let signers = vec![&env, admin.clone()];
+    let _signers = vec![&env, admin.clone()];
 
     // First initialization
     let reference = Bytes::from_slice(&env, b"test_reference");
@@ -52,7 +52,7 @@ fn test_init_rejects_contract_as_admin() {
     let bridge = FiatBridgeClient::new(&env, &contract_id);
 
     let token = Address::generate(&env);
-    let signers = vec![&env, token.clone()];
+    let _signers = vec![&env, token.clone()];
 
     // Attempt to set contract itself as admin
     let reference = Bytes::from_slice(&env, b"test_reference");
@@ -113,7 +113,7 @@ fn test_init_rejects_zero_threshold() {
 
     let admin = Address::generate(&env);
     let token = Address::generate(&env);
-    let signers = vec![&env, admin.clone()];
+    let _signers = vec![&env, admin.clone()];
 
     let reference = Bytes::from_slice(&env, b"test_reference");
     let result = bridge.try_init(&admin, &token, &reference);

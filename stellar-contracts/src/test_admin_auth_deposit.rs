@@ -152,7 +152,7 @@ fn deposit_fails_when_admin_does_not_co_authorize() {
     let (token_addr, token_sac) = create_token(&env, &token_admin);
     let contract_id = env.register(FiatBridge, ());
     let bridge = FiatBridgeClient::new(&env, &contract_id);
-    let signers = vec![&env, admin.clone()];
+    let _signers = vec![&env, admin.clone()];
     let reference = Bytes::from_slice(&env, b"test_reference");
     bridge.init(&admin, &token_addr, &reference);
     let user = Address::generate(&env);

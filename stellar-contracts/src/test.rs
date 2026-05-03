@@ -1543,7 +1543,7 @@ fn test_nonce_increments_monotonically() {
         let user = Address::generate(&env);
         token_sac.mint(&user, &1_000);
         // User is not on the allowlist — deposit must be rejected
-        let result = bridge.try_deposit(&user, &100, &token_addr, &Bytes::new(&env));
+        let result = bridge.try_deposit(&user, &100, &token_addr, &Bytes::new(&env), &1000, &100, &None);
         assert_eq!(result, Err(Ok(Error::NotAllowed)));
     }
 
@@ -1579,7 +1579,7 @@ fn test_nonce_increments_monotonically() {
         // Remove from allowlist — subsequent deposit must fail
         bridge.allowlist_remove(&user);
         assert!(!bridge.is_allowed(&user));
-        let result = bridge.try_deposit(&user, &50, &token_addr, &Bytes::new(&env));
+        let result = bridge.try_deposit(&user, &50, &token_addr, &Bytes::new(&env), &1000, &100, &None);
         assert_eq!(result, Err(Ok(Error::NotAllowed)));
     }
 
@@ -1658,7 +1658,7 @@ fn test_nonce_increments_monotonically() {
         bridge.pause();
         assert!(bridge.is_paused());
 
-        let result = bridge.try_deposit(&user, &100, &token_addr, &Bytes::new(&env));
+        let result = bridge.try_deposit(&user, &100, &token_addr, &Bytes::new(&env), &1000, &100, &None);
         assert_eq!(result, Err(Ok(Error::Paused)));
     }
 
