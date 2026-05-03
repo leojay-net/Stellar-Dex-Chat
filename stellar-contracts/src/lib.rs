@@ -103,8 +103,6 @@ pub enum Error {
     SameAdmin = 207,
 
     // --- 300 series: Constraints & Limits ---
-    ZeroAmount = 301,
-    ExceedsLimit = 302,
     DailyLimitExceeded = 303,
     AntiSandwichDelayActive = 307,
     RescueForbidden = 310,
@@ -117,12 +115,7 @@ pub enum Error {
     ExceedsLimitMaxCap = 316,
 
     // --- 400 series: Funds & Balances ---
-    InsufficientFunds = 401,
     NoFeesToWithdraw = 402,
-
-    // --- 500 series: Withdrawal Queue ---
-    RequestNotFound = 501,
-    WithdrawalLocked = 502,
 
     // --- 600 series: Governance & Timelock ---
     ActionNotQueued = 601,
@@ -164,10 +157,7 @@ pub enum Error {
     // --- 1200 series: Receipt query ---
     /// `get_receipt_by_index` was called with an index >= the receipt counter.
     ReceiptIndexOutOfBounds = 1201,
-    /// `get_receipt_by_index` resolved to an index/hash that has no receipt
-    /// stored (typically the temporary index entry has expired).
-    ReceiptNotFound = 1202,
-}
+    }
 
 // ── Models ────────────────────────────────────────────────────────────────
 #[contracttype]
@@ -630,6 +620,14 @@ pub enum DataKey {
     Allowed(Address),
     /// Whether the contract is paused (deposits/withdrawals disabled).
     Paused,
+
+    // ── Added for multisig functionality ──
+    /// Multisig proposal by ID
+    MultisigProposal(u64),
+    /// List of authorized signers for multisig
+    Signers,
+    /// Threshold of signatures required for multisig
+    Threshold,
 }
 
 /// Event emitted during escrow storage migration to track progress.
@@ -662,7 +660,6 @@ pub struct MigrationEvent {
     pub version: u32,
     pub cursor: u64,
     pub migrated_count: u32,
->>>>>>> main
 }
 
 #[contractevent]
@@ -2665,35 +2662,7 @@ impl FiatBridge {
         Ok(())
     }
 
-    /// Accept a previously nominated admin. The nominated address must call this
-    /// to finalize the transfer. Until this is called the existing admin remains active.
-    pub fn accept_admin(env: Env, claimant: Address) -> Result<(), Error> {
-        // Read pending admin
-        let pending: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::PendingAdmin)
-            .ok_or(Error::NoPendingAdmin)?;
-
-        // Only the pending admin may finalize the transfer. If the provided
-        // claimant does not match the pending address, return Unauthorized.
-        if claimant != pending {
-            return Err(Error::Unauthorized);
-        }
-
-        // Ensure the claimant authorises this action (they must control the key)
-        claimant.require_auth();
-
-        // Move pending into active admin and clear pending
-        env.storage().instance().set(&DataKey::Admin, &claimant);
-        env.storage().instance().remove(&DataKey::PendingAdmin);
-
-        env.events()
-            .publish((Symbol::new(&env, "admin_accepted"),), claimant.clone());
-
-        Ok(())
-    }
-
+    
     /// Cancel a pending admin nomination. Admin only.
     pub fn cancel_admin_transfer(env: Env) -> Result<(), Error> {
         let admin: Address = env

@@ -70,6 +70,15 @@ fn setup_bridge_with_min(
     (contract_id, bridge, admin, token_addr, token, token_sac)
 }
 
+use super::*;
+    use crate::{DataKey, Error, FiatBridge, FiatBridgeClient, UserDailyVolume};
+    use soroban_sdk::testutils::{Events, Ledger};
+    use soroban_sdk::{
+        testutils::Address as _,
+        token::{Client as TokenClient, StellarAssetClient},
+        Address, Bytes, Env,
+    };
+
 fn load_valid_contract_wasm_fixture() -> std::vec::Vec<u8> {
     let cargo_home = std::env::var("CARGO_HOME").unwrap_or_else(|_| {
         let home = std::env::var("HOME").unwrap_or_else(|_| std::string::String::from("."));
@@ -81,14 +90,11 @@ fn load_valid_contract_wasm_fixture() -> std::vec::Vec<u8> {
     let registry_src = std::path::Path::new(&cargo_home).join("registry/src");
     let entries = std::fs::read_dir(&registry_src).expect("unable to read cargo registry/src");
 
-use super::*;
-    use crate::{DataKey, Error, FiatBridge, FiatBridgeClient, UserDailyVolume};
-    use soroban_sdk::testutils::{Events, Ledger};
-    use soroban_sdk::{
-        testutils::Address as _,
-        token::{Client as TokenClient, StellarAssetClient},
-        Address, Bytes, Env,
-    };
+    for entry in entries.flatten() {
+        let registry_path = entry.path();
+        if !registry_path.is_dir() {
+            continue;
+        }
 
         let candidate = registry_path.join("soroban-sdk-25.3.0/doctest_fixtures/contract.wasm");
         if candidate.exists() {
@@ -1772,8 +1778,6 @@ fn test_nonce_increments_monotonically() {
         assert_eq!(result, Err(Ok(Error::ExceedsFiatLimit)));
     }
 } // end mod tests
-=======
-}
 
 #[test]
 fn test_nonce_skipping_not_allowed() {
