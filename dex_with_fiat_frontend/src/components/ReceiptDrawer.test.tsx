@@ -79,7 +79,8 @@ describe('ReceiptDrawer keyboard shortcuts (#528)', () => {
   });
 
   it('Backspace does nothing when onClearHistory is not provided', () => {
-    const { onClearHistory: _omit, ...propsWithoutClear } = defaultProps;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { onClearHistory, ...propsWithoutClear } = defaultProps;
     expect(() => {
       render(<ReceiptDrawer {...propsWithoutClear} />);
       act(() => {

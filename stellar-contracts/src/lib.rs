@@ -85,16 +85,6 @@ pub enum Error {
     NoPendingAdmin = 12,
     ReceiptNotFound = 13,
     AlreadyRefunded = 14,
-    ActionNotQueued = 15,
-    ActionNotReady = 16,
-    InactivityThresholdNotReached = 17,
-    NoEmergencyRecoveryAddress = 18,
-    /// The recipient address is invalid (e.g., contract address itself).
-    InvalidRecipient = 19,
-    /// The deposit's USD-equivalent value exceeds the global fiat deposit limit.
-    ExceedsFiatLimit = 20,
-    /// No oracle contract has been configured yet.
-    OracleNotSet = 21,
     /// The depositor address is not on the allowlist (when allowlist is enabled).
     NotAllowed = 22,
     /// The contract is paused; deposits and withdrawals are disabled.
@@ -105,10 +95,10 @@ pub enum Error {
     InternalError = 103,
     ContractPaused = 104,
 
-    // --- 200 series: Authorization & Access ---
-    NoPendingAdmin = 203,
+    // --- 200 series: Admin & Operator ---
+    NotAdmin = 201,
+    NotOperator = 202,
     InvalidRecipient = 204,
-    NotOperator = 205,
     OperatorCapReached = 206,
     SameAdmin = 207,
 
@@ -116,12 +106,7 @@ pub enum Error {
     ZeroAmount = 301,
     ExceedsLimit = 302,
     DailyLimitExceeded = 303,
-    ExceedsFiatLimit = 304,
-    ReferenceTooLong = 305,
-    CooldownActive = 306,
     AntiSandwichDelayActive = 307,
-    TokenNotWhitelisted = 308,
-    AddressDenied = 309,
     RescueForbidden = 310,
     CircuitBreakerActive = 311,
     InvalidMemoHash = 312,
@@ -182,7 +167,6 @@ pub enum Error {
     /// `get_receipt_by_index` resolved to an index/hash that has no receipt
     /// stored (typically the temporary index entry has expired).
     ReceiptNotFound = 1202,
->>>>>>> main
 }
 
 // ── Models ────────────────────────────────────────────────────────────────
@@ -2445,6 +2429,8 @@ impl FiatBridge {
             .checked_mul(price)
             .map(|product| product / (ORACLE_PRICE_DECIMALS / 100))
             .ok_or(Error::ExceedsFiatLimit)?;
+        Ok(price)
+    }
 
     fn enforce_daily_deposit_limit(
         env: &Env,
@@ -2470,7 +2456,6 @@ impl FiatBridge {
 
         volume.usd_cents = new_total;
         env.storage().instance().set(&vol_key, &volume);
-                });
 
         if curr >= record.window_start.saturating_add(WINDOW_LEDGERS) {
             record.amount = 0;
@@ -2480,14 +2465,13 @@ impl FiatBridge {
         if record.amount.saturating_add(amount) > config.daily_deposit_limit {
             return Err(Error::DailyLimitExceeded);
         }
->>>>>>> main
 
         record.amount += amount;
         env.storage().instance().set(&key, &record);
         Ok(())
     }
 
-// ── Allowlist management ─────────────────────────────────────────────
+    // ── Allowlist management ─────────────────────────────────────────────
 
     /// Check whether `addr` is denied from depositing.
     ///
