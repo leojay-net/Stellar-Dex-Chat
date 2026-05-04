@@ -43,7 +43,6 @@ vi.mock('@/hooks/useIdempotentAction', () => ({
   useIdempotentAction: () => ({
     execute: async (
       fn: (key: string) => Promise<void>,
-      _actionName?: string,
     ) => {
       await fn('test-key');
       return null;

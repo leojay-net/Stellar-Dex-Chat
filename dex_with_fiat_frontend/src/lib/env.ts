@@ -45,10 +45,10 @@ const processEnvVars = () => {
 
   const clientVars = {
     NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT:
-      process.env.NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT,
-    NEXT_PUBLIC_XLM_SAC_CONTRACT: process.env.NEXT_PUBLIC_XLM_SAC_CONTRACT,
-    NEXT_PUBLIC_STELLAR_RPC_URL: process.env.NEXT_PUBLIC_STELLAR_RPC_URL,
-    NEXT_PUBLIC_GEMINI_API_KEY: process.env.NEXT_PUBLIC_GEMINI_API_KEY,
+      (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT : undefined),
+    NEXT_PUBLIC_XLM_SAC_CONTRACT: (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_XLM_SAC_CONTRACT : undefined),
+    NEXT_PUBLIC_STELLAR_RPC_URL: (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_STELLAR_RPC_URL : undefined),
+    NEXT_PUBLIC_GEMINI_API_KEY: (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_GEMINI_API_KEY : undefined),
   };
 
   const parsedClient = clientSchema.safeParse(clientVars);
@@ -63,14 +63,13 @@ const processEnvVars = () => {
 
   if (isServer) {
     const serverVars = {
-      PAYSTACK_SECRET_KEY: process.env.PAYSTACK_SECRET_KEY,
-      PAYOUT_PROVIDER: process.env.PAYOUT_PROVIDER,
-      ADMIN_API_TOKEN: process.env.ADMIN_API_TOKEN,
-      ADMIN_IP_ALLOWLIST: process.env.ADMIN_IP_ALLOWLIST,
-      ADMIN_IP_ALLOWLIST_BYPASS_LOCAL:
-        process.env.ADMIN_IP_ALLOWLIST_BYPASS_LOCAL,
-      ADMIN_SECRET: process.env.ADMIN_SECRET,
-      GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+      PAYSTACK_SECRET_KEY: (typeof process !== 'undefined' ? process.env.PAYSTACK_SECRET_KEY : undefined),
+      PAYOUT_PROVIDER: (typeof process !== 'undefined' ? process.env.PAYOUT_PROVIDER : undefined),
+      ADMIN_API_TOKEN: (typeof process !== 'undefined' ? process.env.ADMIN_API_TOKEN : undefined),
+      ADMIN_IP_ALLOWLIST: (typeof process !== 'undefined' ? process.env.ADMIN_IP_ALLOWLIST : undefined),
+      ADMIN_IP_ALLOWLIST_BYPASS_LOCAL: (typeof process !== 'undefined' ? process.env.ADMIN_IP_ALLOWLIST_BYPASS_LOCAL : undefined),
+      ADMIN_SECRET: (typeof process !== 'undefined' ? process.env.ADMIN_SECRET : undefined),
+      GEMINI_API_KEY: (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined),
     };
 
     const parsedServer = serverSchema.safeParse(serverVars);

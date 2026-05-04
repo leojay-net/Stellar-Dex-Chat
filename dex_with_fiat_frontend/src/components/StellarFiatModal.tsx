@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { pollTransaction } from '@/lib/stellarContract';
 import {
   X,
@@ -104,7 +104,6 @@ export default function StellarFiatModal({
 
   // Helper to avoid type narrowing issues
   const isStatusPending = (status as TxStatus) === 'pending';
-  const isStatusLoading = (status as TxStatus) === 'loading';
 
   useEffect(() => {
     if (!isOpen || !connection.isConnected || !connection.publicKey) {

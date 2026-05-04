@@ -18,10 +18,10 @@ export type FeatureFlagsConfig = z.infer<typeof FeatureFlagsConfigSchema>;
  */
 const rawConfig = {
   enableConversionReminders:
-    process.env.NEXT_PUBLIC_FLAG_CONVERSION_REMINDERS !== 'false',
+    (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_FLAG_CONVERSION_REMINDERS : undefined) !== 'false',
   enableAdminReconciliation:
-    process.env.NEXT_PUBLIC_FLAG_ADMIN_RECONCILIATION !== 'false',
-  enableHaptics: process.env.NEXT_PUBLIC_FLAG_ENABLE_HAPTICS !== 'false',
+    (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_FLAG_ADMIN_RECONCILIATION : undefined) !== 'false',
+  enableHaptics: (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_FLAG_ENABLE_HAPTICS : undefined) !== 'false',
 };
 
 /**

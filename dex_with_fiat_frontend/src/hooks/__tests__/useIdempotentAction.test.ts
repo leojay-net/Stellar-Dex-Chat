@@ -1,19 +1,20 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
+import { vi, describe, beforeEach, afterEach, it, expect } from 'vitest';
 import { useIdempotentAction } from '../useIdempotentAction';
 
 describe('useIdempotentAction', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.clearAllMocks();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('should execute action successfully', async () => {
     const { result } = renderHook(() => useIdempotentAction());
-    const mockAction = jest.fn().mockResolvedValue('success');
+    const mockAction = vi.fn().mockResolvedValue('success');
 
     let actionResult;
     await act(async () => {
@@ -29,7 +30,7 @@ describe('useIdempotentAction', () => {
     const { result } = renderHook(() =>
       useIdempotentAction({ cooldownMs: 1000 })
     );
-    const mockAction = jest.fn().mockResolvedValue('success');
+    const mockAction = vi.fn().mockResolvedValue('success');
 
     // First execution
     await act(async () => {
@@ -50,7 +51,7 @@ describe('useIdempotentAction', () => {
     const { result } = renderHook(() =>
       useIdempotentAction({ cooldownMs: 100 })
     );
-    const mockAction = jest.fn().mockResolvedValue('success');
+    const mockAction = vi.fn().mockResolvedValue('success');
 
     // First execution
     await act(async () => {
@@ -72,7 +73,7 @@ describe('useIdempotentAction', () => {
 
   it('should track isProcessing state correctly', async () => {
     const { result } = renderHook(() => useIdempotentAction());
-    const mockAction = jest.fn(
+    const mockAction = vi.fn(
       () => new Promise((resolve) => setTimeout(() => resolve('success'), 100))
     );
 
@@ -96,11 +97,11 @@ describe('useIdempotentAction', () => {
   });
 
   it('should log suppressed duplicates when enabled', async () => {
-    const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { result } = renderHook(() =>
       useIdempotentAction({ cooldownMs: 1000, logSuppressed: true })
     );
-    const mockAction = jest.fn().mockResolvedValue('success');
+    const mockAction = vi.fn().mockResolvedValue('success');
 
     await act(async () => {
       await result.current.execute(mockAction, 'test_action');
@@ -120,11 +121,11 @@ describe('useIdempotentAction', () => {
   });
 
   it('should not log suppressed duplicates when disabled', async () => {
-    const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { result } = renderHook(() =>
       useIdempotentAction({ cooldownMs: 1000, logSuppressed: false })
     );
-    const mockAction = jest.fn().mockResolvedValue('success');
+    const mockAction = vi.fn().mockResolvedValue('success');
 
     await act(async () => {
       await result.current.execute(mockAction, 'test_action');
@@ -140,7 +141,7 @@ describe('useIdempotentAction', () => {
   it('should generate unique idempotency keys', async () => {
     const { result } = renderHook(() => useIdempotentAction({ cooldownMs: 100 }));
     const capturedKeys: string[] = [];
-    const mockAction = jest.fn((key: string) => {
+    const mockAction = vi.fn((key: string) => {
       capturedKeys.push(key);
       return Promise.resolve('success');
     });
@@ -165,7 +166,7 @@ describe('useIdempotentAction', () => {
 
   it('should reset state correctly', async () => {
     const { result } = renderHook(() => useIdempotentAction());
-    const mockAction = jest.fn().mockResolvedValue('success');
+    const mockAction = vi.fn().mockResolvedValue('success');
 
     await act(async () => {
       await result.current.execute(mockAction, 'test_action');
@@ -183,7 +184,7 @@ describe('useIdempotentAction', () => {
 
   it('should handle action errors gracefully', async () => {
     const { result } = renderHook(() => useIdempotentAction());
-    const mockAction = jest.fn().mockRejectedValue(new Error('Action failed'));
+    const mockAction = vi.fn().mockRejectedValue(new Error('Action failed'));
 
     await act(async () => {
       try {
@@ -201,7 +202,7 @@ describe('useIdempotentAction', () => {
     const { result } = renderHook(() =>
       useIdempotentAction({ cooldownMs: 500 })
     );
-    const mockAction = jest.fn().mockResolvedValue('success');
+    const mockAction = vi.fn().mockResolvedValue('success');
 
     // Simulate rapid clicks
     const clicks = Array.from({ length: 5 }, () =>
@@ -218,7 +219,7 @@ describe('useIdempotentAction', () => {
 
   it('should block submissions while processing', async () => {
     const { result } = renderHook(() => useIdempotentAction());
-    const mockAction = jest.fn(
+    const mockAction = vi.fn(
       () => new Promise((resolve) => setTimeout(() => resolve('success'), 200))
     );
 
@@ -243,3 +244,4 @@ describe('useIdempotentAction', () => {
     expect(secondResult).toBeNull();
   });
 });
+

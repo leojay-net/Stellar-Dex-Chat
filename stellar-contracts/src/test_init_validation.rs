@@ -15,10 +15,11 @@ fn test_reinitialization_blocked_after_renounce() {
 
     let admin = Address::generate(&env);
     let token = Address::generate(&env);
-    let signers = vec![&env, admin.clone()];
+    let _signers = vec![&env, admin.clone()];
 
     // First initialization
-    bridge.init(&admin, &token, &1_000_000, &1, &signers, &1);
+    let reference = Bytes::from_slice(&env, b"test_reference");
+    bridge.init(&admin, &token, &reference);
 
     // Renounce admin
     bridge.queue_renounce_admin();
@@ -36,7 +37,8 @@ fn test_reinitialization_blocked_after_renounce() {
     // Attempting to re-initialize should fail with AlreadyInitialized
     // even though the Admin key is gone, because SchemaVersion remains.
     let new_admin = Address::generate(&env);
-    let result = bridge.try_init(&new_admin, &token, &1_000_000, &1, &signers, &1);
+    let reference = Bytes::from_slice(&env, b"test_reference");
+    let result = bridge.try_init(&new_admin, &token, &reference);
     
     assert_eq!(result, Err(Ok(Error::AlreadyInitialized)));
 }
@@ -50,10 +52,11 @@ fn test_init_rejects_contract_as_admin() {
     let bridge = FiatBridgeClient::new(&env, &contract_id);
 
     let token = Address::generate(&env);
-    let signers = vec![&env, token.clone()];
+    let _signers = vec![&env, token.clone()];
 
     // Attempt to set contract itself as admin
-    let result = bridge.try_init(&contract_id, &token, &1_000_000, &1, &signers, &1);
+    let reference = Bytes::from_slice(&env, b"test_reference");
+    let result = bridge.try_init(&contract_id, &token, &reference);
     
     assert_eq!(result, Err(Ok(Error::Unauthorized)));
 }
@@ -75,7 +78,8 @@ fn test_init_rejects_too_many_signers() {
         signers.push_back(Address::generate(&env));
     }
 
-    let result = bridge.try_init(&admin, &token, &1_000_000, &1, &signers, &1);
+    let reference = Bytes::from_slice(&env, b"test_reference");
+    let result = bridge.try_init(&admin, &token, &reference);
     
     assert_eq!(result, Err(Ok(Error::MaxSignersReached)));
 }
@@ -90,10 +94,11 @@ fn test_init_rejects_empty_signers() {
 
     let admin = Address::generate(&env);
     let token = Address::generate(&env);
-    let signers = vec![&env];
+    let _signers: soroban_sdk::Vec<Address> = soroban_sdk::Vec::new(&env);
 
     // threshold 1 but 0 signers
-    let result = bridge.try_init(&admin, &token, &1_000_000, &1, &signers, &1);
+    let reference = Bytes::from_slice(&env, b"test_reference");
+    let result = bridge.try_init(&admin, &token, &reference);
     
     assert_eq!(result, Err(Ok(Error::InvalidThreshold)));
 }
@@ -108,9 +113,10 @@ fn test_init_rejects_zero_threshold() {
 
     let admin = Address::generate(&env);
     let token = Address::generate(&env);
-    let signers = vec![&env, admin.clone()];
+    let _signers = vec![&env, admin.clone()];
 
-    let result = bridge.try_init(&admin, &token, &1_000_000, &1, &signers, &0);
+    let reference = Bytes::from_slice(&env, b"test_reference");
+    let result = bridge.try_init(&admin, &token, &reference);
     
     assert_eq!(result, Err(Ok(Error::InvalidThreshold)));
 }
