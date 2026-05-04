@@ -47,7 +47,7 @@ describe('AdminGuard', () => {
 
   it('shows error if contract admin address has invalid format (Zod validation)', async () => {
     vi.mocked(useStellarWallet).mockReturnValue({
-      connection: { address: 'GABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDE' }, // 56 chars
+      connection: { address: 'GABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABC' }, // 56 chars
     } as any);
     vi.mocked(getAdmin).mockResolvedValue('invalid-admin-address');
 
@@ -61,7 +61,7 @@ describe('AdminGuard', () => {
   });
 
   it('renders children when connected address matches admin address exactly', async () => {
-    const validAddr = 'GABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDE';
+    const validAddr = 'GABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABC';
     vi.mocked(useStellarWallet).mockReturnValue({
       connection: { address: validAddr },
     } as any);
@@ -73,12 +73,14 @@ describe('AdminGuard', () => {
       </AdminGuard>
     );
 
+    screen.debug();
     expect(await screen.findByTestId('protected-content')).toBeInTheDocument();
   });
 
   it('renders landing page when valid connected address does not match valid admin address', async () => {
-    const userAddr = 'GABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDE';
+    const userAddr = 'GABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABC';
     const adminAddr = 'G1234567890123456789012345678901234567890123456789012345';
+
     vi.mocked(useStellarWallet).mockReturnValue({
       connection: { address: userAddr },
     } as any);

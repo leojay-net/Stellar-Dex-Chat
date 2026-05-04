@@ -12,10 +12,10 @@ use super::*;
 use soroban_sdk::{
     testutils::Address as _,
     token::StellarAssetClient,
-    vec, Address, Bytes, Env,
+    Address, Bytes, Env,
 };
 
-fn setup_bridge<'a>(env: &Env) -> (Address, FiatBridgeClient<'a>, Address, Address, StellarAssetClient<'a>) {
+fn setup_bridge(env: &Env) -> (Address, FiatBridgeClient<'_>, Address, Address, StellarAssetClient<'_>) {
     let admin = Address::generate(env);
     let token_admin = Address::generate(env);
     let token_addr = env

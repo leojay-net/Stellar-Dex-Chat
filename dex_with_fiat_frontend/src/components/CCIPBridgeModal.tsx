@@ -49,6 +49,7 @@ export default function CCIPBridgeModal({
   const [errorMessage, setErrorMessage] = useState('');
 
   // Keep ref in sync with state.
+  // Keep ref in sync with state.
   useEffect(() => {
     transactionHashRef.current = transactionHash;
   }, [transactionHash]);
@@ -94,8 +95,8 @@ export default function CCIPBridgeModal({
       const explorerUrlValue = result.explorerUrl ?? buildCCIPExplorerTransactionUrl(nextHash);
       setExplorerUrl(explorerUrlValue);
       
-      // Optimistic UI: transition to polling state immediately
-      setBridgeState('polling');
+      // Optimistic UI: transition to optimistic state to trigger polling effect
+      setBridgeState('optimistic');
     } catch (error) {
       // Rollback optimistic updates on error
       setLatestStatus('');
@@ -177,7 +178,6 @@ export default function CCIPBridgeModal({
       !isOpen ||
       !transactionHash ||
       bridgeState === 'idle' ||
-      bridgeState === 'optimistic' ||
       bridgeState === 'success' ||
       bridgeState === 'error'
     ) {

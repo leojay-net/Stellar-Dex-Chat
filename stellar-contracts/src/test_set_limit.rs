@@ -31,7 +31,7 @@ struct Fixture<'a> {
 
 /// Bridge initialised with a generous default `limit` so tests that don't
 /// re-set it can still exercise deposits.
-fn fixture_with_limit(limit: i128) -> Fixture<'static> {
+fn fixture_with_limit(limit: i128) -> Fixture<'_> {
     let env = Env::default();
     env.mock_all_auths();
 

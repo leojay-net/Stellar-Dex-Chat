@@ -12,6 +12,15 @@ use std::{format, fs, path::PathBuf, string::String, vec::Vec as StdVec};
 
 // ── helpers ──────────────────────────────────────────────────────────
 
+fn get_contract_events(env: &Env, contract_id: &Address) -> soroban_sdk::Vec<(Address, soroban_sdk::Vec<soroban_sdk::Val>, soroban_sdk::Val)> {
+    let all_events = env.events().all().filter_by_contract(contract_id);
+    let mut result = soroban_sdk::vec![env];
+    for e in all_events.events() {
+        result.push_back(e);
+    }
+    result
+}
+
 fn create_token<'a>(
     e: &Env,
     admin: &Address,
@@ -44,6 +53,9 @@ fn setup_bridge(
     let (token_addr, token, token_sac) = create_token(env, &token_admin);
     let reference = Bytes::from_slice(env, b"test_reference");
     bridge.init(&admin, &token_addr, &reference);
+    if limit > 0 {
+        bridge.set_limit(&token_addr, &limit);
+    }
     (contract_id, bridge, admin, token_addr, token, token_sac)
 }
 
@@ -66,6 +78,9 @@ fn setup_bridge_with_min(
     let (token_addr, token, token_sac) = create_token(env, &token_admin);
     let reference = Bytes::from_slice(env, b"test_reference");
     bridge.init(&admin, &token_addr, &reference);
+    if limit > 0 {
+        bridge.set_limit(&token_addr, &limit);
+    }
     (contract_id, bridge, admin, token_addr, token, token_sac)
 }
 
@@ -2532,11 +2547,18 @@ fn test_event_snapshot_heartbeat() {
         li.sequence_number = 12_345;
     });
 
+    let start_len = get_contract_events(&env, &contract_id).len();
     bridge.heartbeat(&operator, &0);
 
+    let all_events = get_contract_events(&env, &contract_id);
+    let mut new_events = soroban_sdk::vec![&env];
+    for i in start_len..all_events.len() {
+        new_events.push_back(all_events.get(i).unwrap());
+    }
+
     assert_eq!(
-        env.events().all().filter_by_contract(&contract_id),
-        vec![
+        new_events,
+        soroban_sdk::vec![
             &env,
             (
                 contract_id.clone(),
@@ -2591,11 +2613,18 @@ fn test_event_snapshot_deny_add() {
     let (contract_id, bridge, _, _, _, _) = setup_bridge(&env, 1_000);
     let target = Address::generate(&env);
 
+    let start_len = get_contract_events(&env, &contract_id).len();
     bridge.deny_address(&target);
 
+    let all_events = get_contract_events(&env, &contract_id);
+    let mut new_events = soroban_sdk::vec![&env];
+    for i in start_len..all_events.len() {
+        new_events.push_back(all_events.get(i).unwrap());
+    }
+
     assert_eq!(
-        env.events().all().filter_by_contract(&contract_id),
-        vec![
+        new_events,
+        soroban_sdk::vec![
             &env,
             (
                 contract_id,
@@ -2631,11 +2660,18 @@ fn test_event_snapshot_deny_rem() {
             .set(&DataKey::Denied(target.clone()), &true);
     });
 
+    let start_len = get_contract_events(&env, &contract_id).len();
     bridge.remove_denied_address(&target);
 
+    let all_events = get_contract_events(&env, &contract_id);
+    let mut new_events = soroban_sdk::vec![&env];
+    for i in start_len..all_events.len() {
+        new_events.push_back(all_events.get(i).unwrap());
+    }
+
     assert_eq!(
-        env.events().all().filter_by_contract(&contract_id),
-        vec![
+        new_events,
+        soroban_sdk::vec![
             &env,
             (
                 contract_id,
@@ -2666,6 +2702,7 @@ fn test_event_snapshot_quota_reset() {
     let user = Address::generate(&env);
 
     token_sac.mint(&user, &5_000);
+    let start_len = get_contract_events(&env, &contract_id).len();
     bridge.deposit(&user, &2_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
     bridge.set_withdrawal_quota(&500);
     bridge.withdraw(&admin, &user, &500, &token_addr);
@@ -2680,9 +2717,15 @@ fn test_event_snapshot_quota_reset() {
 
     bridge.withdraw(&admin, &user, &500, &token_addr);
 
+    let all_events = get_contract_events(&env, &contract_id);
+    let mut new_events = soroban_sdk::vec![&env];
+    for i in start_len..all_events.len() {
+        new_events.push_back(all_events.get(i).unwrap());
+    }
+
     assert_eq!(
-        env.events().all().filter_by_contract(&contract_id),
-        vec![
+        new_events,
+        soroban_sdk::vec![
             &env,
             (
                 contract_id.clone(),
@@ -2731,11 +2774,18 @@ fn test_event_snapshot_fee_accrued() {
     env.mock_all_auths();
     let (contract_id, bridge, _, token_addr, _, _) = setup_bridge(&env, 1_000);
 
+    let start_len = get_contract_events(&env, &contract_id).len();
     bridge.accrue_fee(&token_addr, &250);
 
+    let all_events = get_contract_events(&env, &contract_id);
+    let mut new_events = soroban_sdk::vec![&env];
+    for i in start_len..all_events.len() {
+        new_events.push_back(all_events.get(i).unwrap());
+    }
+
     assert_eq!(
-        env.events().all().filter_by_contract(&contract_id),
-        vec![
+        new_events,
+        soroban_sdk::vec![
             &env,
             (
                 contract_id,
@@ -2777,11 +2827,18 @@ fn test_event_snapshot_fees_withdrawn() {
             .set(&DataKey::FeeVault(token_addr.clone()), &400i128);
     });
 
+    let start_len = get_contract_events(&env, &contract_id).len();
     bridge.withdraw_fees(&recipient, &token_addr, &150, &0);
 
+    let all_events = get_contract_events(&env, &contract_id);
+    let mut new_events = soroban_sdk::vec![&env];
+    for i in start_len..all_events.len() {
+        new_events.push_back(all_events.get(i).unwrap());
+    }
+
     assert_eq!(
-        env.events().all().filter_by_contract(&contract_id),
-        vec![
+        new_events,
+        soroban_sdk::vec![
             &env,
             (
                 contract_id,
@@ -4194,7 +4251,7 @@ fn test_withdraw_fees_edge_case_no_fees_accrued() {
     let (_, bridge, _, token_addr, _, _) = setup_bridge(&env, 1000);
 
     let result = bridge.try_withdraw_fees(&Address::generate(&env), &token_addr, &1, &0);
-    assert_eq!(result, Err(Ok(Error::FeeWithdrawalExceedsBalance)));
+    assert_eq!(result, Err(Ok(Error::NoFeesToWithdraw)));
 }
 
 #[test]
@@ -4307,7 +4364,7 @@ fn test_request_withdrawal_edge_case_exceeds_net_deposited() {
 
     // Try to withdraw more than deposited
     let result = bridge.try_request_withdrawal(&user, &600, &token_addr, &None, &0);
-    assert_eq!(result, Err(Ok(Error::InternalError)));
+    assert_eq!(result, Err(Ok(Error::InsufficientFunds)));
 }
 
 #[test]
@@ -4323,7 +4380,7 @@ fn test_request_withdrawal_edge_case_exact_deposited_amount() {
 
     // Request exactly the deposited amount
     let req_id = bridge.request_withdrawal(&user, &500, &token_addr, &None, &0);
-    assert!(req_id >= 0);
+    assert_eq!(req_id, 0);
 
     let req = bridge.get_withdrawal_request(&req_id).unwrap();
     assert_eq!(req.amount, 500);

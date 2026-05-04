@@ -10,6 +10,16 @@ vi.mock('@/contexts/TranslationContext', () => ({
   }),
 }));
 
+// Mock Stellar Wallet context
+vi.mock('@/contexts/StellarWalletContext', () => ({
+  useStellarWallet: () => ({
+    connection: {
+      isConnected: true,
+      address: 'GABC123',
+    },
+  }),
+}));
+
 // Mock draft utils
 vi.mock('@/lib/draftUtils', () => ({
   saveDraft: vi.fn(),

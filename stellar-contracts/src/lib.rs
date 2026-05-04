@@ -450,6 +450,93 @@ pub struct SetLimitMaxCapEvent {
 
 #[contractevent]
 #[derive(Clone, Debug)]
+pub struct AllowlistSet {
+    pub version: u32,
+    pub enabled: bool,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct AllowlistAdd {
+    pub version: u32,
+    pub addr: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct AllowlistRemove {
+    pub version: u32,
+    pub addr: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct AllowlistBatchAdd {
+    pub version: u32,
+    pub count: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct AllowlistBatchRemove {
+    pub version: u32,
+    pub count: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct AdminTransferCancelled {
+    pub version: u32,
+    pub pending: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct UpgProp {
+    pub version: u32,
+    pub wasm_hash: BytesN<32>,
+    pub executable_after: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct UpgExec {
+    pub version: u32,
+    pub wasm_hash: BytesN<32>,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct UpgCan {
+    pub version: u32,
+    pub wasm_hash: BytesN<32>,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct MultisigProposed {
+    pub version: u32,
+    pub id: u64,
+    pub proposer: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct MultisigApproved {
+    pub version: u32,
+    pub id: u64,
+    pub signer: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct MultisigExecuted {
+    pub version: u32,
+    pub id: u64,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
 pub struct SetLimitEvent {
     pub version: u32,
     pub token: Address,
@@ -2551,8 +2638,11 @@ impl FiatBridge {
         env.storage()
             .instance()
             .set(&DataKey::AllowlistEnabled, &enabled);
-        env.events()
-            .publish((Symbol::new(&env, "allowlist_set"),), enabled);
+        AllowlistSet {
+            version: EVENT_VERSION,
+            enabled,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -2568,8 +2658,11 @@ impl FiatBridge {
         env.storage()
             .persistent()
             .set(&DataKey::Allowed(addr.clone()), &true);
-        env.events()
-            .publish((Symbol::new(&env, "allowlist_add"),), addr);
+        AllowlistAdd {
+            version: EVENT_VERSION,
+            addr,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -2585,8 +2678,11 @@ impl FiatBridge {
         env.storage()
             .persistent()
             .remove(&DataKey::Allowed(addr.clone()));
-        env.events()
-            .publish((Symbol::new(&env, "allowlist_remove"),), addr);
+        AllowlistRemove {
+            version: EVENT_VERSION,
+            addr,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -2604,8 +2700,11 @@ impl FiatBridge {
                 .persistent()
                 .set(&DataKey::Allowed(addr.clone()), &true);
         }
-        env.events()
-            .publish((Symbol::new(&env, "allowlist_batch_add"),), addrs.len());
+        AllowlistBatchAdd {
+            version: EVENT_VERSION,
+            count: addrs.len(),
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -2623,8 +2722,11 @@ impl FiatBridge {
                 .persistent()
                 .remove(&DataKey::Allowed(addr.clone()));
         }
-        env.events()
-            .publish((Symbol::new(&env, "allowlist_batch_remove"),), addrs.len());
+        AllowlistBatchRemove {
+            version: EVENT_VERSION,
+            count: addrs.len(),
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -2668,10 +2770,11 @@ impl FiatBridge {
 
         env.storage().instance().remove(&DataKey::PendingAdmin);
 
-        env.events().publish(
-            (Symbol::new(&env, "admin_transfer_cancelled"),),
-            pending.clone(),
-        );
+        AdminTransferCancelled {
+            version: EVENT_VERSION,
+            pending,
+        }
+        .publish(&env);
 
         Ok(())
     }
@@ -4691,8 +4794,6 @@ impl FiatBridge {
     /// * [`Error::UpgradeDelayTooShort`] – `delay < MIN_UPGRADE_DELAY`.
     /// * [`Error::Overflow`]             – `current_ledger + delay` overflows `u32`.
     pub fn propose_upgrade(env: Env, wasm_hash: BytesN<32>, delay: u32) -> Result<(), Error> {
-        env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
-
         let admin: Address = env
             .storage()
             .instance()
@@ -4703,8 +4804,6 @@ impl FiatBridge {
         Self::require_not_paused(&env)?;
 
         // Boundary check (fix #668): reject delays that are too short.
-        // A delay of zero (or below the protocol minimum) would allow an
-        // immediate upgrade, defeating the purpose of the timelock entirely.
         if delay < MIN_UPGRADE_DELAY {
             return Err(Error::UpgradeDelayTooShort);
         }
@@ -4715,6 +4814,8 @@ impl FiatBridge {
         let current_ledger = env.ledger().sequence();
         let executable_after = current_ledger.checked_add(delay).ok_or(Error::Overflow)?;
 
+        env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
+
         let proposal = UpgradeProposal {
             wasm_hash: wasm_hash.clone(),
             executable_after,
@@ -4723,10 +4824,12 @@ impl FiatBridge {
         env.storage()
             .instance()
             .set(&DataKey::UpgradeProposal, &proposal);
-        env.events().publish(
-            (EVENT_VERSION, Symbol::new(&env, "upg_prop")),
-            (wasm_hash, executable_after),
-        );
+        UpgProp {
+            version: EVENT_VERSION,
+            wasm_hash,
+            executable_after,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -4795,10 +4898,11 @@ impl FiatBridge {
         env.deployer()
             .update_current_contract_wasm(proposal.wasm_hash.clone());
 
-        env.events().publish(
-            (EVENT_VERSION, Symbol::new(&env, "upg_exec")),
-            proposal.wasm_hash,
-        );
+        UpgExec {
+            version: EVENT_VERSION,
+            wasm_hash: proposal.wasm_hash,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -4828,10 +4932,11 @@ impl FiatBridge {
             .ok_or(Error::UpgradeProposalMissing)?;
 
         env.storage().instance().remove(&DataKey::UpgradeProposal);
-        env.events().publish(
-            (EVENT_VERSION, Symbol::new(&env, "upg_can")),
-            proposal.wasm_hash,
-        );
+        UpgCan {
+            version: EVENT_VERSION,
+            wasm_hash: proposal.wasm_hash,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -4881,10 +4986,12 @@ impl FiatBridge {
             .instance()
             .set(&DataKey::MultisigProposal(id), &proposal);
 
-        env.events().publish(
-            (EVENT_VERSION, Symbol::new(&env, "multisig_proposed")),
-            (id, proposer),
-        );
+        MultisigProposed {
+            version: EVENT_VERSION,
+            id,
+            proposer,
+        }
+        .publish(&env);
 
         Ok(id)
     }
@@ -4916,10 +5023,12 @@ impl FiatBridge {
             .instance()
             .set(&DataKey::MultisigProposal(id), &proposal);
 
-        env.events().publish(
-            (EVENT_VERSION, Symbol::new(&env, "multisig_approved")),
-            (id, signer),
-        );
+        MultisigApproved {
+            version: EVENT_VERSION,
+            id,
+            signer,
+        }
+        .publish(&env);
 
         Ok(())
     }
@@ -4981,8 +5090,11 @@ impl FiatBridge {
             .instance()
             .set(&DataKey::MultisigProposal(id), &proposal);
 
-        env.events()
-            .publish((EVENT_VERSION, Symbol::new(&env, "multisig_executed")), id);
+        MultisigExecuted {
+            version: EVENT_VERSION,
+            id,
+        }
+        .publish(&env);
 
         Ok(())
     }

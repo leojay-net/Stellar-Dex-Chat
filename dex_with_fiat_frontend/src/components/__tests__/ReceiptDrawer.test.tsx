@@ -4,7 +4,7 @@
 import React from 'react';
 import { render, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import ReceiptDrawer from './ReceiptDrawer';
+import ReceiptDrawer from '../ReceiptDrawer';
 
 vi.mock('@/contexts/TranslationContext', () => ({
   useTranslation: () => ({ t: (k: string) => k }),

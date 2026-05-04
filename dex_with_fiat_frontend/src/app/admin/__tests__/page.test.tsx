@@ -47,7 +47,9 @@ describe('AdminDashboard - Dark Mode Support', () => {
   });
 
   it('renders with theme-aware classes', async () => {
-    render(<AdminDashboard />);
+    await act(async () => {
+      render(<AdminDashboard />);
+    });
 
     await waitFor(() => {
       expect(screen.getByText('Admin Dashboard')).toBeInTheDocument();

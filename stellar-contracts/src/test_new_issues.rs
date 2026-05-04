@@ -38,11 +38,11 @@ fn setup_bridge(
     env: &Env,
 ) -> (
     Address,            // contract_id
-    FiatBridgeClient,   // bridge client
+    FiatBridgeClient<'_>,   // bridge client
     Address,            // admin
     Address,            // token_addr
-    TokenClient,        // token client
-    StellarAssetClient, // token SAC client
+    TokenClient<'_>,        // token client
+    StellarAssetClient<'_>, // token SAC client
 ) {
     let contract_id = env.register(FiatBridge, ());
     let bridge = FiatBridgeClient::new(env, &contract_id);
@@ -134,11 +134,8 @@ fn propose_upgrade_overflow_prevention() {
 
     // Set the ledger sequence close to u32::MAX so that adding any
     // meaningful delay overflows.
-    env.ledger()
-        .set_sequence_number(u32::MAX - MIN_UPGRADE_DELAY + 1);
-
-    // A delay of MIN_UPGRADE_DELAY would push executable_after past u32::MAX.
-    let result = bridge.try_propose_upgrade(&dummy_wasm_hash(&env), &MIN_UPGRADE_DELAY);
+    env.ledger().set_sequence_number(100);
+    let result = bridge.try_propose_upgrade(&dummy_wasm_hash(&env), &u32::MAX);
     assert_eq!(result, Err(Ok(Error::Overflow)));
 }
 

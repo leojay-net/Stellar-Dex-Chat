@@ -33,7 +33,7 @@ struct Fixture<'a> {
     user: Address,
 }
 
-fn setup_fixture() -> Fixture<'static> {
+fn setup_fixture() -> Fixture<'_> {
     let env = Env::default();
     env.mock_all_auths();
 
