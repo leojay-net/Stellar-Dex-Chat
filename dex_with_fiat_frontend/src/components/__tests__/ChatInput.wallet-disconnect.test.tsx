@@ -1,4 +1,5 @@
 import React from 'react';
+import { vi, describe, beforeEach, it, expect } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ChatInput from '../ChatInput';
 
@@ -14,37 +15,37 @@ const mockWalletContext = {
   connection: mockConnection,
   accounts: [],
   selectedAccountIndex: 0,
-  selectAccount: jest.fn(),
-  connect: jest.fn(),
-  disconnect: jest.fn(),
-  signTx: jest.fn(),
+  selectAccount: vi.fn(),
+  connect: vi.fn(),
+  disconnect: vi.fn(),
+  signTx: vi.fn(),
   isFreighterInstalled: false,
   isLoading: false,
   error: null,
   sessionExpired: false,
-  clearSessionExpired: jest.fn(),
-  mockConnect: jest.fn(),
+  clearSessionExpired: vi.fn(),
+  mockConnect: vi.fn(),
   isNetworkMismatch: false,
 };
 
-jest.mock('@/contexts/StellarWalletContext', () => ({
+vi.mock('@/contexts/StellarWalletContext', () => ({
   useStellarWallet: () => mockWalletContext,
 }));
 
-jest.mock('@/contexts/TranslationContext', () => ({
+vi.mock('@/contexts/TranslationContext', () => ({
   useTranslation: () => ({
     t: (key: string) => key,
   }),
 }));
 
-jest.mock('@/lib/draftUtils', () => ({
-  saveDraft: jest.fn(),
-  getDraft: jest.fn(() => ''),
-  clearDraft: jest.fn(),
+vi.mock('@/lib/draftUtils', () => ({
+  saveDraft: vi.fn(),
+  getDraft: vi.fn(() => ''),
+  clearDraft: vi.fn(),
 }));
 
 describe('ChatInput - Wallet Disconnect Handling', () => {
-  const mockOnSendMessage = jest.fn();
+  const mockOnSendMessage = vi.fn();
   const defaultProps = {
     onSendMessage: mockOnSendMessage,
     isLoading: false,
@@ -52,7 +53,7 @@ describe('ChatInput - Wallet Disconnect Handling', () => {
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     mockWalletContext.connection = { ...mockConnection, isConnected: false };
   });
 

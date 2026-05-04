@@ -2,10 +2,9 @@
 #![allow(unused_variables)]
 extern crate std;
 
-use super::*;
 use soroban_sdk::xdr::ToXdr;
 use soroban_sdk::{
-    testutils::{storage::Persistent as _, Address as _, EnvTestConfig, Events as _, Ledger},
+    testutils::{Address as _, EnvTestConfig, Events as _, Ledger},
     token::{Client as TokenClient, StellarAssetClient},
     vec, Address, Bytes, BytesN, Env, IntoVal, Symbol,
 };
@@ -70,8 +69,11 @@ fn setup_bridge_with_min(
     (contract_id, bridge, admin, token_addr, token, token_sac)
 }
 
-use super::*;
-use crate::{DataKey, Error, FiatBridge, FiatBridgeClient, UserDailyVolume};
+use crate::{
+    BatchAdminOp, DataKey, Error, FiatBridge, FiatBridgeClient, TokenConfig, UserDailyVolume,
+    DEFAULT_INACTIVITY_THRESHOLD, ESCROW_STORAGE_VERSION, EVENT_VERSION, WINDOW_LEDGERS,
+    WITHDRAWAL_EXPIRY_WINDOW_LEDGERS,
+};
 
 fn load_valid_contract_wasm_fixture() -> std::vec::Vec<u8> {
     let cargo_home = std::env::var("CARGO_HOME").unwrap_or_else(|_| {
@@ -772,11 +774,8 @@ fn test_validate_withdrawal_quota_migration_check() {
     // Check that MigrationCheckEvent was emitted
     let events = env.events().all().filter_by_contract(&contract_id);
     let has_migration_check = events.events().iter().any(|e| {
-        if let soroban_sdk::xdr::ContractEventBody::V0(body) = &e.body {
-            body.topics.len() > 0 && matches!(&body.topics[0], soroban_sdk::xdr::ScVal::Symbol(sym) if std::str::from_utf8(sym.0.as_slice()).unwrap() == "migration_check_event")
-        } else {
-            false
-        }
+        let soroban_sdk::xdr::ContractEventBody::V0(body) = &e.body;
+        body.topics.len() > 0 && matches!(&body.topics[0], soroban_sdk::xdr::ScVal::Symbol(sym) if std::str::from_utf8(sym.0.as_slice()).unwrap() == "migration_check_event")
     });
     
     // Verify it still enforces quota (validate_withdrawal_quota is working)
@@ -1517,23 +1516,24 @@ fn test_nonce_increments_monotonically() {
         bridge.heartbeat(&operator, &i);
         assert_eq!(bridge.get_operator_nonce(&operator), i + 1);
     }
+}
 
-    // ── Allowlist tests ─────────────────────────────────────────────--
+// ── Allowlist tests ─────────────────────────────────────────────--
 
-    #[test]
-    fn test_allowlist_disabled_anyone_can_deposit() {
+#[test]
+fn test_allowlist_disabled_anyone_can_deposit() {
         let env = Env::default();
         env.mock_all_auths();
         let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 500);
         // Allowlist is disabled by default — any address may deposit
         let user = Address::generate(&env);
         token_sac.mint(&user, &1_000);
-        bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env));
-        assert_eq!(bridge.get_balance(), 100);
+        bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+        assert_eq!(bridge.get_total_deposited(), 100);
     }
 
-    #[test]
-    fn test_allowlist_enabled_blocks_unlisted_address() {
+#[test]
+fn test_allowlist_enabled_blocks_unlisted_address() {
         let env = Env::default();
         env.mock_all_auths();
         let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 500);
@@ -1543,12 +1543,12 @@ fn test_nonce_increments_monotonically() {
         let user = Address::generate(&env);
         token_sac.mint(&user, &1_000);
         // User is not on the allowlist — deposit must be rejected
-        let result = bridge.try_deposit(&user, &100, &token_addr, &Bytes::new(&env), &1000, &100, &None);
-        assert_eq!(result, Err(Ok(Error::NotAllowed)));
-    }
+    let result = bridge.try_deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(result, Err(Ok(Error::NotAllowed)));
+}
 
-    #[test]
-    fn test_allowlist_add_then_deposit_succeeds() {
+#[test]
+fn test_allowlist_add_then_deposit_succeeds() {
         let env = Env::default();
         env.mock_all_auths();
         let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 500);
@@ -1559,13 +1559,13 @@ fn test_nonce_increments_monotonically() {
         bridge.allowlist_add(&user);
         assert!(bridge.is_allowed(&user));
 
-        // Now the user is on the allowlist — deposit must succeed
-        bridge.deposit(&user, &200, &token_addr, &Bytes::new(&env));
-        assert_eq!(bridge.get_balance(), 200);
-    }
+    // Now the user is on the allowlist — deposit must succeed
+    bridge.deposit(&user, &200, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(bridge.get_total_deposited(), 200);
+}
 
-    #[test]
-    fn test_allowlist_remove_blocks_deposit() {
+#[test]
+fn test_allowlist_remove_blocks_deposit() {
         let env = Env::default();
         env.mock_all_auths();
         let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 500);
@@ -1574,17 +1574,17 @@ fn test_nonce_increments_monotonically() {
         let user = Address::generate(&env);
         token_sac.mint(&user, &1_000);
         bridge.allowlist_add(&user);
-        bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env));
+        bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
 
-        // Remove from allowlist — subsequent deposit must fail
-        bridge.allowlist_remove(&user);
-        assert!(!bridge.is_allowed(&user));
-        let result = bridge.try_deposit(&user, &50, &token_addr, &Bytes::new(&env), &1000, &100, &None);
-        assert_eq!(result, Err(Ok(Error::NotAllowed)));
-    }
+    // Remove from allowlist — subsequent deposit must fail
+    bridge.allowlist_remove(&user);
+    assert!(!bridge.is_allowed(&user));
+    let result = bridge.try_deposit(&user, &50, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(result, Err(Ok(Error::NotAllowed)));
+}
 
-    #[test]
-    fn test_allowlist_toggle_off_reenables_deposits() {
+#[test]
+fn test_allowlist_toggle_off_reenables_deposits() {
         let env = Env::default();
         env.mock_all_auths();
         let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 500);
@@ -1594,19 +1594,19 @@ fn test_nonce_increments_monotonically() {
         token_sac.mint(&user, &1_000);
         // Blocked while enabled
         assert_eq!(
-            bridge.try_deposit(&user, &100, &token_addr, &Bytes::new(&env)),
+            bridge.try_deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None),
             Err(Ok(Error::NotAllowed))
         );
 
-        // Disable allowlist — now anyone can deposit again
-        bridge.set_allowlist_enabled(&false);
-        assert!(!bridge.get_allowlist_enabled());
-        bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env));
-        assert_eq!(bridge.get_balance(), 100);
-    }
+    // Disable allowlist — now anyone can deposit again
+    bridge.set_allowlist_enabled(&false);
+    assert!(!bridge.get_allowlist_enabled());
+    bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(bridge.get_total_deposited(), 100);
+}
 
-    #[test]
-    fn test_allowlist_batch_add_and_remove() {
+#[test]
+fn test_allowlist_batch_add_and_remove() {
         let env = Env::default();
         env.mock_all_auths();
         let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 500);
@@ -1624,73 +1624,73 @@ fn test_nonce_increments_monotonically() {
         batch.push_back(user_b.clone());
         bridge.allowlist_add_batch(&batch);
 
-        assert!(bridge.is_allowed(&user_a));
-        assert!(bridge.is_allowed(&user_b));
-        assert!(!bridge.is_allowed(&user_c));
+    assert!(bridge.is_allowed(&user_a));
+    assert!(bridge.is_allowed(&user_b));
+    assert!(!bridge.is_allowed(&user_c));
 
-        bridge.deposit(&user_a, &100, &token_addr, &Bytes::new(&env));
-        bridge.deposit(&user_b, &100, &token_addr, &Bytes::new(&env));
-        assert_eq!(
-            bridge.try_deposit(&user_c, &100, &token_addr, &Bytes::new(&env)),
-            Err(Ok(Error::NotAllowed))
-        );
+    bridge.deposit(&user_a, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.deposit(&user_b, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(
+        bridge.try_deposit(&user_c, &100, &token_addr, &Bytes::new(&env), &0, &0, &None),
+        Err(Ok(Error::NotAllowed))
+    );
 
-        // Batch remove user_a and user_b
-        bridge.allowlist_remove_batch(&batch);
-        assert!(!bridge.is_allowed(&user_a));
-        assert!(!bridge.is_allowed(&user_b));
-        assert_eq!(
-            bridge.try_deposit(&user_a, &50, &token_addr, &Bytes::new(&env)),
-            Err(Ok(Error::NotAllowed))
-        );
-    }
+    // Batch remove user_a and user_b
+    bridge.allowlist_remove_batch(&batch);
+    assert!(!bridge.is_allowed(&user_a));
+    assert!(!bridge.is_allowed(&user_b));
+    assert_eq!(
+        bridge.try_deposit(&user_a, &50, &token_addr, &Bytes::new(&env), &0, &0, &None),
+        Err(Ok(Error::NotAllowed))
+    );
+}
 
     // ── Pause tests ─────────────────────────────────────────────────--
 
-    #[test]
-    fn test_deposit_fails_when_paused() {
+#[test]
+fn test_deposit_fails_when_paused() {
         let env = Env::default();
         env.mock_all_auths();
         let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 500);
         let user = Address::generate(&env);
         token_sac.mint(&user, &1_000);
 
-        bridge.pause();
-        assert!(bridge.is_paused());
+    bridge.pause();
+    assert!(bridge.is_paused());
 
-        let result = bridge.try_deposit(&user, &100, &token_addr, &Bytes::new(&env), &1000, &100, &None);
-        assert_eq!(result, Err(Ok(Error::Paused)));
-    }
+    let result = bridge.try_deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(result, Err(Ok(Error::Paused)));
+}
 
-    #[test]
-    fn test_deposit_and_withdraw_succeed_after_unpause() {
+#[test]
+fn test_deposit_and_withdraw_succeed_after_unpause() {
         let env = Env::default();
         env.mock_all_auths();
         let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 500);
         let user = Address::generate(&env);
         token_sac.mint(&user, &1_000);
 
-        bridge.pause();
-        bridge.unpause();
-        assert!(!bridge.is_paused());
+    bridge.pause();
+    bridge.unpause();
+    assert!(!bridge.is_paused());
 
-        bridge.deposit(&user, &200, &token_addr, &Bytes::new(&env));
-        assert_eq!(bridge.get_balance(), 200);
-    }
+    bridge.deposit(&user, &200, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(bridge.get_total_deposited(), 200);
+}
 
-    #[test]
-    fn test_non_admin_cannot_pause_or_unpause() {
+#[test]
+fn test_non_admin_cannot_pause_or_unpause() {
         let env = Env::default();
         // Do NOT mock all auths — only the admin is authorised
-        let (_, bridge, _, _, _, _) = setup_bridge(&env, 500);
-        assert!(bridge.try_pause().is_err());
-        assert!(bridge.try_unpause().is_err());
-    }
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 500);
+    assert!(bridge.try_pause().is_err());
+    assert!(bridge.try_unpause().is_err());
+}
 
     // ── is_denied overflow-safety tests ──────────────────────────────
 
-    #[test]
-    fn test_fiat_limit_overflow_in_usd_cents_multiplication_is_rejected() {
+#[test]
+fn test_fiat_limit_overflow_in_usd_cents_multiplication_is_rejected() {
         // Verifies that amount * price overflow in validate_fiat_limit is caught
         // and returns ExceedsFiatLimit rather than panicking or wrapping.
         let env = Env::default();
@@ -1717,14 +1717,14 @@ fn test_nonce_increments_monotonically() {
 
         let user = Address::generate(&env);
         // Mint enough tokens; amount=2 with price=i128::MAX will overflow on multiply
-        token_sac.mint(&user, &i128::MAX);
-        let result = bridge.try_deposit(&user, &2, &token_addr, &Bytes::new(&env));
-        // Must be rejected as ExceedsFiatLimit (overflow caught by checked_mul)
-        assert_eq!(result, Err(Ok(Error::ExceedsFiatLimit)));
-    }
+    token_sac.mint(&user, &i128::MAX);
+    let result = bridge.try_deposit(&user, &2, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    // Must be rejected as ExceedsFiatLimit (overflow caught by checked_mul)
+    assert_eq!(result, Err(Ok(Error::ExceedsFiatLimit)));
+}
 
-    #[test]
-    fn test_fiat_limit_overflow_in_volume_accumulation_is_rejected() {
+#[test]
+fn test_fiat_limit_overflow_in_volume_accumulation_is_rejected() {
         // Verifies that volume.usd_cents + usd_cents overflow is caught via
         // checked_add and returns ExceedsFiatLimit rather than wrapping.
         //
@@ -1767,11 +1767,10 @@ fn test_nonce_increments_monotonically() {
             );
         });
 
-        // Deposit amount=2 → usd_cents=2; (i128::MAX - 1) + 2 overflows → rejected
-        let result = bridge.try_deposit(&user, &2, &token_addr, &Bytes::new(&env), &1000, &100, &None);
-        assert_eq!(result, Err(Ok(Error::ExceedsFiatLimit)));
-    }
-} // end mod tests
+    // Deposit amount=2 → usd_cents=2; (i128::MAX - 1) + 2 overflows → rejected
+    let result = bridge.try_deposit(&user, &2, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(result, Err(Ok(Error::ExceedsFiatLimit)));
+}
 
 #[test]
 fn test_nonce_skipping_not_allowed() {

@@ -1,4 +1,4 @@
-﻿#![no_std]
+#![no_std]
 #![allow(clippy::too_many_arguments)]
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, token, xdr::ToXdr, Address,
@@ -21,7 +21,7 @@ macro_rules! require {
 pub const MIN_TTL: u32 = 518_400;
 /// Maximum TTL cap for instance storage extensions (~31 days).
 pub const MAX_TTL: u32 = 535_680;
-/// Maximum byte length of a deposit reference string.
+#[allow(dead_code)]
 const MAX_REFERENCE_LEN: u32 = 64;
 /// Oracle prices are returned with 7 decimal places (matching Stellar precision).
 pub const ORACLE_PRICE_DECIMALS: i128 = 10_000_000;
@@ -51,7 +51,7 @@ const DEFAULT_INACTIVITY_THRESHOLD: u32 = 1_555_200;
 /// is rejected with [`Error::UpgradeDelayTooShort`] to prevent surprise
 /// upgrades that bypass the governance timelock.
 const MIN_UPGRADE_DELAY: u32 = 1_000;
-/// Maximum number of signers allowed in the multi-signature configuration.
+#[allow(dead_code)]
 const MAX_SIGNERS: u32 = 20;
 /// Version tag embedded in all contract events for indexer compatibility.
 pub const EVENT_VERSION: u32 = 1;
@@ -883,7 +883,7 @@ impl FiatBridge {
         env: Env,
         admin: Address,
         token: Address,
-        reference: Bytes,
+        _reference: Bytes,
     ) -> Result<u64, Error> {
         env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
         admin.require_auth();
@@ -2152,6 +2152,10 @@ impl FiatBridge {
         Ok(())
     }
 
+    pub fn is_paused(env: Env) -> bool {
+        env.storage().instance().get(&DataKey::Paused).unwrap_or(false)
+    }
+
     pub fn set_anti_sandwich_delay(env: Env, ledgers: u32) -> Result<(), Error> {
         let admin: Address = env
             .storage()
@@ -2439,7 +2443,7 @@ impl FiatBridge {
         // Overflow safety: both `amount` and `price` are i128. Their product can
         // overflow if both are near i128::MAX. We use checked_mul and fall back to
         // ExceedsFiatLimit (conservative rejection) to prevent silent wrapping.
-        let usd_cents = amount
+        let _usd_cents = amount
             .checked_mul(price)
             .map(|product| product / (ORACLE_PRICE_DECIMALS / 100))
             .ok_or(Error::ExceedsFiatLimit)?;

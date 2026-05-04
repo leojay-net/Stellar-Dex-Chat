@@ -94,7 +94,7 @@ fn test_init_rejects_empty_signers() {
 
     let admin = Address::generate(&env);
     let token = Address::generate(&env);
-    let signers: soroban_sdk::Vec<Address> = soroban_sdk::Vec::new(&env);
+    let _signers: soroban_sdk::Vec<Address> = soroban_sdk::Vec::new(&env);
 
     // threshold 1 but 0 signers
     let reference = Bytes::from_slice(&env, b"test_reference");
