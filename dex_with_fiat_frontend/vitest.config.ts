@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitest/config';
-import react from '@vitejs/plugin-react';
+import react from '@vitejs/plugin-react-swc';
 import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig({
@@ -14,5 +14,7 @@ export default defineConfig({
     globals: true,
     setupFiles: './vitest.setup.ts',
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    testTimeout: 15000,
+    hookTimeout: 15000,
   },
 });

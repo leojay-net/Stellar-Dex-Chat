@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { pollTransaction } from '@/lib/stellarContract';
 import {
   X,
@@ -104,7 +104,6 @@ export default function StellarFiatModal({
 
   // Helper to avoid type narrowing issues
   const isStatusPending = (status as TxStatus) === 'pending';
-  const isStatusLoading = (status as TxStatus) === 'loading';
 
   useEffect(() => {
     if (!isOpen || !connection.isConnected || !connection.publicKey) {
@@ -383,9 +382,9 @@ export default function StellarFiatModal({
     stroopsAmount > bridgeLimit;
   const usagePercent =
     isDepositFlow &&
-    bridgeLimit !== null &&
-    bridgeLimit > BigInt(0) &&
-    stroopsAmount !== null
+      bridgeLimit !== null &&
+      bridgeLimit > BigInt(0) &&
+      stroopsAmount !== null
       ? Number((stroopsAmount * 10_000n) / bridgeLimit) / 100
       : 0;
   const isHighLimitUsage =
@@ -395,9 +394,9 @@ export default function StellarFiatModal({
     usagePercent >= BRIDGE_LIMIT_WARNING_PERCENT;
   const remainingLimit =
     isDepositFlow &&
-    bridgeLimit !== null &&
-    stroopsAmount !== null &&
-    bridgeLimit > stroopsAmount
+      bridgeLimit !== null &&
+      stroopsAmount !== null &&
+      bridgeLimit > stroopsAmount
       ? bridgeLimit - stroopsAmount
       : BigInt(0);
   const isSubmitDisabled =
@@ -409,7 +408,7 @@ export default function StellarFiatModal({
       (isLoadingBridgeLimit || isLimitUnavailable || isOverLimit)) ||
     (isRiskyAmount &&
       riskConfirmation.trim().toUpperCase() !==
-        STELLAR_FIAT_RISK_CONFIRMATION_PHRASE) ||
+      STELLAR_FIAT_RISK_CONFIRMATION_PHRASE) ||
     Date.now() - lastActionTimestamp < SUBMIT_COOLDOWN_MS;
 
   const operationType = isAdminMode ? 'Withdraw' : 'Deposit';
@@ -490,7 +489,7 @@ export default function StellarFiatModal({
     if (isDepositFlow && (bridgeLimit === null || bridgeLimitError)) {
       setErrorMsg(
         bridgeLimitError ||
-          'Unable to validate against the current bridge limit. Please try again.',
+        'Unable to validate against the current bridge limit. Please try again.',
       );
       setStatus('error');
       return;
@@ -732,11 +731,10 @@ export default function StellarFiatModal({
                     type="button"
                     onClick={() => handlePreset(preset)}
                     disabled={isStatusPending || status === 'loading'}
-                    className={`flex-1 py-1.5 rounded-md text-xs font-medium border transition-colors ${
-                      activePreset === preset
+                    className={`flex-1 py-1.5 rounded-md text-xs font-medium border transition-colors ${activePreset === preset
                         ? 'bg-blue-600 border-blue-500 text-white'
                         : 'bg-gray-800 border-gray-600 text-gray-300 hover:border-blue-500 hover:text-white'
-                    } ${isStatusPending || status === 'loading' ? 'opacity-60 cursor-not-allowed' : ''}`}
+                      } ${isStatusPending || status === 'loading' ? 'opacity-60 cursor-not-allowed' : ''}`}
                   >
                     {preset}
                   </button>
@@ -754,11 +752,10 @@ export default function StellarFiatModal({
                 placeholder="0.00"
                 disabled={isStatusPending || status === 'loading'}
                 aria-invalid={isAmountInvalid || isOverLimit ? true : undefined}
-                className={`w-full bg-gray-800 border rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed ${
-                  isAmountInvalid || isOverLimit
+                className={`w-full bg-gray-800 border rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed ${isAmountInvalid || isOverLimit
                     ? 'border-red-500 focus:border-red-400'
                     : 'border-gray-600 focus:border-blue-500'
-                }`}
+                  }`}
               />
               {isAmountInvalid && amount && (
                 <p className="theme-soft-danger flex items-center gap-2 rounded-lg px-3 py-2 mt-2 text-xs">
@@ -913,13 +910,12 @@ export default function StellarFiatModal({
                     Bridge Capacity
                   </h3>
                   <div
-                    className={`w-2 h-2 rounded-full ${
-                      isOverLimit
+                    className={`w-2 h-2 rounded-full ${isOverLimit
                         ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]'
                         : isHighLimitUsage
                           ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)]'
                           : 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]'
-                    }`}
+                      }`}
                   />
                 </div>
 
@@ -951,13 +947,12 @@ export default function StellarFiatModal({
 
                     <div className="h-1.5 w-full rounded-full bg-[var(--color-surface-elevated)] overflow-hidden mb-2">
                       <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          isOverLimit
+                        className={`h-full rounded-full transition-all duration-500 ${isOverLimit
                             ? 'bg-red-500'
                             : isHighLimitUsage
                               ? 'bg-amber-400'
                               : 'bg-blue-500'
-                        }`}
+                          }`}
                         style={{ width: `${Math.min(usagePercent, 100)}%` }}
                       />
                     </div>
@@ -1065,8 +1060,8 @@ export default function StellarFiatModal({
                 ) : requiresPreSignConfirmation ? (
                   'Awaiting Confirmation'
                 ) : (
-                  'Review Transaction'
-                ) // Assuming this is also from stellarContract
+                  'Deposit'
+                )
                 }
               </button>
 
@@ -1076,7 +1071,7 @@ export default function StellarFiatModal({
                   setAmount('100');
                   setTxHash(
                     'MOCK' +
-                      Math.random().toString(36).substring(2, 10).toUpperCase(),
+                    Math.random().toString(36).substring(2, 10).toUpperCase(),
                   );
                   setStatus('success');
                 }}

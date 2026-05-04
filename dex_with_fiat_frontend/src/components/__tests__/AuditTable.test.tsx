@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { cleanup, render, screen, waitFor, fireEvent } from '@testing-library/react';
-import AuditTable from './AuditTable';
+import AuditTable from '../AuditTable';
 import { toastStore } from '@/lib/toastStore';
 
 describe('AuditTable', () => {

@@ -28,15 +28,22 @@ export function FilterChipBar({
   onFilterChange,
   onClearAll,
 }: FilterChipBarProps) {
+  // Guard against undefined/partial filterState (e.g. from mocks or SSR)
+  const safeFilterState: FilterState = {
+    status: filterState?.status ?? [],
+    asset: filterState?.asset ?? [],
+    network: filterState?.network ?? [],
+  };
+
   // Hide filter bar when no transactions exist
-  if (filterStats.totalCount === 0) {
+  if (!filterStats?.totalCount) {
     return null;
   }
 
   const hasActiveFilters =
-    filterState.status.length > 0 ||
-    filterState.asset.length > 0 ||
-    filterState.network.length > 0;
+    safeFilterState.status.length > 0 ||
+    safeFilterState.asset.length > 0 ||
+    safeFilterState.network.length > 0;
 
   return (
     <div className="flex flex-col gap-4 p-4 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">

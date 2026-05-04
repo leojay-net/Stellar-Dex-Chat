@@ -12,10 +12,10 @@ use super::*;
 use soroban_sdk::{
     testutils::Address as _,
     token::StellarAssetClient,
-    vec, Address, Bytes, Env,
+    Address, Bytes, Env,
 };
 
-fn setup_bridge<'a>(env: &Env) -> (Address, FiatBridgeClient<'a>, Address, Address, StellarAssetClient<'a>) {
+fn setup_bridge(env: &Env) -> (Address, FiatBridgeClient<'_>, Address, Address, StellarAssetClient<'_>) {
     let admin = Address::generate(env);
     let token_admin = Address::generate(env);
     let token_addr = env
@@ -26,8 +26,8 @@ fn setup_bridge<'a>(env: &Env) -> (Address, FiatBridgeClient<'a>, Address, Addre
     let contract_id = env.register(FiatBridge, ());
     let bridge = FiatBridgeClient::new(env, &contract_id);
 
-    let signers = vec![env, admin.clone()];
-    bridge.init(&admin, &token_addr, &10_000, &1, &signers, &1);
+    let reference = Bytes::from_slice(env, b"test_reference");
+    bridge.init(&admin, &token_addr, &reference);
 
     (contract_id, bridge, admin, token_addr, token_sac)
 }

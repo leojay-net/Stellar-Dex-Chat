@@ -1,9 +1,9 @@
 import { z } from 'zod';
 
 export const offlineStatusToastSchema = z.object({
-  message: z.string().min(1, 'Message cannot be empty'),
-  severity: z.enum(['success', 'error', 'info', 'warning']).default('info'),
-  durationMs: z.number().positive().default(3000),
+  message: z.string().min(1),
+  severity: z.enum(['success', 'error', 'warning', 'info']),
+  durationMs: z.number().positive().optional(),
 });
 
 export type OfflineStatusToast = z.infer<typeof offlineStatusToastSchema>;

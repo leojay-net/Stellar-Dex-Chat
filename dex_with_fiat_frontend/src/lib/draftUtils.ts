@@ -11,7 +11,7 @@ const DEFAULT_TTL = 86400; // 24 hours in seconds
  */
 export const saveDraft = (sessionId: string, content: string): void => {
   if (typeof window === 'undefined' || !sessionId) return;
-  
+
   if (!content.trim()) {
     clearDraft(sessionId);
     return;
@@ -29,7 +29,7 @@ export const saveDraft = (sessionId: string, content: string): void => {
  */
 export const getDraft = (sessionId: string, ttlSeconds: number = DEFAULT_TTL): string | null => {
   if (typeof window === 'undefined' || !sessionId) return null;
-  
+
   const item = localStorage.getItem(`${DRAFT_PREFIX}${sessionId}`);
   if (!item) return null;
 
@@ -65,23 +65,27 @@ export const clearExpiredDrafts = (ttlSeconds: number = DEFAULT_TTL): void => {
   if (typeof window === 'undefined') return;
 
   const now = Date.now();
-  const keys = Object.keys(localStorage);
-  
-  keys.forEach(key => {
-    if (key.startsWith(DRAFT_PREFIX)) {
+  const keysToRemove: string[] = [];
+
+  // Use index-based iteration so it works correctly in jsdom where
+  // Object.keys(localStorage) may not enumerate spied-on keys.
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith(DRAFT_PREFIX)) {
       try {
         const item = localStorage.getItem(key);
         if (item) {
           const draft: Draft = JSON.parse(item);
           const expiryTime = draft.timestamp + ttlSeconds * 1000;
           if (now > expiryTime) {
-            localStorage.removeItem(key);
+            keysToRemove.push(key);
           }
         }
       } catch {
-        // Remove corrupted items
-        localStorage.removeItem(key);
+        keysToRemove.push(key!);
       }
     }
-  });
+  }
+
+  keysToRemove.forEach((key) => localStorage.removeItem(key));
 };

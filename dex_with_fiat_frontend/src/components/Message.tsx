@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
@@ -9,7 +10,8 @@ import { ChatMessage } from '@/types';
 import { AlertTriangle, Bot, Clock, Coins, Link, RotateCcw, User, Loader2, RefreshCcw, XCircle } from 'lucide-react';
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
-import { sanitizeUrl } from '@/lib/markdownSanitizer';
+import type { Components } from 'react-markdown';
+import { toDate } from '@/lib/messageUtils';
 import { useTranslation } from '@/contexts/TranslationContext';
 import { motion, useReducedMotion } from 'framer-motion';
 import CopyButton from '@/components/ui/CopyButton';
@@ -72,6 +74,46 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
     }
   };
 
+  // Memoize the ReactMarkdown components map so it is stable across renders.
+  // Recreating this object on every render causes the entire markdown subtree
+  // to unmount and remount, which is the source of the UI glitch / memory leak.
+  const markdownComponents = useMemo<Components>(
+    () => ({
+      p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+      strong: ({ children }) => (
+        <strong className="font-bold">{children}</strong>
+      ),
+      em: ({ children }) => <em className="italic">{children}</em>,
+      ul: ({ children }) => (
+        <ul className="list-disc list-inside mb-2">{children}</ul>
+      ),
+      li: ({ children }) => <li className="mb-1">{children}</li>,
+      code: ({ children }) => (
+        <code
+          className={`px-1 py-0.5 rounded text-xs font-mono ${isDarkMode
+            ? 'bg-gray-700 text-gray-200'
+            : 'bg-gray-200 text-gray-800'
+            }`}
+        >
+          {children}
+        </code>
+      ),
+      h1: ({ children }) => (
+        <h1 className="text-lg font-bold mb-2">{children}</h1>
+      ),
+      h2: ({ children }) => (
+        <h2 className="text-base font-bold mb-2">{children}</h2>
+      ),
+      h3: ({ children }) => (
+        <h3 className="text-sm font-bold mb-1">{children}</h3>
+      ),
+    }),
+    [isDarkMode],
+  );
+
+  // Safely parse the timestamp — guards against deserialized string values
+  const timestamp = toDate(message.timestamp);
+
   return (
     <motion.div
       initial={shouldAnimate ? "initial" : false}
@@ -85,13 +127,12 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
           className={`flex items-start space-x-3 ${isUser ? 'flex-row-reverse space-x-reverse' : ''}`}
         >
           <div
-            className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center shadow-md transition-transform hover:scale-110 ${
-              isUser
-                ? 'bg-blue-600 text-white'
-                : isDarkMode
-                  ? 'bg-gray-700 text-white'
-                  : 'bg-gray-600 text-white'
-            }`}
+            className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center shadow-md transition-transform hover:scale-110 ${isUser
+              ? 'bg-blue-600 text-white'
+              : isDarkMode
+                ? 'bg-gray-700 text-white'
+                : 'bg-gray-600 text-white'
+              }`}
           >
             {isUser ? (
               <User className="w-4 h-4" />
@@ -106,12 +147,12 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
               className={`inline-block px-4 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 ${
                 isUser
                   ? 'bg-blue-600 text-white'
-                  : isFailed
+                  : hasError
                     ? 'bg-red-50 border-red-200 text-red-900 shadow-red-100'
                     : isDarkMode
                       ? 'bg-gray-800 text-gray-100 border border-gray-700'
                       : 'bg-gray-100 text-gray-900 border border-gray-200'
-              } ${isPending ? 'animate-pulse opacity-70' : ''}`}
+              }`}
             >
               <div className="whitespace-pre-wrap break-words min-h-[20px] flex items-center">
                 {isPending ? (
@@ -124,73 +165,7 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
                 ) : (
                   <ReactMarkdown
                     className="prose prose-sm max-w-none"
-                    components={{
-                      p: ({ children }) => (
-                        <p className="mb-2 last:mb-0">{children}</p>
-                      ),
-                      strong: ({ children }) => (
-                        <strong className="font-bold">{children}</strong>
-                      ),
-                      em: ({ children }) => (
-                        <em className="italic">{children}</em>
-                      ),
-                      ul: ({ children }) => (
-                        <ul className="list-disc list-inside mb-2">
-                          {children}
-                        </ul>
-                      ),
-                      li: ({ children }) => (
-                        <li className="mb-1">{children}</li>
-                      ),
-                      code: ({ children }) => (
-                        <code
-                          className={`px-1 py-0.5 rounded text-xs font-mono ${
-                            isDarkMode
-                              ? 'bg-gray-700 text-gray-200'
-                              : 'bg-gray-200 text-gray-800'
-                          }`}
-                        >
-                          {children}
-                        </code>
-                      ),
-                      h1: ({ children }) => (
-                        <h1 className="text-lg font-bold mb-2">{children}</h1>
-                      ),
-                      h2: ({ children }) => (
-                        <h2 className="text-base font-bold mb-2">{children}</h2>
-                      ),
-                      h3: ({ children }) => (
-                        <h3 className="text-sm font-bold mb-1">{children}</h3>
-                      ),
-                      a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
-                        const safeHref = sanitizeUrl(href);
-                        return (
-                          <a
-                            href={safeHref}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="underline text-blue-400 hover:text-blue-300"
-                          >
-                            {children}
-                          </a>
-                        );
-                      },
-                      img: (props: React.ImgHTMLAttributes<HTMLImageElement> & { src?: string | Blob }) => {
-                        const { src, alt, ...rest } = props;
-                        const srcStr = typeof src === 'string' ? src : undefined;
-                        const safeSrc = sanitizeUrl(srcStr);
-                        void rest;
-                        if (safeSrc === '#blocked') return null;
-                        return (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={safeSrc}
-                            alt={alt ?? ''}
-                            className="max-w-full rounded"
-                          />
-                        );
-                      },
-                    }}
+                    components={markdownComponents}
                   >
                     {maskedContent}
                   </ReactMarkdown>
@@ -203,7 +178,7 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
               className={`flex items-center mt-2 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'} ${isUser ? 'justify-end' : 'justify-start'}`}
             >
               <Clock className="w-3 h-3 mr-1" />
-              {new Date(message.timestamp).toLocaleTimeString([], {
+              {timestamp.toLocaleTimeString([], {
                 hour: '2-digit',
                 minute: '2-digit',
               })}
@@ -246,11 +221,10 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
             )}
             {message.metadata?.guardrail?.triggered && (
               <div
-                className={`mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${
-                  isDarkMode
-                    ? 'border-amber-700 bg-amber-950/40 text-amber-200'
-                    : 'border-amber-200 bg-amber-50 text-amber-800'
-                }`}
+                className={`mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${isDarkMode
+                  ? 'border-amber-700 bg-amber-950/40 text-amber-200'
+                  : 'border-amber-200 bg-amber-50 text-amber-800'
+                  }`}
               >
                 <AlertTriangle className="h-4 w-4" />
                 <span>
@@ -301,15 +275,14 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
                       onClick={() =>
                         onActionClick(action.id, action.type, action.data)
                       }
-                      className={`flex items-center space-x-2 px-3 md:px-4 py-2 text-xs md:text-sm rounded-lg border transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 active:scale-95 ${
-                        action.priority
-                          ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600 shadow-lg shadow-blue-200 dark:shadow-blue-900/50'
-                          : action.type === 'cancel'
-                            ? 'bg-red-500 hover:bg-red-600 text-white border-red-500 shadow-lg shadow-red-200 dark:shadow-red-900/50'
-                            : isDarkMode
-                              ? 'bg-gray-800 hover:bg-gray-700 text-gray-200 border-gray-600'
-                              : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-300'
-                      }`}
+                      className={`flex items-center space-x-2 px-3 md:px-4 py-2 text-xs md:text-sm rounded-lg border transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 active:scale-95 ${action.priority
+                        ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600 shadow-lg shadow-blue-200 dark:shadow-blue-900/50'
+                        : action.type === 'cancel'
+                          ? 'bg-red-500 hover:bg-red-600 text-white border-red-500 shadow-lg shadow-red-200 dark:shadow-red-900/50'
+                          : isDarkMode
+                            ? 'bg-gray-800 hover:bg-gray-700 text-gray-200 border-gray-600'
+                            : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-300'
+                        }`}
                     >
                       {action.type === 'confirm_fiat' && (
                         <Coins className="w-4 h-4" />

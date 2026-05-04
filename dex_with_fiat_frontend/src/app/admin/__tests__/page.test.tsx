@@ -1,4 +1,4 @@
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import '@testing-library/jest-dom';
 import AdminDashboard from '../page';
@@ -47,7 +47,9 @@ describe('AdminDashboard - Dark Mode Support', () => {
   });
 
   it('renders with theme-aware classes', async () => {
-    render(<AdminDashboard />);
+    await act(async () => {
+      render(<AdminDashboard />);
+    });
 
     await waitFor(() => {
       expect(screen.getByText('Admin Dashboard')).toBeInTheDocument();

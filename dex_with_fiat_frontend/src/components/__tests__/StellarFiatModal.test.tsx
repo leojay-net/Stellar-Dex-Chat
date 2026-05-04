@@ -1,7 +1,9 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
-import StellarFiatModal from './StellarFiatModal';
+import StellarFiatModal from '../StellarFiatModal';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { BRIDGE_LIMIT_WARNING_PERCENT } from '@/lib/stellarContract';
 
 vi.mock('@/contexts/StellarWalletContext', () => ({
   useStellarWallet: () => ({
@@ -19,6 +21,7 @@ vi.mock('@/lib/stellarContract', () => ({
   depositToContract: vi.fn(),
   withdrawFromContract: vi.fn(),
   stroopsToDisplay: (stroops: bigint) => String(Number(stroops) / 1e7),
+  BRIDGE_LIMIT_WARNING_PERCENT: 0.9,
 }));
 
 const onClose = vi.fn();

@@ -317,12 +317,6 @@ export function useTransactionFilters(
   // Update URL with new filter state (debounced)
   const updateUrl = useCallback(
     (newFilterState: FilterState) => {
-      const now = Date.now();
-      if (now - lastUpdateTimeRef.current < 50) {
-        return;
-      }
-      lastUpdateTimeRef.current = now;
-
       // Clear existing timer
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);

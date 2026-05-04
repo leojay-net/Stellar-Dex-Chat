@@ -18,7 +18,7 @@ describe('CCIPBridgeModal', () => {
   };
 
   beforeEach(() => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
   });
 
   afterEach(() => {
@@ -101,7 +101,7 @@ describe('CCIPBridgeModal', () => {
     ).toBeInTheDocument();
 
     await act(async () => {
-      vi.advanceTimersByTime(10 * 60 * 1000);
+      vi.advanceTimersByTime(11 * 60 * 1000);
     });
 
     expect(
@@ -208,14 +208,16 @@ describe('CCIPBridgeModal', () => {
         />,
       );
 
-      fireEvent.click(screen.getByText('Start CCIP Transfer'));
+      await act(async () => {
+        fireEvent.click(screen.getByText('Start CCIP Transfer'));
+      });
 
-      // Should show initiating state immediately
-      expect(
-        await screen.findByText('Starting CCIP transfer…'),
-      ).toBeInTheDocument();
+      // Should show optimistic state immediately
+      await waitFor(() => {
+        expect(screen.getByText('Transfer Initiated!')).toBeInTheDocument();
+      });
 
-      // Wait for the transfer to complete
+      // Wait for the transfer to complete (advance time for the mocked 100ms delay)
       await act(async () => {
         vi.advanceTimersByTime(100);
       });
@@ -383,7 +385,14 @@ describe('CCIPBridgeModal', () => {
         />,
       );
 
-      fireEvent.click(screen.getByText('Start CCIP Transfer'));
+      await act(async () => {
+        fireEvent.click(screen.getByText('Start CCIP Transfer'));
+      });
+
+      // Advance to allow optimistic -> polling transition
+      await act(async () => {
+        vi.advanceTimersByTime(100);
+      });
 
       // Initial PENDING status
       expect(

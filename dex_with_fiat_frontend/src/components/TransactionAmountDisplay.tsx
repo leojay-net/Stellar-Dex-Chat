@@ -16,6 +16,18 @@ import { motion } from 'framer-motion';
  */
 export function TransactionAmountDisplay(props: TransactionAmountProps) {
   const result = transactionAmountSchema.safeParse(props);
+  
+  // Always call hooks at the top level, before any conditional returns
+  const { amount, asset, fiatAmount, fiatCurrency } = result.success ? result.data : { amount: 0, asset: 'XLM', fiatAmount: undefined, fiatCurrency: undefined };
+  const numericAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+  const normalizedAsset = asset || 'XLM';
+  const { displayText } = useCurrencyConversion(numericAmount, normalizedAsset);
+  
+  // Auto-scroll: keep the latest amount visible whenever displayText updates.
+  const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [displayText]);
 
   if (!result.success) {
     const errorMessage = result.error.issues[0]?.message || 'Invalid Amount Data';
@@ -31,18 +43,6 @@ export function TransactionAmountDisplay(props: TransactionAmountProps) {
       </motion.span>
     );
   }
-
-  const { amount, asset, fiatAmount, fiatCurrency } = result.data;
-
-  const numericAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
-  const normalizedAsset = asset || 'XLM';
-  const { displayText } = useCurrencyConversion(numericAmount, normalizedAsset);
-
-  // Auto-scroll: keep the latest amount visible whenever displayText updates.
-  const containerRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }, [displayText]);
 
   return (
     <motion.div

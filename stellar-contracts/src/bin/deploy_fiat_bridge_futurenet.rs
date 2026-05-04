@@ -1,10 +1,10 @@
 use std::env;
 use std::fs;
 use std::path::Path;
-use std::process::{Command, exit};
+use std::process::{exit, Command};
 
 /// Deploy FiatBridge contract to Futurenet
-/// 
+///
 /// Environment variables:
 /// - FUTURENET_ADMIN_SECRET_KEY: Admin private key for Futurenet
 /// - FUTURENET_RPC_URL: Futurenet RPC endpoint (default: https://rpc-futurenet.stellar.org)
@@ -13,15 +13,15 @@ use std::process::{Command, exit};
 fn main() {
     let admin_secret = env::var("FUTURENET_ADMIN_SECRET_KEY")
         .expect("❌ FUTURENET_ADMIN_SECRET_KEY environment variable not set");
-    
+
     let rpc_url = env::var("FUTURENET_RPC_URL")
         .unwrap_or_else(|_| "https://rpc-futurenet.stellar.org".to_string());
-    
+
     let network_passphrase = env::var("FUTURENET_NETWORK_PASSPHRASE")
         .unwrap_or_else(|_| "Test SDF Future Network ; April 2020".to_string());
-    
-    let output_file = env::var("OUTPUT_FILE")
-        .unwrap_or_else(|_| "./contract_id_futurenet.txt".to_string());
+
+    let output_file =
+        env::var("OUTPUT_FILE").unwrap_or_else(|_| "./contract_id_futurenet.txt".to_string());
 
     println!("🚀 Deploying FiatBridge to Futurenet...");
     println!("   RPC URL: {}", rpc_url);
@@ -49,12 +49,18 @@ fn main() {
     println!("⚙️  Deploying contract to Futurenet...");
     let deploy_output = Command::new("soroban")
         .args([
-            "contract", "deploy",
-            "--wasm", wasm_path,
-            "--secret-key", &admin_secret,
-            "--network", "futurenet",
-            "--rpc-url", &rpc_url,
-            "--network-passphrase", &network_passphrase,
+            "contract",
+            "deploy",
+            "--wasm",
+            wasm_path,
+            "--secret-key",
+            &admin_secret,
+            "--network",
+            "futurenet",
+            "--rpc-url",
+            &rpc_url,
+            "--network-passphrase",
+            &network_passphrase,
         ])
         .output()
         .expect("Failed to deploy contract");
@@ -86,8 +92,7 @@ fn main() {
             fs::create_dir_all(dir).expect("Failed to create output directory");
         }
     }
-    fs::write(&output_file, contract_id)
-        .expect("Failed to write contract ID to file");
+    fs::write(&output_file, contract_id).expect("Failed to write contract ID to file");
 
     println!("📝 Contract ID saved to: {}", output_file);
     println!("🎉 Deployment complete!");

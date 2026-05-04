@@ -4,7 +4,7 @@
 import React from 'react';
 import { render, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import ReceiptDrawer from './ReceiptDrawer';
+import ReceiptDrawer from '../ReceiptDrawer';
 
 vi.mock('@/contexts/TranslationContext', () => ({
   useTranslation: () => ({ t: (k: string) => k }),
@@ -79,7 +79,8 @@ describe('ReceiptDrawer keyboard shortcuts (#528)', () => {
   });
 
   it('Backspace does nothing when onClearHistory is not provided', () => {
-    const { onClearHistory: _omit, ...propsWithoutClear } = defaultProps;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { onClearHistory, ...propsWithoutClear } = defaultProps;
     expect(() => {
       render(<ReceiptDrawer {...propsWithoutClear} />);
       act(() => {

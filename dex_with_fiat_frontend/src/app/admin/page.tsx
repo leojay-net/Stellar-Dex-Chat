@@ -23,7 +23,6 @@ import {
   CartesianGrid,
 } from 'recharts';
 import Link from 'next/link';
-import { useEffect as useThemeEffect, useState as useThemeState } from 'react';
 
 type AuditLogResponse = {
   entries: AdminAuditLogEntry[];
@@ -62,7 +61,7 @@ function escapeCsvValue(value: string): string {
 
 // Hook to get theme-aware colors for charts
 function useChartColors() {
-  const [colors, setColors] = useThemeState({
+  const [colors, setColors] = useState({
     primary: '#3b82f6',
     textMuted: '#9ca3af',
     border: '#374151',
@@ -70,7 +69,7 @@ function useChartColors() {
     surfaceBorder: '#374151',
   });
 
-  useThemeEffect(() => {
+  useEffect(() => {
     const updateColors = () => {
       const root = document.documentElement;
       const computedStyle = getComputedStyle(root);
@@ -613,13 +612,12 @@ export default function AdminDashboard() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           <span
-                            className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${
-                              entry.result === 'success'
-                                ? 'theme-soft-success'
-                                : entry.result === 'failed'
-                                  ? 'theme-soft-danger'
-                                  : 'theme-soft-warning'
-                            }`}
+                            className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${entry.result === 'success'
+                              ? 'theme-soft-success'
+                              : entry.result === 'failed'
+                                ? 'theme-soft-danger'
+                                : 'theme-soft-warning'
+                              }`}
                           >
                             {entry.result}
                           </span>

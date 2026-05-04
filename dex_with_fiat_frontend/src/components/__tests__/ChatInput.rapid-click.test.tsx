@@ -1,23 +1,34 @@
 import React from 'react';
+import { vi, describe, beforeEach, afterEach, it, expect } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ChatInput from '../ChatInput';
 
 // Mock the translation context
-jest.mock('@/contexts/TranslationContext', () => ({
+vi.mock('@/contexts/TranslationContext', () => ({
   useTranslation: () => ({
     t: (key: string) => key,
   }),
 }));
 
+// Mock Stellar Wallet context
+vi.mock('@/contexts/StellarWalletContext', () => ({
+  useStellarWallet: () => ({
+    connection: {
+      isConnected: true,
+      address: 'GABC123',
+    },
+  }),
+}));
+
 // Mock draft utils
-jest.mock('@/lib/draftUtils', () => ({
-  saveDraft: jest.fn(),
-  getDraft: jest.fn(() => ''),
-  clearDraft: jest.fn(),
+vi.mock('@/lib/draftUtils', () => ({
+  saveDraft: vi.fn(),
+  getDraft: vi.fn(() => ''),
+  clearDraft: vi.fn(),
 }));
 
 describe('ChatInput - Rapid Click Protection', () => {
-  const mockOnSendMessage = jest.fn();
+  const mockOnSendMessage = vi.fn();
   const defaultProps = {
     onSendMessage: mockOnSendMessage,
     isLoading: false,
@@ -25,12 +36,12 @@ describe('ChatInput - Rapid Click Protection', () => {
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
-    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.clearAllMocks();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('should prevent duplicate message submissions on rapid keyboard shortcut presses', async () => {
@@ -130,7 +141,7 @@ describe('ChatInput - Rapid Click Protection', () => {
   });
 
   it('should log suppressed duplicate attempts', async () => {
-    const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation();
     
     render(<ChatInput {...defaultProps} />);
     const textarea = screen.getByPlaceholderText('Type a message...');
