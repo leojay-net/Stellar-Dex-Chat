@@ -230,6 +230,7 @@ export interface AuditLogFilter {
   endDate?: Date;
   status?: AuditEntry['status'];
   txHash?: string;
+}
 // Filter Types for Transaction Views
 export type TransactionStatus =
   | 'pending'
@@ -250,6 +251,11 @@ export interface FilterOption {
   value: string;
   label: string;
   count: number;
+}
+
+export interface FilterChipTone {
+  chipClassName: string;
+  countClassName: string;
 }
 
 export interface FilterStats {

@@ -77,6 +77,9 @@ The `FiatBridge` contract exposes read-only views intended for operational dashb
 - **AI Integration**: Google Generative AI assistant
 - **Fiat Payout**: Paystack API (Nigerian bank transfers)
 
+### 4. Admin Authentication Architecture
+The admin dashboard and administrative actions rely on an on-chain root of trust. The `AdminGuard` component in the Next.js app fetches the configured admin address directly from the smart contract using `getAdmin()`. All administrative write operations require cryptographic signatures matching this address, ensuring front-end role spoofing is impossible. For a detailed architectural breakdown, see the [FiatBridge Contract README](stellar-contracts/FIAT_BRIDGE_README.md#admin-authentication-architecture).
+
 ## Tech Stack
 
 | Layer | Technology | Purpose |
@@ -99,6 +102,8 @@ DEX-CHAT converts crypto to fiat through an AI-guided conversation flow. The end
 ### 1. Deposit (crypto into escrow)
 
 The user connects their Freighter wallet and tells the AI assistant they want to offramp a token amount. The frontend builds a Soroban `deposit` transaction that transfers the specified token from the user's Stellar account into the `FiatBridge` contract. The contract validates the deposit against oracle-sourced prices, enforces slippage limits, checks per-token and daily deposit caps, and records a `Receipt` with a unique memo hash.
+
+For maintainers: how slippage BPS and the on-chain threshold interact is documented in [docs/slippage-threshold.md](docs/slippage-threshold.md).
 
 ### 2. Escrow (on-chain hold)
 

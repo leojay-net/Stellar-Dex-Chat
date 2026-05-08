@@ -181,10 +181,26 @@ export default function ChatInput({
         event.preventDefault();
         setShowPalette((prev: boolean) => !prev);
       }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'n' && !event.shiftKey) {
+        event.preventDefault();
+        onNewChat?.();
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'h') {
+        event.preventDefault();
+        onOpenHistory?.();
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'b') {
+        event.preventDefault();
+        onOpenBridgeModal?.();
+      }
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'c') {
+        event.preventDefault();
+        onCancelRequest?.();
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [onNewChat, onOpenHistory, onOpenBridgeModal, onCancelRequest]);
 
   // Load draft when session changes
   useEffect(() => {

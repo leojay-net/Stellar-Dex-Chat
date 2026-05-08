@@ -289,4 +289,39 @@ export function createChatStateMachine(): StateMachine<ChatState, ChatEvent, Cha
   return new StateMachine<ChatState, ChatEvent, ChatMachineContext>(config);
 }
 
+/**
+ * Formats a compact snapshot string that can be copied from debug tools/UI.
+ */
+export function formatChatStateSnapshot(
+  state: ChatState,
+  context: ChatMachineContext,
+): string {
+  return [
+    `state=${state}`,
+    `messageCount=${context.messageCount}`,
+    `hasUserCancelled=${context.hasUserCancelled}`,
+    `needsClarification=${context.needsClarification}`,
+    `hasPendingTx=${Boolean(context.pendingTransactionData)}`,
+  ].join(' | ');
+}
+
+/**
+ * Copies the provided state-machine snapshot to clipboard.
+ * Returns true on success and false when clipboard is unavailable/fails.
+ */
+export async function copyChatStateSnapshot(
+  state: ChatState,
+  context: ChatMachineContext,
+): Promise<boolean> {
+  if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+    return false;
+  }
+  try {
+    await navigator.clipboard.writeText(formatChatStateSnapshot(state, context));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export { ChatGuards };

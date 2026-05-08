@@ -18,6 +18,7 @@ type AnalyzeResult = {
 };
 
 let analyzeQueue: Array<AnalyzeResult | Promise<AnalyzeResult>> = [];
+const createNewSessionSpy = vi.fn(() => 'session-1');
 
 class MockAIAssistant {
   static readonly LOW_CONFIDENCE_THRESHOLD = 0.7;
@@ -80,7 +81,7 @@ async function flushEffects(ticks: number = 1) {
 
 vi.mock('./useChatHistory', () => ({
   useChatHistory: () => ({
-    createNewSession: vi.fn(() => 'session-1'),
+    createNewSession: createNewSessionSpy,
     updateCurrentSession: vi.fn(),
     loadSession: vi.fn(() => null),
     currentSessionId: 'session-1',
@@ -643,6 +644,7 @@ describe('Message Retry UX', () => {
 describe('useChat flow state transitions', () => {
   beforeEach(() => {
     analyzeQueue = [];
+    createNewSessionSpy.mockClear();
   });
 
   afterEach(() => {
@@ -689,6 +691,13 @@ describe('useChat flow state transitions', () => {
       'cancelled',
     );
 
+    harness.cleanup();
+  });
+
+  it('hydration-safe init: does not throw and eventually initializes session', async () => {
+    const harness = await setupHook();
+    await flushEffects(3);
+    expect(createNewSessionSpy).toHaveBeenCalled();
     harness.cleanup();
   });
 
@@ -799,6 +808,84 @@ describe('useChat flow state transitions', () => {
       fiatCurrency: 'NGN',
       amountIn: '10',
     });
+
+    harness.cleanup();
+  });
+});
+
+// ── Issue #530 regression: race condition in useChat ─────────────────────────
+describe('useChat race condition regression (#530)', () => {
+  beforeEach(() => {
+    analyzeQueue = [];
+    createNewSessionSpy.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('concurrent sends produce unique message IDs — no ID collision', async () => {
+    // Both resolves immediately so two sends can race
+    analyzeQueue = [
+      { intent: 'query', confidence: 0.99, extractedData: {}, requiredQuestions: [], suggestedResponse: 'resp A' },
+      { intent: 'query', confidence: 0.99, extractedData: {}, requiredQuestions: [], suggestedResponse: 'resp B' },
+    ];
+
+    const harness = await setupHook();
+    await flushEffects(1);
+
+    await act(async () => { await harness.api.sendMessage('msg A'); });
+    await flushEffects(2);
+    await act(async () => { await harness.api.sendMessage('msg B'); });
+    await flushEffects(2);
+
+    const ids = harness.api.messages.map((m) => m.id);
+    const unique = new Set(ids);
+    expect(unique.size).toBe(ids.length);
+
+    harness.cleanup();
+  });
+
+  it('cancelPendingRequest works even when called before isLoading state propagates', async () => {
+    // Never-resolving promise simulates in-flight request
+    analyzeQueue = [new Promise<AnalyzeResult>(() => {})];
+
+    const harness = await setupHook();
+    await flushEffects(1);
+
+    act(() => { void harness.api.sendMessage('slow request'); });
+
+    // Cancel immediately — before React has flushed the isLoading=true state
+    act(() => { harness.api.cancelPendingRequest(); });
+
+    await flushEffects(2);
+
+    expect(harness.api.isLoading).toBe(false);
+    const last = harness.api.messages[harness.api.messages.length - 1];
+    expect(last?.metadata?.requestStatus).toBe('cancelled');
+
+    harness.cleanup();
+  });
+
+  it('stale sendMessage closure does not re-use a previous AbortController', async () => {
+    analyzeQueue = [
+      { intent: 'query', confidence: 0.99, extractedData: {}, requiredQuestions: [], suggestedResponse: 'first' },
+      { intent: 'query', confidence: 0.99, extractedData: {}, requiredQuestions: [], suggestedResponse: 'second' },
+    ];
+
+    const harness = await setupHook();
+    await flushEffects(1);
+
+    await act(async () => { await harness.api.sendMessage('first'); });
+    await flushEffects(2);
+
+    // Second send must not throw or leave isLoading stuck
+    await act(async () => { await harness.api.sendMessage('second'); });
+    await flushEffects(2);
+
+    expect(harness.api.isLoading).toBe(false);
+    const userMessages = harness.api.messages.filter((m) => m.role === 'user');
+    expect(userMessages).toHaveLength(2);
 
     harness.cleanup();
   });

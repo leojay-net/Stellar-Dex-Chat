@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { AuditEntry, AuditLogFilter } from '@/types';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { AuditEntry } from '@/types';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useToast } from '@/hooks/useToast';
 
 interface AuditTableProps {
   onRefresh?: () => void;
@@ -16,7 +18,7 @@ interface FilterState {
   endDate: string;
 }
 
-export default function AuditTable({ onRefresh }: AuditTableProps) {
+export default function AuditTable({}: AuditTableProps) {
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,8 +34,14 @@ export default function AuditTable({ onRefresh }: AuditTableProps) {
   });
 
   const pageSize = 20;
+  const fetchAbortRef = useRef<AbortController | null>(null);
 
   const fetchAuditEntries = useCallback(async () => {
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    const { signal } = controller;
+
     setLoading(true);
     setError(null);
 
@@ -50,7 +58,9 @@ export default function AuditTable({ onRefresh }: AuditTableProps) {
       params.append('limit', pageSize.toString());
       params.append('offset', (currentPage * pageSize).toString());
 
-      const response = await fetch(`/api/admin-audit?${params.toString()}`);
+      const response = await fetch(`/api/admin-audit?${params.toString()}`, {
+        signal,
+      });
 
       if (!response.ok) {
         throw new Error(`API error: ${response.statusText}`);
@@ -63,16 +73,51 @@ export default function AuditTable({ onRefresh }: AuditTableProps) {
       })));
       setTotalEntries(data.total);
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        return;
+      }
       setError(err instanceof Error ? err.message : 'Failed to fetch audit entries');
       console.error('Audit fetch error:', err);
     } finally {
-      setLoading(false);
+      if (!signal.aborted) {
+        setLoading(false);
+      }
     }
   }, [filters, currentPage]);
 
   useEffect(() => {
-    fetchAuditEntries();
+    void fetchAuditEntries();
+    return () => {
+      fetchAbortRef.current?.abort();
+    };
   }, [fetchAuditEntries]);
+
+  const { isOnline, wasOffline, resetWasOffline } = useOnlineStatus();
+  const { addToast } = useToast();
+  const wasOnlineRef = useRef(true);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const prevOnline = wasOnlineRef.current;
+
+    if (prevOnline && !isOnline) {
+      addToast({
+        message: "You're offline. Audit entries may not update until you reconnect.",
+        severity: 'warning',
+        durationMs: 4500,
+      });
+    } else if (!prevOnline && isOnline && wasOffline) {
+      addToast({
+        message: 'Back online. Audit table will refresh with the latest data.',
+        severity: 'success',
+        durationMs: 3000,
+      });
+      resetWasOffline();
+    }
+
+    wasOnlineRef.current = isOnline;
+  }, [isOnline, wasOffline, addToast, resetWasOffline]);
 
   const handleFilterChange = (key: keyof FilterState, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));

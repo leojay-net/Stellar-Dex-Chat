@@ -10,6 +10,7 @@ import {
   type WalletConnectPayload,
   type BridgeOpenPayload,
   type TxConfirmPayload,
+  type FiatPayoutStepPayload,
 } from '@/lib/chatTelemetry';
 
 /**
@@ -49,6 +50,10 @@ export function useChatTelemetry() {
     chatTelemetry.txConfirm(payload);
   }, []);
 
+  const trackFiatPayoutStep = useCallback((payload: FiatPayoutStepPayload) => {
+    chatTelemetry.fiatPayoutStep(payload);
+  }, []);
+
   return {
     /** Whether the user has granted analytics consent. */
     consented,
@@ -59,5 +64,6 @@ export function useChatTelemetry() {
     trackWalletConnect,
     trackBridgeOpen,
     trackTxConfirm,
+    trackFiatPayoutStep,
   };
 }

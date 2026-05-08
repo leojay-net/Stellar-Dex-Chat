@@ -5,7 +5,9 @@ import {
     ChatGuards,
     ChatMachineContext,
     ChatState,
+  copyChatStateSnapshot,
     createChatStateMachine,
+  formatChatStateSnapshot,
 } from './chatStateMachine';
 
 describe('ChatStateMachine', () => {
@@ -662,5 +664,44 @@ describe('ChatStateMachine', () => {
       expect(machine.transition(ChatEvent.RESET_FLOW)).toBe(true);
       expect(machine.getState().state).toBe(ChatState.INITIALIZED);
     });
+  });
+});
+
+describe('chatStateMachine clipboard snapshot helpers', () => {
+  it('formats a stable snapshot string', () => {
+    const context: ChatMachineContext = {
+      messageCount: 2,
+      hasUserCancelled: false,
+      pendingTransactionData: { tokenIn: 'XLM' },
+      needsClarification: false,
+      clarificationQuestion: null,
+      errorMessage: null,
+      lastEventTime: Date.now(),
+      previousState: null,
+    };
+    expect(formatChatStateSnapshot(ChatState.ANALYZING, context)).toContain(
+      'state=ANALYZING',
+    );
+  });
+
+  it('copies snapshot to clipboard when available', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    const context: ChatMachineContext = {
+      messageCount: 1,
+      hasUserCancelled: false,
+      pendingTransactionData: null,
+      needsClarification: false,
+      clarificationQuestion: null,
+      errorMessage: null,
+      lastEventTime: Date.now(),
+      previousState: null,
+    };
+    const copied = await copyChatStateSnapshot(ChatState.SENDING_MESSAGE, context);
+    expect(copied).toBe(true);
+    expect(writeText).toHaveBeenCalledTimes(1);
   });
 });
