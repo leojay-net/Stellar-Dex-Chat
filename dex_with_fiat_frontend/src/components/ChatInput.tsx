@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Send, Loader2, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from '@/contexts/TranslationContext';
@@ -43,6 +43,7 @@ export default function ChatInput({
   const [showPalette, setShowPalette] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
   const [paletteIndex, setPaletteIndex] = useState(0);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   
   const { execute: executeSubmit, isProcessing: isSubmitting } = useIdempotentAction({
     cooldownMs: 1000,
@@ -65,6 +66,19 @@ export default function ChatInput({
       setShowCommands(false);
     }
   };
+
+  const syncTextareaScroll = useCallback(
+    (textarea: HTMLTextAreaElement | null = textareaRef.current) => {
+      if (!textarea) {
+        return;
+      }
+
+      textarea.style.height = 'auto';
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+      textarea.scrollTop = textarea.scrollHeight;
+    },
+    [],
+  );
 
   const selectCommand = (cmd: string) => {
     setMessage(cmd + ' ');
@@ -100,6 +114,10 @@ export default function ChatInput({
       setWalletWarning(false);
     }
   }, [connection.isConnected]);
+
+  useEffect(() => {
+    syncTextareaScroll();
+  }, [message, syncTextareaScroll]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (showCommands) {
@@ -321,6 +339,7 @@ export default function ChatInput({
       <div className="flex items-end space-x-3">
         <div className="flex-1 relative">
           <textarea
+            ref={textareaRef}
             value={message}
             onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -333,11 +352,10 @@ export default function ChatInput({
               minHeight: '48px',
               maxHeight: '120px',
               height: 'auto',
+              overflowY: 'auto',
             }}
             onInput={(e: React.FormEvent<HTMLTextAreaElement>) => {
-              const target = e.target as HTMLTextAreaElement;
-              target.style.height = 'auto';
-              target.style.height = `${Math.min(target.scrollHeight, 120)}px`;
+              syncTextareaScroll(e.currentTarget);
             }}
           />
         </div>
