@@ -1,11 +1,60 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Bell, Check, Trash2, X } from 'lucide-react';
 import { useNotifications, AppNotification } from '@/hooks/useNotifications';
 import { useTheme } from '@/contexts/ThemeContext';
 
-export default function NotificationsCenter() {
+interface NotificationsCenterErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+interface NotificationsCenterErrorBoundaryState {
+  hasError: boolean;
+}
+
+class NotificationsCenterErrorBoundary extends React.Component<
+  NotificationsCenterErrorBoundaryProps,
+  NotificationsCenterErrorBoundaryState
+> {
+  public constructor(props: NotificationsCenterErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  public static getDerivedStateFromError(): NotificationsCenterErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  public componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('NotificationsCenter crashed:', error, errorInfo);
+  }
+
+  public render() {
+    if (this.state.hasError) {
+      return (
+        <div className="relative">
+          <button
+            type="button"
+            disabled
+            aria-label="Notifications unavailable"
+            title="Notifications unavailable"
+            className="relative p-2 rounded-lg text-gray-400 opacity-70 cursor-not-allowed"
+          >
+            <Bell className="w-5 h-5" />
+          </button>
+          <span role="alert" className="sr-only">
+            Notifications are unavailable.
+          </span>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+function NotificationsCenterContent() {
   const [isOpen, setIsOpen] = useState(false);
   const {
     notifications,
@@ -176,5 +225,13 @@ export default function NotificationsCenter() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function NotificationsCenter() {
+  return (
+    <NotificationsCenterErrorBoundary>
+      <NotificationsCenterContent />
+    </NotificationsCenterErrorBoundary>
   );
 }
