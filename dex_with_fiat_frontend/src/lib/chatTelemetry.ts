@@ -11,6 +11,7 @@ export type ChatEventName =
   | 'message_retry'
   | 'wallet_connect'
   | 'bridge_open'
+  | 'bridge_stats_fetch'
   | 'tx_confirm'
   | 'fiat_payout_step'
   | 'avatar_color_check';
@@ -47,6 +48,18 @@ export interface BridgeOpenPayload {
   flow: 'deposit' | 'withdraw';
 }
 
+export type BridgeStatsTelemetrySource = 'auto' | 'manual';
+
+export interface BridgeStatsTelemetryPayload {
+  source: BridgeStatsTelemetrySource;
+  success: boolean;
+  durationMs: number;
+  hasBalance: boolean;
+  hasLimit: boolean;
+  hasTotalDeposited: boolean;
+  errorMessage?: string;
+}
+
 export interface TxConfirmPayload {
   assetCode: string;
   amountXlm?: number;
@@ -78,8 +91,7 @@ export interface AvatarColorTelemetryPayload {
   avatarTextColor?: string;
 }
 
-export interface AccessibleAvatarColorTelemetryPayload
-  extends AvatarColorTelemetryPayload {
+export interface AccessibleAvatarColorTelemetryPayload extends AvatarColorTelemetryPayload {
   avatarTextColor: string;
   avatarContrastRatio: number;
   avatarContrastCompliant: boolean;
@@ -140,9 +152,7 @@ function getRelativeLuminance(color: string): number | null {
     const hex = normalizedColor.slice(1);
     const channels = [0, 2, 4].map((offset) => {
       const sRGB = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
-      return sRGB <= 0.03928
-        ? sRGB / 12.92
-        : ((sRGB + 0.055) / 1.055) ** 2.4;
+      return sRGB <= 0.03928 ? sRGB / 12.92 : ((sRGB + 0.055) / 1.055) ** 2.4;
     });
 
     return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
@@ -159,10 +169,7 @@ export function calculateContrastRatio(
     const foregroundLuminance = getRelativeLuminance(foregroundColor);
     const backgroundLuminance = getRelativeLuminance(backgroundColor);
 
-    if (
-      foregroundLuminance === null ||
-      backgroundLuminance === null
-    ) {
+    if (foregroundLuminance === null || backgroundLuminance === null) {
       return null;
     }
 
@@ -209,15 +216,17 @@ export function getAccessibleAvatarTextColor(
       }
     }
 
-    return bestRatio >= MIN_CONTRAST_RATIO ? bestColor : normalizedPreferredTextColor;
+    return bestRatio >= MIN_CONTRAST_RATIO
+      ? bestColor
+      : normalizedPreferredTextColor;
   } catch {
     return FALLBACK_LIGHT_TEXT;
   }
 }
 
-export function withAccessibleAvatarContrast<
-  P extends object,
->(payload: P): P | (P & AccessibleAvatarColorTelemetryPayload) {
+export function withAccessibleAvatarContrast<P extends object>(
+  payload: P,
+): P | (P & AccessibleAvatarColorTelemetryPayload) {
   try {
     const avatarPayload = payload as Partial<AvatarColorTelemetryPayload>;
     const backgroundColor =
@@ -289,10 +298,7 @@ export function setTelemetryConsent(enabled: boolean): void {
  * Fix for rendering overflow: Uses requestAnimationFrame to defer event
  * dispatch and prevent blocking the main render cycle.
  */
-function emit<P extends object>(
-  name: ChatEventName,
-  payload: P,
-): void {
+function emit<P extends object>(name: ChatEventName, payload: P): void {
   try {
     if (!getTelemetryConsent()) return;
 
@@ -325,7 +331,7 @@ function emit<P extends object>(
     // Error boundary: silently ignore any errors during event emission
     // to prevent telemetry failures from affecting the app
   }
-}   
+}
 
 // ── Public API ────────────────────────────────────────────────────────────
 
@@ -344,6 +350,10 @@ export const chatTelemetry = {
 
   bridgeOpen(payload: BridgeOpenPayload): void {
     emit('bridge_open', payload);
+  },
+
+  bridgeStatsFetch(payload: BridgeStatsTelemetryPayload): void {
+    emit('bridge_stats_fetch', payload);
   },
 
   txConfirm(payload: TxConfirmPayload): void {

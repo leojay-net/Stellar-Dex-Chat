@@ -13,6 +13,7 @@ import {
   type MessageRetryPayload,
   type WalletConnectPayload,
   type BridgeOpenPayload,
+  type BridgeStatsTelemetryPayload,
   type TxConfirmPayload,
   withAccessibleAvatarContrast,
 } from './chatTelemetry';
@@ -122,9 +123,35 @@ describe('Event payload shapes', () => {
     expect(payload.flow).toBe('deposit');
   });
 
+  it('bridge_stats_fetch has correct schema', async () => {
+    const promise = captureNextEvent<BridgeStatsTelemetryPayload>();
+    chatTelemetry.bridgeStatsFetch({
+      source: 'manual',
+      success: true,
+      durationMs: 42,
+      hasBalance: true,
+      hasLimit: true,
+      hasTotalDeposited: false,
+    });
+    const event = await promise;
+
+    expect(event.name).toBe('bridge_stats_fetch');
+    const payload = event.payload;
+    expect(payload.source).toBe('manual');
+    expect(payload.success).toBe(true);
+    expect(payload.durationMs).toBe(42);
+    expect(payload.hasBalance).toBe(true);
+    expect(payload.hasLimit).toBe(true);
+    expect(payload.hasTotalDeposited).toBe(false);
+  });
+
   it('tx_confirm has correct schema', async () => {
     const promise = captureNextEvent<TxConfirmPayload>();
-    chatTelemetry.txConfirm({ assetCode: 'XLM', amountXlm: 10, network: 'TESTNET' });
+    chatTelemetry.txConfirm({
+      assetCode: 'XLM',
+      amountXlm: 10,
+      network: 'TESTNET',
+    });
     const event = await promise;
 
     expect(event.name).toBe('tx_confirm');
@@ -180,7 +207,6 @@ describe('Avatar contrast helpers', () => {
   it('switches to a darker avatar text color when light text is not accessible', () => {
     expect(getAccessibleAvatarTextColor('#F3F4F6', '#FFFFFF')).toBe('#111827');
   });
-
 });
 
 describe('Telemetry motion variants', () => {
