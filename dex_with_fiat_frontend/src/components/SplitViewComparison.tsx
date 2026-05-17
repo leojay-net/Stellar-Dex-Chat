@@ -44,7 +44,10 @@ function ThreadPane({
   const scrollToMessage = (id: string) => {
     const el = scrollRef.current?.querySelector(`[data-message-id="${id}"]`);
     if (el && typeof (el as HTMLElement).scrollIntoView === 'function') {
-      (el as HTMLElement).scrollIntoView({ block: 'center', behavior: 'smooth' });
+      (el as HTMLElement).scrollIntoView({
+        block: 'center',
+        behavior: 'smooth',
+      });
     }
   };
 
@@ -137,7 +140,9 @@ function ThreadPane({
                 >
                   <span
                     className={`font-semibold ${
-                      isUser ? 'text-[var(--color-primary)]' : 'text-[var(--color-success)]'
+                      isUser
+                        ? 'text-[var(--color-primary)]'
+                        : 'text-[var(--color-success)]'
                     }`}
                   >
                     {isUser ? 'You' : 'Assistant'}
@@ -145,9 +150,12 @@ function ThreadPane({
                   <p className="mt-1 line-clamp-3 leading-relaxed text-[var(--color-text-secondary)]">
                     {msg.content}
                   </p>
-                   <p className="mt-1 text-[10px] text-[var(--color-text-muted)]" data-testid="message-timestamp">
-                     {formatTimestamp(msg.timestamp)}
-                   </p>
+                  <p
+                    className="mt-1 text-[10px] text-[var(--color-text-muted)]"
+                    data-testid="message-timestamp"
+                  >
+                    {formatTimestamp(msg.timestamp)}
+                  </p>
                 </button>
               );
             })
@@ -165,15 +173,40 @@ export default function SplitViewComparison({
   splitView,
   sessions,
 }: SplitViewComparisonProps) {
-  const { state, close, setLeftSession, setRightSession, swapSessions, selectMessage, leftSession, rightSession } =
-    splitView;
+  const {
+    state,
+    close,
+    setLeftSession,
+    setRightSession,
+    swapSessions,
+    selectMessage,
+  } = splitView;
 
   const { isOnline, wasOffline, resetWasOffline } = useOnlineStatus();
   const { addToast } = useToast();
+  const [optimisticLeftSessionId, setOptimisticLeftSessionId] = React.useState<
+    string | null
+  >(state.leftSessionId);
+  const [optimisticRightSessionId, setOptimisticRightSessionId] =
+    React.useState<string | null>(state.rightSessionId);
+  const [optimisticSelectedMessageId, setOptimisticSelectedMessageId] =
+    React.useState<string | null>(state.selectedMessageId);
   // Fix (#523): initialise the ref to `true` (assume online at mount) so the
   // first offline transition is always detected correctly, regardless of the
   // order in which React commits the initial render vs. the effect.
   const wasOnlineRef = useRef(true);
+
+  useEffect(() => {
+    setOptimisticLeftSessionId(state.leftSessionId);
+  }, [state.leftSessionId]);
+
+  useEffect(() => {
+    setOptimisticRightSessionId(state.rightSessionId);
+  }, [state.rightSessionId]);
+
+  useEffect(() => {
+    setOptimisticSelectedMessageId(state.selectedMessageId);
+  }, [state.selectedMessageId]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -194,7 +227,8 @@ export default function SplitViewComparison({
       });
     } else if (!prevOnline && isOnline && wasOffline) {
       addToast({
-        message: 'Back online. Comparison panes will use the latest thread data.',
+        message:
+          'Back online. Comparison panes will use the latest thread data.',
         severity: 'success',
         durationMs: 3000,
       });
@@ -208,6 +242,38 @@ export default function SplitViewComparison({
   if (!state.isOpen) return null;
 
   const dialogTitleId = 'split-view-comparison-title';
+  const optimisticLeftSession =
+    sessions.find((session) => session.id === optimisticLeftSessionId) ?? null;
+  const optimisticRightSession =
+    sessions.find((session) => session.id === optimisticRightSessionId) ?? null;
+  const hasOptimisticUpdate =
+    optimisticLeftSessionId !== state.leftSessionId ||
+    optimisticRightSessionId !== state.rightSessionId ||
+    optimisticSelectedMessageId !== state.selectedMessageId;
+
+  const handleLeftSessionChange = (id: string) => {
+    setOptimisticLeftSessionId(id || null);
+    setOptimisticSelectedMessageId(null);
+    setLeftSession(id);
+  };
+
+  const handleRightSessionChange = (id: string) => {
+    setOptimisticRightSessionId(id || null);
+    setOptimisticSelectedMessageId(null);
+    setRightSession(id);
+  };
+
+  const handleSwapSessions = () => {
+    setOptimisticLeftSessionId(optimisticRightSessionId);
+    setOptimisticRightSessionId(optimisticLeftSessionId);
+    setOptimisticSelectedMessageId(null);
+    swapSessions();
+  };
+
+  const handleSelectMessage = (id: string | null) => {
+    setOptimisticSelectedMessageId(id);
+    selectMessage(id);
+  };
 
   return (
     <div
@@ -223,12 +289,25 @@ export default function SplitViewComparison({
         aria-label="Comparison actions"
         className="flex items-center justify-between px-4 py-2 border-b border-[var(--color-border)] bg-[var(--color-surface-muted)] flex-shrink-0"
       >
-        <h2 id={dialogTitleId} className="text-sm font-semibold text-[var(--color-text-primary)]">
+        <h2
+          id={dialogTitleId}
+          className="text-sm font-semibold text-[var(--color-text-primary)]"
+        >
           Compare Threads
         </h2>
 
         <div className="flex items-center gap-2">
-          {state.selectedMessageId && (
+          {hasOptimisticUpdate && (
+            <span
+              role="status"
+              aria-live="polite"
+              className="text-xs px-2 py-0.5 rounded bg-[var(--color-warning-soft)] text-[var(--color-warning)]"
+            >
+              Updating comparison…
+            </span>
+          )}
+
+          {optimisticSelectedMessageId && (
             <span className="text-xs px-2 py-0.5 rounded bg-[var(--color-primary-soft)] text-[var(--color-primary)]">
               Message selected
             </span>
@@ -236,7 +315,7 @@ export default function SplitViewComparison({
 
           {/* Swap button */}
           <button
-            onClick={swapSessions}
+            onClick={handleSwapSessions}
             title="Swap threads"
             aria-label="Swap left and right threads"
             className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-[var(--color-surface)] hover:bg-[var(--color-surface-elevated)] text-[var(--color-text-primary)] border border-[var(--color-border)]"
@@ -262,20 +341,20 @@ export default function SplitViewComparison({
       {/* Two panes */}
       <div className="flex flex-1 min-h-0 overflow-hidden flex-col md:flex-row">
         <ThreadPane
-          session={leftSession}
+          session={optimisticLeftSession}
           label="Left"
-          selectedMessageId={state.selectedMessageId}
+          selectedMessageId={optimisticSelectedMessageId}
           allSessions={sessions}
-          onSelectSession={setLeftSession}
-          onSelectMessage={selectMessage}
+          onSelectSession={handleLeftSessionChange}
+          onSelectMessage={handleSelectMessage}
         />
         <ThreadPane
-          session={rightSession}
+          session={optimisticRightSession}
           label="Right"
-          selectedMessageId={state.selectedMessageId}
+          selectedMessageId={optimisticSelectedMessageId}
           allSessions={sessions}
-          onSelectSession={setRightSession}
-          onSelectMessage={selectMessage}
+          onSelectSession={handleRightSessionChange}
+          onSelectMessage={handleSelectMessage}
         />
       </div>
     </div>
