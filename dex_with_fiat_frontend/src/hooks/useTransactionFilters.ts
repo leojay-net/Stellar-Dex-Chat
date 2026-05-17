@@ -10,7 +10,10 @@ import type {
   FilterChipTone,
   TransactionStatus,
 } from '@/types';
-import { filterTransactions, computeFilterStats } from '@/lib/transactionFilters';
+import {
+  filterTransactions,
+  computeFilterStats,
+} from '@/lib/transactionFilters';
 import {
   deserializeFilters,
   mergeFilterParams,
@@ -31,10 +34,26 @@ function areFilterStatesEqual(a: FilterState, b: FilterState): boolean {
  * Keyboard shortcut definitions exposed by the hook.
  */
 export const KEYBOARD_SHORTCUTS = {
-  clearAll: { key: 'x', modifiers: 'Ctrl+Shift', description: 'Clear all filters' },
-  cycleStatus: { key: '1', modifiers: 'Ctrl+Shift', description: 'Cycle status filter' },
-  cycleAsset: { key: '2', modifiers: 'Ctrl+Shift', description: 'Cycle asset filter' },
-  cycleNetwork: { key: '3', modifiers: 'Ctrl+Shift', description: 'Cycle network filter' },
+  clearAll: {
+    key: 'x',
+    modifiers: 'Ctrl+Shift',
+    description: 'Clear all filters',
+  },
+  cycleStatus: {
+    key: '1',
+    modifiers: 'Ctrl+Shift',
+    description: 'Cycle status filter',
+  },
+  cycleAsset: {
+    key: '2',
+    modifiers: 'Ctrl+Shift',
+    description: 'Cycle asset filter',
+  },
+  cycleNetwork: {
+    key: '3',
+    modifiers: 'Ctrl+Shift',
+    description: 'Cycle network filter',
+  },
 } as const;
 
 export interface UseTransactionFiltersReturn {
@@ -180,7 +199,10 @@ const FILTER_TONE_PALETTES = {
   },
 } as const satisfies Record<string, FilterTonePair>;
 
-const STATUS_TONE_KEYS: Record<TransactionStatus, keyof typeof FILTER_TONE_PALETTES> = {
+const STATUS_TONE_KEYS: Record<
+  TransactionStatus,
+  keyof typeof FILTER_TONE_PALETTES
+> = {
   pending: 'amber',
   completed: 'emerald',
   warning: 'blue',
@@ -259,10 +281,8 @@ export function useTransactionFilters(
   const searchParams = useSearchParams();
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingFilterStateRef = useRef<FilterState | null>(null);
-  const lastUpdateTimeRef = useRef<number>(0);
-  const [optimisticFilterState, setOptimisticFilterState] = useState<FilterState | null>(
-    null,
-  );
+  const [optimisticFilterState, setOptimisticFilterState] =
+    useState<FilterState | null>(null);
 
   // Parse filter state from URL (with fallback for SSR)
   const urlFilterState = useMemo(() => {
@@ -317,12 +337,6 @@ export function useTransactionFilters(
   // Update URL with new filter state (debounced)
   const updateUrl = useCallback(
     (newFilterState: FilterState) => {
-      const now = Date.now();
-      if (now - lastUpdateTimeRef.current < 50) {
-        return;
-      }
-      lastUpdateTimeRef.current = now;
-
       // Clear existing timer
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
