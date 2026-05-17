@@ -353,8 +353,12 @@ describe('Error boundary behavior', () => {
   it('handles invalid color values in normalizeHexColor gracefully', () => {
     expect(calculateContrastRatio('invalid', '#FFFFFF')).toBeNull();
     expect(calculateContrastRatio('#FFFFFF', 'invalid')).toBeNull();
-    expect(calculateContrastRatio(null as any, '#FFFFFF')).toBeNull();
-    expect(calculateContrastRatio('#FFFFFF', null as any)).toBeNull();
+    expect(
+      calculateContrastRatio(null as unknown as string, '#FFFFFF'),
+    ).toBeNull();
+    expect(
+      calculateContrastRatio('#FFFFFF', null as unknown as string),
+    ).toBeNull();
   });
 
   it('handles malformed color values gracefully', () => {
@@ -384,7 +388,7 @@ describe('Error boundary behavior', () => {
       messageLength: 5,
       hasWallet: true,
       avatarBackgroundColor: 'invalid-color',
-    } as any);
+    } as MessageSendPayload & { avatarBackgroundColor: string });
 
     // Wait for requestAnimationFrame to execute
     await new Promise((resolve) => {
