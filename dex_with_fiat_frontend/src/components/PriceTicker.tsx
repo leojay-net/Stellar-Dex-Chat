@@ -10,8 +10,10 @@ interface PriceTickerProps {
   refreshInterval?: number;
 }
 
+const DEFAULT_SYMBOLS = ['XLM', 'ETH', 'BTC'];
+
 export default function PriceTicker({
-  symbols = ['XLM', 'ETH', 'BTC'],
+  symbols = DEFAULT_SYMBOLS,
   currency = 'usd',
   refreshInterval = 60000, // 60 seconds default
 }: PriceTickerProps) {
@@ -19,6 +21,8 @@ export default function PriceTicker({
   const [error, setError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const refreshTimeoutRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isMountedRef = useRef(false);
+  const fetchRequestIdRef = useRef(0);
   const kbHelpId = useId();
 
   const itemsPerPage = 5;
@@ -50,9 +54,16 @@ export default function PriceTicker({
 
   // Fetch prices
   const fetchPrices = useCallback(async () => {
+    const requestId = fetchRequestIdRef.current + 1;
+    fetchRequestIdRef.current = requestId;
+
     try {
       setError(false);
       const newPrices = await fetchTickerData(symbols, currency);
+
+      if (!isMountedRef.current || requestId !== fetchRequestIdRef.current) {
+        return;
+      }
 
       if (Object.keys(newPrices).length === 0) {
         setError(true);
@@ -60,23 +71,34 @@ export default function PriceTicker({
         setPrices(newPrices);
       }
     } catch (err) {
+      if (!isMountedRef.current || requestId !== fetchRequestIdRef.current) {
+        return;
+      }
+
       console.error('Failed to fetch ticker data:', err);
       setError(true);
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current && requestId === fetchRequestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [symbols, currency]);
 
   // Initial fetch and setup refresh interval
   useEffect(() => {
-    fetchPrices();
+    isMountedRef.current = true;
+
+    void fetchPrices();
 
     // Setup auto-refresh
     refreshTimeoutRef.current = setInterval(() => {
-      fetchPrices();
+      void fetchPrices();
     }, refreshInterval);
 
     return () => {
+      isMountedRef.current = false;
+      fetchRequestIdRef.current += 1;
+
       if (refreshTimeoutRef.current) {
         clearInterval(refreshTimeoutRef.current);
       }
@@ -145,7 +167,8 @@ export default function PriceTicker({
       className="theme-surface-muted rounded-lg border theme-border p-3 outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
     >
       <span id={kbHelpId} className="sr-only">
-        Keyboard shortcuts: Left Arrow for previous page, Right Arrow for next page, R to refresh prices.
+        Keyboard shortcuts: Left Arrow for previous page, Right Arrow for next
+        page, R to refresh prices.
       </span>
 
       <div className="flex items-center justify-between mb-2">
@@ -166,8 +189,13 @@ export default function PriceTicker({
 
           if (!priceData) {
             return (
-              <div key={symbol} className="flex items-center justify-between text-xs h-6 opacity-50">
-                <span className="theme-text-secondary font-medium">{symbol}</span>
+              <div
+                key={symbol}
+                className="flex items-center justify-between text-xs h-6 opacity-50"
+              >
+                <span className="theme-text-secondary font-medium">
+                  {symbol}
+                </span>
                 <span className="theme-text-secondary">--</span>
               </div>
             );
@@ -202,9 +230,7 @@ export default function PriceTicker({
               >
                 {isPositive && <TrendingUp className="w-3 h-3" aria-hidden />}
                 {isNegative && <TrendingDown className="w-3 h-3" aria-hidden />}
-                <span className="font-medium">
-                  {formatChange(change)}
-                </span>
+                <span className="font-medium">{formatChange(change)}</span>
               </div>
             </div>
           );
@@ -220,22 +246,49 @@ export default function PriceTicker({
             aria-label="Previous price page"
             className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-30"
           >
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            <svg
+              className="w-3 h-3"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              aria-hidden
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
             </svg>
           </button>
-          <span className="text-[10px] theme-text-secondary font-medium" aria-live="polite">
+          <span
+            className="text-[10px] theme-text-secondary font-medium"
+            aria-live="polite"
+          >
             {currentPage + 1} / {totalPages}
           </span>
           <button
             type="button"
-            onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
+            onClick={() =>
+              setCurrentPage((p) => Math.min(totalPages - 1, p + 1))
+            }
             disabled={currentPage === totalPages - 1}
             aria-label="Next price page"
             className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded disabled:opacity-30"
           >
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            <svg
+              className="w-3 h-3"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              aria-hidden
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 5l7 7-7 7"
+              />
             </svg>
           </button>
         </div>
