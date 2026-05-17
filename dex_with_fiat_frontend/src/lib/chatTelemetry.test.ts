@@ -13,6 +13,7 @@ import {
   type MessageRetryPayload,
   type WalletConnectPayload,
   type BridgeOpenPayload,
+  type BridgeStatsTelemetryPayload,
   type TxConfirmPayload,
   withAccessibleAvatarContrast,
 } from './chatTelemetry';
@@ -122,9 +123,35 @@ describe('Event payload shapes', () => {
     expect(payload.flow).toBe('deposit');
   });
 
+  it('bridge_stats_fetch has correct schema', async () => {
+    const promise = captureNextEvent<BridgeStatsTelemetryPayload>();
+    chatTelemetry.bridgeStatsFetch({
+      source: 'manual',
+      success: true,
+      durationMs: 42,
+      hasBalance: true,
+      hasLimit: true,
+      hasTotalDeposited: false,
+    });
+    const event = await promise;
+
+    expect(event.name).toBe('bridge_stats_fetch');
+    const payload = event.payload;
+    expect(payload.source).toBe('manual');
+    expect(payload.success).toBe(true);
+    expect(payload.durationMs).toBe(42);
+    expect(payload.hasBalance).toBe(true);
+    expect(payload.hasLimit).toBe(true);
+    expect(payload.hasTotalDeposited).toBe(false);
+  });
+
   it('tx_confirm has correct schema', async () => {
     const promise = captureNextEvent<TxConfirmPayload>();
-    chatTelemetry.txConfirm({ assetCode: 'XLM', amountXlm: 10, network: 'TESTNET' });
+    chatTelemetry.txConfirm({
+      assetCode: 'XLM',
+      amountXlm: 10,
+      network: 'TESTNET',
+    });
     const event = await promise;
 
     expect(event.name).toBe('tx_confirm');
@@ -180,7 +207,6 @@ describe('Avatar contrast helpers', () => {
   it('switches to a darker avatar text color when light text is not accessible', () => {
     expect(getAccessibleAvatarTextColor('#F3F4F6', '#FFFFFF')).toBe('#111827');
   });
-
 });
 
 describe('Telemetry motion variants', () => {
@@ -327,8 +353,12 @@ describe('Error boundary behavior', () => {
   it('handles invalid color values in normalizeHexColor gracefully', () => {
     expect(calculateContrastRatio('invalid', '#FFFFFF')).toBeNull();
     expect(calculateContrastRatio('#FFFFFF', 'invalid')).toBeNull();
-    expect(calculateContrastRatio(null as any, '#FFFFFF')).toBeNull();
-    expect(calculateContrastRatio('#FFFFFF', null as any)).toBeNull();
+    expect(
+      calculateContrastRatio(null as unknown as string, '#FFFFFF'),
+    ).toBeNull();
+    expect(
+      calculateContrastRatio('#FFFFFF', null as unknown as string),
+    ).toBeNull();
   });
 
   it('handles malformed color values gracefully', () => {
@@ -358,7 +388,7 @@ describe('Error boundary behavior', () => {
       messageLength: 5,
       hasWallet: true,
       avatarBackgroundColor: 'invalid-color',
-    } as any);
+    } as MessageSendPayload & { avatarBackgroundColor: string });
 
     // Wait for requestAnimationFrame to execute
     await new Promise((resolve) => {
