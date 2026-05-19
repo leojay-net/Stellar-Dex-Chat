@@ -69,6 +69,8 @@ export interface ChatMachineContext {
   previousState: ChatState | null;
 }
 
+export const DEFAULT_CHAT_SEND_DEBOUNCE_MS = 350;
+
 const INITIAL_CONTEXT: ChatMachineContext = {
   messageCount: 0,
   hasUserCancelled: false,
@@ -79,6 +81,20 @@ const INITIAL_CONTEXT: ChatMachineContext = {
   lastEventTime: 0,
   previousState: null,
 };
+
+export interface ChatTransitionDebounceOptions {
+  delayMs?: number;
+  events?: ChatEvent[];
+  now?: () => number;
+}
+
+export interface DebouncedChatTransition {
+  transition: (
+    event: ChatEvent,
+    contextUpdate?: Partial<ChatMachineContext>,
+  ) => boolean;
+  reset: (event?: ChatEvent) => void;
+}
 
 /**
  * Guards for conditional transitions
@@ -129,18 +145,12 @@ class ChatGuards {
 }
 
 /**
- * Returns a fresh context object — never mutate the module-level constant directly.
+ * Returns a fresh context object; never mutate the module-level constant directly.
  */
 function getInitialContext(): ChatMachineContext {
   return {
-    messageCount: 0,
-    hasUserCancelled: false,
-    pendingTransactionData: null,
-    needsClarification: false,
-    clarificationQuestion: null,
-    errorMessage: null,
+    ...INITIAL_CONTEXT,
     lastEventTime: Date.now(),
-    previousState: null,
   };
 }
 
@@ -303,6 +313,47 @@ export function createChatStateMachine(): StateMachine<ChatState, ChatEvent, Cha
   };
 
   return new StateMachine<ChatState, ChatEvent, ChatMachineContext>(config);
+}
+
+/**
+ * Wraps chat transitions with a leading-edge debounce for noisy UI events.
+ */
+export function createDebouncedChatTransition(
+  machine: StateMachine<ChatState, ChatEvent, ChatMachineContext>,
+  options: ChatTransitionDebounceOptions = {},
+): DebouncedChatTransition {
+  const delayMs = options.delayMs ?? DEFAULT_CHAT_SEND_DEBOUNCE_MS;
+  const debouncedEvents = new Set(options.events ?? [ChatEvent.SEND_MESSAGE]);
+  const now = options.now ?? Date.now;
+  const lastAcceptedAt = new Map<ChatEvent, number>();
+
+  return {
+    transition(event, contextUpdate) {
+      if (!debouncedEvents.has(event)) {
+        return machine.transition(event, contextUpdate);
+      }
+
+      const currentTime = now();
+      const previousTime = lastAcceptedAt.get(event);
+      if (previousTime !== undefined && currentTime - previousTime < delayMs) {
+        return false;
+      }
+
+      const accepted = machine.transition(event, contextUpdate);
+      if (accepted) {
+        lastAcceptedAt.set(event, currentTime);
+      }
+      return accepted;
+    },
+
+    reset(event) {
+      if (event) {
+        lastAcceptedAt.delete(event);
+      } else {
+        lastAcceptedAt.clear();
+      }
+    },
+  };
 }
 
 /**

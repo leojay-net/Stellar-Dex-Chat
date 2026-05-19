@@ -1,12 +1,13 @@
 import { TransactionData } from '@/types';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-    ChatEvent,
-    ChatGuards,
-    ChatMachineContext,
-    ChatState,
+  ChatEvent,
+  ChatGuards,
+  ChatMachineContext,
+  ChatState,
   copyChatStateSnapshot,
-    createChatStateMachine,
+  createDebouncedChatTransition,
+  createChatStateMachine,
   formatChatStateSnapshot,
 } from './chatStateMachine';
 
@@ -603,6 +604,58 @@ describe('ChatStateMachine', () => {
       const context = machine.getState().context;
       expect(context.messageCount).toBe(3);
       expect(context.pendingTransactionData).toEqual(transactionData);
+    });
+  });
+
+  describe('Debounced transitions', () => {
+    it('suppresses rapid duplicate SEND_MESSAGE transitions', () => {
+      let currentTime = 1_000;
+      const debounced = createDebouncedChatTransition(machine, {
+        delayMs: 350,
+        now: () => currentTime,
+      });
+
+      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      expect(debounced.transition(ChatEvent.SEND_MESSAGE)).toBe(true);
+
+      machine.setState(ChatState.AWAITING_USER_INPUT);
+      currentTime += 100;
+
+      expect(debounced.transition(ChatEvent.SEND_MESSAGE)).toBe(false);
+      expect(machine.getState().state).toBe(ChatState.AWAITING_USER_INPUT);
+    });
+
+    it('allows SEND_MESSAGE again after the debounce window', () => {
+      let currentTime = 2_000;
+      const debounced = createDebouncedChatTransition(machine, {
+        delayMs: 350,
+        now: () => currentTime,
+      });
+
+      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      expect(debounced.transition(ChatEvent.SEND_MESSAGE)).toBe(true);
+
+      machine.setState(ChatState.AWAITING_USER_INPUT);
+      currentTime += 351;
+
+      expect(debounced.transition(ChatEvent.SEND_MESSAGE)).toBe(true);
+      expect(machine.getState().state).toBe(ChatState.SENDING_MESSAGE);
+    });
+
+    it('does not debounce non-configured events', () => {
+      let currentTime = 3_000;
+      const debounced = createDebouncedChatTransition(machine, {
+        delayMs: 350,
+        now: () => currentTime,
+      });
+
+      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      machine.transition(ChatEvent.SEND_MESSAGE);
+
+      expect(debounced.transition(ChatEvent.ANALYSIS_COMPLETE)).toBe(true);
+      currentTime += 1;
+      expect(debounced.transition(ChatEvent.ANALYSIS_COMPLETE)).toBe(true);
+      expect(machine.getState().state).toBe(ChatState.AWAITING_USER_INPUT);
     });
   });
 
