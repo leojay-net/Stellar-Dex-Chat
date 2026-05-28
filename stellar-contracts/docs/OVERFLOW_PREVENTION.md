@@ -162,6 +162,24 @@ fn propose_upgrade_overflow_prevention() {
 }
 ```
 
+## Receipt query boundary checks
+
+`get_receipt_by_index` is a read-side operation, but it still needs strong
+boundary checks to prevent a storage probing attack via artificially large
+index values.
+
+- `idx >= ReceiptCounter` must return `Error::ReceiptIndexOutOfBounds` before
+  touching temporary storage keys.
+- `ReceiptIndex` values are stored in temporary storage, so a previously-issued
+  index may expire. Such in-range lookups must return `Error::ReceiptNotFound`
+  instead of silently treating the query as out-of-range.
+- `u64::MAX` is a particularly important fuzz edge: it must short-circuit on the
+  bounds check to avoid constructing and probing enormous storage keys.
+
+The contract also emits a dedicated `ReceiptQueryEvent` on every lookup attempt,
+so off-chain systems can audit successful receipts and distinguish stale/missing
+entries from truly out-of-range queries.
+
 ---
 
 ## Fuzz boundary notes

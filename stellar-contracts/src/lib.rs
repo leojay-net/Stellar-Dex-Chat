@@ -345,6 +345,15 @@ pub struct ReceiptIssuedEvent {
 
 #[contractevent]
 #[derive(Clone, Debug)]
+pub struct ReceiptQueryEvent {
+    pub version: u32,
+    pub index: u64,
+    pub receipt_hash: Option<BytesN<32>>,
+    pub error_code: Option<u32>,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
 pub struct WithdrawEvent {
     pub version: u32,
     pub to: Address,
@@ -3244,6 +3253,11 @@ impl FiatBridge {
     ///    can become unreachable.
     /// 3. The persistent `Receipt(hash)` entry must still exist.
     ///
+    /// # Events
+    /// * [`ReceiptQueryEvent`] is emitted for every lookup attempt.
+    ///   This includes successful receipts, out-of-range queries, and stale
+    ///   or missing receipt entries.
+    ///
     /// # Errors
     /// * [`Error::ReceiptIndexOutOfBounds`] – `idx >= ReceiptCounter`.
     /// * [`Error::ReceiptNotFound`]         – index entry or receipt is gone.
@@ -3254,17 +3268,61 @@ impl FiatBridge {
             .get(&DataKey::ReceiptCounter)
             .unwrap_or(0);
         if idx >= max_receipts {
+            ReceiptQueryEvent {
+                version: EVENT_VERSION,
+                index: idx,
+                receipt_hash: None,
+                error_code: Some(Error::ReceiptIndexOutOfBounds as u32),
+            }
+            .publish(&env);
             return Err(Error::ReceiptIndexOutOfBounds);
         }
-        let receipt_hash: BytesN<32> = env
+
+        let receipt_hash: BytesN<32> = match env
             .storage()
             .temporary()
             .get(&DataKey::ReceiptIndex(idx))
-            .ok_or(Error::ReceiptNotFound)?;
-        env.storage()
+        {
+            Some(hash) => hash,
+            None => {
+                ReceiptQueryEvent {
+                    version: EVENT_VERSION,
+                    index: idx,
+                    receipt_hash: None,
+                    error_code: Some(Error::ReceiptNotFound as u32),
+                }
+                .publish(&env);
+                return Err(Error::ReceiptNotFound);
+            }
+        };
+
+        let receipt: Receipt = match env
+            .storage()
             .persistent()
-            .get(&DataKey::Receipt(receipt_hash))
-            .ok_or(Error::ReceiptNotFound)
+            .get(&DataKey::Receipt(receipt_hash.clone()))
+        {
+            Some(receipt) => receipt,
+            None => {
+                ReceiptQueryEvent {
+                    version: EVENT_VERSION,
+                    index: idx,
+                    receipt_hash: Some(receipt_hash.clone()),
+                    error_code: Some(Error::ReceiptNotFound as u32),
+                }
+                .publish(&env);
+                return Err(Error::ReceiptNotFound);
+            }
+        };
+
+        ReceiptQueryEvent {
+            version: EVENT_VERSION,
+            index: idx,
+            receipt_hash: Some(receipt_hash.clone()),
+            error_code: None,
+        }
+        .publish(&env);
+
+        Ok(receipt)
     }
 
     pub fn get_withdrawal_request(env: Env, id: u64) -> Option<WithdrawRequest> {

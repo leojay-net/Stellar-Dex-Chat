@@ -206,6 +206,11 @@ const receiptHash: string = await contract.get_receipt_by_index({ index: 0n });
 const count: bigint = await contract.get_receipt_counter();
 ```
 
+> Note: `get_receipt_by_index` distinguishes between an out-of-range index
+> (`ReceiptIndexOutOfBounds`) and a stale or expired receipt reference
+> (`ReceiptNotFound`). Queries also emit a `ReceiptQueryEvent` for
+> off-chain auditability.
+
 ---
 
 ## Migration Notes for Integrators

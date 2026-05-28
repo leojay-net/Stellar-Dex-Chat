@@ -2145,6 +2145,63 @@ fn test_get_receipt_by_index_nonexistent_index() {
 }
 
 #[test]
+fn test_get_receipt_by_index_stale_temporary_index_returns_not_found() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+
+    bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    env.as_contract(&contract_id, || {
+        env.storage().temporary().remove(&DataKey::ReceiptIndex(0));
+    });
+
+    assert_eq!(
+        bridge.try_get_receipt_by_index(&0),
+        Err(Ok(Error::ReceiptNotFound))
+    );
+}
+
+#[test]
+fn test_get_receipt_by_index_missing_persistent_receipt_returns_not_found() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+
+    let receipt_hash = bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    env.as_contract(&contract_id, || {
+        env.storage().persistent().remove(&DataKey::Receipt(receipt_hash));
+    });
+
+    assert_eq!(
+        bridge.try_get_receipt_by_index(&0),
+        Err(Ok(Error::ReceiptNotFound))
+    );
+}
+
+#[test]
+fn test_event_version_get_receipt_by_index() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_addr, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+    bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    assert_bridge_events_have_version(&env, &contract_addr, || {
+        bridge.get_receipt_by_index(&0);
+    });
+}
+
+#[test]
 fn test_memo_hash_zero_rejected() {
     let env = Env::default();
     env.mock_all_auths();
