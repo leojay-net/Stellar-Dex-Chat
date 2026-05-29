@@ -4989,9 +4989,7 @@ impl FiatBridge {
         // Boundary check (fix #668): reject delays that are too short.
         // A delay of zero (or below the protocol minimum) would allow an
         // immediate upgrade, defeating the purpose of the timelock entirely.
-        if delay < MIN_UPGRADE_DELAY {
-            return Err(Error::UpgradeDelayTooShort);
-        }
+        require!(delay >= MIN_UPGRADE_DELAY, Error::UpgradeDelayTooShort);
 
         // Overflow prevention (fix #668): use checked_add so that an extremely
         // large `delay` value cannot wrap around or saturate to a value that
@@ -5066,9 +5064,7 @@ impl FiatBridge {
         // Boundary check (fix #668): use strict `>` (i.e. reject when
         // `sequence <= executable_after`) to match the rest of the timelock
         // pattern and add one extra ledger of safety margin.
-        if env.ledger().sequence() <= proposal.executable_after {
-            return Err(Error::UpgradeNotReady);
-        }
+        require!(env.ledger().sequence() > proposal.executable_after, Error::UpgradeNotReady);
 
         // Consume the proposal before performing the upgrade so that a
         // re-entrant call (if ever possible) cannot replay it.
@@ -5103,6 +5099,8 @@ impl FiatBridge {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+
+        Self::require_not_paused(&env)?;
 
         // Boundary check: nothing to cancel if no proposal exists.
         let proposal: UpgradeProposal = env
