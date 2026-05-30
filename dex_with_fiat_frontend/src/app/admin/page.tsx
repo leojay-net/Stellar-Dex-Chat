@@ -63,57 +63,31 @@ function escapeCsvValue(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
 }
 
-// Hook to get theme-aware colors for charts
+// Hook to get theme-aware colors for charts using CSS custom properties (#452).
+// All values are read exclusively from CSS variables — no raw hex values.
 function useChartColors() {
   const [colors, setColors] = useThemeState({
-    primary: '#3b82f6',
-    textMuted: '#9ca3af',
-    border: '#374151',
-    surface: '#1f2937',
-    surfaceBorder: '#374151',
+    primary: 'var(--color-chart-primary)',
+    textMuted: 'var(--color-chart-text)',
+    border: 'var(--color-chart-grid)',
+    surface: 'var(--color-chart-background)',
+    surfaceBorder: 'var(--color-chart-grid)',
   });
 
   useThemeEffect(() => {
     const updateColors = () => {
-      const root = document.documentElement;
-      const computedStyle = getComputedStyle(root);
-      const currentTheme = root.getAttribute('data-theme') || 'light';
-
-      // Theme-aware fallback colors
-      const fallbackColors = currentTheme === 'dark'
-        ? {
-            primary: '#3b82f6',
-            textMuted: '#94a3b8',
-            border: '#334155',
-            surface: '#0f172a',
-            surfaceBorder: '#334155',
-          }
-        : {
-            primary: '#3b82f6',
-            textMuted: '#6b7280',
-            border: '#e5e7eb',
-            surface: '#ffffff',
-            surfaceBorder: '#e5e7eb',
-          };
-
+      const computedStyle = getComputedStyle(document.documentElement);
       setColors({
-        primary:
-          computedStyle.getPropertyValue('--color-primary').trim() || fallbackColors.primary,
-        textMuted:
-          computedStyle.getPropertyValue('--color-text-muted').trim() ||
-          fallbackColors.textMuted,
-        border:
-          computedStyle.getPropertyValue('--color-border').trim() || fallbackColors.border,
-        surface:
-          computedStyle.getPropertyValue('--color-surface').trim() || fallbackColors.surface,
-        surfaceBorder:
-          computedStyle.getPropertyValue('--color-border').trim() || fallbackColors.surfaceBorder,
+        primary: computedStyle.getPropertyValue('--color-chart-primary').trim(),
+        textMuted: computedStyle.getPropertyValue('--color-chart-text').trim(),
+        border: computedStyle.getPropertyValue('--color-chart-grid').trim(),
+        surface: computedStyle.getPropertyValue('--color-chart-background').trim(),
+        surfaceBorder: computedStyle.getPropertyValue('--color-chart-grid').trim(),
       });
     };
 
     updateColors();
 
-    // Listen for theme changes
     const observer = new MutationObserver(updateColors);
     observer.observe(document.documentElement, {
       attributes: true,

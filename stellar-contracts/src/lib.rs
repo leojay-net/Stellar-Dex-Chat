@@ -692,6 +692,18 @@ pub struct BatchOkEvent {
     pub total_ops: u32,
 }
 
+/// Emitted after the token balance state is updated on a successful deposit (#499).
+///
+/// Allows indexers to track the running total without re-reading storage,
+/// and confirms that the balance update completed without overflow.
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct DepositBalanceUpdatedEvent {
+    pub version: u32,
+    pub token: Address,
+    pub total_deposited: i128,
+}
+
 #[contractevent]
 #[derive(Clone, Debug)]
 pub struct CircuitBreakerResetEvent {
@@ -1144,9 +1156,12 @@ impl FiatBridge {
         env.storage()
             .temporary()
             .extend_ttl(&index_key, MIN_TTL, MIN_TTL);
-        env.storage()
-            .instance()
-            .set(&DataKey::ReceiptCounter, &(receipt_counter + 1));
+        // #499: receipt counter increment must be overflow-safe; u64::MAX receipts
+        // is unreachable in practice but the check costs nothing.
+        env.storage().instance().set(
+            &DataKey::ReceiptCounter,
+            &receipt_counter.checked_add(1).ok_or(Error::Overflow)?,
+        );
 
         config.total_deposited = config
             .total_deposited
@@ -1155,6 +1170,15 @@ impl FiatBridge {
         env.storage()
             .persistent()
             .set(&DataKey::TokenRegistry(token.clone()), &config);
+
+        // #499: emit balance-update event so indexers can confirm state without
+        // re-reading storage and can verify no overflow occurred.
+        DepositBalanceUpdatedEvent {
+            version: EVENT_VERSION,
+            token: token.clone(),
+            total_deposited: config.total_deposited,
+        }
+        .publish(&env);
 
         // Overflow prevention: use checked_add for the per-user deposit total.
         // An unchecked addition here could silently wrap and make a large
@@ -2469,7 +2493,9 @@ impl FiatBridge {
             return Err(Error::DailyLimitExceeded);
         }
 
-        record.amount += amount;
+        // #499: use checked_add so a crafted large deposit cannot wrap the
+        // i128 daily accumulator and bypass the limit check above.
+        record.amount = record.amount.checked_add(amount).ok_or(Error::Overflow)?;
         env.storage().instance().set(&key, &record);
         Ok(())
     }
@@ -2660,12 +2686,21 @@ impl FiatBridge {
             Error::InvalidRecipient
         );
 
+        // #492: Operator list must not be mutated while the contract is paused —
+        // doing so during a pause could corrupt batch operation state.
+        Self::require_not_paused(&env)?;
+
         Self::prune_inactive_operators_internal(&env);
         let was_active = env
             .storage()
             .instance()
             .get::<_, bool>(&DataKey::Operator(operator.clone()))
             .unwrap_or(false);
+
+        // #492: Deactivating an address that was never an operator is a silent
+        // no-op that masks caller bugs and can corrupt batch bookkeeping.
+        require!(active || was_active, Error::NotOperator);
+
         let max_operators: u32 = env
             .storage()
             .instance()
@@ -2673,9 +2708,11 @@ impl FiatBridge {
             .unwrap_or(0);
         let mut operators = Self::get_operator_list(&env);
 
-        if active && !was_active && max_operators > 0 && operators.len() >= max_operators {
-            return Err(Error::OperatorCapReached);
-        }
+        // #492: Use require! for consistency with the rest of the validation block.
+        require!(
+            !(active && !was_active && max_operators > 0 && operators.len() >= max_operators),
+            Error::OperatorCapReached
+        );
 
         env.storage()
             .instance()
@@ -5364,3 +5401,6 @@ mod test_issues_695_687;
 
 #[cfg(test)]
 mod test_issues_504_511_600;
+
+#[cfg(test)]
+mod test_issues_492_499;

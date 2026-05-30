@@ -109,6 +109,15 @@ export default function AdminGuard({ children }: AdminGuardProps) {
     checkAdmin();
   }, [checkAdmin]);
 
+  // #490: Scroll to top smoothly whenever admin access is granted so the
+  // dashboard renders from the top of the page, not wherever the user
+  // navigated from. Only fires when loading completes and access is confirmed.
+  useEffect(() => {
+    if (!loading && isAdmin) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [loading, isAdmin]);
+
   // Attach online/offline listeners once.
   useEffect(() => {
     const handleOnline = () => {

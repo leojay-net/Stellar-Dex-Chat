@@ -7,8 +7,11 @@ import { getAdmin } from '@/lib/stellarContract';
 
 vi.mock('@/contexts/StellarWalletContext');
 vi.mock('@/lib/stellarContract');
+// Avoid JSX in vi.mock factory (hoisted before JSX transform). Use createElement at runtime.
 vi.mock('@/components/LandingPage', () => ({
-  default: () => <div data-testid="landing-page">Landing Page</div>,
+  default: function MockLandingPage() {
+    return React.createElement('div', { 'data-testid': 'landing-page' }, 'Landing Page');
+  },
 }));
 
 describe('AdminGuard', () => {
@@ -91,6 +94,69 @@ describe('AdminGuard', () => {
     );
 
     expect(await screen.findByTestId('landing-page')).toBeInTheDocument();
+  });
+});
+
+describe('AdminGuard — auto-scroll on access granted (#490)', () => {
+  const validAddr = 'GABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDE';
+  let scrollToSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    scrollToSpy = vi.fn();
+    Object.defineProperty(window, 'scrollTo', { value: scrollToSpy, writable: true });
+    vi.mocked(useStellarWallet).mockReturnValue({
+      connection: { address: validAddr },
+    } as any);
+  });
+
+  it('scrolls to top with smooth behavior when admin access is granted', async () => {
+    vi.mocked(getAdmin).mockResolvedValue(validAddr);
+
+    render(
+      <AdminGuard>
+        <div data-testid="protected-content">Secret content</div>
+      </AdminGuard>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('protected-content')).toBeInTheDocument();
+    });
+
+    expect(scrollToSpy).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' });
+  });
+
+  it('does not scroll when access is denied', async () => {
+    const adminAddr = 'G1234567890123456789012345678901234567890123456789012345';
+    vi.mocked(getAdmin).mockResolvedValue(adminAddr);
+
+    render(
+      <AdminGuard>
+        <div data-testid="protected-content">Secret content</div>
+      </AdminGuard>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('landing-page')).toBeInTheDocument();
+    });
+
+    expect(scrollToSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not scroll when there is an error', async () => {
+    vi.mocked(getAdmin).mockRejectedValue(new Error('network error'));
+
+    render(
+      <AdminGuard>
+        <div data-testid="protected-content">Secret content</div>
+      </AdminGuard>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/failed to verify/i)).toBeInTheDocument();
+    });
+
+    expect(scrollToSpy).not.toHaveBeenCalled();
   });
 });
 

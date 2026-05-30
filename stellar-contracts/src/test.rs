@@ -2280,7 +2280,7 @@ fn test_get_receipt_by_index_valid() {
 
     let receipt_hash = bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
 
-    let receipt = bridge.get_receipt_by_index(&0);
+    let receipt = bridge.get_receipt_by_index(&0).expect("receipt at index 0");
     assert_eq!(receipt.id, receipt_hash);
     assert_eq!(receipt.depositor, user);
     assert_eq!(receipt.amount, 100);
@@ -2321,7 +2321,7 @@ fn test_get_receipt_by_index_nonexistent_index() {
     bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
 
     // The receipt at index 0 should be accessible
-    let receipt = bridge.get_receipt_by_index(&0);
+    let receipt = bridge.get_receipt_by_index(&0).expect("receipt at index 0");
     assert_eq!(receipt.amount, 100);
 
     // Indexes that were never written return ReceiptIndexOutOfBounds.
@@ -3968,7 +3968,7 @@ fn test_deposit_invariant_receipt_issued_event() {
     let receipt_id = bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
 
     // Verify receipt was created (receipts are indexed, so we get by index 0)
-    let receipt = bridge.get_receipt_by_index(&0);
+    let receipt = bridge.get_receipt_by_index(&0).expect("receipt at index 0");
     assert_eq!(receipt.depositor, user);
     assert_eq!(receipt.amount, 100);
     assert!(!receipt.refunded);
@@ -4147,9 +4147,13 @@ fn test_set_operator_invariant_idempotent_deactivation() {
     bridge.set_operator(&operator, &false);
     assert!(!bridge.is_operator(&operator));
 
-    // Setting to false again should be safe
-    bridge.set_operator(&operator, &false);
-    assert!(!bridge.is_operator(&operator));
+    // Issue #492: deactivating an already-inactive operator now returns
+    // NotOperator instead of silently succeeding, to prevent caller bugs
+    // from corrupting batch operation state.
+    assert_eq!(
+        bridge.try_set_operator(&operator, &false),
+        Err(Ok(Error::NotOperator))
+    );
 }
 
 #[test]
