@@ -244,3 +244,68 @@ describe('ChatHistorySidebar', () => {
     expect(screen.queryByText('History cleared')).toBeNull();
   });
 });
+
+// ── Issue #633 regression: error boundary wraps ChatHistorySidebar ─────────────
+describe('ChatHistorySidebar error boundary (#633)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ events: [] }),
+    } as Response);
+    mockPinnedSessions = [];
+    mockUnpinnedSessions = [];
+    mockAllSessions = [];
+    // Suppress React's error boundary console.error during tests
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it('renders the fallback UI when a child throws and not the crash stack', async () => {
+    // Force PriceTicker (rendered inside the sidebar) to throw
+    vi.doMock('@/components/PriceTicker', () => ({
+      default: () => { throw new Error('PriceTicker exploded'); },
+    }));
+
+    // Dynamically import so the new mock is picked up
+    const { default: ChatHistorySidebarFresh } = await import('@/components/ChatHistorySidebar');
+
+    act(() => {
+      render(
+        <ChatHistorySidebarFresh onLoadSession={vi.fn()} isCollapsed={false} />,
+      );
+    });
+
+    await act(async () => { vi.advanceTimersByTime(900); });
+
+    expect(screen.getByText('Sidebar unavailable')).toBeTruthy();
+    expect(screen.queryByText('PriceTicker exploded')).toBeNull();
+
+    vi.doUnmock('@/components/PriceTicker');
+  });
+
+  it('displays the custom retry label from the error boundary props', async () => {
+    vi.doMock('@/components/PriceTicker', () => ({
+      default: () => { throw new Error('forced'); },
+    }));
+
+    const { default: ChatHistorySidebarFresh } = await import('@/components/ChatHistorySidebar');
+
+    act(() => {
+      render(
+        <ChatHistorySidebarFresh onLoadSession={vi.fn()} isCollapsed={false} />,
+      );
+    });
+
+    await act(async () => { vi.advanceTimersByTime(900); });
+
+    expect(screen.getByRole('button', { name: /reload sidebar/i })).toBeTruthy();
+
+    vi.doUnmock('@/components/PriceTicker');
+  });
+});
