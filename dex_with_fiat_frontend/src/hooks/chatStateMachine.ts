@@ -76,7 +76,7 @@ const INITIAL_CONTEXT: ChatMachineContext = {
   needsClarification: false,
   clarificationQuestion: null,
   errorMessage: null,
-  lastEventTime: Date.now(),
+  lastEventTime: 0,
   previousState: null,
 };
 
@@ -129,12 +129,28 @@ class ChatGuards {
 }
 
 /**
+ * Returns a fresh context object — never mutate the module-level constant directly.
+ */
+function getInitialContext(): ChatMachineContext {
+  return {
+    messageCount: 0,
+    hasUserCancelled: false,
+    pendingTransactionData: null,
+    needsClarification: false,
+    clarificationQuestion: null,
+    errorMessage: null,
+    lastEventTime: Date.now(),
+    previousState: null,
+  };
+}
+
+/**
  * Create and configure the chat state machine
  */
 export function createChatStateMachine(): StateMachine<ChatState, ChatEvent, ChatMachineContext> {
   const config: StateMachineConfig<ChatState, ChatEvent, ChatMachineContext> = {
     initial: ChatState.UNINITIALIZED,
-    context: INITIAL_CONTEXT,
+    context: getInitialContext(),
     states: {
       [ChatState.UNINITIALIZED]: {
         [ChatEvent.INITIALIZE_SESSION]: {

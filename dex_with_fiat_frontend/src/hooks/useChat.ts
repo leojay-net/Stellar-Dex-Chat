@@ -120,12 +120,21 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
   const [isLoading, setIsLoading] = useState(false);
   const aiAssistant = useMemo(() => new AIAssistant(), []);
   const activeRequestControllerRef = useRef<AbortController | null>(null);
+  const transactionReadyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
   const queuedSendsRef = useRef<QueuedSend[]>([]);
   const replayingQueueRef = useRef(false);
 
   useEffect(() => {
     setHasHydrated(true);
+    return () => {
+      // Cancel any in-flight transaction-ready timer on unmount to prevent
+      // calling callbacks on a dismounted component (memory leak #663).
+      if (transactionReadyTimerRef.current !== null) {
+        clearTimeout(transactionReadyTimerRef.current);
+        transactionReadyTimerRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -133,8 +142,12 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
   }, [messages]);
 
   const appendCancelledMessage = useCallback((content: string) => {
+    const uid =
+      typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const cancelledMessage: ChatMessage = {
-      id: (Date.now() + 1).toString(),
+      id: uid,
       role: 'assistant',
       content,
       timestamp: new Date(),
@@ -429,9 +442,14 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
         ),
       );
 
-      // Trigger transaction callback if needed
+      // Trigger transaction callback if needed. Track the timer so it can be
+      // cleared on unmount and avoid post-dismount state updates (leak #663).
       if (shouldAutoTrigger && pendingTransactionData && onTransactionReady) {
-        setTimeout(() => {
+        if (transactionReadyTimerRef.current !== null) {
+          clearTimeout(transactionReadyTimerRef.current);
+        }
+        transactionReadyTimerRef.current = setTimeout(() => {
+          transactionReadyTimerRef.current = null;
           onTransactionReady(pendingTransactionData);
         }, 1000);
       }

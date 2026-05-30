@@ -5,6 +5,7 @@ import jsPDF from 'jspdf';
 import { useChatHistory } from '@/hooks/useChatHistory';
 import { useTxHistory } from '@/hooks/useTxHistory';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import {
   MessageSquare,
   Trash2,
@@ -460,6 +461,11 @@ export default function ChatHistorySidebar({
   };
 
   return (
+    <ErrorBoundary
+      title="Sidebar unavailable"
+      message="An unexpected error occurred in the chat history panel. Your conversations are safe."
+      retryLabel="Reload sidebar"
+    >
     <div
       className={`theme-surface theme-border h-full flex flex-col transition-all duration-300 border-r ${
         isCollapsed ? 'w-20' : 'w-full'
@@ -835,5 +841,6 @@ export default function ChatHistorySidebar({
         </div>
       )}
     </div>
+    </ErrorBoundary>
   );
 }
