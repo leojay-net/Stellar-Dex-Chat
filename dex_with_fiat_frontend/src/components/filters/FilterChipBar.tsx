@@ -2,11 +2,21 @@
 
 import React from 'react';
 import { FilterChipGroup } from './FilterChipGroup';
-import type { FilterState, FilterStats, FilterCategory } from '@/types';
+import type {
+  FilterState,
+  FilterStats,
+  FilterCategory,
+  FilterChipTone,
+} from '@/types';
 
 interface FilterChipBarProps {
   filterState: FilterState;
   filterStats: FilterStats;
+  getFilterChipTone: (
+    category: FilterCategory,
+    value: string,
+    selected: boolean,
+  ) => FilterChipTone;
   onFilterChange: (category: FilterCategory, value: string) => void;
   onClearAll: () => void;
 }
@@ -14,6 +24,7 @@ interface FilterChipBarProps {
 export function FilterChipBar({
   filterState,
   filterStats,
+  getFilterChipTone,
   onFilterChange,
   onClearAll,
 }: FilterChipBarProps) {
@@ -55,6 +66,7 @@ export function FilterChipBar({
           label="Status"
           options={filterStats.statusOptions}
           selectedValues={filterState.status}
+          getFilterChipTone={getFilterChipTone}
           onToggle={(value) => onFilterChange('status', value)}
         />
 
@@ -63,6 +75,7 @@ export function FilterChipBar({
           label="Asset"
           options={filterStats.assetOptions}
           selectedValues={filterState.asset}
+          getFilterChipTone={getFilterChipTone}
           onToggle={(value) => onFilterChange('asset', value)}
         />
 
@@ -71,6 +84,7 @@ export function FilterChipBar({
           label="Network"
           options={filterStats.networkOptions}
           selectedValues={filterState.network}
+          getFilterChipTone={getFilterChipTone}
           onToggle={(value) => onFilterChange('network', value)}
         />
       </div>

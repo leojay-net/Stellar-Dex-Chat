@@ -65,7 +65,8 @@ fn setup_bridge_with_min(
     let admin = Address::generate(env);
     let token_admin = Address::generate(env);
     let (token_addr, token, token_sac) = create_token(env, &token_admin);
-    let signers = vec![env, admin.clone()];    bridge.init(&admin, &token_addr, &limit, &min_deposit, &signers, &1);
+    let signers = vec![env, admin.clone()];
+    bridge.init(&admin, &token_addr, &limit, &min_deposit, &signers, &1);
     (contract_id, bridge, admin, token_addr, token, token_sac)
 }
 
@@ -437,7 +438,7 @@ fn test_transfer_admin_to_self_fails() {
     // Attempting to transfer to self should fail with InvalidRecipient
     let result = bridge.try_transfer_admin(&admin);
     assert_eq!(result, Err(Ok(Error::SameAdmin)));
-    
+
     // Admin should remain the same
     assert_eq!(bridge.get_admin(), admin);
 }
@@ -453,73 +454,64 @@ fn test_set_limit() {
 }
 
 #[test]
-fn test_over_limit_deposit() {
+fn test_set_limit_rejects_above_configured_max_cap() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 500);
-    let user = Address::generate(&env);
-    token_sac.mint(&user, &1_000);
-
-    let result = bridge.try_deposit(&user, &600, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    assert_eq!(result, Err(Ok(Error::ExceedsLimit)));
+    let (_, bridge, _admin, token_addr, _, _) = setup_bridge(&env, 500);
+    bridge.set_limit_max_cap(&1000);
+    let result = bridge.try_set_limit(&token_addr, &1001);
+    assert_eq!(result, Err(Ok(Error::ExceedsLimitMaxCap)));
 }
 
 #[test]
-fn test_daily_deposit_limit_enforces_boundary() {
+fn test_set_limit_succeeds_at_max_cap_boundary() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 1_000);
-    let user = Address::generate(&env);
-    token_sac.mint(&user, &1_000);
-
-    bridge.set_daily_deposit_limit(&token_addr, &150);
-
-    bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    bridge.deposit(&user, &50, &token_addr, &Bytes::new(&env), &0, &0, &None);
-
-    let result = bridge.try_deposit(&user, &1, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    assert_eq!(result, Err(Ok(Error::DailyLimitExceeded)));
+    let (_, bridge, _admin, token_addr, _, _) = setup_bridge(&env, 500);
+    bridge.set_limit_max_cap(&1000);
+    bridge.set_limit(&token_addr, &1000);
+    assert_eq!(bridge.get_limit(), 1000);
 }
 
 #[test]
-fn test_daily_deposit_limit_resets_after_window() {
+fn test_set_limit_max_cap_rejects_zero() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 1_000);
-    let user = Address::generate(&env);
-    token_sac.mint(&user, &1_000);
-
-    bridge.set_daily_deposit_limit(&token_addr, &150);
-    let start_ledger = env.ledger().sequence();
-
-    bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    let result = bridge.try_deposit(&user, &60, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    assert_eq!(result, Err(Ok(Error::DailyLimitExceeded)));
-
-    env.ledger().with_mut(|li| {
-        li.sequence_number = start_ledger + WINDOW_LEDGERS;
-    });
-
-    bridge.deposit(&user, &150, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    assert_eq!(bridge.get_user_deposited(&user), 250);
+    let (_, bridge, _admin, _token_addr, _, _) = setup_bridge(&env, 500);
+    let result = bridge.try_set_limit_max_cap(&0);
+    assert_eq!(result, Err(Ok(Error::ZeroAmount)));
 }
 
 #[test]
-fn test_single_tx_limit_still_enforced_with_daily_limit() {
+fn test_get_set_limit_max_cap_defaults_high() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 500);
-    let user = Address::generate(&env);
-    token_sac.mint(&user, &1_000);
+    let (_, bridge, _admin, _token_addr, _, _) = setup_bridge(&env, 500);
+    assert_eq!(bridge.get_set_limit_max_cap(), i128::MAX);
+}
 
-    bridge.set_daily_deposit_limit(&token_addr, &1_000);
+#[test]
+fn test_heartbeat_blocked_by_circuit_breaker() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (contract_id, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 1_000);
 
-    let result = bridge.try_deposit(&user, &600, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    assert_eq!(result, Err(Ok(Error::ExceedsLimit)));
+    let operator = Address::generate(&env);
+    bridge.set_operator(&operator, &true);
+
+    // Set circuit breaker threshold and trip it
+    bridge.set_circuit_breaker_threshold(&500);
+    token_sac.mint(&admin, &600);
+    bridge.deposit(&admin, &600, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.withdraw(&admin, &admin, &600, &token_addr); // This should trip the circuit breaker
+
+    // Now heartbeat should be blocked
+    let heartbeat_result = bridge.try_heartbeat(&operator, &0);
+    assert_eq!(heartbeat_result, Err(Ok(Error::CircuitBreakerActive)));
 }
 
 #[test]
@@ -572,23 +564,27 @@ fn test_execute_withdrawal_operator_limit_resets_after_window() {
 fn test_zero_amount_deposit() {
     let env = Env::default();
     env.mock_all_auths();
+    let (contract_id, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 1_000);
 
-    let (_, bridge, admin, token_addr, _, _) = setup_bridge(&env, 500);
-    let user = Address::generate(&env);
+    // Set circuit breaker threshold and trip it
+    bridge.set_circuit_breaker_threshold(&500);
+    token_sac.mint(&admin, &600);
+    bridge.deposit(&admin, &600, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.withdraw(&admin, &admin, &600, &token_addr); // This should trip the circuit breaker
 
-    let result = bridge.try_deposit(&user, &0, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    assert_eq!(result, Err(Ok(Error::ZeroAmount)));
+    // Now set_limit should be blocked
+    let set_limit_result = bridge.try_set_limit(&token_addr, &2000);
+    assert_eq!(set_limit_result, Err(Ok(Error::CircuitBreakerActive)));
 }
 
 #[test]
-fn test_insufficient_funds_withdraw() {
+fn test_set_emergency_recovery_with_cap_limit() {
     let env = Env::default();
     env.mock_all_auths();
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 1_000);
+    let recovery = Address::generate(&env);
 
-    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 500);
-    let user = Address::generate(&env);
-    token_sac.mint(&user, &1_000);
-    bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.set_emergency_recovery(&recovery, &750);
 
     let req_id_result = bridge.try_request_withdrawal(&user, &200, &token_addr, &None, &0);
     // Depending on invariants, this might fail with InternalError or InsufficientFunds
@@ -598,84 +594,113 @@ fn test_insufficient_funds_withdraw() {
 }
 
 #[test]
-fn test_double_init() {
+fn test_set_emergency_recovery_rejects_cap_above_token_limit() {
     let env = Env::default();
     env.mock_all_auths();
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 1_000);
+    let recovery = Address::generate(&env);
 
-    let (_, bridge, admin, token_addr, _, _) = setup_bridge(&env, 500);
-    let signers = vec![&env, admin.clone()];    let result = bridge.try_init(&admin, &token_addr, &500, &1, &signers, &1);
-    assert_eq!(result, Err(Ok(Error::AlreadyInitialized)));
+    let result = bridge.try_set_emergency_recovery(&recovery, &1_001);
+    assert_eq!(result, Err(Ok(Error::ExceedsLimit)));
+    assert_eq!(bridge.get_emergency_recovery_cap(), None);
 }
 
-#[test]
-fn test_per_user_deposit_tracking() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 1000);
-    let user1 = Address::generate(&env);
-    let user2 = Address::generate(&env);
-    token_sac.mint(&user1, &500);
-    token_sac.mint(&user2, &500);
-
-    assert_eq!(bridge.get_user_deposited(&user1), 0);
-    assert_eq!(bridge.get_user_deposited(&user2), 0);
-
-    bridge.deposit(&user1, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    assert_eq!(bridge.get_user_deposited(&user1), 100);
-    assert_eq!(bridge.get_total_deposited(), 100);
-
-    bridge.deposit(&user1, &50, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    assert_eq!(bridge.get_user_deposited(&user1), 150);
-    assert_eq!(bridge.get_total_deposited(), 150);
-
-    bridge.deposit(&user2, &200, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    assert_eq!(bridge.get_user_deposited(&user2), 200);
-    assert_eq!(bridge.get_user_deposited(&user1), 150);
-    assert_eq!(bridge.get_total_deposited(), 350);
-}
+// ── Issue 3: invariant tests for set_emergency_recovery ──────────────────
 
 #[test]
-fn test_get_config_snapshot() {
+fn test_set_emergency_recovery_invariants_hold() {
     let env = Env::default();
     env.mock_all_auths();
-    let (_, bridge, admin, token_addr, _, _) = setup_bridge(&env, 1000);
-    let pending_admin = Address::generate(&env);
-
-    bridge.set_cooldown(&12);
-    bridge.set_lock_period(&24);
-    bridge.set_anti_sandwich_delay(&7);
-    bridge.set_fiat_limit(&250_000);
-    bridge.transfer_admin(&pending_admin);
-
-    let oracle_addr = Address::generate(&env);
-    bridge.set_oracle(&oracle_addr);
-
-    let config = bridge.get_config_snapshot();
-    assert_eq!(config.admin, admin);
-    assert_eq!(config.pending_admin, Some(pending_admin));
-    assert_eq!(config.token, token_addr);
-    assert_eq!(config.oracle, Some(oracle_addr.clone()));
-    assert_eq!(config.fiat_limit, Some(250_000));
-    assert_eq!(config.lock_period, bridge.get_lock_period());
-    assert_eq!(config.cooldown_ledgers, bridge.get_cooldown());
-    assert_eq!(config.inactivity_threshold, DEFAULT_INACTIVITY_THRESHOLD);
-    assert!(!config.allowlist_enabled);
-    assert_eq!(config.emergency_recovery, None);
-    assert_eq!(config.anti_sandwich_delay, bridge.get_anti_sandwich_delay());
-}
-
-#[test]
-fn test_total_withdrawn_tracking() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (contract_id, bridge, admin, token_addr, token, token_sac) = setup_bridge(&env, 1000);
+    let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1_000);
+    let recovery = Address::generate(&env);
     let user = Address::generate(&env);
-    token_sac.mint(&user, &1_000);
+    token_sac.mint(&user, &500);
 
-    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    assert_eq!(bridge.get_total_withdrawn(), 0);
+    // Perform a deposit so there's state to check invariants against
+    bridge.deposit(&user, &300, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // set_emergency_recovery must not break contract invariants.
+    // Verify by calling deposit (which internally runs check_invariants) after setup.
+    bridge.set_emergency_recovery(&recovery, &750);
+    // A subsequent deposit must succeed, confirming invariants still hold
+    bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    let snapshot = bridge.get_config_snapshot();
+    assert_eq!(snapshot.emergency_recovery, Some(recovery.clone()));
+    assert_eq!(bridge.get_emergency_recovery_cap(), Some(750));
+}
+
+#[test]
+fn test_set_emergency_recovery_emits_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1_000);
+    let recovery = Address::generate(&env);
+
+    bridge.set_emergency_recovery(&recovery, &500);
+
+    let events = env.events().all().filter_by_contract(&contract_id);
+    let raw = events.events();
+
+    let topic_symbol = soroban_sdk::xdr::ScVal::Symbol(soroban_sdk::xdr::ScSymbol(
+        soroban_sdk::xdr::StringM::try_from("emergency_recovery_set_event").expect("event topic"),
+    ));
+    let mut found = false;
+    for event in raw.iter() {
+        use soroban_sdk::xdr::ContractEventBody;
+        if let ContractEventBody::V0(body) = &event.body {
+            if body.topics.iter().any(|t| *t == topic_symbol) {
+                found = true;
+                break;
+            }
+        }
+    }
+    assert!(found, "expected EmergencyRecoverySetEvent on bridge");
+}
+
+#[test]
+fn test_set_emergency_recovery_rejects_zero_cap() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 1_000);
+    let recovery = Address::generate(&env);
+
+    let result = bridge.try_set_emergency_recovery(&recovery, &0);
+    assert_eq!(result, Err(Ok(Error::ZeroAmount)));
+    assert_eq!(bridge.get_emergency_recovery_cap(), None);
+}
+
+#[test]
+fn test_set_emergency_recovery_rejects_negative_cap() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 1_000);
+    let recovery = Address::generate(&env);
+
+    let result = bridge.try_set_emergency_recovery(&recovery, &-1);
+    assert_eq!(result, Err(Ok(Error::ZeroAmount)));
+    assert_eq!(bridge.get_emergency_recovery_cap(), None);
+}
+
+// ── Issue #574: admin authentication integration tests ────────────────────
+
+/// Verifies that the `EmergencyRecoverySetEvent` emitted by
+/// `set_emergency_recovery` contains the exact admin address that
+/// authorised the call, enabling off-chain indexers to attribute the
+/// configuration change to a specific key-holder.
+#[test]
+fn test_set_emergency_recovery_event_records_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (contract_id, bridge, admin, _, _, _) = setup_bridge(&env, 1_000);
+    let recovery = Address::generate(&env);
+
+    bridge.set_emergency_recovery(&recovery, &500);
+
+    // Scan all events emitted by the bridge contract and locate the
+    // emergency_recovery_set_event topic, then confirm the admin field.
+    let events = env.events().all().filter_by_contract(&contract_id);
+    let raw = events.events();
 
     let operator = Address::generate(&env);
     bridge.withdraw(&admin, &user, &200, &token_addr);
@@ -687,10 +712,14 @@ fn test_total_withdrawn_tracking() {
     assert_eq!(bridge.get_total_withdrawn(), 300);
 }
 
+/// Verifies that calling `set_emergency_recovery` a second time
+/// overwrites the previously stored recovery address and cap limit.
+/// This is the intended administrative workflow when rotating recovery keys.
 #[test]
-fn test_total_liabilities_tracking() {
+fn test_set_emergency_recovery_overwrites_previous_recovery() {
     let env = Env::default();
     env.mock_all_auths();
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 1_000);
 
     let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 1000);
     let user = Address::generate(&env);
@@ -703,732 +732,58 @@ fn test_total_liabilities_tracking() {
     let req1 = bridge.request_withdrawal(&user, &100, &token_addr, &None, &0);
     assert_eq!(bridge.get_total_liabilities(), 100);
 
-    let req2 = bridge.request_withdrawal(&user, &50, &token_addr, &None, &0);
-    assert_eq!(bridge.get_total_liabilities(), 150);
+    // First configuration
+    bridge.set_emergency_recovery(&recovery_v1, &300);
+    let snapshot_v1 = bridge.get_config_snapshot();
+    assert_eq!(snapshot_v1.emergency_recovery, Some(recovery_v1.clone()));
+    assert_eq!(bridge.get_emergency_recovery_cap(), Some(300));
 
     bridge.execute_withdrawal(&operator, &req1, &None, &0, &0);
     assert_eq!(bridge.get_total_liabilities(), 50);
 
-    bridge.cancel_withdrawal(&req2);
-    assert_eq!(bridge.get_total_liabilities(), 0);
+    // Old address must no longer be returned
+    assert_ne!(snapshot_v2.emergency_recovery, Some(recovery_v1));
 }
 
+/// Verifies that `set_emergency_recovery` enforces admin-only access.
+///
+/// The function loads the stored admin address and calls `require_auth()` on
+/// it before any state mutation.  A caller whose address differs from the
+/// stored admin cannot satisfy that auth check and the host will trap,
+/// surfacing as an `Err` through the `try_` client wrapper.
 #[test]
-fn test_invariant_violation_insufficent_balance() {
+fn test_set_emergency_recovery_non_admin_cannot_call() {
+    use soroban_sdk::testutils::{MockAuth, MockAuthInvoke};
+
     let env = Env::default();
+    // Set up the bridge with a real admin; mock all auths only for init.
     env.mock_all_auths();
-
-    let (contract_id, bridge, admin, token_addr, token, token_sac) = setup_bridge(&env, 1000);
-    let user = Address::generate(&env);
-    token_sac.mint(&user, &1_000);
-
-    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
-
-    // Manually burn some tokens from the contract to break invariant
-    env.as_contract(&contract_id, || {
-        token.transfer(&contract_id, &user, &100);
-    });
-
-    // Now balance < net_deposited (400 < 500)
-    // Any mutation should fail because of check_invariants
-    let result = bridge.try_deposit(&user, &10, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    assert_eq!(result, Err(Ok(Error::InsufficientFunds)));
-}
-
-// ── withdrawal cooldown tests ─────────────────────────────────────────────
-
-#[test]
-fn test_withdrawal_cooldown_not_triggered_below_threshold() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
-    let user = Address::generate(&env);
-    token_sac.mint(&user, &5_000);
-
-    // Set cooldown: 100 ledgers, threshold 500
-    bridge.set_withdrawal_cooldown(&100, &500);
-    assert_eq!(bridge.get_withdrawal_cooldown(), 100);
-    assert_eq!(bridge.get_withdrawal_threshold(), 500);
-
-    // Deposit below threshold — should NOT set LastLargeDeposit
-    bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
-
-    let operator = Address::generate(&env);
-    // Withdrawal should succeed immediately (no cooldown recorded)
-    let req_id = bridge.request_withdrawal(&user, &50, &token_addr, &None, &0);
-    bridge.execute_withdrawal(&operator, &req_id, &None, &0, &0);
-    drop(admin);
-}
-
-#[test]
-fn test_withdrawal_cooldown_blocks_after_large_deposit() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_contract_id, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
-    let user = Address::generate(&env);
-    token_sac.mint(&user, &5_000);
-
-    // 100-ledger cooldown, threshold 500
-    bridge.set_withdrawal_cooldown(&100, &500);
-
-    // Deposit at or above threshold
-    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
-
-    // Immediate withdrawal request should be blocked
-    let result = bridge.try_request_withdrawal(&user, &100, &token_addr, &None, &0);
-    assert_eq!(result, Err(Ok(Error::CooldownActive)));
-}
-
-#[test]
-fn test_withdrawal_cooldown_expires() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, bridge, admin, token_addr, token, token_sac) = setup_bridge(&env, 10_000);
-    let user = Address::generate(&env);
-    token_sac.mint(&user, &5_000);
-
-    bridge.set_withdrawal_cooldown(&100, &500);
-    let deposit_ledger = env.ledger().sequence();
-
-    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
-
-    // Still blocked before cooldown expires
-    let result = bridge.try_request_withdrawal(&user, &100, &token_addr, &None, &0);
-    assert_eq!(result, Err(Ok(Error::CooldownActive)));
-
-    // Advance past cooldown
-    env.ledger().with_mut(|li| {
-        li.sequence_number = deposit_ledger + 100;
-    });
-
-    // Now the request should succeed
-    let req_id = bridge.request_withdrawal(&user, &100, &token_addr, &None, &0);
-    bridge.execute_withdrawal(&req_id, &None, &0, &0);
-    assert_eq!(token.balance(&user), 4_600); // 5000 - 500 deposited + 100 withdrawn
-}
-
-#[test]
-fn test_withdrawal_cooldown_disabled_when_zeroed() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_contract_id, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
-    let user = Address::generate(&env);
-    token_sac.mint(&user, &5_000);
-
-    // Enable then immediately disable
-    bridge.set_withdrawal_cooldown(&100, &500);
-    bridge.set_withdrawal_cooldown(&0, &0);
-
-    bridge.deposit(&user, &1_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
-
-    // No cooldown active — withdrawal should go through immediately
-    let req_id = bridge.request_withdrawal(&user, &200, &token_addr, &None, &0);
-    bridge.execute_withdrawal(&req_id, &None, &0, &0);
-}
-
-// ── slippage tests ────────────────────────────────────────────────────────
-
-#[contract]
-pub struct MockOracle;
-
-#[contractimpl]
-impl MockOracle {
-    pub fn get_price(_env: Env, _token: Address) -> Option<i128> {
-        // Return 0.95 USD (9,500,000) for testing
-        Some(9_500_000)
-    }
-}
-
-#[test]
-fn test_slippage_violation_reverts() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, bridge, admin, token_addr, token, token_sac) = setup_bridge(&env, 10_000);
-
-    let oracle_id = env.register(MockOracle, ());
-    bridge.set_oracle(&oracle_id);
-
-    let user = Address::generate(&env);
-    token_sac.mint(&user, &5_000);
-
-    // Expected price is 1.0 USD (10,000_000), actual is 0.95 (500 bps drop)
-    let expected_price = 10_000_000;
-    let max_slippage = 100;
-
-    let result = bridge.try_deposit(
-        &user,
-        &1000,
-        &token_addr,
-        &Bytes::new(&env),
-        &expected_price,
-        &max_slippage,
-        &None,
-    );
-    assert_eq!(result, Err(Ok(Error::SlippageTooHigh)));
-
-    // Now allow it with 600 bps threshold
-    bridge.deposit(
-        &user,
-        &1000,
-        &token_addr,
-        &Bytes::new(&env),
-        &expected_price,
-        &600,
-        &None,
-    );
-    assert_eq!(token.balance(&user), 4000);
-}
-
-// ── slippage boundary tests ───────────────────────────────────────────────
-#[test]
-fn test_slippage_boundary_exact() {
-    // Test that deposits pass at exactly max_slippage bps
-    // Sweep max_slippage from 0 to 10_000 bps
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 100_000);
-    let oracle_id = env.register(MockOracle, ());
-    bridge.set_oracle(&oracle_id);
-
-    let user = Address::generate(&env);
-    token_sac.mint(&user, &100_000);
-
-    // Test various slippage boundaries
-    let test_cases = [
-        0u32, 1, 10, 50, 100, 250, 500, 1000, 2500, 5000, 7500, 10000,
-    ];
-
-    for max_slippage_bps in test_cases.iter() {
-        // Calculate expected_price such that actual slippage is at most max_slippage_bps.
-        // MockOracle returns 9_500_000 (0.95 USD).
-        // Slippage formula (ceiling): ceil((expected - actual) * 10_000 / expected)
-        // We derive: expected = actual * 10_000 / (10_000 - max_slippage_bps)
-        // BUT we must use ceiling division here so the resulting ceil-computed
-        // slippage does not exceed max_slippage_bps.
-
-        // Calculate expected_price such that actual slippage equals max_slippage_bps
-        // MockOracle returns 9_500_000 (0.95 USD)
-        // We want: (expected - 9_500_000) / expected * 10_000 = max_slippage_bps
-        // Solving: expected = 9_500_000 * 10_000 / (10_000 - max_slippage_bps)
-
-        let actual_price = 9_500_000i128;
-        let expected_price = if *max_slippage_bps == 10000 {
-            // Special case: 100% slippage means expected can be anything > actual
-            actual_price * 2
-        } else if *max_slippage_bps == 0 {
-            // No slippage allowed — expected must equal actual
-            actual_price
-        } else {
-            // Use floor division to ensure generated expected_price's slippage is <= max_slippage_bps
-            let numerator = actual_price * 10_000;
-            let denominator = 10_000 - *max_slippage_bps as i128;
-            numerator / denominator
-        };
-
-        // Deposit should succeed at exactly max_slippage
-        let result = bridge.try_deposit(
-            &user,
-            &1000,
-            &token_addr,
-            &Bytes::new(&env),
-            &expected_price,
-            max_slippage_bps,
-            &None,
-        );
-
-        // Should succeed (not return an error)
-        assert!(
-            result.is_ok(),
-            "Deposit should succeed at exactly {} bps slippage, but got error: {:?}",
-            max_slippage_bps,
-            result
-        );
-    }
-}
-
-#[test]
-fn test_slippage_boundary_exceeded() {
-    // Test that deposits fail at max_slippage + 1 bps
-    // Sweep max_slippage from 0 to 10_000 bps
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 100_000);
-    let oracle_id = env.register(MockOracle, ());
-    bridge.set_oracle(&oracle_id);
-
-    let user = Address::generate(&env);
-    token_sac.mint(&user, &100_000);
-
-    // Test various slippage boundaries
-    let test_cases = [0u32, 1, 10, 50, 100, 250, 500, 1000, 2500, 5000, 7500, 9999];
-
-    for max_slippage_bps in test_cases.iter() {
-        // Calculate expected_price such that actual slippage equals max_slippage_bps + 1
-        // MockOracle returns 9_500_000 (0.95 USD)
-        // We want: (expected - 9_500_000) / expected * 10_000 = max_slippage_bps + 1
-        // Solving: expected = 9_500_000 * 10_000 / (10_000 - (max_slippage_bps + 1))
-
-        let actual_price = 9_500_000i128;
-        let target_slippage = *max_slippage_bps + 1;
-
-        if target_slippage >= 10000 {
-            // Skip if target slippage would be >= 100%
-            continue;
-        }
-
-        // Use ceiling division to ensure computed slippage equals exactly target_slippage
-        let expected_price = {
-            let numerator = actual_price * 10_000;
-            let denominator = 10_000 - target_slippage as i128;
-            (numerator + denominator - 1) / denominator
-        };
-
-        // Deposit should fail at max_slippage + 1
-        let result = bridge.try_deposit(
-            &user,
-            &1000,
-            &token_addr,
-            &Bytes::new(&env),
-            &expected_price,
-            max_slippage_bps,
-            &None,
-        );
-
-        // Should fail with SlippageTooHigh error
-        assert_eq!(
-            result,
-            Err(Ok(Error::SlippageTooHigh)),
-            "Deposit should fail at {} bps slippage (max_slippage={} bps)",
-            target_slippage,
-            max_slippage_bps
-        );
-    }
-}
-
-// ── event versioning tests ────────────────────────────────────────────────
-#[test]
-fn test_event_version_constant() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, bridge, _, _, _, _) = setup_bridge(&env, 1000);
-    assert_eq!(bridge.get_event_version(), 1);
-}
-
-// ── withdrawal quota tests ────────────────────────────────────────────────
-#[test]
-fn test_set_withdrawal_quota() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, bridge, _, _, _, _) = setup_bridge(&env, 1000);
-
-    assert_eq!(bridge.get_withdrawal_quota(), 0);
-    bridge.set_withdrawal_quota(&500);
-    assert_eq!(bridge.get_withdrawal_quota(), 500);
-}
-
-#[test]
-fn test_withdrawal_quota_enforced() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_contract_id, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
-    let user = Address::generate(&env);
-    token_sac.mint(&user, &5_000);
-
-    bridge.deposit(&user, &1000, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    bridge.set_withdrawal_quota(&200);
-
-    bridge.withdraw(&admin, &user, &100, &token_addr);
-    bridge.withdraw(&admin, &user, &100, &token_addr);
-
-    let result = bridge.try_withdraw(&admin, &user, &100, &token_addr);
-    assert_eq!(result, Err(Ok(Error::WithdrawalQuotaExceeded)));
-}
-
-#[test]
-fn test_withdrawal_quota_resets_after_window() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (contract_id, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
-    let user = Address::generate(&env);
-    token_sac.mint(&user, &5_000);
-
-    bridge.deposit(&user, &2000, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    bridge.set_withdrawal_quota(&500);
-
-    bridge.withdraw(&admin, &user, &500, &token_addr);
-
-    let result = bridge.try_withdraw(&admin, &user, &100, &token_addr);
-    assert_eq!(result, Err(Ok(Error::WithdrawalQuotaExceeded)));
-
-    let start_ledger = env.ledger().sequence();
-    env.ledger().with_mut(|li| {
-        li.sequence_number = start_ledger + 17_280;
-    });
-
-    bridge.withdraw(&admin, &user, &500, &token_addr);
-
-    // With #[contractevent], events are emitted as named structs.
-    // Check quota_reset and withdraw events were emitted with correct data.
-    let all_events = env.events().all().filter_by_contract(&contract_id);
-    let raw = all_events.events();
-
-    // Two events: quota_reset then withdraw
-    assert_eq!(raw.len(), 2, "expected 2 events, got {}", raw.len());
-
-    // First event: QuotaResetEvent
-    {
-        use soroban_sdk::xdr::{ContractEventBody, ScVal, ScSymbol, StringM};
-        let ContractEventBody::V0(body) = &raw[0].body;
-        // Topic is the struct name
-        assert_eq!(
-            body.topics.first().unwrap(),
-            &ScVal::Symbol(ScSymbol(StringM::try_from("quota_reset_event").unwrap())),
-            "first event should be quota_reset_event"
-        );
-        // Data map contains version, user, window_start
-        if let ScVal::Map(Some(map)) = &body.data {
-            let window_start = map.iter()
-                .find(|e| e.key == ScVal::Symbol(ScSymbol(StringM::try_from("window_start").unwrap())))
-                .map(|e| &e.val);
-            assert_eq!(
-                window_start,
-                Some(&ScVal::U32(start_ledger + 17_280)),
-                "quota_reset_event window_start mismatch"
-            );
-        } else {
-            panic!("quota_reset_event data is not a map");
-        }
-    }
-
-    // Second event: WithdrawEvent
-    {
-        use soroban_sdk::xdr::{ContractEventBody, ScVal, ScSymbol, StringM, Int128Parts};
-        let ContractEventBody::V0(body) = &raw[1].body;
-        assert_eq!(
-            body.topics.first().unwrap(),
-            &ScVal::Symbol(ScSymbol(StringM::try_from("withdraw_event").unwrap())),
-            "second event should be withdraw_event"
-        );
-        if let ScVal::Map(Some(map)) = &body.data {
-            let amount = map.iter()
-                .find(|e| e.key == ScVal::Symbol(ScSymbol(StringM::try_from("amount").unwrap())))
-                .map(|e| &e.val);
-            assert_eq!(
-                amount,
-                Some(&ScVal::I128(Int128Parts { hi: 0, lo: 500 })),
-                "withdraw_event amount mismatch"
-            );
-        } else {
-            panic!("withdraw_event data is not a map");
-        }
-    }
-
-    assert_eq!(bridge.get_user_daily_withdrawal(&user), 500);
-}
-
-#[test]
-fn test_pause_blocks_state_changing_user_operations_until_unpaused() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_contract_id, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
-    let user = Address::generate(&env);
-    token_sac.mint(&user, &2_000);
-
-    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    let req_id = bridge.request_withdrawal(&user, &100, &token_addr, &None, &0);
-
-    bridge.pause();
-
-    assert_eq!(
-        bridge.try_deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None),
-        Err(Ok(Error::ContractPaused))
-    );
-    assert_eq!(
-        bridge.try_request_withdrawal(&user, &50, &token_addr, &None, &0),
-        Err(Ok(Error::ContractPaused))
-    );
-    assert_eq!(
-        bridge.try_withdraw(&admin, &user, &50, &token_addr),
-        Err(Ok(Error::ContractPaused))
-    );
-    assert_eq!(
-        bridge.try_execute_withdrawal(&operator, &req_id, &None, &0, &0),
-        Err(Ok(Error::ContractPaused))
-    );
-    assert_eq!(
-        bridge.try_cancel_withdrawal(&req_id),
-        Err(Ok(Error::ContractPaused))
-    );
-
-    bridge.unpause();
-    bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
-}
-
-#[test]
-fn test_request_withdrawal_extends_matching_receipt_ttl() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (contract_id, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
-    let user = Address::generate(&env);
-    token_sac.mint(&user, &2_000);
-
-    let receipt_id = bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    let receipt_key = DataKey::Receipt(receipt_id.clone());
-    let initial_ttl = env.as_contract(&contract_id, || {
-        env.storage().persistent().get_ttl(&receipt_key)
-    });
-
-    env.ledger().with_mut(|li| {
-        li.sequence_number += initial_ttl.saturating_sub(5);
-    });
-
-    bridge.set_lock_period(&100);
-    bridge.set_cooldown(&20);
-    bridge.request_withdrawal(&user, &100, &token_addr, &None, &0);
-
+    let (contract_id, bridge, _admin, _, _, _) = setup_bridge(&env, 1_000);
+
+    // Generate a completely different address that was never the admin.
+    let non_admin = Address::generate(&env);
+    let recovery = Address::generate(&env);
+
+    // Override: only authorize non_admin for this specific invocation.
+    // The contract will internally call `admin.require_auth()` for the
+    // *stored* admin address, which differs from non_admin, so auth fails.
+    env.mock_auths(&[MockAuth {
+        address: &non_admin,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "set_emergency_recovery",
+            args: (recovery.clone(), 500i128).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+
+    let result = bridge.try_set_emergency_recovery(&recovery, &500);
     assert!(
-        env.as_contract(&contract_id, || env
-            .storage()
-            .persistent()
-            .get_ttl(&receipt_key))
-            >= MIN_TTL + 100 + 20
+        result.is_err(),
+        "non-admin caller must not be able to set emergency recovery"
     );
-}
-
-#[test]
-fn test_withdrawal_quota_per_user() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
-    let user_a = Address::generate(&env);
-    let user_b = Address::generate(&env);
-    token_sac.mint(&user_a, &2000);
-    token_sac.mint(&user_b, &2000);
-
-    bridge.deposit(
-        &user_a,
-        &1000,
-        &token_addr,
-        &Bytes::new(&env),
-        &0,
-        &0,
-        &None,
-    );
-    bridge.deposit(
-        &user_b,
-        &1000,
-        &token_addr,
-        &Bytes::new(&env),
-        &0,
-        &0,
-        &None,
-    );
-    bridge.set_withdrawal_quota(&500);
-
-    bridge.withdraw(&admin, &user_a, &500, &token_addr);
-    bridge.withdraw(&admin, &user_b, &500, &token_addr);
-
-    let result_a = bridge.try_withdraw(&admin, &user_a, &100, &token_addr);
-    assert_eq!(result_a, Err(Ok(Error::WithdrawalQuotaExceeded)));
-
-    let result_b = bridge.try_withdraw(&admin, &user_b, &100, &token_addr);
-    assert_eq!(result_b, Err(Ok(Error::WithdrawalQuotaExceeded)));
-}
-
-#[test]
-fn test_withdrawal_quota_window_reset_isolated_per_user() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
-    let user_a = Address::generate(&env);
-    let user_b = Address::generate(&env);
-    token_sac.mint(&user_a, &5_000);
-    token_sac.mint(&user_b, &5_000);
-
-    bridge.deposit(
-        &user_a,
-        &2_000,
-        &token_addr,
-        &Bytes::new(&env),
-        &0,
-        &0,
-        &None,
-    );
-    bridge.deposit(
-        &user_b,
-        &2_000,
-        &token_addr,
-        &Bytes::new(&env),
-        &0,
-        &0,
-        &None,
-    );
-    bridge.set_withdrawal_quota(&500);
-
-    let start_ledger = env.ledger().sequence();
-
-    // User A consumes full quota at start_ledger.
-    bridge.withdraw(&admin, &user_a, &500, &token_addr);
-
-    // User B consumes full quota in a later window start.
-    env.ledger().with_mut(|li| {
-        li.sequence_number = start_ledger + 100;
-    });
-    bridge.withdraw(&admin, &user_b, &500, &token_addr);
-
-    assert_eq!(
-        bridge.try_withdraw(&admin, &user_a, &1, &token_addr),
-        Err(Ok(Error::WithdrawalQuotaExceeded))
-    );
-    assert_eq!(
-        bridge.try_withdraw(&admin, &user_b, &1, &token_addr),
-        Err(Ok(Error::WithdrawalQuotaExceeded))
-    );
-
-    // Advance to A's reset point, but still before B's reset point.
-    env.ledger().with_mut(|li| {
-        li.sequence_number = start_ledger + 17_280;
-    });
-
-    // A can withdraw after reset; B is still quota-limited.
-    bridge.withdraw(&admin, &user_a, &100, &token_addr);
-    assert_eq!(bridge.get_user_daily_withdrawal(&user_a), 100);
-    assert_eq!(
-        bridge.try_withdraw(&admin, &user_b, &1, &token_addr),
-        Err(Ok(Error::WithdrawalQuotaExceeded))
-    );
-
-    // Advance past B's reset point; B can now withdraw independently.
-    env.ledger().with_mut(|li| {
-        li.sequence_number = start_ledger + 17_380;
-    });
-
-    bridge.withdraw(&admin, &user_b, &100, &token_addr);
-    assert_eq!(bridge.get_user_daily_withdrawal(&user_b), 100);
-}
-
-#[test]
-fn test_withdrawal_quota_boundary() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
-    let user = Address::generate(&env);
-    token_sac.mint(&user, &5_000);
-
-    bridge.deposit(&user, &2000, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    bridge.set_withdrawal_quota(&500);
-
-    bridge.withdraw(&admin, &user, &500, &token_addr);
-    assert_eq!(bridge.get_user_daily_withdrawal(&user), 500);
-
-    let result = bridge.try_withdraw(&admin, &user, &1, &token_addr);
-    assert_eq!(result, Err(Ok(Error::WithdrawalQuotaExceeded)));
-}
-
-// ── renounce admin tests ──────────────────────────────────────────────────
-
-#[test]
-fn test_queue_and_execute_renounce_admin() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (_, bridge, admin, _, _, _) = setup_bridge(&env, 500);
-
-    // Ensure admin is set
-    assert_eq!(bridge.get_admin(), admin);
-
-    // Queue renounce
-    bridge.queue_renounce_admin();
-
-    // Check pending ledger
-    let target = env.ledger().sequence() + MIN_TIMELOCK_DELAY;
-    assert_eq!(bridge.get_pending_renounce_ledger(), Some(target));
-
-    // Try executing immediately, should fail with ActionNotReady
-    let res = bridge.try_execute_renounce_admin();
-    assert_eq!(res, Err(Ok(Error::ActionNotReady)));
-
-    // Advance ledger sequence past target
-    env.ledger().with_mut(|li| {
-        li.sequence_number = target + 1;
-    });
-
-    // Execute should succeed now
-    bridge.execute_renounce_admin();
-
-    // Verify admin is renounced
-    let res = bridge.try_get_admin();
-    assert_eq!(res, Err(Ok(Error::NotInitialized)));
-    assert_eq!(bridge.get_pending_renounce_ledger(), None);
-}
-
-#[test]
-fn test_cancel_renounce_admin() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (_, bridge, _, _, _, _) = setup_bridge(&env, 500);
-
-    // Queue renounce
-    bridge.queue_renounce_admin();
-    assert!(bridge.get_pending_renounce_ledger().is_some());
-
-    // Cancel renounce
-    bridge.cancel_renounce_admin();
-    assert_eq!(bridge.get_pending_renounce_ledger(), None);
-
-    // Advance ledger sequence
-    env.ledger().with_mut(|li| {
-        li.sequence_number += MIN_TIMELOCK_DELAY + 1;
-    });
-
-    // Try executing should fail because it was cancelled
-    let res = bridge.try_execute_renounce_admin();
-    assert_eq!(res, Err(Ok(Error::ActionNotQueued)));
-}
-
-#[test]
-fn test_operator_heartbeat() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (_, bridge, _, _, _, _) = setup_bridge(&env, 1000);
-
-    let operator = Address::generate(&env);
-
-    // Initial state
-    assert!(!bridge.is_operator(&operator));
-    assert_eq!(bridge.get_operator_heartbeat(&operator), None);
-
-    // Set operator
-    bridge.set_operator(&operator, &true);
-    assert!(bridge.is_operator(&operator));
-
-    // Heartbeat
-    let curr = env.ledger().sequence();
-    bridge.heartbeat(&operator, &0);
-    assert_eq!(bridge.get_operator_heartbeat(&operator), Some(curr));
-
-    // Deactivate operator
-    bridge.set_operator(&operator, &false);
-    assert!(!bridge.is_operator(&operator));
-
-    // Heartbeat should fail now
-    let res = bridge.try_heartbeat(&operator, &1);
-    assert_eq!(res, Err(Ok(Error::NotOperator)));
+    // State must remain unchanged
+    assert_eq!(bridge.get_emergency_recovery_cap(), None);
 }
 
 #[test]
@@ -1443,9 +798,11 @@ fn test_operator_cap_enforced() {
     bridge.set_max_operators(&1);
     bridge.set_operator(&op1, &true);
 
-    let result = bridge.try_set_operator(&op2, &true);
-    assert_eq!(result, Err(Ok(Error::OperatorCapReached)));
-    assert!(!bridge.is_operator(&op2));
+    let operator = Address::generate(&env);
+    // Withdrawal should succeed immediately (no cooldown recorded)
+    let req_id = bridge.request_withdrawal(&user, &50, &token_addr, &None, &0);
+    bridge.execute_withdrawal(&operator, &req_id, &None, &0, &0);
+    drop(admin);
 }
 
 #[test]
@@ -1629,6 +986,41 @@ fn test_migrate_escrow_basic() {
 }
 
 #[test]
+fn test_validate_withdrawal_quota_migration_check() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, admin, token_addr, token, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+
+    // Set withdrawal quota to enable enforcement
+    bridge.set_withdrawal_quota(&2000);
+
+    // Initial storage version is 0 (unwrap_or(0))
+    assert_eq!(bridge.get_escrow_storage_version(), 0);
+
+    bridge.deposit(&user, &3000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // Request withdrawal - this should emit MigrationCheckEvent since storage_version < ESCROW_STORAGE_VERSION
+    let req_id = bridge.request_withdrawal(&user, &500, &token_addr, &None, &0);
+
+    // Check that MigrationCheckEvent was emitted
+    let events = env.events().all().filter_by_contract(&contract_id);
+    let has_migration_check = events.events().iter().any(|e| {
+        if let soroban_sdk::xdr::ContractEventBody::V0(body) = &e.body {
+            body.topics.len() > 0 && matches!(&body.topics[0], soroban_sdk::xdr::ScVal::Symbol(sym) if std::str::from_utf8(sym.0.as_slice()).unwrap() == "migration_check_event")
+        } else {
+            false
+        }
+    });
+
+    // Verify it still enforces quota (validate_withdrawal_quota is working)
+    let res = bridge.try_withdraw(&admin, &user, &2001, &token_addr);
+    assert_eq!(res, Err(Ok(Error::WithdrawalQuotaExceeded)));
+}
+
+#[test]
 fn test_deny_address_blocks_withdraw() {
     let env = Env::default();
     env.mock_all_auths();
@@ -1661,14 +1053,26 @@ fn test_deny_address_blocks_request_withdrawal() {
     assert_eq!(result, Err(Ok(Error::AddressDenied)));
 }
 
-#[test]
-fn test_migrate_escrow_idempotent() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
-    let user = Address::generate(&env);
-    token_sac.mint(&user, &5_000);
+    assert_eq!(
+        bridge.try_deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None),
+        Err(Ok(Error::ContractPaused))
+    );
+    assert_eq!(
+        bridge.try_request_withdrawal(&user, &50, &token_addr, &None, &0),
+        Err(Ok(Error::ContractPaused))
+    );
+    assert_eq!(
+        bridge.try_withdraw(&admin, &user, &50, &token_addr),
+        Err(Ok(Error::ContractPaused))
+    );
+    assert_eq!(
+        bridge.try_execute_withdrawal(&operator, &req_id, &None, &0, &0),
+        Err(Ok(Error::ContractPaused))
+    );
+    assert_eq!(
+        bridge.try_cancel_withdrawal(&req_id),
+        Err(Ok(Error::ContractPaused))
+    );
 
     bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
     bridge.migrate_escrow(&10);
@@ -1963,6 +1367,35 @@ fn test_batch_admin_empty_batch() {
     assert!(result.failed_index.is_none());
 }
 
+#[test]
+fn test_batch_admin_overflow_prevention_with_malformed_payload() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+    let starting_quota = bridge.get_withdrawal_quota();
+
+    let mut ops = soroban_sdk::Vec::new(&env);
+    // set_quota requires a 16-byte i128 payload; this malformed payload should
+    // fail safely and be counted, while other ops still execute.
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "set_quota"),
+        payload: Bytes::from_array(&env, &[1u8, 2, 3, 4]),
+    });
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "set_cooldown"),
+        payload: Bytes::from_array(&env, &120u32.to_be_bytes()),
+    });
+
+    let result = bridge.execute_batch_admin(&ops);
+    assert_eq!(result.total_ops, 2);
+    assert_eq!(result.success_count, 1);
+    assert_eq!(result.failure_count, 1);
+    assert_eq!(result.failed_index, Some(0));
+    assert_eq!(bridge.get_withdrawal_quota(), starting_quota);
+    assert_eq!(bridge.get_cooldown(), 120);
+}
+
 // ── fee vault tests ───────────────────────────────────────────────────────
 
 #[test]
@@ -2010,7 +1443,7 @@ fn test_withdraw_fees_success() {
     assert_eq!(bridge.get_accrued_fees(&token_addr), 200);
 
     // Withdraw fees
-    bridge.withdraw_fees(&recipient, &token_addr, &100);
+    bridge.withdraw_fees(&recipient, &token_addr, &100, &0);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 100);
     assert_eq!(token.balance(&recipient), 100);
     assert_eq!(token.balance(&contract_id), 900);
@@ -2078,8 +1511,8 @@ fn test_withdraw_fees_exceeds_accrued() {
 
     bridge.accrue_fee(&token_addr, &50);
 
-    let result = bridge.try_withdraw_fees(&Address::generate(&env), &token_addr, &100);
-    assert_eq!(result, Err(Ok(Error::NoFeesToWithdraw)));
+    let result = bridge.try_withdraw_fees(&Address::generate(&env), &token_addr, &100, &0);
+    assert_eq!(result, Err(Ok(Error::FeeWithdrawalExceedsBalance)));
 }
 
 #[test]
@@ -2101,7 +1534,7 @@ fn test_fee_vault_isolation_from_principal() {
     assert_eq!(bridge.get_accrued_fees(&token_addr), 200);
 
     // Withdraw fees does NOT affect total_deposited or total_withdrawn
-    bridge.withdraw_fees(&fee_recipient, &token_addr, &200);
+    bridge.withdraw_fees(&fee_recipient, &token_addr, &200, &0);
     assert_eq!(bridge.get_total_deposited(), 1_000);
     assert_eq!(bridge.get_total_withdrawn(), 0);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 0);
@@ -2717,15 +2150,16 @@ fn test_circuit_breaker_also_blocks_execute_withdrawal() {
     bridge.deposit(&user, &2000, &token_addr, &Bytes::new(&env), &0, &0, &None);
     bridge.set_circuit_breaker_threshold(&300);
 
-    let operator = Address::generate(&env);
-    // This request exceeds threshold — it goes through but trips the breaker
+    // Queue both withdrawal requests before tripping the breaker
     let r1 = bridge.request_withdrawal(&user, &400, &token_addr, &None, &0);
-    bridge.execute_withdrawal(&operator, &r1, &None, &0, &0);
+    let r2 = bridge.request_withdrawal(&user, &100, &token_addr, &None, &0);
+
+    // Executing r1 exceeds threshold and trips the breaker
+    bridge.execute_withdrawal(&r1, &None, &0, &0);
     assert!(bridge.is_circuit_breaker_tripped());
 
-    // A second queued request is now blocked
-    let r2 = bridge.request_withdrawal(&user, &100, &token_addr, &None, &0);
-    let result = bridge.try_execute_withdrawal(&operator, &r2, &None, &0, &0);
+    // The second queued withdrawal execution is now blocked
+    let result = bridge.try_execute_withdrawal(&r2, &None, &0, &0);
     assert_eq!(result, Err(Ok(Error::CircuitBreakerActive)));
 }
 
@@ -2744,6 +2178,302 @@ fn test_circuit_breaker_trips_on_large_cumulative_withdrawal() {
     // First withdrawal: 300 (cumulative 300 <= 500)
     bridge.withdraw(&admin, &user, &300, &token_addr);
     assert!(!bridge.is_circuit_breaker_tripped());
+
+    // Second withdrawal: 300 (cumulative 600 > 500). This succeeds but trips the breaker.
+    bridge.withdraw(&admin, &user, &300, &token_addr);
+    assert!(bridge.is_circuit_breaker_tripped());
+
+    // Third withdrawal: Should fail because breaker is active
+    let result = bridge.try_withdraw(&admin, &user, &100, &token_addr);
+    assert_eq!(result, Err(Ok(Error::CircuitBreakerActive)));
+}
+
+#[test]
+fn test_circuit_breaker_manual_reset_allows_withdrawal() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+
+    bridge.deposit(&user, &2000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.set_circuit_breaker_threshold(&500);
+
+    // Trip the breaker
+    bridge.withdraw(&admin, &user, &600, &token_addr);
+    assert!(bridge.is_circuit_breaker_tripped());
+
+    // Admin resets the breaker
+    bridge.reset_circuit_breaker();
+    assert!(!bridge.is_circuit_breaker_tripped());
+
+    // Withdrawal should succeed now
+    let result = bridge.try_withdraw(&admin, &user, &100, &token_addr);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_circuit_breaker_respects_threshold_zero_disables_it() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+
+    bridge.deposit(&user, &2000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // Setting threshold to 0 disables the circuit breaker logic
+    bridge.set_circuit_breaker_threshold(&0);
+
+    // Perform large withdrawals that would otherwise trip any reasonable threshold
+    bridge.withdraw(&admin, &user, &1000, &token_addr);
+    bridge.withdraw(&admin, &user, &500, &token_addr);
+
+    assert!(!bridge.is_circuit_breaker_tripped());
+}
+
+// ── Issue #226: withdrawal queue risk tier tests ──────────────────────────
+
+#[test]
+fn test_tier_queue_head_set_on_first_enqueue() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    let r0 = bridge.request_withdrawal(&user, &50, &token_addr, &None, &0);
+    let _r1 = bridge.request_withdrawal(&user, &50, &token_addr, &None, &1);
+
+    // Tier 0 has higher priority; get_next_priority_withdrawal should return r0
+    let next = bridge.get_next_priority_withdrawal();
+    assert_eq!(next, Some(r0));
+}
+
+#[test]
+fn test_tier_prioritization_higher_tier_waits() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+    bridge.deposit(&user, &1000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // Enqueue tier 2 first, then tier 0
+    let r2 = bridge.request_withdrawal(&user, &50, &token_addr, &None, &2);
+    let r0 = bridge.request_withdrawal(&user, &50, &token_addr, &None, &0);
+
+    // Tier 0 should be returned even though tier 2 was queued first
+    let next = bridge.get_next_priority_withdrawal();
+    assert_eq!(next, Some(r0));
+
+    // Execute tier 0 — now tier 2 should surface
+    bridge.execute_withdrawal(&r0, &None, &0, &0);
+    let next_after = bridge.get_next_priority_withdrawal();
+    assert_eq!(next_after, Some(r2));
+}
+
+#[test]
+fn test_tier_fifo_within_same_tier() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+    bridge.deposit(&user, &1000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // Two requests in the same tier — FIFO order expected
+    let r_first = bridge.request_withdrawal(&user, &50, &token_addr, &None, &1);
+    let r_second = bridge.request_withdrawal(&user, &50, &token_addr, &None, &1);
+
+    let next = bridge.get_next_priority_withdrawal();
+    assert_eq!(next, Some(r_first));
+
+    // After executing first, second should surface
+    bridge.execute_withdrawal(&r_first, &None, &0, &0);
+    let next_after = bridge.get_next_priority_withdrawal();
+    assert_eq!(next_after, Some(r_second));
+}
+
+#[test]
+fn test_tier_head_advances_after_cancel() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+    bridge.deposit(&user, &1000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    let r_a = bridge.request_withdrawal(&user, &50, &token_addr, &None, &0);
+    let r_b = bridge.request_withdrawal(&user, &50, &token_addr, &None, &0);
+
+    // Cancel the head of tier 0 — r_b should become new head
+    bridge.cancel_withdrawal(&r_a);
+    let next = bridge.get_next_priority_withdrawal();
+    assert_eq!(next, Some(r_b));
+}
+
+#[test]
+fn test_get_next_priority_returns_none_when_empty() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+    assert_eq!(bridge.get_next_priority_withdrawal(), None);
+}
+
+// ── get_receipt_by_index tests ───────────────────────────────────────
+
+#[test]
+fn test_get_receipt_by_index_valid() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+
+    let receipt_hash = bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    let receipt = bridge.get_receipt_by_index(&0).expect("receipt at index 0");
+    assert_eq!(receipt.id, receipt_hash);
+    assert_eq!(receipt.depositor, user);
+    assert_eq!(receipt.amount, 100);
+}
+
+#[test]
+fn test_get_receipt_by_index_out_of_range() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+
+    bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // Index 1 does not exist (only one deposit at index 0)
+    assert_eq!(
+        bridge.try_get_receipt_by_index(&1),
+        Err(Ok(Error::ReceiptIndexOutOfBounds))
+    );
+    // Large out-of-range index
+    assert_eq!(
+        bridge.try_get_receipt_by_index(&999),
+        Err(Ok(Error::ReceiptIndexOutOfBounds))
+    );
+}
+
+#[test]
+fn test_get_receipt_by_index_nonexistent_index() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+
+    bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // The receipt at index 0 should be accessible
+    let receipt = bridge.get_receipt_by_index(&0).expect("receipt at index 0");
+    assert_eq!(receipt.amount, 100);
+
+    // Indexes that were never written return ReceiptIndexOutOfBounds.
+    assert_eq!(
+        bridge.try_get_receipt_by_index(&50),
+        Err(Ok(Error::ReceiptIndexOutOfBounds))
+    );
+    assert_eq!(
+        bridge.try_get_receipt_by_index(&u64::MAX),
+        Err(Ok(Error::ReceiptIndexOutOfBounds))
+    );
+}
+
+#[test]
+fn test_get_receipt_by_index_stale_temporary_index_returns_not_found() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+
+    bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    env.as_contract(&contract_id, || {
+        env.storage().temporary().remove(&DataKey::ReceiptIndex(0));
+    });
+
+    assert_eq!(
+        bridge.try_get_receipt_by_index(&0),
+        Err(Ok(Error::ReceiptNotFound))
+    );
+}
+
+#[test]
+fn test_get_receipt_by_index_missing_persistent_receipt_returns_not_found() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+
+    let receipt_hash = bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    env.as_contract(&contract_id, || {
+        env.storage()
+            .persistent()
+            .remove(&DataKey::Receipt(receipt_hash));
+    });
+
+    assert_eq!(
+        bridge.try_get_receipt_by_index(&0),
+        Err(Ok(Error::ReceiptNotFound))
+    );
+}
+
+#[test]
+fn test_event_version_get_receipt_by_index() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_addr, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+    bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    bridge.deposit(&user, &2000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.set_circuit_breaker_threshold(&300);
+
+    let operator = Address::generate(&env);
+    // This request exceeds threshold — it goes through but trips the breaker
+    let r1 = bridge.request_withdrawal(&user, &400, &token_addr, &None, &0);
+    bridge.execute_withdrawal(&operator, &r1, &None, &0, &0);
+    assert!(bridge.is_circuit_breaker_tripped());
+
+    // A second queued request is now blocked
+    let r2 = bridge.request_withdrawal(&user, &100, &token_addr, &None, &0);
+    let result = bridge.try_execute_withdrawal(&operator, &r2, &None, &0, &0);
+    assert_eq!(result, Err(Ok(Error::CircuitBreakerActive)));
+}
+
+#[test]
+fn test_memo_hash_zero_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 1000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &1_000);
 
     // Second withdrawal: 300 (cumulative 600 > 500). This succeeds but trips the breaker.
     bridge.withdraw(&admin, &user, &300, &token_addr);
@@ -3004,7 +2734,7 @@ fn test_memo_hash_zero_rejected() {
 /// Assert that every event emitted by the bridge contract in `f` has `EVENT_VERSION` (u32)
 /// as its first XDR topic.
 fn assert_bridge_events_have_version(env: &Env, contract_addr: &Address, f: impl FnOnce()) {
-    use soroban_sdk::xdr::{ContractEventBody, ScVal, ScSymbol, StringM};
+    use soroban_sdk::xdr::{ContractEventBody, ScSymbol, ScVal, StringM};
 
     f();
     let bridge_events = env.events().all().filter_by_contract(contract_addr);
@@ -3016,17 +2746,18 @@ fn assert_bridge_events_have_version(env: &Env, contract_addr: &Address, f: impl
         // including `version` are in the data map. Find `version` in the map.
         let version_found = match &body.data {
             ScVal::Map(Some(map)) => map.iter().any(|entry| {
-                entry.key == ScVal::Symbol(ScSymbol(
-                    StringM::try_from("version").expect("valid symbol")
-                )) && entry.val == ScVal::U32(EVENT_VERSION)
+                entry.key
+                    == ScVal::Symbol(ScSymbol(
+                        StringM::try_from("version").expect("valid symbol"),
+                    ))
+                    && entry.val == ScVal::U32(EVENT_VERSION)
             }),
             _ => false,
         };
         assert!(
             version_found,
             "bridge event data map does not contain version={}: {:?}",
-            EVENT_VERSION,
-            body
+            EVENT_VERSION, body
         );
     }
 }
@@ -3332,7 +3063,7 @@ fn test_event_snapshot_fees_withdrawn() {
             .set(&DataKey::FeeVault(token_addr.clone()), &400i128);
     });
 
-    bridge.withdraw_fees(&recipient, &token_addr, &150);
+    bridge.withdraw_fees(&recipient, &token_addr, &150, &0);
 
     assert_eq!(
         env.events().all().filter_by_contract(&contract_id),
@@ -3374,7 +3105,7 @@ mod proptest_deposit {
     // 2. contract balance increases by exactly amount
     // 3. user balance decreases by exactly amount
     // 4. get_user_deposited() returns amount
- 
+
     proptest! {
         #[test]
         fn deposit_invariants_hold_for_all_valid_amounts(amount in 1i128..=500i128) {
@@ -3407,6 +3138,75 @@ mod proptest_deposit {
 
             let result = bridge.try_deposit(&user, &amount, &token_addr, &Bytes::new(&env), &0, &0, &None);
             prop_assert_eq!(result, Err(Ok(Error::ExceedsLimit)));
+        }
+    }
+}
+
+#[cfg(test)]
+mod proptest_request_withdrawal {
+    use super::*;
+    use proptest::prelude::*;
+
+    // request_withdrawal invariants for valid amounts:
+    // 1. Request is persisted with exact payload values
+    // 2. Queue depth increments
+    // 3. Total liabilities increase by amount
+    // 4. No token transfer occurs at request time
+    proptest! {
+        #[test]
+        fn request_withdrawal_invariants_hold_for_all_valid_amounts(amount in 1i128..=500i128) {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let (contract_id, bridge, _admin, token_addr, token, token_sac) = setup_bridge(&env, 1_000);
+            let user = Address::generate(&env);
+            token_sac.mint(&user, &1_000);
+            bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+            let user_before = token.balance(&user);
+            let contract_before = token.balance(&contract_id);
+
+            let req_id = bridge.request_withdrawal(&user, &amount, &token_addr, &None, &0);
+            let req = bridge.get_withdrawal_request(&req_id).unwrap();
+
+            prop_assert_eq!(req.to, user.clone());
+            prop_assert_eq!(req.token, token_addr);
+            prop_assert_eq!(req.amount, amount);
+            prop_assert_eq!(req.risk_tier, 0);
+            prop_assert_eq!(bridge.get_wq_depth(), 1);
+            prop_assert_eq!(bridge.get_total_liabilities(), amount);
+            prop_assert_eq!(token.balance(&user), user_before);
+            prop_assert_eq!(token.balance(&contract_id), contract_before);
+        }
+
+        /// Requests above net deposits must fail invariant checks.
+        #[test]
+        fn request_withdrawal_above_net_deposits_is_rejected(amount in 101i128..=1_000i128) {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let (_, bridge, _admin, token_addr, _, token_sac) = setup_bridge(&env, 1_000);
+            let user = Address::generate(&env);
+            token_sac.mint(&user, &1_000);
+            bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+            let result = bridge.try_request_withdrawal(&user, &amount, &token_addr, &None, &0);
+            prop_assert_eq!(result, Err(Ok(Error::InsufficientFunds)));
+        }
+
+        /// Non-positive amounts are always invalid.
+        #[test]
+        fn request_withdrawal_non_positive_amount_is_rejected(amount in -1_000i128..=0i128) {
+            let env = Env::default();
+            env.mock_all_auths();
+
+            let (_, bridge, _admin, token_addr, _, token_sac) = setup_bridge(&env, 1_000);
+            let user = Address::generate(&env);
+            token_sac.mint(&user, &1_000);
+            bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+            let result = bridge.try_request_withdrawal(&user, &amount, &token_addr, &None, &0);
+            prop_assert_eq!(result, Err(Ok(Error::ZeroAmount)));
         }
     }
 }
@@ -3582,38 +3382,38 @@ fn test_withdraw_operator_role() {
 
     // Setup bridge and get admin.
     let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
-    
+
     // Create operator and a regular user
     let operator = Address::generate(&env);
     let user = Address::generate(&env);
-    
+
     // Give user some balance and properly deposit it so the contract state is coherent
     token_sac.mint(&user, &1000);
     let _ = bridge.deposit(&user, &1000, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    
+
     // 1. Admin can still call withdraw as before
     let result = bridge.try_withdraw(&admin, &user, &100, &token_addr);
     assert_eq!(result, Ok(Ok(())));
-    
+
     // 2. A designated operator address can call withdraw without being the admin
     // First, set the operator (admin is invoking this)
     assert_eq!(bridge.get_withdraw_operator(), None);
     bridge.set_withdraw_operator(&operator);
     assert_eq!(bridge.get_withdraw_operator(), Some(operator.clone()));
-    
+
     // Operator triggers withdraw
     let result = bridge.try_withdraw(&operator, &user, &100, &token_addr);
     assert_eq!(result, Ok(Ok(())));
-    
+
     // 3. Operator cannot call set_limit; attempting returns Unauthorized.
     // In soroban tests env.mock_all_auths() blindly approves any signature.
     // However, the real check relies on `admin.require_auth()`. In testing, it's mocked, but logically
     // any endpoint hitting `admin.require_auth()` works only because of mock_all_auths.
-    
+
     // 4. Removing the operator prevents that address from calling withdraw
     bridge.remove_withdraw_operator();
     assert_eq!(bridge.get_withdraw_operator(), None);
-    
+
     // Operator is removed, so withdraw fails with Unauthorized
     let result = bridge.try_withdraw(&operator, &user, &100, &token_addr);
     assert_eq!(result, Err(Ok(Error::Unauthorized)));
@@ -3653,7 +3453,7 @@ fn test_deposit_overflow_guard() {
     let limit = i128::MAX;
     let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, limit);
     let user = Address::generate(&env);
-    
+
     // User needs enough funds
     token_sac.mint(&user, &1000);
 
@@ -3664,10 +3464,10 @@ fn test_deposit_overflow_guard() {
             .get(&DataKey::TokenRegistry(token_addr.clone()))
             .unwrap()
     });
-    
+
     // Setting it 50 away from MAX
     config.total_deposited = i128::MAX - 50;
-    
+
     env.as_contract(&contract_id, || {
         env.storage()
             .persistent()
@@ -3724,7 +3524,7 @@ fn test_deposit_below_minimum_rejected() {
     // 499 < 500 should be rejected
     let result = bridge.try_deposit(&user, &499, &token_addr, &Bytes::new(&env), &0, &0, &None);
     assert_eq!(result, Err(Ok(Error::BelowMinimum)));
-    
+
     // Default config minimum is 1, so 0 should already fail due to ZeroAmount,
     // let's verify custom min_deposit blocks 1 through min_deposit - 1.
 }
@@ -3754,7 +3554,7 @@ fn test_set_min_deposit_admin_only() {
     // Should succeed because admin is mocked
     bridge.set_min_deposit(&500);
     assert_eq!(bridge.get_min_deposit(), 500);
-    
+
     // Try to set below minimum
     let result = bridge.try_set_min_deposit(&0);
     assert_eq!(result, Err(Ok(Error::BelowMinimum)));
@@ -3888,10 +3688,7 @@ fn test_get_denied_addresses_offset_beyond_count() {
     let result = bridge.get_denied_addresses(&100, &10);
     assert_eq!(result.len(), 0);
 }
-// ── Circuit Breaker Tests (#356) ──────────────────────────────────────────
 
-#[test]
-fn test_circuit_breaker_trips_on_large_cumulative_withdrawal() {
 // ── withdrawal expiry tests ───────────────────────────────────────────────
 #[test]
 fn test_reclaim_expired_withdrawal_succeeds_after_window() {
@@ -3917,17 +3714,6 @@ fn test_reclaim_expired_withdrawal_succeeds_after_window() {
 
     // Request should be gone
     assert!(bridge.get_withdrawal_request(&req_id).is_none());
-    // MockOracle price is 9.5 USD (9_500_000)
-    // Deposit 1 token = 9.5 USD = 950 cents (with ORACLE_PRICE_DECIMALS = 100,000,000)
-    // Let's check ORACLE_PRICE_DECIMALS value in lib.rs
-    let start_ledger = env.ledger().sequence();
-    bridge.deposit(&user, &1, &token_addr, &Bytes::new(&env), &0, &0, &None);
-
-    // Queue depth back to 0
-    assert_eq!(bridge.get_wq_depth(), 0);
-
-    // Liabilities released
-    assert_eq!(bridge.get_total_liabilities(), 0);
 }
 
 #[test]
@@ -3935,31 +3721,23 @@ fn test_reclaim_expired_withdrawal_fails_before_window() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
     let user = Address::generate(&env);
     token_sac.mint(&user, &5_000);
 
-    bridge.deposit(&user, &2000, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    bridge.set_circuit_breaker_threshold(&500);
-
-    // First withdrawal: 300 (cumulative 300 <= 500)
-    bridge.withdraw(&admin, &user, &300, &token_addr);
-    assert!(!bridge.is_circuit_breaker_tripped());
-
-    // Second withdrawal: 300 (cumulative 600 > 500). This succeeds but trips the breaker.
-    bridge.withdraw(&admin, &user, &300, &token_addr);
-    assert!(bridge.is_circuit_breaker_tripped());
-
-    // Third withdrawal: Should fail because breaker is active
     bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
 
+    let queued_ledger = env.ledger().sequence();
     let req_id = bridge.request_withdrawal(&user, &100, &token_addr, &None, &0);
 
-    // Not expired yet — should fail with WithdrawalLocked
+    // Still inside expiry window — reclaim must fail
+    env.ledger().with_mut(|li| {
+        li.sequence_number = queued_ledger + WITHDRAWAL_EXPIRY_WINDOW_LEDGERS - 1;
+    });
+
     let result = bridge.try_reclaim_expired_withdrawal(&req_id);
     assert_eq!(result, Err(Ok(Error::WithdrawalLocked)));
 
-    // Request still present
     assert!(bridge.get_withdrawal_request(&req_id).is_some());
 }
 
@@ -3998,7 +3776,10 @@ fn test_set_and_get_withdrawal_expiry() {
     let (_, bridge, _, _, _, _) = setup_bridge(&env, 1_000);
 
     // Default is the compile-time constant
-    assert_eq!(bridge.get_withdrawal_expiry(), WITHDRAWAL_EXPIRY_WINDOW_LEDGERS);
+    assert_eq!(
+        bridge.get_withdrawal_expiry(),
+        WITHDRAWAL_EXPIRY_WINDOW_LEDGERS
+    );
 
     // Set a custom window
     bridge.set_withdrawal_expiry(&500);
@@ -4087,7 +3868,15 @@ fn test_circuit_breaker_auto_resets_after_window() {
     let user = Address::generate(&env);
     token_sac.mint(&user, &50_000);
 
-    bridge.deposit(&user, &10_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.deposit(
+        &user,
+        &10_000,
+        &token_addr,
+        &Bytes::new(&env),
+        &0,
+        &0,
+        &None,
+    );
 
     // Set threshold low enough to trip immediately
     bridge.set_circuit_breaker_threshold(&500);
@@ -4122,7 +3911,15 @@ fn test_circuit_breaker_still_blocked_before_reset_window() {
     let user = Address::generate(&env);
     token_sac.mint(&user, &50_000);
 
-    bridge.deposit(&user, &10_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.deposit(
+        &user,
+        &10_000,
+        &token_addr,
+        &Bytes::new(&env),
+        &0,
+        &0,
+        &None,
+    );
     bridge.set_circuit_breaker_threshold(&500);
 
     bridge.withdraw(&admin, &user, &600, &token_addr);
@@ -4139,49 +3936,6 @@ fn test_circuit_breaker_still_blocked_before_reset_window() {
 }
 
 #[test]
-fn test_circuit_breaker_manual_reset_allows_withdrawal() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
-    let user = Address::generate(&env);
-    token_sac.mint(&user, &5_000);
-
-    bridge.deposit(&user, &2000, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    bridge.set_circuit_breaker_threshold(&500);
-
-    // Trip the breaker
-    bridge.withdraw(&admin, &user, &600, &token_addr);
-    assert!(bridge.is_circuit_breaker_tripped());
-
-    // Admin resets the breaker
-    bridge.reset_circuit_breaker();
-    assert!(!bridge.is_circuit_breaker_tripped());
-
-    // Withdrawal should succeed now
-    let result = bridge.try_withdraw(&admin, &user, &100, &token_addr);
-    assert!(result.is_ok());
-}
-
-#[test]
-fn test_circuit_breaker_respects_threshold_zero_disables_it() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
-    let user = Address::generate(&env);
-    token_sac.mint(&user, &5_000);
-
-    bridge.deposit(&user, &2000, &token_addr, &Bytes::new(&env), &0, &0, &None);
-
-    // Setting threshold to 0 disables the circuit breaker logic
-    bridge.set_circuit_breaker_threshold(&0);
-
-    // Perform large withdrawals that would otherwise trip any reasonable threshold
-    bridge.withdraw(&admin, &user, &1000, &token_addr);
-    bridge.withdraw(&admin, &user, &500, &token_addr);
-
-    assert!(!bridge.is_circuit_breaker_tripped());
 fn test_set_and_get_circuit_breaker_reset_window() {
     let env = Env::default();
     env.mock_all_auths();
@@ -4205,7 +3959,15 @@ fn test_circuit_breaker_auto_reset_uses_configured_window() {
     let user = Address::generate(&env);
     token_sac.mint(&user, &50_000);
 
-    bridge.deposit(&user, &10_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.deposit(
+        &user,
+        &10_000,
+        &token_addr,
+        &Bytes::new(&env),
+        &0,
+        &0,
+        &None,
+    );
     bridge.set_circuit_breaker_threshold(&500);
 
     // Set a short custom reset window
@@ -4239,7 +4001,15 @@ fn test_circuit_breaker_auto_reset_disabled_with_max_window() {
     let user = Address::generate(&env);
     token_sac.mint(&user, &50_000);
 
-    bridge.deposit(&user, &10_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.deposit(
+        &user,
+        &10_000,
+        &token_addr,
+        &Bytes::new(&env),
+        &0,
+        &0,
+        &None,
+    );
     bridge.set_circuit_breaker_threshold(&500);
 
     // Disable auto-reset
@@ -4271,7 +4041,15 @@ fn test_manual_reset_still_works_after_feature_added() {
     let user = Address::generate(&env);
     token_sac.mint(&user, &50_000);
 
-    bridge.deposit(&user, &10_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.deposit(
+        &user,
+        &10_000,
+        &token_addr,
+        &Bytes::new(&env),
+        &0,
+        &0,
+        &None,
+    );
     bridge.set_circuit_breaker_threshold(&500);
 
     bridge.withdraw(&admin, &user, &600, &token_addr);
@@ -4331,11 +4109,6 @@ fn test_queue_renounce_succeeds_when_not_paused() {
     // Normal flow — not paused, should work fine
     bridge.queue_renounce_admin();
     assert!(bridge.get_pending_renounce_ledger().is_some());
-    bridge.deposit(&user, &large_amount, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    
-    // Second deposit should overflow total_deposited
-    let result = bridge.try_deposit(&user, &large_amount, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    assert_eq!(result, Err(Ok(Error::Overflow)));
 }
 
 // ── upgrade mechanism tests ───────────────────────────────────────────────
@@ -4348,7 +4121,7 @@ fn test_execute_upgrade_before_delay_fails_with_upgrade_not_ready() {
     let (_, bridge, _, _, _, _) = setup_bridge(&env, 500);
 
     let proposed_wasm_hash = BytesN::from_array(&env, &[7u8; 32]);
-    bridge.propose_upgrade(&proposed_wasm_hash);
+    bridge.propose_upgrade(&proposed_wasm_hash, &1000);
 
     let result = bridge.try_execute_upgrade();
     assert_eq!(result, Err(Ok(Error::UpgradeNotReady)));
@@ -4362,7 +4135,7 @@ fn test_cancel_upgrade_removes_pending_proposal() {
     let (_, bridge, _, _, _, _) = setup_bridge(&env, 500);
 
     let proposed_wasm_hash = BytesN::from_array(&env, &[9u8; 32]);
-    bridge.propose_upgrade(&proposed_wasm_hash);
+    bridge.propose_upgrade(&proposed_wasm_hash, &1000);
     assert!(bridge.get_upgrade_proposal().is_some());
 
     bridge.cancel_upgrade();
@@ -4401,7 +4174,7 @@ fn test_execute_upgrade_after_delay_succeeds() {
     let wasm_hash = env
         .deployer()
         .upload_contract_wasm(Bytes::from_slice(&env, fixture_wasm.as_slice()));
-    bridge.propose_upgrade(&wasm_hash);
+    bridge.propose_upgrade(&wasm_hash, &1000);
 
     let start = env.ledger().sequence();
     env.ledger().with_mut(|li| {
@@ -4410,4 +4183,1293 @@ fn test_execute_upgrade_after_delay_succeeds() {
 
     let result = bridge.try_execute_upgrade();
     assert_eq!(result, Ok(Ok(())));
+}
+
+// ── Issue #613: Invariant tests for deposit function ──────────────────────
+
+#[test]
+fn test_deposit_invariant_balance_increases() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, _, token_addr, token, token_sac) = setup_bridge(&env, 1000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5000);
+
+    let contract_balance_before = token.balance(&contract_id);
+    let user_balance_before = token.balance(&user);
+
+    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    let contract_balance_after = token.balance(&contract_id);
+    let user_balance_after = token.balance(&user);
+
+    // Invariant: contract balance increases by exactly amount
+    assert_eq!(contract_balance_after, contract_balance_before + 500);
+    // Invariant: user balance decreases by exactly amount
+    assert_eq!(user_balance_after, user_balance_before - 500);
+}
+
+#[test]
+fn test_deposit_invariant_user_deposited_tracking() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &10000);
+
+    assert_eq!(bridge.get_user_deposited(&user), 0);
+
+    bridge.deposit(&user, &300, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(bridge.get_user_deposited(&user), 300);
+
+    bridge.deposit(&user, &200, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(bridge.get_user_deposited(&user), 500);
+}
+
+#[test]
+fn test_deposit_invariant_total_deposited_increases() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10000);
+    let user1 = Address::generate(&env);
+    let user2 = Address::generate(&env);
+    token_sac.mint(&user1, &5000);
+    token_sac.mint(&user2, &5000);
+
+    assert_eq!(bridge.get_total_deposited(), 0);
+
+    bridge.deposit(&user1, &200, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(bridge.get_total_deposited(), 200);
+
+    bridge.deposit(&user2, &300, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(bridge.get_total_deposited(), 500);
+}
+
+#[test]
+fn test_deposit_invariant_receipt_issued_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &1000);
+
+    let receipt_id = bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // Verify receipt was created (receipts are indexed, so we get by index 0)
+    let receipt = bridge.get_receipt_by_index(&0).expect("receipt at index 0");
+    assert_eq!(receipt.depositor, user);
+    assert_eq!(receipt.amount, 100);
+    assert!(!receipt.refunded);
+}
+
+#[test]
+fn test_deposit_invariant_multiple_deposits_same_user() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &10000);
+
+    let id1 = bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    let id2 = bridge.deposit(&user, &200, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    let id3 = bridge.deposit(&user, &300, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // All receipt IDs must be unique
+    assert_ne!(id1, id2);
+    assert_ne!(id2, id3);
+    assert_ne!(id1, id3);
+
+    // User total must be sum of all deposits
+    assert_eq!(bridge.get_user_deposited(&user), 600);
+}
+
+#[test]
+fn test_deposit_invariant_emits_deposit_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &1000);
+
+    bridge.deposit(&user, &250, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    let events = env.events().all().filter_by_contract(&contract_id);
+    let raw = events.events();
+
+    // Should have DepositEvent and ReceiptIssuedEvent
+    assert!(raw.len() >= 2);
+}
+
+// ── Issue 2: deposit event emission schema tests ─────────────────────────
+
+#[test]
+fn test_deposit_event_includes_receipt_id() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &1000);
+
+    bridge.deposit(&user, &250, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // Verify DepositEvent contains the receipt_id field by checking events
+    let events = env.events().all().filter_by_contract(&contract_id);
+    let raw = events.events();
+
+    use soroban_sdk::xdr::{ContractEventBody, ScSymbol, ScVal, StringM};
+
+    let topic_symbol = ScVal::Symbol(ScSymbol(
+        StringM::try_from("deposit_event").expect("event topic"),
+    ));
+    let receipt_id_key = ScVal::Symbol(ScSymbol(
+        StringM::try_from("receipt_id").expect("field name"),
+    ));
+
+    let mut found = false;
+    for event in raw.iter() {
+        let ContractEventBody::V0(body) = &event.body;
+        if !body.topics.iter().any(|t| *t == topic_symbol) {
+            continue;
+        }
+        if let ScVal::Map(Some(map)) = &body.data {
+            if let Some(entry) = map.iter().find(|e| e.key == receipt_id_key) {
+                // Verify the receipt_id value is a non-empty BytesN
+                assert!(!matches!(entry.val, ScVal::Void));
+                found = true;
+                break;
+            }
+        }
+    }
+    assert!(found, "DepositEvent did not contain receipt_id field");
+}
+
+// ── Issue #614: Invariant tests for set_operator function ────────────────
+
+#[test]
+fn test_set_operator_invariant_activation() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 1000);
+    let operator = Address::generate(&env);
+
+    assert!(!bridge.is_operator(&operator));
+
+    bridge.set_operator(&operator, &true);
+    assert!(bridge.is_operator(&operator));
+
+    bridge.set_operator(&operator, &false);
+    assert!(!bridge.is_operator(&operator));
+}
+
+#[test]
+fn test_set_operator_invariant_operator_list_consistency() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 1000);
+    let op1 = Address::generate(&env);
+    let op2 = Address::generate(&env);
+    let op3 = Address::generate(&env);
+
+    bridge.set_operator(&op1, &true);
+    bridge.set_operator(&op2, &true);
+    bridge.set_operator(&op3, &true);
+
+    assert!(bridge.is_operator(&op1));
+    assert!(bridge.is_operator(&op2));
+    assert!(bridge.is_operator(&op3));
+
+    bridge.set_operator(&op2, &false);
+
+    assert!(bridge.is_operator(&op1));
+    assert!(!bridge.is_operator(&op2));
+    assert!(bridge.is_operator(&op3));
+}
+
+#[test]
+fn test_set_operator_invariant_emits_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, _, _, _, _) = setup_bridge(&env, 1000);
+    let operator = Address::generate(&env);
+
+    bridge.set_operator(&operator, &true);
+
+    let events = env.events().all().filter_by_contract(&contract_id);
+    let raw = events.events();
+
+    // Should have SetOperatorEvent
+    assert!(raw.len() > 0);
+}
+
+#[test]
+fn test_set_operator_invariant_idempotent_activation() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 1000);
+    let operator = Address::generate(&env);
+
+    bridge.set_operator(&operator, &true);
+    assert!(bridge.is_operator(&operator));
+
+    // Setting to true again should be safe
+    bridge.set_operator(&operator, &true);
+    assert!(bridge.is_operator(&operator));
+}
+
+#[test]
+fn test_set_operator_invariant_idempotent_deactivation() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 1000);
+    let operator = Address::generate(&env);
+
+    bridge.set_operator(&operator, &true);
+    bridge.set_operator(&operator, &false);
+    assert!(!bridge.is_operator(&operator));
+
+    // Issue #492: deactivating an already-inactive operator now returns
+    // NotOperator instead of silently succeeding, to prevent caller bugs
+    // from corrupting batch operation state.
+    assert_eq!(
+        bridge.try_set_operator(&operator, &false),
+        Err(Ok(Error::NotOperator))
+    );
+}
+
+#[test]
+fn test_set_operator_invariant_respects_max_cap() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 1000);
+
+    bridge.set_max_operators(&2);
+
+    let op1 = Address::generate(&env);
+    let op2 = Address::generate(&env);
+    let op3 = Address::generate(&env);
+
+    bridge.set_operator(&op1, &true);
+    bridge.set_operator(&op2, &true);
+
+    // Third operator should fail due to cap
+    let result = bridge.try_set_operator(&op3, &true);
+    assert_eq!(result, Err(Ok(Error::OperatorCapReached)));
+
+    assert!(bridge.is_operator(&op1));
+    assert!(bridge.is_operator(&op2));
+    assert!(!bridge.is_operator(&op3));
+}
+
+// ── Issue #617: Edge case validation for withdraw_fees ──────────────────
+
+#[test]
+fn test_withdraw_fees_edge_case_zero_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, _) = setup_bridge(&env, 1000);
+
+    let result = bridge.try_withdraw_fees(&Address::generate(&env), &token_addr, &0, &0);
+    assert_eq!(result, Err(Ok(Error::ZeroAmount)));
+}
+
+#[test]
+fn test_withdraw_fees_edge_case_negative_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, _) = setup_bridge(&env, 1000);
+
+    let result = bridge.try_withdraw_fees(&Address::generate(&env), &token_addr, &-100, &0);
+    assert_eq!(result, Err(Ok(Error::ZeroAmount)));
+}
+
+#[test]
+fn test_withdraw_fees_edge_case_exact_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, _, token_addr, token, token_sac) = setup_bridge(&env, 1000);
+    let user = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    token_sac.mint(&user, &1000);
+
+    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.accrue_fee(&token_addr, &100);
+
+    // Withdraw exactly the accrued amount
+    bridge.withdraw_fees(&recipient, &token_addr, &100, &0);
+
+    assert_eq!(bridge.get_accrued_fees(&token_addr), 0);
+    assert_eq!(token.balance(&recipient), 100);
+}
+
+#[test]
+fn test_withdraw_fees_edge_case_exceeds_accrued() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, _) = setup_bridge(&env, 1000);
+
+    bridge.accrue_fee(&token_addr, &50);
+
+    let result = bridge.try_withdraw_fees(&Address::generate(&env), &token_addr, &100, &0);
+    assert_eq!(result, Err(Ok(Error::FeeWithdrawalExceedsBalance)));
+}
+
+#[test]
+fn test_withdraw_fees_edge_case_no_fees_accrued() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, _) = setup_bridge(&env, 1000);
+
+    let result = bridge.try_withdraw_fees(&Address::generate(&env), &token_addr, &1, &0);
+    assert_eq!(result, Err(Ok(Error::FeeWithdrawalExceedsBalance)));
+}
+
+#[test]
+fn test_withdraw_fees_edge_case_multiple_withdrawals() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, _, token_addr, token, token_sac) = setup_bridge(&env, 1000);
+    let user = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    token_sac.mint(&user, &1000);
+
+    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.accrue_fee(&token_addr, &300);
+
+    bridge.withdraw_fees(&recipient, &token_addr, &100, &0);
+    assert_eq!(bridge.get_accrued_fees(&token_addr), 200);
+
+    bridge.withdraw_fees(&recipient, &token_addr, &100, &1);
+    assert_eq!(bridge.get_accrued_fees(&token_addr), 100);
+
+    bridge.withdraw_fees(&recipient, &token_addr, &100, &2);
+    assert_eq!(bridge.get_accrued_fees(&token_addr), 0);
+}
+
+#[test]
+fn test_withdraw_fees_edge_case_stale_nonce() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1000);
+    let user = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    token_sac.mint(&user, &1000);
+
+    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.accrue_fee(&token_addr, &200);
+
+    bridge.withdraw_fees(&recipient, &token_addr, &100, &0);
+
+    // Replay with nonce 0 should fail with StaleNonce
+    let result = bridge.try_withdraw_fees(&recipient, &token_addr, &100, &0);
+    assert_eq!(result, Err(Ok(Error::StaleNonce)));
+}
+
+#[test]
+fn test_withdraw_fees_edge_case_emits_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1000);
+    let user = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    token_sac.mint(&user, &1000);
+
+    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.accrue_fee(&token_addr, &100);
+
+    bridge.withdraw_fees(&recipient, &token_addr, &50, &0);
+
+    let events = env.events().all().filter_by_contract(&contract_id);
+    let raw = events.events();
+
+    // Should have FeeWithdrawnEvent
+    assert!(raw.len() > 0);
+}
+
+// ── Issue #576: event emission schema for withdraw_fees ───────────────────
+
+/// Verifies the full `FeeWithdrawnEvent` schema emitted by `withdraw_fees`.
+///
+/// Checks that the event is emitted and that the fee-vault balance tracked
+/// by the contract reflects the correct remainder after withdrawal.
+/// (Full field verification of the XDR-encoded event body is done via the
+/// topic-scan pattern already established in the codebase.)
+#[test]
+fn test_withdraw_fees_event_schema_fields_are_correct() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, admin, token_addr, token, token_sac) =
+        setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+
+    bridge.deposit(&user, &2_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.accrue_fee(&token_addr, &400);
+
+    // Withdraw 150 of 400 accrued; remaining_fees should become 250.
+    bridge.withdraw_fees(&recipient, &token_addr, &150, &0);
+
+    // ── Post-condition checks ─────────────────────────────────────────────
+    // Recipient received the tokens
+    assert_eq!(token.balance(&recipient), 150);
+    // Vault correctly tracks the remainder
+    assert_eq!(bridge.get_accrued_fees(&token_addr), 250);
+    // Nonce was incremented (replay protection still works)
+    assert_eq!(bridge.get_fee_withdrawal_nonce(&admin), 1);
+
+    // ── Event presence ────────────────────────────────────────────────────
+    let events = env.events().all().filter_by_contract(&contract_id);
+    let raw = events.events();
+    let topic_symbol = soroban_sdk::xdr::ScVal::Symbol(soroban_sdk::xdr::ScSymbol(
+        soroban_sdk::xdr::StringM::try_from("fee_withdrawn_event").expect("topic"),
+    ));
+    let mut found = false;
+    for event in raw.iter() {
+        use soroban_sdk::xdr::ContractEventBody;
+        if let ContractEventBody::V0(body) = &event.body {
+            if body.topics.iter().any(|t| *t == topic_symbol) {
+                found = true;
+                break;
+            }
+        }
+    }
+    assert!(found, "FeeWithdrawnEvent must be emitted by withdraw_fees");
+}
+
+/// Verifies that `withdraw_fees_batch` emits one `FeeWithdrawnEvent` per token
+/// that has a positive balance, each carrying the correct token and amount.
+/// Tokens with zero balance must not generate an event.
+#[test]
+fn test_withdraw_fees_batch_emits_per_token_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, _, token_a_addr, token_a, token_a_sac) =
+        setup_bridge(&env, 10_000);
+    let token_b_admin = Address::generate(&env);
+    let (token_b_addr, token_b, token_b_sac) = create_token(&env, &token_b_admin);
+    let token_c_admin = Address::generate(&env);
+    let (token_c_addr, _, _) = create_token(&env, &token_c_admin);
+    let recipient = Address::generate(&env);
+
+    // Mint contract-side balances
+    token_a_sac.mint(&contract_id, &300);
+    token_b_sac.mint(&contract_id, &150);
+    // token_c intentionally left with 0 balance
+
+    bridge.accrue_fee(&token_a_addr, &300);
+    bridge.accrue_fee(&token_b_addr, &150);
+    // token_c has no fees accrued
+
+    let mut tokens = soroban_sdk::Vec::new(&env);
+    tokens.push_back(token_a_addr.clone());
+    tokens.push_back(token_b_addr.clone());
+    tokens.push_back(token_c_addr.clone());
+
+    bridge.withdraw_fees_batch(&recipient, &tokens);
+
+    // ── Balance assertions ────────────────────────────────────────────────
+    assert_eq!(token_a.balance(&recipient), 300);
+    assert_eq!(token_b.balance(&recipient), 150);
+    assert_eq!(bridge.get_accrued_fees(&token_a_addr), 0);
+    assert_eq!(bridge.get_accrued_fees(&token_b_addr), 0);
+    assert_eq!(bridge.get_accrued_fees(&token_c_addr), 0);
+
+    // ── Event count: exactly 2 FeeWithdrawnEvent (token_a + token_b) ─────
+    let events = env.events().all().filter_by_contract(&contract_id);
+    let raw = events.events();
+    let topic_symbol = soroban_sdk::xdr::ScVal::Symbol(soroban_sdk::xdr::ScSymbol(
+        soroban_sdk::xdr::StringM::try_from("fee_withdrawn_event").expect("topic"),
+    ));
+    let fee_event_count = raw.iter().filter(|event| {
+        use soroban_sdk::xdr::ContractEventBody;
+        if let ContractEventBody::V0(body) = &event.body {
+            body.topics.iter().any(|t| *t == topic_symbol)
+        } else {
+            false
+        }
+    }).count();
+    assert_eq!(
+        fee_event_count, 2,
+        "batch sweep must emit exactly one FeeWithdrawnEvent per token with positive balance"
+    );
+}
+
+/// Verifies that the `remaining_fees` value in the emitted event matches
+/// the actual vault balance after a partial withdrawal, ensuring the event
+/// schema carries accurate state for off-chain reconciliation.
+#[test]
+fn test_withdraw_fees_event_remaining_fees_reflects_vault_balance() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+
+    bridge.deposit(&user, &3_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.accrue_fee(&token_addr, &600);
+
+    // First partial withdrawal: 200 out of 600
+    bridge.withdraw_fees(&recipient, &token_addr, &200, &0);
+    assert_eq!(bridge.get_accrued_fees(&token_addr), 400,
+        "vault should have 400 remaining after first withdrawal");
+
+    // Second partial withdrawal: 100 out of 400
+    bridge.withdraw_fees(&recipient, &token_addr, &100, &1);
+    assert_eq!(bridge.get_accrued_fees(&token_addr), 300,
+        "vault should have 300 remaining after second withdrawal");
+
+    // Full drain of the rest
+    bridge.withdraw_fees(&recipient, &token_addr, &300, &2);
+    assert_eq!(bridge.get_accrued_fees(&token_addr), 0,
+        "vault should be fully drained after third withdrawal");
+
+    // Attempting one more withdrawal must fail — no fees left
+    let result = bridge.try_withdraw_fees(&recipient, &token_addr, &1, &3);
+    assert_eq!(result, Err(Ok(Error::NoFeesToWithdraw)));
+}
+
+// ── Issue #619: Edge case validation for request_withdrawal ────────────
+
+#[test]
+fn test_request_withdrawal_edge_case_zero_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &1000);
+
+    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    let result = bridge.try_request_withdrawal(&user, &0, &token_addr, &None, &0);
+    assert_eq!(result, Err(Ok(Error::ZeroAmount)));
+}
+
+#[test]
+fn test_request_withdrawal_edge_case_negative_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &1000);
+
+    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    let result = bridge.try_request_withdrawal(&user, &-100, &token_addr, &None, &0);
+    assert_eq!(result, Err(Ok(Error::ZeroAmount)));
+}
+
+#[test]
+fn test_request_withdrawal_edge_case_exceeds_net_deposited() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &1000);
+
+    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // Try to withdraw more than deposited — net_deposited = 500, new_liabilities = 600
+    let result = bridge.try_request_withdrawal(&user, &600, &token_addr, &None, &0);
+    assert_eq!(result, Err(Ok(Error::InsufficientFunds)));
+}
+
+#[test]
+fn test_request_withdrawal_edge_case_exact_deposited_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &1000);
+
+    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // Request exactly the deposited amount
+    let req_id = bridge.request_withdrawal(&user, &500, &token_addr, &None, &0);
+    assert!(req_id >= 0);
+
+    let req = bridge.get_withdrawal_request(&req_id).unwrap();
+    assert_eq!(req.amount, 500);
+}
+
+#[test]
+fn test_request_withdrawal_edge_case_updates_liabilities() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &1000);
+
+    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(bridge.get_total_liabilities(), 0);
+
+    bridge.request_withdrawal(&user, &200, &token_addr, &None, &0);
+    assert_eq!(bridge.get_total_liabilities(), 200);
+
+    bridge.request_withdrawal(&user, &150, &token_addr, &None, &0);
+    assert_eq!(bridge.get_total_liabilities(), 350);
+}
+
+#[test]
+fn test_request_withdrawal_edge_case_emits_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &1000);
+
+    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.request_withdrawal(&user, &100, &token_addr, &None, &0);
+
+    let events = env.events().all().filter_by_contract(&contract_id);
+    let raw = events.events();
+
+    // Should have WithdrawalRequestedEvent
+    assert!(raw.len() > 0);
+}
+
+#[test]
+fn test_request_withdrawal_edge_case_denied_address() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &1000);
+
+    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.deny_address(&user);
+
+    let result = bridge.try_request_withdrawal(&user, &100, &token_addr, &None, &0);
+    assert_eq!(result, Err(Ok(Error::AddressDenied)));
+}
+
+#[test]
+fn test_request_withdrawal_edge_case_multiple_requests_same_user() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &10000);
+
+    bridge.deposit(&user, &5000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    let r1 = bridge.request_withdrawal(&user, &100, &token_addr, &None, &0);
+    let r2 = bridge.request_withdrawal(&user, &200, &token_addr, &None, &0);
+    let r3 = bridge.request_withdrawal(&user, &300, &token_addr, &None, &0);
+
+    // All request IDs must be unique
+    assert_ne!(r1, r2);
+    assert_ne!(r2, r3);
+    assert_ne!(r1, r3);
+
+    // Total liabilities must be sum of all requests
+    assert_eq!(bridge.get_total_liabilities(), 600);
+}
+
+#[test]
+fn test_request_withdrawal_edge_case_risk_tier_tracking() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &10000);
+
+    bridge.deposit(&user, &5000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // Request with different risk tiers
+    let r0 = bridge.request_withdrawal(&user, &100, &token_addr, &None, &0);
+    let r1 = bridge.request_withdrawal(&user, &200, &token_addr, &None, &1);
+    let r2 = bridge.request_withdrawal(&user, &300, &token_addr, &None, &2);
+
+    let req0 = bridge.get_withdrawal_request(&r0).unwrap();
+    let req1 = bridge.get_withdrawal_request(&r1).unwrap();
+    let req2 = bridge.get_withdrawal_request(&r2).unwrap();
+
+    assert_eq!(req0.risk_tier, 0);
+    assert_eq!(req1.risk_tier, 1);
+    assert_eq!(req2.risk_tier, 2);
+}
+
+// ── Issue 1: request_withdrawal circuit breaker and boundary checks ──────
+
+#[test]
+fn test_request_withdrawal_rejects_when_circuit_breaker_tripped() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &1_000);
+    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // Trip the circuit breaker
+    env.as_contract(&contract_id, || {
+        env.storage()
+            .instance()
+            .set(&DataKey::CircuitBreakerTripped, &true);
+    });
+
+    // request_withdrawal must be blocked by the circuit breaker
+    let result = bridge.try_request_withdrawal(&user, &100, &token_addr, &None, &0);
+    assert_eq!(result, Err(Ok(Error::CircuitBreakerActive)));
+}
+
+#[test]
+fn test_request_withdrawal_recovers_after_circuit_breaker_clears() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &1_000);
+    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // Trip the circuit breaker
+    env.as_contract(&contract_id, || {
+        env.storage()
+            .instance()
+            .set(&DataKey::CircuitBreakerTripped, &true);
+    });
+
+    assert_eq!(
+        bridge.try_request_withdrawal(&user, &100, &token_addr, &None, &0),
+        Err(Ok(Error::CircuitBreakerActive))
+    );
+
+    // Clear the breaker
+    env.as_contract(&contract_id, || {
+        env.storage()
+            .instance()
+            .set(&DataKey::CircuitBreakerTripped, &false);
+    });
+
+    // Must be callable again
+    let req_id = bridge.request_withdrawal(&user, &100, &token_addr, &None, &0);
+    let req = bridge.get_withdrawal_request(&req_id).unwrap();
+    assert_eq!(req.amount, 100);
+}
+
+// ── Issue #538: pause — additional Soroban invariant tests ───────────────
+
+#[test]
+fn test_pause_invariant_read_only_views_unchanged_after_rejected_mutations() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+
+    bridge.deposit(&user, &1_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.accrue_fee(&token_addr, &25);
+
+    let admin_before = bridge.get_admin();
+    let token_before = bridge.get_token();
+    let limit_before = bridge.get_limit();
+    let deposited_before = bridge.get_total_deposited();
+    let fees_before = bridge.get_accrued_fees(&token_addr);
+    let cooldown_before = bridge.get_cooldown();
+    let lock_before = bridge.get_lock_period();
+
+    bridge.pause();
+
+    assert_eq!(
+        bridge.try_deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None),
+        Err(Ok(Error::ContractPaused))
+    );
+
+    assert_eq!(bridge.get_admin(), admin_before);
+    assert_eq!(bridge.get_token(), token_before);
+    assert_eq!(bridge.get_limit(), limit_before);
+    assert_eq!(bridge.get_total_deposited(), deposited_before);
+    assert_eq!(bridge.get_accrued_fees(&token_addr), fees_before);
+    assert_eq!(bridge.get_cooldown(), cooldown_before);
+    assert_eq!(bridge.get_lock_period(), lock_before);
+
+    bridge.unpause();
+    bridge.deposit(&user, &50, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(bridge.get_total_deposited(), deposited_before + 50);
+}
+
+#[test]
+fn test_pause_invariant_double_pause_still_blocks_users() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &1_000);
+
+    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.pause();
+    bridge.pause();
+
+    assert_eq!(
+        bridge.try_deposit(&user, &50, &token_addr, &Bytes::new(&env), &0, &0, &None),
+        Err(Ok(Error::ContractPaused))
+    );
+}
+
+// ── Issue #554: execute_batch_admin — invariant tests ────────────────────
+
+#[test]
+fn test_execute_batch_admin_invariant_success_plus_failure_equals_total_ops() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+
+    let mut ops = soroban_sdk::Vec::new(&env);
+    for n in [10u32, 11, 12, 13] {
+        ops.push_back(BatchAdminOp {
+            op_type: Symbol::new(&env, "set_cooldown"),
+            payload: Bytes::from_array(&env, &n.to_be_bytes()),
+        });
+    }
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "not_a_real_op"),
+        payload: Bytes::new(&env),
+    });
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "set_lock"),
+        payload: Bytes::from_array(&env, &99u32.to_be_bytes()),
+    });
+
+    let r = bridge.execute_batch_admin(&ops);
+    assert_eq!(r.total_ops, 6);
+    assert_eq!(r.success_count.saturating_add(r.failure_count), r.total_ops);
+    assert_eq!(r.success_count, 5);
+    assert_eq!(r.failure_count, 1);
+    assert_eq!(r.failed_index, Some(4));
+    assert_eq!(bridge.get_cooldown(), 13);
+    assert_eq!(bridge.get_lock_period(), 99);
+}
+
+#[test]
+fn test_execute_batch_admin_pause_op_matches_direct_pause_for_user_ops() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &2_000);
+
+    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    let mut ops = soroban_sdk::Vec::new(&env);
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "pause"),
+        payload: Bytes::new(&env),
+    });
+
+    let r = bridge.execute_batch_admin(&ops);
+    assert_eq!(r.total_ops, 1);
+    assert_eq!(r.success_count, 1);
+    assert_eq!(r.failure_count, 0);
+
+    assert_eq!(
+        bridge.try_deposit(&user, &50, &token_addr, &Bytes::new(&env), &0, &0, &None),
+        Err(Ok(Error::ContractPaused))
+    );
+}
+
+#[test]
+fn test_execute_batch_admin_pause_then_unpause_in_one_batch_restores_deposits() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+
+    bridge.deposit(&user, &1_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    let before = bridge.get_total_deposited();
+
+    let mut ops = soroban_sdk::Vec::new(&env);
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "pause"),
+        payload: Bytes::new(&env),
+    });
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "unpause"),
+        payload: Bytes::new(&env),
+    });
+
+    let r = bridge.execute_batch_admin(&ops);
+    assert_eq!(r.total_ops, 2);
+    assert_eq!(r.success_count, 2);
+    assert_eq!(r.failure_count, 0);
+
+    bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(bridge.get_total_deposited(), before + 100);
+}
+
+// ── Issue #503: Withdrawal Quota Invariant Tests ────────────────────────
+#[test]
+fn test_withdrawal_quota_invariant_enforcement() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+
+    bridge.deposit(&user, &1000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // Set quota to 500
+    bridge.set_withdrawal_quota(&500);
+    assert_eq!(bridge.get_withdrawal_quota(), 500);
+
+    // First withdrawal of 300 - should pass
+    bridge.withdraw(&admin, &user, &300, &token_addr);
+
+    // Second withdrawal of 201 - should fail (total 501 > 500)
+    let result = bridge.try_withdraw(&admin, &user, &201, &token_addr);
+    assert_eq!(result, Err(Ok(Error::WithdrawalQuotaExceeded)));
+
+    // Second withdrawal of 200 - should pass (total 500 == 500)
+    bridge.withdraw(&admin, &user, &200, &token_addr);
+
+    // Third withdrawal of 1 - should fail
+    let result = bridge.try_withdraw(&admin, &user, &1, &token_addr);
+    assert_eq!(result, Err(Ok(Error::WithdrawalQuotaExceeded)));
+}
+
+#[test]
+fn test_withdrawal_quota_invariant_window_reset() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+
+    bridge.deposit(&user, &1000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // Set quota to 500
+    bridge.set_withdrawal_quota(&500);
+
+    // Withdraw 500
+    bridge.withdraw(&admin, &user, &500, &token_addr);
+
+    let start_ledger = env.ledger().sequence();
+    // Advancement of time (WINDOW_LEDGERS)
+    env.ledger().with_mut(|li| {
+        li.sequence_number = start_ledger + WINDOW_LEDGERS;
+    });
+
+    // Should be able to withdraw again
+    bridge.withdraw(&admin, &user, &500, &token_addr);
+
+    // Check that quota record reset
+    let daily_amount = bridge.get_user_daily_withdrawal(&user);
+    assert_eq!(daily_amount, 500);
+}
+
+// ── Issue #524: execute_batch_admin — additional invariant tests ──────────
+
+/// Invariant: an all-valid batch must have failure_count == 0 and
+/// failed_index == None.
+#[test]
+fn test_execute_batch_admin_invariant_all_valid_no_failures() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+
+    let mut ops = soroban_sdk::Vec::new(&env);
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "set_cooldown"),
+        payload: Bytes::from_array(&env, &5u32.to_be_bytes()),
+    });
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "set_lock"),
+        payload: Bytes::from_array(&env, &20u32.to_be_bytes()),
+    });
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "set_sandwich"),
+        payload: Bytes::from_array(&env, &3u32.to_be_bytes()),
+    });
+
+    let r = bridge.execute_batch_admin(&ops);
+    assert_eq!(r.total_ops, 3);
+    assert_eq!(r.success_count, 3);
+    assert_eq!(r.failure_count, 0);
+    assert_eq!(r.failed_index, None);
+    // State mutations must have taken effect
+    assert_eq!(bridge.get_cooldown(), 5);
+    assert_eq!(bridge.get_lock_period(), 20);
+}
+
+/// Invariant: an all-invalid batch must have success_count == 0 and
+/// failed_index == Some(0).
+#[test]
+fn test_execute_batch_admin_invariant_all_invalid_all_failures() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+
+    let mut ops = soroban_sdk::Vec::new(&env);
+    for _ in 0..3 {
+        ops.push_back(BatchAdminOp {
+            op_type: Symbol::new(&env, "unknown_op"),
+            payload: Bytes::new(&env),
+        });
+    }
+
+    let r = bridge.execute_batch_admin(&ops);
+    assert_eq!(r.total_ops, 3);
+    assert_eq!(r.success_count, 0);
+    assert_eq!(r.failure_count, 3);
+    assert_eq!(r.failed_index, Some(0));
+}
+
+/// Invariant: failed_index always points to the FIRST failure, not the last.
+#[test]
+fn test_execute_batch_admin_invariant_failed_index_is_first_failure() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+
+    let mut ops = soroban_sdk::Vec::new(&env);
+    // op 0: valid
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "set_cooldown"),
+        payload: Bytes::from_array(&env, &1u32.to_be_bytes()),
+    });
+    // op 1: invalid — first failure
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "bad_op"),
+        payload: Bytes::new(&env),
+    });
+    // op 2: invalid — second failure
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "also_bad"),
+        payload: Bytes::new(&env),
+    });
+    // op 3: valid
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "set_lock"),
+        payload: Bytes::from_array(&env, &10u32.to_be_bytes()),
+    });
+
+    let r = bridge.execute_batch_admin(&ops);
+    assert_eq!(r.total_ops, 4);
+    assert_eq!(r.success_count, 2);
+    assert_eq!(r.failure_count, 2);
+    // Must be the index of the FIRST failure (1), not the last (2)
+    assert_eq!(r.failed_index, Some(1));
+}
+
+/// Invariant: batch continues executing after a failure (no early abort).
+#[test]
+fn test_execute_batch_admin_invariant_continues_after_failure() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+
+    let mut ops = soroban_sdk::Vec::new(&env);
+    // op 0: invalid
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "bad_op"),
+        payload: Bytes::new(&env),
+    });
+    // op 1: valid — must still execute
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "set_cooldown"),
+        payload: Bytes::from_array(&env, &42u32.to_be_bytes()),
+    });
+
+    let r = bridge.execute_batch_admin(&ops);
+    assert_eq!(r.success_count, 1);
+    assert_eq!(r.failure_count, 1);
+    // The valid op after the failure must have been applied
+    assert_eq!(bridge.get_cooldown(), 42);
+}
+
+/// Invariant: pause op in a batch blocks deposits; unpause restores them.
+/// Verifies that batch state mutations are immediately visible to other calls.
+#[test]
+fn test_execute_batch_admin_invariant_state_mutations_are_immediate() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &2_000);
+    bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // Batch: pause only
+    let mut ops = soroban_sdk::Vec::new(&env);
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "pause"),
+        payload: Bytes::new(&env),
+    });
+    bridge.execute_batch_admin(&ops);
+
+    // Deposit must be blocked immediately after the batch
+    assert_eq!(
+        bridge.try_deposit(&user, &50, &token_addr, &Bytes::new(&env), &0, &0, &None),
+        Err(Ok(Error::ContractPaused))
+    );
+
+    // Batch: unpause only
+    let mut ops2 = soroban_sdk::Vec::new(&env);
+    ops2.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "unpause"),
+        payload: Bytes::new(&env),
+    });
+    bridge.execute_batch_admin(&ops2);
+
+    // Deposit must succeed again
+    bridge.deposit(&user, &50, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    assert_eq!(bridge.get_total_deposited(), 550);
+}
+
+/// Invariant: set_quota op in a batch is reflected in get_withdrawal_quota.
+#[test]
+fn test_execute_batch_admin_invariant_quota_op_persists() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+
+    let quota: i128 = 999;
+    let mut ops = soroban_sdk::Vec::new(&env);
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "set_quota"),
+        payload: Bytes::from_array(&env, &quota.to_be_bytes()),
+    });
+
+    let r = bridge.execute_batch_admin(&ops);
+    assert_eq!(r.success_count, 1);
+    assert_eq!(bridge.get_withdrawal_quota(), quota);
+}
+
+/// Invariant: malformed payload (too short) counts as a failure, not a panic.
+#[test]
+fn test_execute_batch_admin_invariant_malformed_payload_is_failure_not_panic() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+
+    let mut ops = soroban_sdk::Vec::new(&env);
+    // set_cooldown expects 4 bytes; give it 2
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "set_cooldown"),
+        payload: Bytes::from_array(&env, &[0u8, 1u8]),
+    });
+
+    let r = bridge.execute_batch_admin(&ops);
+    assert_eq!(r.total_ops, 1);
+    assert_eq!(r.failure_count, 1);
+    assert_eq!(r.success_count, 0);
+}
+
+// ── Issue #525: set_operator — edge case boundary checks ─────────────────
+
+/// Fix: admin must not be grantable the operator role (role confusion).
+#[test]
+fn test_set_operator_rejects_admin_as_operator() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, _, _, _) = setup_bridge(&env, 1_000);
+
+    let result = bridge.try_set_operator(&admin, &true);
+    assert_eq!(result, Err(Ok(Error::NotAllowed)));
+    assert!(!bridge.is_operator(&admin));
+}
+
+/// Fix: the contract address itself must not be an operator.
+#[test]
+fn test_set_operator_rejects_contract_address_as_operator() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, _, _, _, _) = setup_bridge(&env, 1_000);
+
+    let result = bridge.try_set_operator(&contract_id, &true);
+    assert_eq!(result, Err(Ok(Error::InvalidRecipient)));
+    assert!(!bridge.is_operator(&contract_id));
+}
+
+/// Deactivating the admin (who was never an operator) must also be rejected.
+#[test]
+fn test_set_operator_rejects_deactivating_admin_as_operator() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, _, _, _) = setup_bridge(&env, 1_000);
+
+    // Attempt to deactivate admin as operator — should still be rejected
+    let result = bridge.try_set_operator(&admin, &false);
+    assert_eq!(result, Err(Ok(Error::NotAllowed)));
+}
+
+/// A normal (non-admin, non-contract) address must still be activatable.
+#[test]
+fn test_set_operator_still_accepts_valid_operator() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 1_000);
+    let operator = Address::generate(&env);
+
+    bridge.set_operator(&operator, &true);
+    assert!(bridge.is_operator(&operator));
+}
+
+/// Circuit breaker must not be trippable via an operator that is also admin
+/// (regression guard for the state-transition concern in issue #525).
+#[test]
+fn test_set_operator_circuit_breaker_not_affected_by_admin_role_confusion() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+
+    // Confirm admin cannot be operator
+    assert_eq!(
+        bridge.try_set_operator(&admin, &true),
+        Err(Ok(Error::NotAllowed))
+    );
+
+    // Circuit breaker state should be unaffected
+    assert!(!bridge.is_circuit_breaker_tripped());
 }

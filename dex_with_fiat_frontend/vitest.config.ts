@@ -1,19 +1,22 @@
 import { defineConfig } from 'vitest/config';
-import path from 'path';
+import react from '@vitejs/plugin-react';
+import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig({
+  plugins: [react()],
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
+  },
+  // Override tsconfig's jsx:preserve so vitest can parse JSX inside vi.mock factories.
   esbuild: {
     jsx: 'automatic',
   },
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, 'src'),
-    },
-  },
   test: {
-    include: ['src/**/*.test.{ts,tsx}'],
     environment: 'jsdom',
     globals: true,
-    setupFiles: ['./src/test-setup.ts'],
+    setupFiles: './vitest.setup.ts',
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
   },
 });

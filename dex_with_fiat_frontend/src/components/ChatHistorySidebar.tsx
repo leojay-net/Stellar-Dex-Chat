@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import jsPDF from 'jspdf';
 import { useChatHistory } from '@/hooks/useChatHistory';
 import { useTxHistory } from '@/hooks/useTxHistory';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import {
   MessageSquare,
   Trash2,
@@ -38,6 +39,7 @@ interface SessionRowProps {
   onDelete: (id: string) => void;
   onTogglePin: (id: string) => void;
   formatDate: (d: Date) => string;
+  recentlyToggledPinId?: string | null;
 }
 
 function SessionRow({
@@ -49,11 +51,13 @@ function SessionRow({
   onDelete,
   onTogglePin,
   formatDate,
+  recentlyToggledPinId,
 }: SessionRowProps) {
   const [showExportMenu, setShowExportMenu] = useState(false);
 
   return (
     <div
+      data-active={isActive ? 'true' : 'false'}
       className={`group relative p-3 mb-2 rounded-lg cursor-pointer transition-all duration-200 border ${
         isActive
           ? 'bg-[var(--color-primary-soft)] border-[var(--color-primary)] shadow-md'
@@ -97,9 +101,17 @@ function SessionRow({
             title={session.pinned ? 'Unpin conversation' : 'Pin conversation'}
           >
             {session.pinned ? (
-              <PinOff className="w-3 h-3" />
+              <PinOff className={`w-3 h-3${
+                recentlyToggledPinId === session.id
+                  ? ' animate-bounce-once'
+                  : ''
+              }`} />
             ) : (
-              <Pin className="w-3 h-3" />
+              <Pin className={`w-3 h-3${
+                recentlyToggledPinId === session.id
+                  ? ' animate-bounce-once'
+                  : ''
+              }`} />
             )}
           </button>
 
@@ -162,6 +174,8 @@ interface ChatHistorySidebarProps {
   isCollapsed?: boolean;
 }
 
+const UNDO_TIMEOUT_MS = 5_000;
+
 export default function ChatHistorySidebar({
   onLoadSession,
   onClose,
@@ -178,6 +192,7 @@ export default function ChatHistorySidebar({
     searchSessions,
     togglePin,
     hasHistory,
+    sessions: allSessionsRaw,
   } = useChatHistory();
   const { entries, clearEntries, updateEntry } = useTxHistory();
   const { connection } = useStellarWallet();
@@ -189,6 +204,18 @@ export default function ChatHistorySidebar({
   const [isLoading, setIsLoading] = useState(true);
   const [contractEvents, setContractEvents] = useState<ContractEvent[]>([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
+
+  // ── Optimistic UI state ──────────────────────────────────────────────────
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [recentlyToggledPinId, setRecentlyToggledPinId] = useState<string | null>(null);
+  const pinAnimTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [pendingClearAll, setPendingClearAll] = useState(false);
+  const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stashedSessionsRef = useRef<ChatSession[]>([]);
+  // ────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const fetchEvents = async () => {
@@ -216,17 +243,95 @@ export default function ChatHistorySidebar({
     return () => clearTimeout(timer);
   }, []);
 
+  // Clean up timers on unmount
+  useEffect(() => {
+    return () => {
+      if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
+      if (pinAnimTimerRef.current) clearTimeout(pinAnimTimerRef.current);
+      if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
+    };
+  }, []);
+
   const allSessions = [...pinnedSessions, ...unpinnedSessions];
-  const filteredSessions = searchQuery
-    ? searchSessions(searchQuery)
+  // Filter out the session that is pending deletion so it disappears immediately
+  const visibleSessions = pendingDeleteId
+    ? allSessions.filter((s) => s.id !== pendingDeleteId)
     : allSessions;
+  const filteredSessions = searchQuery
+    ? searchSessions(searchQuery).filter((s) => s.id !== pendingDeleteId)
+    : visibleSessions;
   const filteredPinned = filteredSessions.filter((s) => s.pinned);
   const filteredUnpinned = filteredSessions.filter((s) => !s.pinned);
+  const filteredSessionIds = filteredSessions.map((s) => s.id).join(',');
+  const historyListRef = useRef<HTMLDivElement | null>(null);
 
-  const handleDeleteSession = (sessionId: string) => {
-    deleteSession(sessionId);
+  useEffect(() => {
+    if (isCollapsed) return;
+
+    const activeRow = historyListRef.current?.querySelector<HTMLElement>('[data-active="true"]');
+    if (!activeRow) return;
+
+    activeRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [currentSessionId, filteredSessionIds, isCollapsed]);
+
+  // ── Optimistic delete with undo ──────────────────────────────────────────
+  const handleDeleteSession = useCallback((sessionId: string) => {
     setShowDeleteConfirm(null);
-  };
+    setPendingDeleteId(sessionId);
+
+    // Clear any previous delete timer
+    if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
+
+    deleteTimerRef.current = setTimeout(() => {
+      deleteSession(sessionId);
+      setPendingDeleteId(null);
+    }, UNDO_TIMEOUT_MS);
+  }, [deleteSession]);
+
+  const undoDelete = useCallback(() => {
+    if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
+    setPendingDeleteId(null);
+  }, []);
+
+  // ── Optimistic pin toggle with animation ─────────────────────────────────
+  const handleTogglePin = useCallback((sessionId: string) => {
+    togglePin(sessionId);
+    setRecentlyToggledPinId(sessionId);
+
+    if (pinAnimTimerRef.current) clearTimeout(pinAnimTimerRef.current);
+    pinAnimTimerRef.current = setTimeout(() => {
+      setRecentlyToggledPinId(null);
+    }, 600);
+  }, [togglePin]);
+
+  // ── Optimistic clear-all with undo ───────────────────────────────────────
+  const handleClearAll = useCallback(() => {
+    // Stash sessions for potential undo
+    stashedSessionsRef.current = [...allSessionsRaw];
+    clearAllHistory();
+    setPendingClearAll(true);
+
+    if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
+    clearTimerRef.current = setTimeout(() => {
+      stashedSessionsRef.current = [];
+      setPendingClearAll(false);
+    }, UNDO_TIMEOUT_MS);
+  }, [allSessionsRaw, clearAllHistory]);
+
+  const undoClearAll = useCallback(() => {
+    if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
+    // Restore stashed sessions by re-saving to localStorage and reloading
+    if (stashedSessionsRef.current.length > 0) {
+      const restored = {
+        currentSessionId: null,
+        sessions: stashedSessionsRef.current,
+      };
+      localStorage.setItem('defi_chat_history', JSON.stringify(restored));
+      window.location.reload();
+    }
+    stashedSessionsRef.current = [];
+    setPendingClearAll(false);
+  }, []);
 
   const handleExportSessionJSON = (sessionId: string) => {
     const exportResult = exportSessionAsJSON(sessionId);
@@ -356,8 +461,13 @@ export default function ChatHistorySidebar({
   };
 
   return (
+    <ErrorBoundary
+      title="Sidebar unavailable"
+      message="An unexpected error occurred in the chat history panel. Your conversations are safe."
+      retryLabel="Reload sidebar"
+    >
     <div
-      className={`theme-surface h-full flex flex-col transition-all duration-300 border-r ${
+      className={`theme-surface theme-border h-full flex flex-col transition-all duration-300 border-r ${
         isCollapsed ? 'w-20' : 'w-full'
       } transition-colors duration-300`}
     >
@@ -382,7 +492,7 @@ export default function ChatHistorySidebar({
             }`}
           >
             <button
-              onClick={clearAllHistory}
+              onClick={handleClearAll}
               className="theme-text-muted hover:bg-[var(--color-danger-soft)] p-2 rounded-lg transition-all duration-200 hover:scale-110"
               title="Clear all history"
             >
@@ -427,33 +537,6 @@ export default function ChatHistorySidebar({
         {isLoading ? (
           <SkeletonSidebar />
         ) : (
-          <div
-            className={`p-2 ${isCollapsed ? 'flex flex-col items-center' : ''}`}
-          >
-            {filteredPinned.length > 0 && (
-              <>
-                {!isCollapsed && (
-                  <p className="theme-text-muted text-xs font-semibold uppercase tracking-wider px-1 py-1 mt-1">
-                    Pinned
-                  </p>
-                )}
-                {filteredPinned.map((session) => (
-                  <SessionRow
-                    key={session.id}
-                    session={session}
-                    isActive={currentSessionId === session.id}
-                    onLoad={onLoadSession}
-                    onExportJSON={handleExportSessionJSON}
-                    onExportTXT={handleExportSessionTXT}
-                    onDelete={(id) => setShowDeleteConfirm(id)}
-                    onTogglePin={togglePin}
-                    formatDate={formatDate}
-                  />
-                ))}
-                {!isCollapsed && filteredUnpinned.length > 0 && (
-                  <p className="theme-text-muted text-xs font-semibold uppercase tracking-wider px-1 py-1 mt-3">
-                    Recent
-                  </p>
           <div className="flex flex-col h-full">
             {/* Contract Activity Section */}
             {!isCollapsed && (
@@ -501,21 +584,8 @@ export default function ChatHistorySidebar({
                 )}
               </div>
             )}
-            {filteredUnpinned.map((session) => (
-              <SessionRow
-                key={session.id}
-                session={session}
-                isActive={currentSessionId === session.id}
-                onLoad={onLoadSession}
-                onExportJSON={handleExportSessionJSON}
-                onExportTXT={handleExportSessionTXT}
-                onDelete={(id) => setShowDeleteConfirm(id)}
-                onTogglePin={togglePin}
-                formatDate={formatDate}
-              />
-            ))}
 
-            <div className="flex-1 overflow-y-auto">
+            <div ref={historyListRef} className={`p-2 ${isCollapsed ? 'flex flex-col items-center' : ''}`}>
               {!hasHistory ? (
                 <EmptyState
                   icon={MessageSquare}
@@ -534,9 +604,7 @@ export default function ChatHistorySidebar({
                   cta={{ label: 'Clear search', onClick: () => setSearchQuery('') }}
                 />
               ) : (
-                <div
-                  className={`p-2 ${isCollapsed ? 'flex flex-col items-center' : ''}`}
-                >
+                <>
                   {filteredPinned.length > 0 && (
                     <>
                       {!isCollapsed && (
@@ -550,37 +618,66 @@ export default function ChatHistorySidebar({
                           session={session}
                           isActive={currentSessionId === session.id}
                           onLoad={onLoadSession}
-                          onExport={handleExportSession}
+                          onExportJSON={handleExportSessionJSON}
+                          onExportTXT={handleExportSessionTXT}
                           onDelete={(id) => setShowDeleteConfirm(id)}
-                          onTogglePin={togglePin}
+                          onTogglePin={handleTogglePin}
                           formatDate={formatDate}
+                          recentlyToggledPinId={recentlyToggledPinId}
                         />
                       ))}
-                      {!isCollapsed && filteredUnpinned.length > 0 && (
+                    </>
+                  )}
+                  {filteredUnpinned.length > 0 && (
+                    <>
+                      {!isCollapsed && (
                         <p className="theme-text-muted text-xs font-semibold uppercase tracking-wider px-1 py-1 mt-3">
                           Recent
                         </p>
                       )}
+                      {filteredUnpinned.map((session) => (
+                        <SessionRow
+                          key={session.id}
+                          session={session}
+                          isActive={currentSessionId === session.id}
+                          onLoad={onLoadSession}
+                          onExportJSON={handleExportSessionJSON}
+                          onExportTXT={handleExportSessionTXT}
+                          onDelete={(id) => setShowDeleteConfirm(id)}
+                          onTogglePin={handleTogglePin}
+                          formatDate={formatDate}
+                          recentlyToggledPinId={recentlyToggledPinId}
+                        />
+                      ))}
                     </>
                   )}
-                  {filteredUnpinned.map((session) => (
-                    <SessionRow
-                      key={session.id}
-                      session={session}
-                      isActive={currentSessionId === session.id}
-                      onLoad={onLoadSession}
-                      onExport={handleExportSession}
-                      onDelete={(id) => setShowDeleteConfirm(id)}
-                      onTogglePin={togglePin}
-                      formatDate={formatDate}
-                    />
-                  ))}
-                </div>
+                </>
               )}
             </div>
           </div>
         )}
       </div>
+
+      {/* ── Undo toast ────────────────────────────────────────────────────── */}
+      {(pendingDeleteId || pendingClearAll) && (
+        <div
+          className="flex items-center justify-between gap-2 px-4 py-2.5 text-xs font-medium border-t border-[var(--color-border)] bg-[var(--color-surface-muted)] animate-slide-up"
+          role="status"
+          aria-live="polite"
+        >
+          <span className="theme-text-secondary">
+            {pendingClearAll ? 'History cleared' : 'Conversation deleted'}
+          </span>
+          <button
+            type="button"
+            onClick={pendingClearAll ? undoClearAll : undoDelete}
+            className="px-2.5 py-1 rounded-md text-[var(--color-primary)] font-semibold hover:bg-[var(--color-primary-soft)] transition-colors"
+          >
+            Undo
+          </button>
+        </div>
+      )}
+      {/* ─────────────────────────────────────────────────────────────────── */}
 
       <div className={`theme-border border-t p-4 ${isCollapsed ? 'flex flex-col items-center' : ''}`}>
         <PriceTicker symbols={['XLM', 'ETH', 'BTC']} currency="usd" />
@@ -670,7 +767,7 @@ export default function ChatHistorySidebar({
                   {entry.kind === 'payout' &&
                     entry.status !== 'cancelled' &&
                     entry.reference &&
-                    Date.now() - new Date(entry.createdAt).getTime() 
+                    Date.now() - new Date(entry.createdAt).getTime() <
                       2 * 60 * 1000 && (
                       <button
                         type="button"
@@ -744,5 +841,6 @@ export default function ChatHistorySidebar({
         </div>
       )}
     </div>
+    </ErrorBoundary>
   );
 }

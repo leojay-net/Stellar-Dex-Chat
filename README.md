@@ -77,6 +77,9 @@ The `FiatBridge` contract exposes read-only views intended for operational dashb
 - **AI Integration**: Google Generative AI assistant
 - **Fiat Payout**: Paystack API (Nigerian bank transfers)
 
+### 4. Admin Authentication Architecture
+The admin dashboard and administrative actions rely on an on-chain root of trust. The `AdminGuard` component in the Next.js app fetches the configured admin address directly from the smart contract using `getAdmin()`. All administrative write operations require cryptographic signatures matching this address, ensuring front-end role spoofing is impossible. For a detailed architectural breakdown, see the [FiatBridge Contract README](stellar-contracts/FIAT_BRIDGE_README.md#admin-authentication-architecture).
+
 ## Tech Stack
 
 | Layer | Technology | Purpose |
@@ -99,6 +102,8 @@ DEX-CHAT converts crypto to fiat through an AI-guided conversation flow. The end
 ### 1. Deposit (crypto into escrow)
 
 The user connects their Freighter wallet and tells the AI assistant they want to offramp a token amount. The frontend builds a Soroban `deposit` transaction that transfers the specified token from the user's Stellar account into the `FiatBridge` contract. The contract validates the deposit against oracle-sourced prices, enforces slippage limits, checks per-token and daily deposit caps, and records a `Receipt` with a unique memo hash.
+
+For maintainers: how slippage BPS and the on-chain threshold interact is documented in [docs/slippage-threshold.md](docs/slippage-threshold.md).
 
 ### 2. Escrow (on-chain hold)
 
@@ -123,8 +128,54 @@ Before you begin, ensure you have the following installed:
 - **npm** or **yarn**
 - **Rust** & Cargo tooling + `wasm32-unknown-unknown` target
 - **Stellar CLI** (for interacting with Soroban)
+- **Docker** & **Docker Compose** (optional, for quick start)
 
-## Installation & Setup
+## Quick Start with Docker
+
+The fastest way to get the full stack running locally is with Docker Compose. This boots the frontend and a local Soroban network with no manual setup required.
+
+### Prerequisites
+- Docker Desktop or Docker Engine + Docker Compose
+- No need to install Node.js, Rust, or Stellar CLI manually
+
+### Steps
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/leojay-net/DEX-CHAT.git
+cd DEX-CHAT
+
+# 2. Copy the Docker environment file
+cp .env.docker dex_with_fiat_frontend/.env.local
+
+# 3. Start the full stack
+docker compose up
+
+# The services will be available at:
+# - Frontend: http://localhost:3000
+# - Soroban RPC: http://localhost:8000/soroban/rpc
+# - Horizon API: http://localhost:8000
+```
+
+### What's Included
+
+- **soroban-local-net**: Stellar quickstart image running a standalone Soroban network
+- **frontend**: Next.js development server with hot reload
+- **Pre-configured networking**: Services can communicate with each other
+
+### Stopping the Stack
+
+```bash
+# Stop and remove containers
+docker compose down
+
+# Stop and remove containers + volumes (clean slate)
+docker compose down -v
+```
+
+## Installation & Setup (Manual)
+
+If you prefer to run services individually or need more control:
 
 ### 1. Clone the Repository
 
