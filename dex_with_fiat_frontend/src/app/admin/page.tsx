@@ -16,6 +16,7 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import { stroopsToDisplay } from '@/lib/stellarContract';
 import SkeletonHeader from '@/components/ui/skeleton/SkeletonHeader';
 import SkeletonPayout from '@/components/ui/skeleton/SkeletonPayout';
+import CopyButton from '@/components/ui/CopyButton';
 import {
   AreaChart,
   Area,
@@ -618,17 +619,37 @@ export default function AdminDashboard() {
                         className="theme-border border-b hover:opacity-80"
                       >
                         <td className="px-6 py-4 whitespace-nowrap text-sm theme-text-primary">
-                          {new Date(entry.timestamp).toLocaleString()}
+                          <span className="inline-flex items-center gap-1.5">
+                            <span>
+                              {new Date(entry.timestamp).toLocaleString()}
+                            </span>
+                            <CopyButton
+                              value={entry.timestamp}
+                              ariaLabel="Copy timestamp"
+                            />
+                          </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm theme-text-primary font-medium">
                           {formatActionLabel(entry.action)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-mono theme-text-primary">
-                          {entry.adminAddress}
+                          <span className="inline-flex items-center gap-1.5">
+                            <span>{entry.adminAddress}</span>
+                            <CopyButton
+                              value={entry.adminAddress}
+                              ariaLabel={`Copy admin address ${entry.adminAddress}`}
+                            />
+                          </span>
                         </td>
                         <td className="px-6 py-4 text-sm theme-text-primary max-w-xl">
-                          <span className="inline-block theme-surface-muted rounded px-2 py-1 break-all">
-                            {formatParameters(entry.parameters)}
+                          <span className="inline-flex items-start gap-1.5">
+                            <span className="inline-block theme-surface-muted rounded px-2 py-1 break-all">
+                              {formatParameters(entry.parameters)}
+                            </span>
+                            <CopyButton
+                              value={formatParameters(entry.parameters)}
+                              ariaLabel="Copy parameters"
+                            />
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">

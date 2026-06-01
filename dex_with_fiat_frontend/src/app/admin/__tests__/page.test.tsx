@@ -327,6 +327,127 @@ describe('AdminDashboard - Optimistic UI Updates', () => {
   });
 });
 
+describe('AdminDashboard - Clipboard copy button (#834)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation((url) => {
+      if (typeof url === 'string' && url.includes('/api/admin/audit-log')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            entries: [
+              {
+                id: '1',
+                timestamp: '2024-01-01T00:00:00Z',
+                action: 'withdrawal_approved',
+                adminAddress: 'GTEST123',
+                parameters: { amount: 100 },
+                result: 'success',
+              },
+            ],
+            page: 1,
+            pageSize: 20,
+            total: 1,
+            totalPages: 1,
+            actions: ['withdrawal_approved'],
+          }),
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => [],
+      } as Response);
+    });
+  });
+
+  it('renders copy buttons for the address, timestamp and parameters columns', async () => {
+    render(<AdminDashboard />);
+
+    expect(
+      await screen.findByRole('button', {
+        name: /copy admin address GTEST123/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /copy timestamp/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /copy parameters/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('copies the admin address to the clipboard when clicked', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(<AdminDashboard />);
+
+    const copyButton = await screen.findByRole('button', {
+      name: /copy admin address GTEST123/i,
+    });
+
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('GTEST123');
+    });
+  });
+
+  it('copies the formatted parameters when the parameters copy button is clicked', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(<AdminDashboard />);
+
+    const copyButton = await screen.findByRole('button', {
+      name: /copy parameters/i,
+    });
+
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('amount: 100');
+    });
+  });
+
+  it('copies the exact ISO timestamp when the timestamp copy button is clicked', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(<AdminDashboard />);
+
+    const copyButton = await screen.findByRole('button', {
+      name: /copy timestamp/i,
+    });
+
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('2024-01-01T00:00:00Z');
+    });
+  });
+
+  it('shows the success-state icon after a successful copy', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(<AdminDashboard />);
+
+    const copyButton = await screen.findByRole('button', {
+      name: /copy admin address GTEST123/i,
+    });
+
+    // Before clicking, the success (green check) icon is not shown.
+    expect(copyButton.querySelector('.text-green-400')).toBeNull();
+
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(copyButton.querySelector('.text-green-400')).not.toBeNull();
+    });
+  });
+});
+
 describe('AdminDashboard - ErrorBoundary protection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
