@@ -496,6 +496,17 @@ pub struct FeeAccruedEvent {
 
 #[contractevent]
 #[derive(Clone, Debug)]
+pub struct FeeVaultReconciledEvent {
+    pub version: u32,
+    pub token: Address,
+    /// Vault balance recorded before reconciliation.
+    pub previous_balance: i128,
+    /// Vault balance after capping to on-chain token reserves.
+    pub new_balance: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
 pub struct RefundEvent {
     pub version: u32,
     pub receipt_id: BytesN<32>,
@@ -3408,6 +3419,53 @@ impl FiatBridge {
     }
 
     // ── Fee Vault ─────────────────────────────────────────────────────────
+
+    /// Returns the persisted fee-vault balance for `token`, reconciled against
+    /// the contract's on-chain token balance so the ledger never exceeds reserves.
+    fn reconcile_fee_vault(env: &Env, token: &Address) -> i128 {
+        let key = DataKey::FeeVault(token.clone());
+        let vault_balance: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+        if vault_balance <= 0 {
+            return 0;
+        }
+
+        let token_client = token::Client::new(env, token);
+        let contract_balance = token_client.balance(&env.current_contract_address());
+        if vault_balance <= contract_balance {
+            return vault_balance;
+        }
+
+        env.storage()
+            .persistent()
+            .set(&key, &contract_balance);
+        FeeVaultReconciledEvent {
+            version: EVENT_VERSION,
+            token: token.clone(),
+            previous_balance: vault_balance,
+            new_balance: contract_balance,
+        }
+        .publish(env);
+        contract_balance
+    }
+
+    /// Debits `amount` from an already-reconciled fee vault and returns the remainder.
+    /// Callers must invoke [`Self::reconcile_fee_vault`] before transferring tokens.
+    fn deduct_fee_vault_ledger(
+        env: &Env,
+        token: &Address,
+        vault_balance: i128,
+        amount: i128,
+    ) -> Result<i128, Error> {
+        require!(vault_balance > 0, Error::NoFeesToWithdraw);
+        require!(amount <= vault_balance, Error::FeeWithdrawalExceedsBalance);
+        let remaining = vault_balance
+            .checked_sub(amount)
+            .ok_or(Error::Overflow)?;
+        let key = DataKey::FeeVault(token.clone());
+        env.storage().persistent().set(&key, &remaining);
+        Ok(remaining)
+    }
+
     pub fn accrue_fee(env: Env, token: Address, amount: i128) -> Result<(), Error> {
         let admin: Address = env
             .storage()
@@ -3495,22 +3553,19 @@ impl FiatBridge {
         require!(nonce >= expected_nonce, Error::StaleNonce);
         require!(nonce == expected_nonce, Error::InvalidNonce);
 
-        // ── Fee vault checks ──────────────────────────────────────────────
-        let key = DataKey::FeeVault(token.clone());
-        let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
-        require!(current > 0, Error::NoFeesToWithdraw);
-        require!(amount <= current, Error::FeeWithdrawalExceedsBalance);
-
-        // Boundary check: actual contract balance
+        // ── Fee vault checks (reconcile ledger with on-chain reserves) ───
         let token_client = token::Client::new(&env, &token);
+        let vault_balance = Self::reconcile_fee_vault(&env, &token);
         let contract_balance = token_client.balance(&env.current_contract_address());
+        require!(vault_balance > 0, Error::NoFeesToWithdraw);
+        require!(amount <= vault_balance, Error::FeeWithdrawalExceedsBalance);
         require!(amount <= contract_balance, Error::InsufficientFunds);
 
         // ── State mutation ────────────────────────────────────────────────
         token_client.transfer(&env.current_contract_address(), &to, &amount);
 
-        let remaining_fees = current.checked_sub(amount).ok_or(Error::Overflow)?;
-        env.storage().persistent().set(&key, &remaining_fees);
+        let remaining_fees =
+            Self::deduct_fee_vault_ledger(&env, &token, vault_balance, amount)?;
 
         // Increment nonce after successful withdrawal
         let next_nonce = expected_nonce.checked_add(1).ok_or(Error::Overflow)?;
@@ -3550,15 +3605,25 @@ impl FiatBridge {
 
         let contract = env.current_contract_address();
         for token in tokens.iter() {
-            let key = DataKey::FeeVault(token.clone());
-            let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+            let current = Self::reconcile_fee_vault(&env, &token);
             if current <= 0 {
                 continue;
             }
 
             let token_client = token::Client::new(&env, &token);
-            token_client.transfer(&contract, &to, &current);
+            let contract_balance = token_client.balance(&contract);
+            let sweep_amount = if current <= contract_balance {
+                current
+            } else {
+                contract_balance
+            };
+            if sweep_amount <= 0 {
+                continue;
+            }
+
+            token_client.transfer(&contract, &to, &sweep_amount);
             // After transfer the vault for this token is fully drained.
+            let key = DataKey::FeeVault(token.clone());
             env.storage().persistent().set(&key, &0i128);
 
             // Emit full schema per token so each sweep leg is individually
@@ -3569,7 +3634,7 @@ impl FiatBridge {
                 admin: admin.clone(),
                 to: to.clone(),
                 token,
-                amount: current,
+                amount: sweep_amount,
                 nonce: 0,
                 remaining_fees: 0,
             }
@@ -5525,3 +5590,6 @@ mod test_issues_504_511_600;
 
 #[cfg(test)]
 mod test_issues_492_499;
+
+#[cfg(test)]
+mod test_issues_840;

@@ -17,6 +17,10 @@ vi.mock('@/hooks/useCurrencyConversion', () => ({
   })),
 }));
 
+vi.mock('@/contexts/UserPreferencesContext', () => ({
+  useUserPreferences: () => ({ fiatCurrency: 'usd' }),
+}));
+
 // Mock framer-motion to avoid animation issues in tests
 vi.mock('framer-motion', () => ({
   motion: {
@@ -291,5 +295,89 @@ describe('TransactionAmountDisplay - Rules of Hooks regression', () => {
     expect(hookErrors).toHaveLength(0);
 
     consoleSpy.mockRestore();
+  });
+});
+
+// ── Optimistic UI (issue #839) ─────────────────────────────────────────────
+
+describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
+  afterEach(cleanup);
+
+  it('shows confirmed conversion when not loading', async () => {
+    const { useCurrencyConversion } = await import('@/hooks/useCurrencyConversion');
+    const mockHook = vi.mocked(useCurrencyConversion);
+    mockHook.mockReturnValue({
+      displayText: '100 XLM ≈ $12.40 USD',
+      isLoading: false,
+      hasError: false,
+      fiatAmount: 12.4,
+      fiatCurrency: 'USD',
+      originalAmount: 100,
+      originalCurrency: 'XLM',
+    });
+
+    render(<TransactionAmountDisplay amount={100} asset="XLM" />);
+    expect(screen.getByText('100 XLM ≈ $12.40 USD')).toBeDefined();
+    expect(screen.getByTestId('transaction-amount-display')).toHaveAttribute(
+      'data-optimistic',
+      'false',
+    );
+  });
+
+  it('shows optimistic estimate while loading after a prior conversion', async () => {
+    const { useCurrencyConversion } = await import('@/hooks/useCurrencyConversion');
+    const mockHook = vi.mocked(useCurrencyConversion);
+    mockHook.mockReturnValue({
+      displayText: '100 XLM ≈ $12.40 USD',
+      isLoading: false,
+      hasError: false,
+      fiatAmount: 12.4,
+      fiatCurrency: 'USD',
+      originalAmount: 100,
+      originalCurrency: 'XLM',
+    });
+
+    const { rerender } = render(<TransactionAmountDisplay amount={100} asset="XLM" />);
+
+    mockHook.mockReturnValue({
+      displayText: '200 XLM ≈ ...',
+      isLoading: true,
+      hasError: false,
+      fiatAmount: null,
+      fiatCurrency: 'USD',
+      originalAmount: 200,
+      originalCurrency: 'XLM',
+    });
+
+    await act(async () => {
+      rerender(<TransactionAmountDisplay amount={200} asset="XLM" />);
+    });
+
+    expect(screen.getByTestId('transaction-amount-display')).toHaveAttribute(
+      'data-optimistic',
+      'true',
+    );
+    expect(screen.getByText(/200 XLM ≈ \$24\.80 USD/i)).toBeDefined();
+  });
+
+  it('falls back to hook display text when loading without a prior rate', async () => {
+    const { useCurrencyConversion } = await import('@/hooks/useCurrencyConversion');
+    const mockHook = vi.mocked(useCurrencyConversion);
+    mockHook.mockReturnValue({
+      displayText: '50 XLM ≈ ...',
+      isLoading: true,
+      hasError: false,
+      fiatAmount: null,
+      fiatCurrency: 'USD',
+      originalAmount: 50,
+      originalCurrency: 'XLM',
+    });
+
+    render(<TransactionAmountDisplay amount={50} asset="XLM" />);
+    expect(screen.getByText('50 XLM ≈ ...')).toBeDefined();
+    expect(screen.getByTestId('transaction-amount-display')).toHaveAttribute(
+      'data-optimistic',
+      'false',
+    );
   });
 });

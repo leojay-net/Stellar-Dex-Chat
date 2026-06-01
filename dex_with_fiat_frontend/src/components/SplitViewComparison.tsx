@@ -6,6 +6,7 @@ import { ChatSession, ChatMessage } from '@/types';
 import { UseSplitViewReturn } from '@/hooks/useSplitView';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useToast } from '@/hooks/useToast';
+import { useEffectiveDarkMode } from '@/hooks/useEffectiveDarkMode';
 
 interface SplitViewComparisonProps {
   splitView: UseSplitViewReturn;
@@ -228,6 +229,11 @@ export default function SplitViewComparison({
 
   const { isOnline, wasOffline, resetWasOffline } = useOnlineStatus();
   const { addToast } = useToast();
+  const isDarkMode = useEffectiveDarkMode();
+  const effectiveTheme = isDarkMode ? 'dark' : 'light';
+  const themeFallback = isDarkMode
+    ? 'bg-slate-950 text-slate-50'
+    : 'bg-slate-50 text-slate-900';
   // Fix (#523): initialise the ref to `true` (assume online at mount) so the
   // first offline transition is always detected correctly, regardless of the
   // order in which React commits the initial render vs. the effect.
@@ -287,11 +293,12 @@ export default function SplitViewComparison({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col bg-[var(--background)] text-[var(--foreground)]"
+      className={`fixed inset-0 z-50 flex flex-col bg-[var(--background)] text-[var(--foreground)] ${themeFallback}`}
       role="dialog"
       aria-modal="true"
       aria-labelledby={dialogTitleId}
       data-testid="split-view-comparison"
+      data-effective-theme={effectiveTheme}
     >
       {/* Toolbar */}
       <div

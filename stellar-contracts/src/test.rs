@@ -4461,6 +4461,46 @@ fn test_withdraw_fees_event_remaining_fees_reflects_vault_balance() {
     assert_eq!(result, Err(Ok(Error::NoFeesToWithdraw)));
 }
 
+// ── Issue #840: fee vault reconciliation in withdraw_fees ───────────────
+
+#[test]
+fn test_withdraw_fees_emits_vault_reconciled_event_issue_840() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let recipient = Address::generate(&env);
+
+    token_sac.mint(&contract_id, &200);
+    env.as_contract(&contract_id, || {
+        env.storage()
+            .persistent()
+            .set(&DataKey::FeeVault(token_addr.clone()), &400i128);
+    });
+
+    bridge.withdraw_fees(&recipient, &token_addr, &100, &0);
+
+    let events = env.events().all().filter_by_contract(&contract_id);
+    let raw = events.events();
+    let topic_symbol = soroban_sdk::xdr::ScVal::Symbol(soroban_sdk::xdr::ScSymbol(
+        soroban_sdk::xdr::StringM::try_from("fee_vault_reconciled_event").expect("topic"),
+    ));
+    let mut found = false;
+    for event in raw.iter() {
+        use soroban_sdk::xdr::ContractEventBody;
+        if let ContractEventBody::V0(body) = &event.body {
+            if body.topics.iter().any(|t| *t == topic_symbol) {
+                found = true;
+                break;
+            }
+        }
+    }
+    assert!(
+        found,
+        "FeeVaultReconciledEvent must be emitted when vault ledger exceeds on-chain reserves"
+    );
+}
+
 // ── Issue #619: Edge case validation for request_withdrawal ────────────
 
 #[test]
