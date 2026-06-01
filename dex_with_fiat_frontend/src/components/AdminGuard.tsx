@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
 import { getAdmin } from '@/lib/stellarContract';
@@ -42,20 +42,40 @@ export default function AdminGuard({ children }: AdminGuardProps) {
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator !== 'undefined' ? navigator.onLine : true,
+  );
+  const [retryQueued, setRetryQueued] = useState(false);
 
-  useEffect(() => {
-    let isCancelled = false;
+  // Stable ref so the online handler can call the latest checkAdmin without a
+  // stale closure, even if connection.address changes between renders.
+  const checkAdminRef = useRef<() => Promise<void>>();
 
-    async function checkAdmin() {
-      setLoading(true);
-      setError(null);
+  const checkAdmin = useCallback(async () => {
+    if (!navigator.onLine) {
+      setRetryQueued(true);
+      setLoading(false);
+      return;
+    }
 
-      if (!connection.address) {
-        if (isCancelled) return;
-        setIsAdmin(false);
-        setLoading(false);
-        return;
-      }
+    setRetryQueued(false);
+    setLoading(true);
+    setError(null);
+
+    if (!connection.address) {
+      setIsAdmin(false);
+      setLoading(false);
+      return;
+    }
+
+    const connectedParsed = stellarAddressSchema.safeParse(connection.address);
+    if (!connectedParsed.success) {
+      console.error('Invalid connected wallet address format:', connectedParsed.error);
+      setError('Invalid wallet address format. Access denied.');
+      setIsAdmin(false);
+      setLoading(false);
+      return;
+    }
 
       const connectedParsed = stellarAddressSchema.safeParse(
         connection.address,
@@ -67,7 +87,6 @@ export default function AdminGuard({ children }: AdminGuardProps) {
         );
         setError('Invalid wallet address format. Access denied.');
         setIsAdmin(false);
-        setLoading(false);
         return;
       }
 
@@ -97,19 +116,91 @@ export default function AdminGuard({ children }: AdminGuardProps) {
         setLoading(false);
       }
     }
-
-    checkAdmin();
-
-    return () => {
-      isCancelled = true;
-    };
   }, [connection.address]);
+
+  // Keep the ref in sync so the online handler always calls the latest version.
+  checkAdminRef.current = checkAdmin;
+
+  // Run admin check whenever the connected address changes.
+  useEffect(() => {
+    checkAdmin();
+  }, [checkAdmin]);
+
+  // #490: Scroll to top smoothly whenever admin access is granted so the
+  // dashboard renders from the top of the page, not wherever the user
+  // navigated from. Only fires when loading completes and access is confirmed.
+  useEffect(() => {
+    if (!loading && isAdmin) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [loading, isAdmin]);
+
+  // Attach online/offline listeners once.
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      // Flush the queue: retry the admin check that was skipped while offline.
+      checkAdminRef.current?.();
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  if (retryQueued && !isOnline) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center bg-[var(--color-surface)] p-6 text-center">
+        <svg
+          className="mx-auto mb-4 h-12 w-12"
+          style={{ color: 'var(--color-text-muted)' }}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          aria-hidden="true"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M18.364 5.636a9 9 0 010 12.728M15.536 8.464a5 5 0 010 7.072M6.343 6.343a9 9 0 000 12.728m2.829-2.829a5 5 0 000-7.07"
+          />
+        </svg>
+        <h2
+          className="mb-2 text-xl font-bold"
+          style={{ color: 'var(--color-text-primary)' }}
+        >
+          You are offline
+        </h2>
+        <p
+          className="text-sm"
+          style={{ color: 'var(--color-text-muted)' }}
+        >
+          Admin verification will retry automatically when your connection is restored.
+        </p>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-gray-900 text-white">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-t-white border-white/20"></div>
-        <span className="ml-3 font-medium">Verifying admin access...</span>
+      <div className="flex h-screen items-center justify-center bg-[var(--color-surface)] text-[var(--color-text-primary)]">
+        <div
+          className="h-8 w-8 animate-spin rounded-full border-4"
+          style={{
+            borderColor: 'var(--color-primary)',
+            borderTopColor: 'transparent',
+          }}
+        ></div>
+        <span className="ml-3 font-medium" style={{ color: 'var(--color-text-primary)' }}>
+          Verifying admin access...
+        </span>
       </div>
     );
   }
@@ -135,7 +226,7 @@ export default function AdminGuard({ children }: AdminGuardProps) {
         <h2 className="text-xl font-bold mb-2">{error}</h2>
         <button
           onClick={() => window.location.reload()}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700"
+          className="theme-primary-button rounded-lg px-4 py-2 text-sm font-medium"
         >
           Try Again
         </button>

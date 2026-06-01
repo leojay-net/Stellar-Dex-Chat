@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  # Soroban local network using Stellar quickstart image
+  soroban-local-net:
+    image: stellar/quickstart:latest
+    container_name: stellar-dex-soroban-local
+    ports:
+      - "8000:8000"   # Horizon API
+      - "11626:11626" # Stellar Core peer port
+      - "11625:11625" # Stellar Core admin port
+    environment:
+      - NETWORK=standalone
+      - ENABLE_SOROBAN_RPC=true
+    command: --standalone --enable-soroban-rpc
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - stellar-dex-network
+
+  # Next.js frontend application
+  frontend:
+    build:
+      context: ./dex_with_fiat_frontend
+      dockerfile: Dockerfile.dev
+    container_name: stellar-dex-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./dex_with_fiat_frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_SOROBAN_NETWORK_PASSPHRASE=Standalone Network ; February 2017
+      - NEXT_PUBLIC_SOROBAN_RPC_URL=http://soroban-local-net:8000/soroban/rpc
+      - NEXT_PUBLIC_HORIZON_URL=http://soroban-local-net:8000
+    depends_on:
+      soroban-local-net:
+        condition: service_healthy
+    networks:
+      - stellar-dex-network
+    command: npm run dev
+
+networks:
+  stellar-dex-network:
+    driver: bridge

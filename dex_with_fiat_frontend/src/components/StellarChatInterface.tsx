@@ -107,6 +107,9 @@ function StellarChatInterfaceContent() {
   >(null);
   const [isReceiptDrawerOpen, setIsReceiptDrawerOpen] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  // Show the chat skeleton until the client has hydrated so the first paint
+  // isn't an empty conversation pane before messages are restored.
+  const [isHydrated, setIsHydrated] = useState(false);
   const { entries: txHistory, clearEntries: clearTxHistory } = useTxHistory();
   const accountDropdownRef = useRef<HTMLDivElement>(null);
   const reconnectNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -149,6 +152,10 @@ function StellarChatInterfaceContent() {
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  useEffect(() => {
+    setIsHydrated(true);
   }, []);
 
   useEffect(() => {
@@ -490,11 +497,11 @@ function StellarChatInterfaceContent() {
               </button>
 
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full bg-[var(--color-primary)] flex items-center justify-center">
                   <Star className="w-4 h-4 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                  <h1 className="text-xl font-bold text-[var(--color-primary)]">
                     {t('header.title')}
                   </h1>
                   <p
@@ -677,7 +684,7 @@ function StellarChatInterfaceContent() {
               ) : (
                 <button
                   onClick={connect}
-                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white text-sm font-medium rounded-lg transition-all"
+                  className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-sm font-medium rounded-lg transition-all"
                 >
                   <Wallet className="w-4 h-4" />
                   {t('header.connect_freighter')}
@@ -875,7 +882,7 @@ function StellarChatInterfaceContent() {
 
           {/* Messages */}
           <div className="flex-1 min-h-0 flex flex-col">
-            {isLoading && messages.length === 0 ? (
+            {!isHydrated || (isLoading && messages.length === 0) ? (
               <SkeletonChat />
             ) : (
               <ErrorBoundary

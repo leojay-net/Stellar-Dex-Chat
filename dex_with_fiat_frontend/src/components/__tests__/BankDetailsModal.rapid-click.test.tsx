@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import BankDetailsModal from '../BankDetailsModal';
+import * as cryptoPriceService from '@/lib/cryptoPriceService';
 
 // Mock dependencies
 vi.mock('@/hooks/useNotifications', () => ({
@@ -41,6 +42,9 @@ vi.mock('@/hooks/useAccessibleModal', () => ({
     modalRef: { current: null },
   }),
 }));
+vi.mock('@/lib/chatTelemetry', () => ({
+  chatTelemetry: { fiatPayoutStep: vi.fn() },
+}));
 
 vi.mock('@/lib/chatTelemetry', () => ({
   chatTelemetry: {
@@ -58,6 +62,7 @@ describe('BankDetailsModal - Rapid Click Protection', () => {
     xlmAmount: 10,
   };
 
+describe('BankDetailsModal - Rapid Click Protection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, 'warn').mockImplementation(() => {});

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
-import { ArrowLeftRight, X, ChevronDown } from 'lucide-react';
+import { ArrowLeftRight, X, ChevronDown, Copy, Check } from 'lucide-react';
 import { ChatSession, ChatMessage } from '@/types';
 import { UseSplitViewReturn } from '@/hooks/useSplitView';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
@@ -23,6 +23,7 @@ interface ThreadPaneProps {
   allSessions: ChatSession[];
   onSelectSession: (id: string) => void;
   onSelectMessage: (id: string | null) => void;
+  onCopyMessage: (content: string) => void;
 }
 
 function ThreadPane({
@@ -32,10 +33,14 @@ function ThreadPane({
   allSessions,
   onSelectSession,
   onSelectMessage,
+  onCopyMessage,
 }: ThreadPaneProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const paneId = `split-pane-${label.toLowerCase()}-region`;
   const [mounted, setMounted] = React.useState(false);
+  const [copiedMessageId, setCopiedMessageId] = React.useState<string | null>(
+    null,
+  );
 
   React.useEffect(() => {
     setMounted(true);
@@ -125,18 +130,16 @@ function ThreadPane({
             .map((msg) => {
               const isSelected = selectedMessageId === msg.id;
               const isUser = msg.role === 'user';
+              const isCopied = copiedMessageId === msg.id;
               return (
-                <button
+                <div
                   key={msg.id}
                   data-message-id={msg.id}
-                  onClick={() => handleMessageClick(msg)}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-all border ${
+                  className={`relative w-full text-left px-3 py-2 rounded-lg text-xs transition-all border group ${
                     isSelected
                       ? 'border-[var(--color-primary)] bg-[var(--color-primary-soft)] ring-1 ring-[var(--color-primary)]'
                       : 'border-[var(--color-border)] hover:border-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)]'
                   }`}
-                  aria-pressed={isSelected}
-                  aria-label={`${isUser ? 'User' : 'Assistant'} message`}
                 >
                   <span
                     className={`font-semibold ${
@@ -186,20 +189,46 @@ export default function SplitViewComparison({
 
   const { isOnline, wasOffline, resetWasOffline } = useOnlineStatus();
   const { addToast } = useToast();
-  const wasOnlineRef = useRef(isOnline);
+  // Fix (#523): initialise the ref to `true` (assume online at mount) so the
+  // first offline transition is always detected correctly, regardless of the
+  // order in which React commits the initial render vs. the effect.
+  const wasOnlineRef = useRef(true);
+
+  const handleCopyMessage = async (content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      addToast({
+        message: 'Message copied to clipboard',
+        severity: 'success',
+        durationMs: 2000,
+      });
+    } catch (error) {
+      addToast({
+        message: 'Failed to copy message',
+        severity: 'error',
+        durationMs: 3000,
+      });
+    }
+  };
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const wasOnline = wasOnlineRef.current;
-    if (wasOnline && !isOnline) {
+    // Capture the previous value before updating the ref so the comparison
+    // is always against the state from the *previous* render cycle.
+    // Updating the ref at the end of the effect (not the start) eliminates
+    // the race where a rapid online→offline→online sequence could read a
+    // stale ref value and skip one of the toasts.
+    const prevOnline = wasOnlineRef.current;
+
+    if (prevOnline && !isOnline) {
       addToast({
         message:
           "You're offline. Thread comparison won't update until you reconnect.",
         severity: 'warning',
         durationMs: 4500,
       });
-    } else if (!wasOnline && isOnline && wasOffline) {
+    } else if (!prevOnline && isOnline && wasOffline) {
       addToast({
         message:
           'Back online. Comparison panes will use the latest thread data.',
@@ -208,6 +237,8 @@ export default function SplitViewComparison({
       });
       resetWasOffline();
     }
+
+    // Update ref AFTER the conditional logic to avoid stale-closure issues.
     wasOnlineRef.current = isOnline;
   }, [isOnline, wasOffline, addToast, resetWasOffline]);
 
@@ -277,6 +308,7 @@ export default function SplitViewComparison({
           allSessions={sessions}
           onSelectSession={setLeftSession}
           onSelectMessage={selectMessage}
+          onCopyMessage={handleCopyMessage}
         />
         <ThreadPane
           session={rightSession}
@@ -285,6 +317,7 @@ export default function SplitViewComparison({
           allSessions={sessions}
           onSelectSession={setRightSession}
           onSelectMessage={selectMessage}
+          onCopyMessage={handleCopyMessage}
         />
       </div>
     </div>

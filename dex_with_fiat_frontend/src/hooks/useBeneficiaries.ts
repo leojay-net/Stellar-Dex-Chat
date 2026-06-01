@@ -32,9 +32,14 @@ export function useBeneficiaries() {
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isMounted || typeof window === 'undefined') return;
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
@@ -45,7 +50,7 @@ export function useBeneficiaries() {
       setBeneficiaries([]);
     }
     setIsLoaded(true);
-  }, []);
+  }, [isMounted]);
 
   useEffect(() => {
     if (!isLoaded || typeof window === 'undefined') return;

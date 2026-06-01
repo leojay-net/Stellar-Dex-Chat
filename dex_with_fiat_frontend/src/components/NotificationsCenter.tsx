@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Bell, Check, Trash2, X } from 'lucide-react';
 import { useNotifications, AppNotification } from '@/hooks/useNotifications';
 import { useTheme } from '@/contexts/ThemeContext';
 
 export default function NotificationsCenter() {
+  // Track if component has mounted to prevent hydration mismatches
+  const [isMounted, setIsMounted] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const {
     notifications,
@@ -17,18 +19,50 @@ export default function NotificationsCenter() {
   const { isDarkMode } = useTheme();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // Effect to mark component as mounted on client side only
+  // This prevents hydration mismatches by ensuring all interactive state
+  // is only used after the client has fully hydrated
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
-        setIsOpen(false);
-      }
-    };
+    setIsMounted(true);
+  }, []);
+
+  const handleClickOutside = useCallback((event: MouseEvent) => {
+    if (
+      dropdownRef.current &&
+      !dropdownRef.current.contains(event.target as Node)
+    ) {
+      setIsOpen(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    // Only attach event listener after component has mounted on client
+    if (!isMounted) return;
+
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [isMounted, handleClickOutside]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Ignore shortcuts when focus is inside an input/textarea
+      const tag = (event.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+        return;
+      }
+      if (!isOpen) return;
+      if (event.key === 'm' || event.key === 'M') {
+        markAllAsRead();
+      } else if (event.key === 'd' || event.key === 'D') {
+        clearNotifications();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, markAllAsRead, clearNotifications]);
 
   const formatTime = (ts: number) => {
     const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
@@ -61,26 +95,36 @@ export default function NotificationsCenter() {
     }
   };
 
+  // Only render interactive dropdown after client-side hydration completes
+  // This prevents hydration mismatches caused by event listeners and state differences
+  const handleToggleDropdown = useCallback(() => {
+    if (isMounted) {
+      setIsOpen((prev) => !prev);
+    }
+  }, [isMounted]);
+
   return (
     <div className="relative" ref={dropdownRef}>
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={handleToggleDropdown}
         className={`relative p-2 rounded-lg transition-colors ${
           isDarkMode
             ? 'hover:bg-gray-800 text-gray-400'
             : 'hover:bg-gray-100 text-gray-600'
         }`}
         aria-label="Notifications"
+        aria-expanded={isOpen}
+        aria-haspopup="true"
       >
         <Bell className="w-5 h-5" />
-        {unreadCount > 0 && (
+        {isMounted && unreadCount > 0 && (
           <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
       </button>
 
-      {isOpen && (
+      {isMounted && isOpen && (
         <div
           className={`absolute right-0 mt-2 w-80 sm:w-96 rounded-xl shadow-xl border z-50 overflow-hidden ${
             isDarkMode

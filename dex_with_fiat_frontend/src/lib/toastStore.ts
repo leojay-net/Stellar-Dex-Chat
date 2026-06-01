@@ -162,18 +162,18 @@ export class ToastStore {
    * Get current toasts snapshot
    */
   getToasts(): AppToast[] {
-    return [...this.toasts];
+    return this.toasts;
   }
 
   getSnapshot(): AppToast[] {
-    return this.getToasts();
+    return this.toasts;
   }
 
   /**
    * Clear all toasts
    */
   clearToasts(): void {
-    this.toasts.length = 0;
+    this.toasts = [];
     this.timers.forEach((timer) => clearTimeout(timer));
     this.timers.clear();
     this.notifyListeners();

@@ -68,7 +68,7 @@ All errors are returned as `Result<_, Error>` variants. The contract uses a flat
 | 8 | `RequestNotFound` | Withdrawal | No withdrawal request exists for the given ID | `execute_withdrawal`, `cancel_withdrawal` |
 | 9 | `TokenNotWhitelisted` | Token | Token address has no entry in the token registry | `deposit`, `set_limit` |
 | 10 | `ReferenceTooLong` | Input Validation | Reference bytes exceed `MAX_REFERENCE_LEN` (64 bytes) | `deposit` |
-| 11 | `DailyLimitExceeded` | Rate Limiting | Aggregate daily withdrawal volume exceeds the configured limit | (reserved for future daily withdraw cap) |
+| 11 | `DailyLimitExceeded` | Rate Limiting | User's per-token daily deposit accumulator has exceeded the configured limit | `deposit` (via `enforce_daily_deposit_limit`) |
 | 12 | `CooldownActive` | Rate Limiting | User deposited too recently; cooldown period has not elapsed | `deposit` |
 | 13 | `NotAllowed` | Access Control | Allowlist is enabled and caller is not on it | `deposit` |
 | 14 | `OracleNotSet` | Oracle | Oracle address is not configured, or oracle returned a non-positive price | `deposit` (via `validate_fiat_limit`) |
@@ -131,10 +131,15 @@ A GitHub Actions step validates that the error table stays in sync with the cont
 | `execute_withdrawal(id, partial?)` | — | Execute a queued withdrawal after unlock |
 | `cancel_withdrawal(id)` | admin | Cancel a queued withdrawal |
 | `set_limit(token, limit)` | admin | Update per-token deposit limit |
+| `set_limit_max_cap(max_cap)` | admin | Set the global ceiling for future per-token liability limits |
+| `get_set_limit_max_cap()` | — | Read the current global per-token limit ceiling |
+| `set_daily_deposit_limit(token, limit_per_day)` | admin | Set per-token 24-hour rolling-window deposit limit for users |
 | `set_cooldown(ledgers)` | admin | Set per-user deposit cooldown |
-| `set_lock_period(ledgers)` | admin | Set withdrawal lock period |
 | `transfer_admin(new_admin)` | admin | Initiate two-step admin transfer |
 | `accept_admin()` | pending admin | Complete admin transfer |
+| `set_operator(operator, active)` | admin | Grant or revoke operator role (with timelock role check) |
+| `queue_renounce_admin()` | admin | Queue irreversible admin renounce under timelock |
+| `execute_renounce_admin()` | admin | Complete admin renounce after timelock elapses |
 | `set_oracle(oracle)` | admin | Set oracle contract address |
 | `set_fiat_limit(limit_usd_cents)` | admin | Set daily USD fiat limit |
 | `queue_admin_action(type, payload, delay)` | admin | Queue a timelocked admin action |
@@ -204,6 +209,11 @@ const receiptHash: string = await contract.get_receipt_by_index({ index: 0n });
 // Total number of receipts issued
 const count: bigint = await contract.get_receipt_counter();
 ```
+
+> Note: `get_receipt_by_index` distinguishes between an out-of-range index
+> (`ReceiptIndexOutOfBounds`) and a stale or expired receipt reference
+> (`ReceiptNotFound`). Queries also emit a `ReceiptQueryEvent` for
+> off-chain auditability.
 
 ---
 

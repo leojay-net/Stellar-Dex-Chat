@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Send, Loader2, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from '@/contexts/TranslationContext';
@@ -99,6 +99,7 @@ export default function ChatInput({
         setMessage('');
         if (sessionId) clearDraft(sessionId);
         setShowCommands(false);
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, 'chat_message_submit');
     }
   };
@@ -194,10 +195,26 @@ export default function ChatInput({
         event.preventDefault();
         setShowPalette((prev: boolean) => !prev);
       }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'n' && !event.shiftKey) {
+        event.preventDefault();
+        onNewChat?.();
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'h') {
+        event.preventDefault();
+        onOpenHistory?.();
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'b') {
+        event.preventDefault();
+        onOpenBridgeModal?.();
+      }
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'c') {
+        event.preventDefault();
+        onCancelRequest?.();
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [onNewChat, onOpenHistory, onOpenBridgeModal, onCancelRequest]);
 
   // Load draft when session changes
   useEffect(() => {
@@ -373,6 +390,7 @@ export default function ChatInput({
       )}
 
       {/* Quick suggestions */}
+      <div ref={bottomRef} />
       <div className="flex flex-wrap gap-2 mt-3 sm:mt-4 overflow-x-auto pb-1 no-scrollbar">
         {[
           t('chat.suggestions.convert'),

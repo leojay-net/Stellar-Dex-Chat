@@ -17,7 +17,7 @@ This document defines the stable error codes emitted by the Fiat Bridge contract
 | **301-399** | **Constraints & Limits**        |                                                                       |
 | 301         | `ZeroAmount`                    | The provided amount must be greater than zero.                        |
 | 302         | `ExceedsLimit`                  | The amount exceeds the configured token limit.                        |
-| 303         | `DailyLimitExceeded`            | The daily withdrawal limit for the contract has been exceeded.        |
+| 303         | `DailyLimitExceeded`            | The user's per-token daily deposit accumulator has exceeded the configured limit. |
 | 304         | `ExceedsFiatLimit`              | The user's daily fiat-equivalent volume limit has been exceeded.      |
 | 305         | `ReferenceTooLong`              | The deposit reference string exceeds the maximum length.              |
 | 306         | `CooldownActive`                | A security cooldown is currently active for this user.                |
@@ -33,7 +33,7 @@ This document defines the stable error codes emitted by the Fiat Bridge contract
 | 502         | `WithdrawalLocked`              | The withdrawal request is still within its lock period.               |
 | **601-699** | **Governance & Timelock**       |                                                                       |
 | 601         | `ActionNotQueued`               | The specified admin action ID does not exist.                         |
-| 602         | `ActionNotReady`                | The admin action is still within its timelock period.                 |
+| 602         | `ActionNotReady`                | The admin action is still within its timelock period, or `queue_admin_action` was called with `delay < MIN_TIMELOCK_DELAY` (34,560 ledgers ≈ 48 h). |
 | 603         | `InactivityThresholdNotReached` | The inactivity period required for emergency recovery has not passed. |
 | 604         | `NoEmergencyRecoveryAddress`    | No emergency recovery address has been configured.                    |
 | **701-799** | **External Services**           |                                                                       |
