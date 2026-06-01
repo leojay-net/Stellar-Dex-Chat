@@ -151,7 +151,9 @@ describe('AIAssistant abort signal support', () => {
 
   it('should re-throw AbortError from analyzeUserMessage without logging', async () => {
     const controller = new AbortController();
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
 
     vi.stubGlobal(
       'fetch',
@@ -169,7 +171,11 @@ describe('AIAssistant abort signal support', () => {
 
   it('should pass signal to fetch in generateFollowUpQuestion', async () => {
     const controller = new AbortController();
-    await assistant.generateFollowUpQuestion('query', ['amount'], controller.signal);
+    await assistant.generateFollowUpQuestion(
+      'query',
+      ['amount'],
+      controller.signal,
+    );
 
     expect(fetch).toHaveBeenCalledWith(
       '/api/ai/chat',
@@ -179,7 +185,9 @@ describe('AIAssistant abort signal support', () => {
 
   it('should re-throw AbortError from generateFollowUpQuestion without logging', async () => {
     const controller = new AbortController();
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
 
     vi.stubGlobal(
       'fetch',
@@ -187,7 +195,11 @@ describe('AIAssistant abort signal support', () => {
     );
 
     await expect(
-      assistant.generateFollowUpQuestion('query', ['amount'], controller.signal),
+      assistant.generateFollowUpQuestion(
+        'query',
+        ['amount'],
+        controller.signal,
+      ),
     ).rejects.toThrow('Aborted');
 
     expect(consoleErrorSpy).not.toHaveBeenCalled();
@@ -195,7 +207,9 @@ describe('AIAssistant abort signal support', () => {
   });
 
   it('should return fallback result for non-abort errors in analyzeUserMessage', async () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
     vi.stubGlobal(
       'fetch',
       vi.fn().mockRejectedValue(new Error('Network failure')),
@@ -211,7 +225,9 @@ describe('AIAssistant abort signal support', () => {
 
   it('should toast on network-style fetch failure in analyzeUserMessage', async () => {
     toastAddMock.mockClear();
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
     vi.stubGlobal(
       'fetch',
       vi.fn().mockRejectedValue(new TypeError('Failed to fetch')),
@@ -229,7 +245,9 @@ describe('AIAssistant abort signal support', () => {
 
   it('should toast on network failure in generateFollowUpQuestion', async () => {
     toastAddMock.mockClear();
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
     vi.stubGlobal(
       'fetch',
       vi.fn().mockRejectedValue(new TypeError('Failed to fetch')),

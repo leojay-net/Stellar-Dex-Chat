@@ -11,7 +11,7 @@ const DEFAULT_TTL = 86400; // 24 hours in seconds
  */
 export const saveDraft = (sessionId: string, content: string): void => {
   if (typeof window === 'undefined' || !sessionId) return;
-  
+
   if (!content.trim()) {
     clearDraft(sessionId);
     return;
@@ -27,9 +27,12 @@ export const saveDraft = (sessionId: string, content: string): void => {
 /**
  * Retrieves a message draft for a specific session, checking for expiry.
  */
-export const getDraft = (sessionId: string, ttlSeconds: number = DEFAULT_TTL): string | null => {
+export const getDraft = (
+  sessionId: string,
+  ttlSeconds: number = DEFAULT_TTL,
+): string | null => {
   if (typeof window === 'undefined' || !sessionId) return null;
-  
+
   const item = localStorage.getItem(`${DRAFT_PREFIX}${sessionId}`);
   if (!item) return null;
 
@@ -66,8 +69,8 @@ export const clearExpiredDrafts = (ttlSeconds: number = DEFAULT_TTL): void => {
 
   const now = Date.now();
   const keys = Object.keys(localStorage);
-  
-  keys.forEach(key => {
+
+  keys.forEach((key) => {
     if (key.startsWith(DRAFT_PREFIX)) {
       try {
         const item = localStorage.getItem(key);

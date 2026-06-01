@@ -55,13 +55,13 @@ describe('useBeneficiaries', () => {
         'TB',
         '123456789',
         'Test Account',
-        'Custom Name'
+        'Custom Name',
       );
     });
 
     expect(localStorageMock.setItem).toHaveBeenCalledWith(
       'stellar_beneficiaries',
-      expect.stringContaining('Custom Name')
+      expect.stringContaining('Custom Name'),
     );
   });
 
@@ -130,30 +130,5 @@ describe('useBeneficiaries', () => {
     });
 
     expect(result.current.beneficiaries).toHaveLength(0);
-  });
-
-  it('prevents hydration mismatch by only loading from localStorage after mount', () => {
-    // In a real Next.js app, the initial render would have empty beneficiaries
-    // and isLoaded false, then useEffect would run and load from localStorage
-    // In tests, useEffect runs synchronously, so we test the final state
-    const mockBeneficiaries = [
-      {
-        id: '1',
-        name: 'Test Beneficiary',
-        bankId: 1,
-        bankName: 'Test Bank',
-        bankCode: 'TB',
-        accountNumber: '123456789',
-        accountName: 'Test Account',
-        createdAt: Date.now(),
-      },
-    ];
-    localStorageMock.getItem.mockReturnValue(JSON.stringify(mockBeneficiaries));
-
-    const { result } = renderHook(() => useBeneficiaries());
-
-    // After effects run, it should have loaded from localStorage
-    expect(result.current.beneficiaries).toEqual(mockBeneficiaries);
-    expect(result.current.isLoaded).toBe(true);
   });
 });

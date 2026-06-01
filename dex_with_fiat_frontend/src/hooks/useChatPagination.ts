@@ -14,7 +14,7 @@ import {
  */
 export const useChatPagination = (
   allMessages: ChatMessage[],
-  pageSize: number = DEFAULT_PAGE_SIZE
+  pageSize: number = DEFAULT_PAGE_SIZE,
 ) => {
   const [visibleCount, setVisibleCount] = useState(pageSize);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -40,10 +40,12 @@ export const useChatPagination = (
     if (!hasMore || isLoadingMore) return;
 
     setIsLoadingMore(true);
-    
+
     // Simulate a small delay for better UX (optional, but requested "loading guards")
     setTimeout(() => {
-      setVisibleCount((prev: number) => getNextMessageCount(allMessages, prev, pageSize));
+      setVisibleCount((prev: number) =>
+        getNextMessageCount(allMessages, prev, pageSize),
+      );
       setIsLoadingMore(false);
     }, 400);
   }, [hasMore, isLoadingMore, allMessages, pageSize]);

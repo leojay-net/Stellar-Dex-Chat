@@ -15,7 +15,7 @@ export type ChatEventName =
   | 'fiat_payout_step'
   | 'avatar_color_check';
 
-export interface ChatEvent<P extends object = Record<string, unknown>> {
+export interface ChatEvent<P extends object = object> {
   /** Normalized event name. */
   name: ChatEventName;
   /** Schema version for this payload shape. */
@@ -78,8 +78,7 @@ export interface AvatarColorTelemetryPayload {
   avatarTextColor?: string;
 }
 
-export interface AccessibleAvatarColorTelemetryPayload
-  extends AvatarColorTelemetryPayload {
+export interface AccessibleAvatarColorTelemetryPayload extends AvatarColorTelemetryPayload {
   avatarTextColor: string;
   avatarContrastRatio: number;
   avatarContrastCompliant: boolean;
@@ -133,22 +132,16 @@ function normalizeHexColor(color: string): string | null {
 }
 
 function getRelativeLuminance(color: string): number | null {
-  try {
-    const normalizedColor = normalizeHexColor(color);
-    if (!normalizedColor) return null;
+  const normalizedColor = normalizeHexColor(color);
+  if (!normalizedColor) return null;
 
-    const hex = normalizedColor.slice(1);
-    const channels = [0, 2, 4].map((offset) => {
-      const sRGB = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
-      return sRGB <= 0.03928
-        ? sRGB / 12.92
-        : ((sRGB + 0.055) / 1.055) ** 2.4;
-    });
+  const hex = normalizedColor.slice(1);
+  const channels = [0, 2, 4].map((offset) => {
+    const sRGB = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
+    return sRGB <= 0.03928 ? sRGB / 12.92 : ((sRGB + 0.055) / 1.055) ** 2.4;
+  });
 
-    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
-  } catch {
-    return null;
-  }
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
 }
 
 export function calculateContrastRatio(
@@ -166,12 +159,7 @@ export function calculateContrastRatio(
       return null;
     }
 
-    const lighter = Math.max(foregroundLuminance, backgroundLuminance);
-    const darker = Math.min(foregroundLuminance, backgroundLuminance);
-    const ratio = (lighter + 0.05) / (darker + 0.05);
-
-    return Number(ratio.toFixed(2));
-  } catch {
+  if (foregroundLuminance === null || backgroundLuminance === null) {
     return null;
   }
 }
@@ -209,26 +197,19 @@ export function getAccessibleAvatarTextColor(
       }
     }
 
-    return bestRatio >= MIN_CONTRAST_RATIO ? bestColor : normalizedPreferredTextColor;
-  } catch {
-    return FALLBACK_LIGHT_TEXT;
-  }
+  return bestRatio >= MIN_CONTRAST_RATIO
+    ? bestColor
+    : normalizedPreferredTextColor;
 }
 
-export function withAccessibleAvatarContrast<
-  P extends object,
->(payload: P): P | (P & AccessibleAvatarColorTelemetryPayload) {
-  try {
-    const avatarPayload = payload as Partial<AvatarColorTelemetryPayload>;
-    const backgroundColor =
-      typeof avatarPayload.avatarBackgroundColor === 'string'
-        ? normalizeHexColor(avatarPayload.avatarBackgroundColor)
-        : null;
-
-    // Fix rendering overflow: return original payload reference if no avatar colors
-    if (!backgroundColor) {
-      return payload;
-    }
+export function withAccessibleAvatarContrast<P extends object>(
+  payload: P,
+): P | (P & AccessibleAvatarColorTelemetryPayload) {
+  const avatarPayload = payload as Partial<AvatarColorTelemetryPayload>;
+  const backgroundColor =
+    typeof avatarPayload.avatarBackgroundColor === 'string'
+      ? normalizeHexColor(avatarPayload.avatarBackgroundColor)
+      : null;
 
     const accessibleTextColor = getAccessibleAvatarTextColor(
       backgroundColor,
@@ -289,43 +270,25 @@ export function setTelemetryConsent(enabled: boolean): void {
  * Fix for rendering overflow: Uses requestAnimationFrame to defer event
  * dispatch and prevent blocking the main render cycle.
  */
-function emit<P extends object>(
-  name: ChatEventName,
-  payload: P,
-): void {
-  try {
-    if (!getTelemetryConsent()) return;
+function emit<P extends object>(name: ChatEventName, payload: P): void {
+  if (!getTelemetryConsent()) return;
 
-    const normalizedPayload =
-      name === 'fiat_payout_step'
-        ? payload
-        : withAccessibleAvatarContrast(payload);
+  const normalizedPayload =
+    name === 'fiat_payout_step'
+      ? payload
+      : withAccessibleAvatarContrast(payload);
 
-    const event: ChatEvent = {
-      name,
-      version: TELEMETRY_SCHEMA_VERSION,
-      timestamp: Date.now(),
-      payload: normalizedPayload as Record<string, unknown>,
-    };
+  const event: ChatEvent = {
+    name,
+    version: TELEMETRY_SCHEMA_VERSION,
+    timestamp: Date.now(),
+    payload: normalizedPayload,
+  };
 
-    // Fix rendering overflow: defer event dispatch to prevent blocking renders
-    if (typeof window !== 'undefined') {
-      requestAnimationFrame(() => {
-        try {
-          window.dispatchEvent(
-            new CustomEvent('chat:telemetry', { detail: event }),
-          );
-        } catch {
-          // Error boundary: silently ignore event dispatch errors
-          // to prevent telemetry failures from affecting the app
-        }
-      });
-    }
-  } catch {
-    // Error boundary: silently ignore any errors during event emission
-    // to prevent telemetry failures from affecting the app
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('chat:telemetry', { detail: event }));
   }
-}   
+}
 
 // ── Public API ────────────────────────────────────────────────────────────
 

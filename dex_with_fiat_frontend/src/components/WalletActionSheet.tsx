@@ -13,7 +13,8 @@ export interface WalletActionHapticControls {
 /**
  * Context to provide haptic actions to WalletActionSheet children.
  */
-const WalletActionHapticsContext = React.createContext<WalletActionHapticControls | null>(null);
+const WalletActionHapticsContext =
+  React.createContext<WalletActionHapticControls | null>(null);
 
 /**
  * Hook to read haptic controls from a WalletActionSheet instance.
@@ -24,7 +25,9 @@ const WalletActionHapticsContext = React.createContext<WalletActionHapticControl
 export function useWalletActionHaptics(): WalletActionHapticControls {
   const context = React.useContext(WalletActionHapticsContext);
   if (!context) {
-    throw new Error('useWalletActionHaptics must be used within WalletActionSheet');
+    throw new Error(
+      'useWalletActionHaptics must be used within WalletActionSheet',
+    );
   }
   return context;
 }

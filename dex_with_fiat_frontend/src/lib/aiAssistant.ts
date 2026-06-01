@@ -166,7 +166,8 @@ export class AIAssistant {
         throw new Error(`AI chat API returned ${response.status}`);
       }
 
-      const result: AIAnalysisResult = await response.json() as AIAnalysisResult;
+      const result: AIAnalysisResult =
+        (await response.json()) as AIAnalysisResult;
 
       // Validate result structure before processing
       if (!this.isValidAnalysisResult(result)) {
@@ -596,18 +597,12 @@ Choose one of the next actions below and I'll keep it moving.`;
         }),
         signal: controllerSignal,
       });
-
-      if (!response.ok) {
-        console.warn(`AIAssistant: Follow-up question API returned ${response.status}`);
-        return fallbackQuestion;
-      }
-
-      const result = await response.json() as AIAnalysisResult;
-      const question = result.suggestedResponse || fallbackQuestion;
-
-      // Validate returned question is non-empty
-      if (typeof question === 'string' && question.trim().length > 0) {
-        return question;
+      if (response.ok) {
+        const result = (await response.json()) as AIAnalysisResult;
+        return (
+          result.suggestedResponse ||
+          'Could you provide more details about your request?'
+        );
       }
       return fallbackQuestion;
     } catch (error) {

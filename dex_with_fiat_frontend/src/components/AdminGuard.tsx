@@ -29,14 +29,10 @@ interface AdminGuardProps {
  * 2. **Blockchain Veracity**: Fetches the authorized admin address directly from the on-chain smart contract
  *    using the `getAdmin()` helper. This bypasses local storage or session variables that could be tampered with.
  * 3. **Identity Comparison**: Compares the connected `G...` address against the contract's reported admin.
- * 4. **Offline Retry Queue**: When the network is unavailable the check is queued and automatically
- *    retried as soon as the browser comes back online, so admins are never permanently locked out
- *    by a transient connectivity loss.
- * 5. **Conditional Rendering**:
+ * 4. **Conditional Rendering**:
  *    - If match: Renders `children`.
  *    - If mismatch or no wallet: Redirects to `LandingPage`.
  *    - If error: Displays a recovery UI with "Try Again" option.
- *    - If offline with queued retry: Displays an offline banner.
  *
  * This implementation ensures that administrative privileges are strictly tied to the on-chain state,
  * providing a robust security layer against front-end spoofing.
@@ -81,23 +77,44 @@ export default function AdminGuard({ children }: AdminGuardProps) {
       return;
     }
 
-    try {
-      const adminAddress = await getAdmin();
-      const adminParsed = stellarAddressSchema.safeParse(adminAddress);
-      if (!adminParsed.success) {
-        console.error('Invalid admin address configured in contract:', adminParsed.error);
-        setError('Invalid contract configuration. Access denied.');
+      const connectedParsed = stellarAddressSchema.safeParse(
+        connection.address,
+      );
+      if (!connectedParsed.success) {
+        console.error(
+          'Invalid connected wallet address format:',
+          connectedParsed.error,
+        );
+        setError('Invalid wallet address format. Access denied.');
         setIsAdmin(false);
         return;
       }
 
-      setIsAdmin(connectedParsed.data === adminParsed.data);
-    } catch (err) {
-      console.error('Failed to verify admin status:', err);
-      setError('Failed to verify admin status. Please try again.');
-      setIsAdmin(false);
-    } finally {
-      setLoading(false);
+      try {
+        const adminAddress = await getAdmin();
+        const adminParsed = stellarAddressSchema.safeParse(adminAddress);
+        if (!adminParsed.success) {
+          console.error(
+            'Invalid admin address configured in contract:',
+            adminParsed.error,
+          );
+          setError('Invalid contract configuration. Access denied.');
+          setIsAdmin(false);
+          return;
+        }
+
+        setIsAdmin(connectedParsed.data === adminParsed.data);
+        if (isCancelled) return;
+        setIsAdmin(connection.address === adminAddress);
+      } catch (err) {
+        if (isCancelled) return;
+        console.error('Failed to verify admin status:', err);
+        setError('Failed to verify admin status. Please try again.');
+        setIsAdmin(false);
+      } finally {
+        if (isCancelled) return;
+        setLoading(false);
+      }
     }
   }, [connection.address]);
 
@@ -190,17 +207,23 @@ export default function AdminGuard({ children }: AdminGuardProps) {
 
   if (error) {
     return (
-      <div
-        className="flex h-screen flex-col items-center justify-center bg-[var(--color-surface)] text-[var(--color-text-primary)] p-6 text-center"
-      >
-        <div className="mb-4" style={{ color: 'var(--color-danger)' }}>
-          <svg className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+      <div className="flex h-screen flex-col items-center justify-center bg-gray-900 text-white p-6 text-center">
+        <div className="mb-4 text-red-500">
+          <svg
+            className="mx-auto h-12 w-12"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            />
           </svg>
         </div>
-        <h2 className="mb-2 text-xl font-bold" style={{ color: 'var(--color-text-primary)' }}>
-          {error}
-        </h2>
+        <h2 className="text-xl font-bold mb-2">{error}</h2>
         <button
           onClick={() => window.location.reload()}
           className="theme-primary-button rounded-lg px-4 py-2 text-sm font-medium"
@@ -212,9 +235,7 @@ export default function AdminGuard({ children }: AdminGuardProps) {
   }
 
   if (!isAdmin) {
-    return (
-      <LandingPage />
-    );
+    return <LandingPage />;
   }
 
   return <>{children}</>;

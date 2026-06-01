@@ -10,7 +10,9 @@ function sortSessions(sessions: ChatSession[]): ChatSession[] {
     if (a.pinned && b.pinned) {
       return (b.pinnedAt?.getTime() ?? 0) - (a.pinnedAt?.getTime() ?? 0);
     }
-    return new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime();
+    return (
+      new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()
+    );
   });
 }
 
@@ -98,7 +100,10 @@ describe('Thread pinning ordering', () => {
 
   it('sessions with no pinned field are treated as unpinned', () => {
     const noPinField = makeSession({ lastUpdated: new Date('2024-12-01') });
-    const pinned = makeSession({ pinned: true, pinnedAt: new Date('2024-06-01') });
+    const pinned = makeSession({
+      pinned: true,
+      pinnedAt: new Date('2024-06-01'),
+    });
 
     const sorted = sortSessions([noPinField, pinned]);
 

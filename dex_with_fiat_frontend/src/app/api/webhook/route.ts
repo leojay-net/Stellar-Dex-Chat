@@ -29,7 +29,9 @@ export async function POST(request: NextRequest) {
         success: false,
         error: 'Missing PAYSTACK_SECRET_KEY',
       });
-      console.error('PAYSTACK_SECRET_KEY is not configured. Rejecting webhook.');
+      console.error(
+        'PAYSTACK_SECRET_KEY is not configured. Rejecting webhook.',
+      );
       return NextResponse.json(
         { message: 'Webhook processing is not configured' },
         { status: 400 },

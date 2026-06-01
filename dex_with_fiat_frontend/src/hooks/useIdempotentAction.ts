@@ -12,7 +12,7 @@ export interface IdempotentActionState {
 
 /**
  * Hook to prevent accidental double-submit actions with idempotency guarantees.
- * 
+ *
  * Features:
  * - Prevents duplicate submissions during cooldown period
  * - Tracks processing state for UI feedback
@@ -21,7 +21,7 @@ export interface IdempotentActionState {
  */
 export function useIdempotentAction(options: IdempotentActionOptions = {}) {
   const { cooldownMs = 2000, logSuppressed = true } = options;
-  
+
   const [isProcessing, setIsProcessing] = useState(false);
   const lastExecutionTime = useRef(0);
   const idempotencyKey = useRef<string>('');
@@ -29,7 +29,7 @@ export function useIdempotentAction(options: IdempotentActionOptions = {}) {
   const execute = useCallback(
     async <T>(
       action: (idempotencyKey: string) => Promise<T>,
-      actionName = 'action'
+      actionName = 'action',
     ): Promise<T | null> => {
       const now = Date.now();
       const timeSinceLastExecution = now - lastExecutionTime.current;
@@ -45,7 +45,7 @@ export function useIdempotentAction(options: IdempotentActionOptions = {}) {
               timeSinceLastExecution,
               cooldownMs,
               timestamp: new Date().toISOString(),
-            }
+            },
           );
         }
         return null;
@@ -53,7 +53,7 @@ export function useIdempotentAction(options: IdempotentActionOptions = {}) {
 
       // Generate new idempotency key for this action
       idempotencyKey.current = `${actionName}_${now}_${Math.random().toString(36).substring(2, 11)}`;
-      
+
       setIsProcessing(true);
       lastExecutionTime.current = now;
 
@@ -64,7 +64,7 @@ export function useIdempotentAction(options: IdempotentActionOptions = {}) {
         setIsProcessing(false);
       }
     },
-    [isProcessing, cooldownMs, logSuppressed]
+    [isProcessing, cooldownMs, logSuppressed],
   );
 
   const reset = useCallback(() => {

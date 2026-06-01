@@ -61,7 +61,9 @@ export class PerformanceBench {
     if (typeof window === 'undefined') return metrics;
 
     // Get navigation timing
-    const navTiming = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming;
+    const navTiming = performance.getEntriesByType(
+      'navigation',
+    )[0] as PerformanceNavigationTiming;
     if (navTiming) {
       metrics.renderTime = navTiming.loadEventEnd - navTiming.fetchStart;
     }
@@ -75,7 +77,8 @@ export class PerformanceBench {
     // Get LCP
     const lcpEntries = performance.getEntriesByType('largest-contentful-paint');
     if (lcpEntries.length > 0) {
-      metrics.largestContentfulPaint = lcpEntries[lcpEntries.length - 1].startTime;
+      metrics.largestContentfulPaint =
+        lcpEntries[lcpEntries.length - 1].startTime;
     }
 
     // Get CLS - requires PerformanceObserver
@@ -159,12 +162,16 @@ export class PerformanceBench {
   /**
    * Compare two benchmarks
    */
-  static compare(before: PerformanceMetrics, after: PerformanceMetrics): string {
+  static compare(
+    before: PerformanceMetrics,
+    after: PerformanceMetrics,
+  ): string {
     const renderImprovement =
       ((before.renderTime - after.renderTime) / before.renderTime) * 100;
-    const memoryImprovement = before.memoryUsage && after.memoryUsage 
-      ? ((before.memoryUsage - after.memoryUsage) / before.memoryUsage) * 100 
-      : null;
+    const memoryImprovement =
+      before.memoryUsage && after.memoryUsage
+        ? ((before.memoryUsage - after.memoryUsage) / before.memoryUsage) * 100
+        : null;
 
     let output = `\n📈 Performance Comparison:\n`;
     output += `  • Render Time: ${before.renderTime.toFixed(2)}ms → ${after.renderTime.toFixed(2)}ms (${renderImprovement > 0 ? '+' : ''}${renderImprovement.toFixed(1)}%)\n`;

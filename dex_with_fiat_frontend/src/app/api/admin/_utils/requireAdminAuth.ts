@@ -10,7 +10,10 @@ export function requireAdminAuth(request: Request): Response | null {
     : null;
 
   // Basic check: match against secret (header is preferred)
-  if (configuredSecret && (headerToken === configuredSecret || bearerToken === configuredSecret)) {
+  if (
+    configuredSecret &&
+    (headerToken === configuredSecret || bearerToken === configuredSecret)
+  ) {
     return null;
   }
 

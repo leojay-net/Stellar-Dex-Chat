@@ -97,7 +97,8 @@ export default function BottomSheet({
         className="theme-surface theme-border w-full max-w-lg border-t border-x rounded-t-2xl shadow-2xl max-h-[85vh] flex flex-col"
         style={{
           transform: sheetTransform,
-          transition: translateY === 0 || isClosing ? 'transform 0.3s ease-out' : 'none',
+          transition:
+            translateY === 0 || isClosing ? 'transform 0.3s ease-out' : 'none',
         }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}

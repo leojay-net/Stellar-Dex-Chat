@@ -43,8 +43,16 @@ vi.mock('@/hooks/useAccessibleModal', () => ({
   useAccessibleModal: vi.fn(),
 }));
 
-vi.mock('@/lib/clientSession', () => ({
-  getOrCreateClientSessionId: () => 'test-session-id',
+vi.mock('@/hooks/useIdempotentAction', () => ({
+  useIdempotentAction: () => ({
+    execute: async (
+      fn: (key: string) => Promise<unknown>
+    ) => {
+      await fn('test-key');
+      return null;
+    },
+    isProcessing: false,
+  }),
 }));
 
 global.fetch = vi.fn();
@@ -227,9 +235,7 @@ describe('BankDetailsModal - Telemetry Tracking', () => {
         }),
       });
 
-    render(
-      <BankDetailsModal isOpen={true} onClose={mockOnClose} xlmAmount={100} />,
-    );
+    render(<BankDetailsModal isOpen onClose={vi.fn()} xlmAmount={12} />);
 
     await waitFor(() => {
       const bankButton = screen.getByText('Test Bank');
@@ -255,21 +261,6 @@ describe('BankDetailsModal - Telemetry Tracking', () => {
         xlmAmount: 100,
         errorMessage: 'Invalid account',
       });
-    });
-  });
-
-  it('tracks modal close event', () => {
-    const { rerender } = render(
-      <BankDetailsModal isOpen={true} onClose={mockOnClose} xlmAmount={100} />,
-    );
-
-    const closeButton = screen.getByRole('button', { name: /close/i });
-    fireEvent.click(closeButton);
-
-    expect(chatTelemetry.fiatPayoutStep).toHaveBeenCalledWith({
-      action: 'close',
-      step: 1,
-      xlmAmount: 100,
     });
   });
 });

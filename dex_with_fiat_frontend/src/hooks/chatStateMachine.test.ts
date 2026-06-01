@@ -1,13 +1,11 @@
 import { TransactionData } from '@/types';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-    ChatEvent,
-    ChatGuards,
-    ChatMachineContext,
-    ChatState,
-  copyChatStateSnapshot,
-    createChatStateMachine,
-  formatChatStateSnapshot,
+  ChatEvent,
+  ChatGuards,
+  ChatMachineContext,
+  ChatState,
+  createChatStateMachine,
 } from './chatStateMachine';
 
 describe('ChatStateMachine', () => {

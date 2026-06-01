@@ -12,17 +12,27 @@ export interface StateTransition<State, Context = unknown> {
   action?: (context: Context) => void;
 }
 
-export type StateTransitionMap<State extends string = string, EventType extends string = string, Context = unknown> = Partial<
-  Record<EventType, StateTransition<State, Context> | State>
->;
+export type StateTransitionMap<
+  State extends string = string,
+  EventType extends string = string,
+  Context = unknown,
+> = Partial<Record<EventType, StateTransition<State, Context> | State>>;
 
-export interface StateMachineConfig<State extends string = string, EventType extends string = string, Context = unknown> {
+export interface StateMachineConfig<
+  State extends string = string,
+  EventType extends string = string,
+  Context = unknown,
+> {
   initial: State;
   states: Record<State, StateTransitionMap<State, EventType, Context>>;
   context?: Context;
 }
 
-export interface StateMachineState<State, EventType extends string = string, Context = unknown> {
+export interface StateMachineState<
+  State,
+  EventType extends string = string,
+  Context = unknown,
+> {
   state: State;
   context: Context;
   canTransition: (event: EventType) => boolean;
@@ -131,7 +141,9 @@ export class StateMachine<
     });
 
     // Notify listeners
-    this.listeners.forEach((listener) => listener(this.currentState, this.context));
+    this.listeners.forEach((listener) =>
+      listener(this.currentState, this.context),
+    );
 
     return true;
   }
@@ -161,7 +173,9 @@ export class StateMachine<
       event: '__forced__' as unknown as EventType,
       timestamp: Date.now(),
     });
-    this.listeners.forEach((listener) => listener(this.currentState, this.context));
+    this.listeners.forEach((listener) =>
+      listener(this.currentState, this.context),
+    );
   }
 
   /**
@@ -169,7 +183,9 @@ export class StateMachine<
    */
   updateContext(update: Partial<Context>): void {
     this.context = { ...this.context, ...update };
-    this.listeners.forEach((listener) => listener(this.currentState, this.context));
+    this.listeners.forEach((listener) =>
+      listener(this.currentState, this.context),
+    );
   }
 
   /**
@@ -191,7 +207,9 @@ export class StateMachine<
     this.currentState = this.config.initial;
     this.context = contextReset ?? (this.config.context as Context);
     this.transitionHistory = [];
-    this.listeners.forEach((listener) => listener(this.currentState, this.context));
+    this.listeners.forEach((listener) =>
+      listener(this.currentState, this.context),
+    );
   }
 
   /**

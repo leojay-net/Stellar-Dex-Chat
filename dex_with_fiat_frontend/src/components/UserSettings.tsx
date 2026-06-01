@@ -32,16 +32,23 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
     reminderFrequency,
     setReminderFrequency,
   } = useUserPreferences();
-  const { consented: telemetryConsented, setConsent: setTelemetryConsent } = useChatTelemetry();
-  const { beneficiaries, isLoaded, addBeneficiary, deleteBeneficiary, renameBeneficiary } = useBeneficiaries();
+  const { consented: telemetryConsented, setConsent: setTelemetryConsent } =
+    useChatTelemetry();
+  const {
+    beneficiaries,
+    addBeneficiary,
+    deleteBeneficiary,
+    renameBeneficiary,
+  } = useBeneficiaries();
   const panelRef = useRef<HTMLDivElement>(null);
-  
+
   // Beneficiary management states
   const [showAddBeneficiary, setShowAddBeneficiary] = useState(false);
-  const [editingBeneficiary, setEditingBeneficiary] = useState<Beneficiary | null>(null);
+  const [editingBeneficiary, setEditingBeneficiary] =
+    useState<Beneficiary | null>(null);
   const [newBeneficiaryName, setNewBeneficiaryName] = useState('');
   const [newBeneficiaryAddress, setNewBeneficiaryAddress] = useState('');
-  
+
   useAccessibleModal(isOpen, panelRef, onClose);
 
   if (!isOpen) return null;
@@ -57,7 +64,14 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
         renameBeneficiary(editingBeneficiary.id, newBeneficiaryName);
         setEditingBeneficiary(null);
       } else {
-        addBeneficiary(0, 'Unknown Bank', '000', newBeneficiaryAddress, newBeneficiaryAddress, newBeneficiaryName);
+        addBeneficiary(
+          0,
+          'Unknown Bank',
+          '000',
+          newBeneficiaryAddress,
+          newBeneficiaryAddress,
+          newBeneficiaryName,
+        );
       }
       setNewBeneficiaryName('');
       setNewBeneficiaryAddress('');
@@ -162,7 +176,9 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
             </p>
 
             {showAddBeneficiary && (
-              <div className={`p-3 rounded-lg mb-3 border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+              <div
+                className={`p-3 rounded-lg mb-3 border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}
+              >
                 <div className="space-y-3">
                   <div>
                     <label
@@ -302,6 +318,56 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
               >
                 Loading beneficiaries...
               </p>
+            ) : (
+              <div className="space-y-2">
+                {beneficiaries.map((beneficiary) => (
+                  <div
+                    key={beneficiary.id}
+                    className={`p-2 rounded-lg border flex items-center justify-between group ${
+                      isDarkMode
+                        ? 'bg-gray-800 border-gray-700 hover:border-gray-600'
+                        : 'bg-gray-50 border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={`text-xs font-medium truncate ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+                      >
+                        {beneficiary.name}
+                      </p>
+                      <p
+                        className={`text-[10px] truncate ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}
+                      >
+                        {beneficiary.accountName}
+                      </p>
+                    </div>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => handleEditBeneficiary(beneficiary)}
+                        aria-label={`Edit ${beneficiary.name}`}
+                        className={`p-1.5 rounded transition-colors ${
+                          isDarkMode
+                            ? 'text-blue-400 hover:bg-blue-900/20'
+                            : 'text-blue-600 hover:bg-blue-100'
+                        }`}
+                      >
+                        <Edit2 className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteBeneficiary(beneficiary.id)}
+                        aria-label={`Delete ${beneficiary.name}`}
+                        className={`p-1.5 rounded transition-colors ${
+                          isDarkMode
+                            ? 'text-red-400 hover:bg-red-900/20'
+                            : 'text-red-600 hover:bg-red-100'
+                        }`}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </section>
 

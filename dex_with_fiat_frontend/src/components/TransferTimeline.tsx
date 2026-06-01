@@ -49,42 +49,48 @@ const STATUS_META: Record<
   initiated: {
     icon: <Clock className="w-4 h-4" />,
     // blue-700 on blue-100 → contrast ~7.5:1 (AA ✓)
-    color: 'text-blue-700 border-blue-700 bg-blue-100 dark:text-blue-200 dark:border-blue-700 dark:bg-blue-900',
+    color:
+      'text-blue-700 border-blue-700 bg-blue-100 dark:text-blue-200 dark:border-blue-700 dark:bg-blue-900',
     label: 'Status: initiated',
     defaultLabel: 'Transfer initiated',
   },
   pending: {
     icon: <Loader2 className="w-4 h-4 animate-spin" />,
     // amber-800 on amber-100 → contrast ~7.0:1 (AA ✓)
-    color: 'text-amber-800 border-amber-700 bg-amber-100 dark:text-amber-200 dark:border-amber-700 dark:bg-amber-900',
+    color:
+      'text-amber-800 border-amber-700 bg-amber-100 dark:text-amber-200 dark:border-amber-700 dark:bg-amber-900',
     label: 'Status: pending',
     defaultLabel: 'Pending bank processing',
   },
   success: {
     icon: <CheckCircle className="w-4 h-4" />,
     // green-800 on green-100 → contrast ~7.2:1 (AA ✓)
-    color: 'text-green-800 border-green-700 bg-green-100 dark:text-green-200 dark:border-green-700 dark:bg-green-900',
+    color:
+      'text-green-800 border-green-700 bg-green-100 dark:text-green-200 dark:border-green-700 dark:bg-green-900',
     label: 'Status: success',
     defaultLabel: 'Transfer successful',
   },
   failed: {
     icon: <XCircle className="w-4 h-4" />,
     // red-800 on red-100 → contrast ~8.0:1 (AA ✓)
-    color: 'text-red-800 border-red-700 bg-red-100 dark:text-red-200 dark:border-red-700 dark:bg-red-900',
+    color:
+      'text-red-800 border-red-700 bg-red-100 dark:text-red-200 dark:border-red-700 dark:bg-red-900',
     label: 'Status: failed',
     defaultLabel: 'Transfer failed',
   },
   reversed: {
     icon: <RefreshCw className="w-4 h-4" />,
     // purple-800 on purple-100 → contrast ~8.5:1 (AA ✓)
-    color: 'text-purple-800 border-purple-700 bg-purple-100 dark:text-purple-200 dark:border-purple-700 dark:bg-purple-900',
+    color:
+      'text-purple-800 border-purple-700 bg-purple-100 dark:text-purple-200 dark:border-purple-700 dark:bg-purple-900',
     label: 'Status: reversed',
     defaultLabel: 'Transfer reversed',
   },
   cancelled: {
     icon: <XCircle className="w-4 h-4" />,
     // gray-700 on gray-100 → contrast ~7.8:1 (AA ✓)
-    color: 'text-gray-700 border-gray-600 bg-gray-100 dark:text-gray-200 dark:border-gray-600 dark:bg-gray-800',
+    color:
+      'text-gray-700 border-gray-600 bg-gray-100 dark:text-gray-200 dark:border-gray-600 dark:bg-gray-800',
     label: 'Status: cancelled',
     defaultLabel: 'Transfer cancelled',
   },
@@ -178,7 +184,10 @@ export default function TransferTimeline({
                     {event.label ?? meta.defaultLabel}
                   </p>
                   {event.copyValue && (
-                    <CopyButton value={event.copyValue} iconClassName="w-3 h-3" />
+                    <CopyButton
+                      value={event.copyValue}
+                      iconClassName="w-3 h-3"
+                    />
                   )}
                 </div>
                 <p className="theme-text-muted text-[11px] mt-0.5">

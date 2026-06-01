@@ -142,7 +142,10 @@ export const useChatHistory = () => {
       if (!session) return null;
 
       const data = ChatHistoryManager.exportSessionAsJSON(session);
-      const filename = ChatHistoryManager.generateExportFilename(sessionId, 'json');
+      const filename = ChatHistoryManager.generateExportFilename(
+        sessionId,
+        'json',
+      );
       return { data, filename };
     },
     [historyState.sessions],
@@ -154,7 +157,10 @@ export const useChatHistory = () => {
       if (!session) return null;
 
       const data = ChatHistoryManager.exportSessionAsTXT(session);
-      const filename = ChatHistoryManager.generateExportFilename(sessionId, 'txt');
+      const filename = ChatHistoryManager.generateExportFilename(
+        sessionId,
+        'txt',
+      );
       return { data, filename };
     },
     [historyState.sessions],

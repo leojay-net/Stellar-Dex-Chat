@@ -4,10 +4,10 @@ import { useStellarWallet } from '@/contexts/StellarWalletContext';
 import { AIAssistant } from '@/lib/aiAssistant';
 import { perf } from '@/lib/perf';
 import {
-    AIAnalysisResult,
-    ChatMessage,
-    GuardrailCategory,
-    TransactionData,
+  AIAnalysisResult,
+  ChatMessage,
+  GuardrailCategory,
+  TransactionData,
 } from '@/types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -52,7 +52,9 @@ const useChat = () => {
   const [hasHydrated, setHasHydrated] = useState(false);
 
   // State machine for chat lifecycle
-  const machineRef = useRef<ReturnType<typeof createChatStateMachine>>(createChatStateMachine());
+  const machineRef = useRef<ReturnType<typeof createChatStateMachine>>(
+    createChatStateMachine(),
+  );
   const [stateUpdateTrigger, setStateUpdateTrigger] = useState(0);
 
   // Additional state for admin and transaction callback
@@ -199,7 +201,11 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
 
   // Persist messages to session
   useEffect(() => {
-    if (machineRef.current.getState().state !== ChatState.UNINITIALIZED && currentSessionId && messages.length > 0) {
+    if (
+      machineRef.current.getState().state !== ChatState.UNINITIALIZED &&
+      currentSessionId &&
+      messages.length > 0
+    ) {
       updateCurrentSession(messages);
     }
   }, [messages, currentSessionId, updateCurrentSession]);
@@ -298,11 +304,12 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
       }
 
       // Check if we have minimal transaction data
-      const hasMinimalTransactionData =
-        !!(pendingTransactionData &&
-          (pendingTransactionData.tokenIn ||
-            pendingTransactionData.amountIn ||
-            pendingTransactionData.fiatAmount));
+      const hasMinimalTransactionData = !!(
+        pendingTransactionData &&
+        (pendingTransactionData.tokenIn ||
+          pendingTransactionData.amountIn ||
+          pendingTransactionData.fiatAmount)
+      );
 
       // Determine if clarification is needed
       const needsClarification =
@@ -530,7 +537,10 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
 
       // Only proceed if in valid state
       if (!machine.canTransition(ChatEvent.SEND_MESSAGE)) {
-        console.warn('Cannot send message in current state:', machineState.state);
+        console.warn(
+          'Cannot send message in current state:',
+          machineState.state,
+        );
         return;
       }
 
@@ -636,11 +646,7 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
         }
       }
     },
-    [
-      analyzeAndRespond,
-      isLikelyNetworkError,
-      markMessageFailed,
-    ],
+    [analyzeAndRespond, isLikelyNetworkError, isLoading, markMessageFailed],
   );
 
   const clearChat = useCallback(() => {
@@ -706,9 +712,11 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
       messageCount: machineState.context.messageCount,
       hasUserCancelled: machineState.context.hasUserCancelled,
       pendingTransactionData: machineState.context.pendingTransactionData,
-      shouldTriggerTransaction: machineState.state === ChatState.TRANSACTION_TRIGGERED,
+      shouldTriggerTransaction:
+        machineState.state === ChatState.TRANSACTION_TRIGGERED,
       isAdmin,
-      awaitingClarification: machineState.state === ChatState.AWAITING_CLARIFICATION,
+      awaitingClarification:
+        machineState.state === ChatState.AWAITING_CLARIFICATION,
       clarificationQuestion: machineState.context.clarificationQuestion,
     };
     // stateUpdateTrigger is intentionally included to force re-computation when machine state changes

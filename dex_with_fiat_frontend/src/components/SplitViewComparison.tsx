@@ -62,17 +62,6 @@ function ThreadPane({
     if (newId) scrollToMessage(newId);
   };
 
-  const handleCopyMessage = (
-    e: React.MouseEvent,
-    content: string,
-    messageId: string,
-  ) => {
-    e.stopPropagation();
-    onCopyMessage(content);
-    setCopiedMessageId(messageId);
-    setTimeout(() => setCopiedMessageId(null), 2000);
-  };
-
   const formatTimestamp = (timestamp: number | Date) => {
     if (!mounted) return ''; // Avoid hydration mismatch by not rendering on server
     return new Date(timestamp).toLocaleString([], {
@@ -152,53 +141,25 @@ function ThreadPane({
                       : 'border-[var(--color-border)] hover:border-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)]'
                   }`}
                 >
-                  <button
-                    onClick={() => handleMessageClick(msg)}
-                    className="w-full text-left"
-                    aria-pressed={isSelected}
-                    aria-label={`${isUser ? 'User' : 'Assistant'} message`}
+                  <span
+                    className={`font-semibold ${
+                      isUser
+                        ? 'text-[var(--color-primary)]'
+                        : 'text-[var(--color-success)]'
+                    }`}
                   >
-                    <span
-                      className={`font-semibold ${
-                        isUser
-                          ? 'text-[var(--color-primary)]'
-                          : 'text-[var(--color-success)]'
-                      }`}
-                    >
-                      {isUser ? 'You' : 'Assistant'}
-                    </span>
-                    <p className="mt-1 line-clamp-3 leading-relaxed text-[var(--color-text-secondary)]">
-                      {msg.content}
-                    </p>
-                    <p
-                      className="mt-1 text-[10px] text-[var(--color-text-muted)]"
-                      data-testid="message-timestamp"
-                    >
-                      {formatTimestamp(msg.timestamp)}
-                    </p>
-                  </button>
-
-                  {/* Copy button */}
-                  <button
-                    onClick={(e) => handleCopyMessage(e, msg.content, msg.id)}
-                    className="absolute top-2 right-2 p-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity bg-[var(--color-surface)] hover:bg-[var(--color-surface-elevated)] border border-[var(--color-border)]"
-                    aria-label="Copy message to clipboard"
-                    title="Copy message"
-                    data-testid="copy-message-btn"
+                    {isUser ? 'You' : 'Assistant'}
+                  </span>
+                  <p className="mt-1 line-clamp-3 leading-relaxed text-[var(--color-text-secondary)]">
+                    {msg.content}
+                  </p>
+                  <p
+                    className="mt-1 text-[10px] text-[var(--color-text-muted)]"
+                    data-testid="message-timestamp"
                   >
-                    {isCopied ? (
-                      <Check
-                        className="w-3 h-3 text-[var(--color-success)]"
-                        aria-hidden
-                      />
-                    ) : (
-                      <Copy
-                        className="w-3 h-3 text-[var(--color-text-muted)]"
-                        aria-hidden
-                      />
-                    )}
-                  </button>
-                </div>
+                    {formatTimestamp(msg.timestamp)}
+                  </p>
+                </button>
               );
             })
         )}

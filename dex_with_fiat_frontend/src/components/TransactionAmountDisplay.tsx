@@ -14,18 +14,15 @@ import { motion } from 'framer-motion';
  * the component scrolls itself into view so the user always sees the latest
  * value without manual scrolling.
  */
-export function TransactionAmountDisplay(props: TransactionAmountProps) {
-  const result = transactionAmountSchema.safeParse(props);
-
-  // Derive values for hooks unconditionally — hooks must not be called after
-  // a conditional return (Rules of Hooks). Fall back to neutral values when
-  // the parse fails so useCurrencyConversion still receives valid arguments.
-  const parsed = result.success ? result.data : null;
-  const numericAmount = parsed
-    ? (typeof parsed.amount === 'string' ? parseFloat(parsed.amount) : parsed.amount)
-    : 0;
-  const normalizedAsset = parsed?.asset || 'XLM';
-
+export function TransactionAmountDisplay({
+  amount,
+  asset,
+  fiatAmount,
+  fiatCurrency,
+}: TransactionAmountDisplayProps) {
+  const numericAmount =
+    typeof amount === 'string' ? parseFloat(amount) : amount;
+  const normalizedAsset = asset || 'XLM';
   const { displayText } = useCurrencyConversion(numericAmount, normalizedAsset);
 
   // Auto-scroll: keep the latest amount visible whenever displayText updates.
@@ -52,22 +49,8 @@ export function TransactionAmountDisplay(props: TransactionAmountProps) {
   const { fiatAmount, fiatCurrency } = result.data;
 
   return (
-    <motion.div
-      ref={containerRef}
-      className="flex flex-col gap-1"
-      initial={{ opacity: 0, y: -4 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, ease: 'easeOut' }}
-    >
-      <motion.span
-        className="font-medium theme-text-primary"
-        key={displayText}
-        initial={{ scale: 0.95, opacity: 0.7 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.2, ease: 'easeOut' }}
-      >
-        {displayText}
-      </motion.span>
+    <div className="flex flex-col gap-1">
+      <span className="font-medium dark:text-gray-300">{displayText}</span>
       {fiatAmount && fiatCurrency && (
         <motion.span
           className="text-xs theme-text-muted"

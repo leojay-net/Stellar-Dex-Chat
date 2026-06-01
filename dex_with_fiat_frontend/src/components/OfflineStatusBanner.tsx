@@ -21,8 +21,9 @@ export default function OfflineStatusBanner() {
       setShowBanner(true);
     } else if (wasOffline && isOnline) {
       // Show toast when coming back online
-      const toastOptions = {
-        message: 'Your connection has been restored. Queued messages will be sent.',
+      addToast({
+        message:
+          'Your connection has been restored. Queued messages will be sent.',
         severity: 'success',
         durationMs: 3000,
       };

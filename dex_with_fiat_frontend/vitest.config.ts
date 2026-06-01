@@ -14,9 +14,9 @@ export default defineConfig({
     jsx: 'automatic',
   },
   test: {
-    environment: 'jsdom',
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    environment: 'happy-dom',
+    setupFiles: ['./src/test-setup.ts'],
     globals: true,
-    setupFiles: './vitest.setup.ts',
-    include: ['src/**/*.{test,spec}.{ts,tsx}'],
   },
 });
