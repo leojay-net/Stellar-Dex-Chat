@@ -84,14 +84,39 @@ export class ToastStore {
       duration = messageOrOptions.duration ?? messageOrOptions.durationMs ?? this.defaultDurationMs;
     }
 
-    // Deduplication logic
-    const currentTime = this.now();
-    const isDuplicate = this.toasts.some(
-      (t) => 
-        t.message === message && 
-        t.variant === variant && 
-        currentTime - t.timestamp < this.dedupeWindowMs
-    );
+    this.clearTimer(timerId);
+    this.dismissTimers.delete(id);
+  }
+
+  subscribe(listener: () => void) {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  getSnapshot() {
+    return this.toasts;
+  }
+
+  addToast(input: AddToastInput | string, severityInput?: ToastSeverity): string | null {
+    let message: string;
+    let severity: ToastSeverity = 'info';
+    let durationMs: number = this.defaultDurationMs;
+
+    if (typeof input === 'string') {
+      message = input;
+      severity = severityInput ?? 'info';
+    } else {
+      message = input.message;
+      severity = input.severity ?? 'info';
+      durationMs = input.durationMs ?? this.defaultDurationMs;
+    }
+
+    const normalizedMessage = message.trim();
+    if (!normalizedMessage) {
+      return null;
+    }
 
     if (isDuplicate) {
       return null;

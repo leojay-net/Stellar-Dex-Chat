@@ -89,11 +89,7 @@ pub enum Error {
     RescueForbidden = 310,
     CircuitBreakerActive = 311,
     InvalidMemoHash = 312,
-    FeeWithdrawalExceedsBalance = 313,
-    CircuitBreakerTripped = 314,
-    MaxDeniedReached = 315,
-    /// `set_limit` would exceed the admin-configured ceiling from `set_limit_max_cap`.
-    ExceedsLimitMaxCap = 316,
+    OperatorDailyLimitExceeded = 313,
 
     // --- 400 series: Funds & Balances ---
     InsufficientFunds = 401,
@@ -138,14 +134,7 @@ pub enum Error {
     AlreadyApproved = 1105,
     ProposalAlreadyExecuted = 1106,
     ThresholdNotMet = 1107,
-    MaxSignersReached = 1108,
 
-    // --- 1200 series: Receipt query ---
-    /// `get_receipt_by_index` was called with an index >= the receipt counter.
-    ReceiptIndexOutOfBounds = 1201,
-    /// `get_receipt_by_index` resolved to an index/hash that has no receipt
-    /// stored (typically the temporary index entry has expired).
-    ReceiptNotFound = 1202,
 }
 
 // ── Models ────────────────────────────────────────────────────────────────
@@ -870,6 +859,8 @@ pub enum DataKey {
     Oracle,
     FiatLimit,
     UserDailyVolume(Address),
+    OperatorDailyLimit(Address),
+    OperatorDailyVolume(Address),
     AntiSandwichDelay,
     WithdrawalQuota,
     UserDailyDeposit(Address, Address),
@@ -911,13 +902,7 @@ pub enum DataKey {
     Threshold,
     MultisigProposal(u64),
     NextMultisigID,
-    // ── Issue #695: replay protection for withdraw_fees ──────────────────
-    FeeWithdrawalNonce(Address),
-    /// Global ceiling for per-token liability limits assigned by `set_limit`.
-    ///
-    /// This value defaults to `i128::MAX` and may be lowered by
-    /// `set_limit_max_cap` to enforce a production risk ceiling.
-    SetLimitMaxCap,
+
 }
 
 const ORACLE_PRICE_DECIMALS: i128 = 10_000_000;
@@ -1605,13 +1590,16 @@ impl FiatBridge {
 
     pub fn execute_withdrawal(
         env: Env,
+        operator: Address,
         request_id: u64,
         partial_amount: Option<i128>,
         expected_price: i128,
         max_slippage: u32,
     ) -> Result<(), Error> {
         env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
+        operator.require_auth();
         Self::require_not_paused(&env)?;
+
         let mut request: WithdrawRequest = env
             .storage()
             .persistent()
@@ -1640,9 +1628,6 @@ impl FiatBridge {
             }
         }
 
-        let token_client = token::Client::new(&env, &request.token);
-        let balance = token_client.balance(&env.current_contract_address());
-
         let execute_amount = match partial_amount {
             Some(amt) => {
                 if amt <= 0 || amt > request.amount {
@@ -1653,9 +1638,31 @@ impl FiatBridge {
             None => request.amount,
         };
 
-        Self::enforce_withdrawal_quota(&env, &request.to, execute_amount, &request.token)?;
+        // Operator daily limit enforcement
+        if let Some(limit) = env.storage().instance().get::<_, i128>(&DataKey::OperatorDailyLimit(operator.clone())) {
+            let curr_ledger = env.ledger().sequence();
+            let mut operator_vol: UserDailyVolume = env.storage().instance().get(&DataKey::OperatorDailyVolume(operator.clone()))
+                .unwrap_or(UserDailyVolume { usd_cents: 0, window_start: curr_ledger });
+
+            if curr_ledger >= operator_vol.window_start + WINDOW_LEDGERS {
+                operator_vol.usd_cents = 0;
+                operator_vol.window_start = curr_ledger;
+            }
+
+            if operator_vol.usd_cents + execute_amount > limit {
+                return Err(Error::OperatorDailyLimitExceeded);
+            }
+
+            operator_vol.usd_cents += execute_amount;
+            env.storage().instance().set(&DataKey::OperatorDailyVolume(operator.clone()), &operator_vol);
+        }
+
+        Self::enforce_withdrawal_quota(&env, &request.to, execute_amount)?;
         // ── Issue #209: circuit breaker check ────────────────────────────
         Self::check_and_update_circuit_breaker(&env, execute_amount)?;
+
+        let token_client = token::Client::new(&env, &request.token);
+        let balance = token_client.balance(&env.current_contract_address());
 
         if execute_amount > balance {
             return Err(Error::InsufficientFunds);
@@ -2153,6 +2160,20 @@ impl FiatBridge {
             .persistent()
             .set(&DataKey::TokenRegistry(token), &config);
         Ok(())
+    }
+
+    pub fn set_operator_daily_limit(env: Env, operator: Address, limit: i128) -> Result<(), Error> {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        if limit <= 0 {
+            return Err(Error::ZeroAmount);
+        }
+        env.storage().instance().set(&DataKey::OperatorDailyLimit(operator), &limit);
+        Ok(())
+    }
+
+    pub fn get_operator_daily_limit(env: Env, operator: Address) -> i128 {
+        env.storage().instance().get(&DataKey::OperatorDailyLimit(operator)).unwrap_or(0)
     }
 
     pub fn set_cooldown(env: Env, ledgers: u32) -> Result<(), Error> {
