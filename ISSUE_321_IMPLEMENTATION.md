@@ -11,7 +11,7 @@ Successfully implemented automated Futurenet deployment infrastructure for the F
 - **Location:** `stellar-contracts/scripts/deploy_fiat_bridge_futurenet.sh`
 - **Purpose:** Bash-based deployment script for manual local deployments
 - **Features:**
-  - Parameterized by environment variables
+  - Parameterized by environment variables 
   - Automatic WASM contract building
   - Contract ID extraction and file output
   - GitHub Actions output integration
@@ -109,6 +109,7 @@ $GITHUB_OUTPUT: contract_id=CABC1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF
 - Pattern: `release/**` branches
 - Triggered only on relevant code changes
 - Environment-based secrets management
+- done
 
 ## Usage Examples
 
