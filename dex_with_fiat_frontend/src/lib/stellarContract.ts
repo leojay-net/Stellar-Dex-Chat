@@ -317,7 +317,18 @@ export async function getContractBalance(): Promise<bigint> {
   return viewCall<bigint>('get_balance');
 }
 
-/** Returns the authorized admin address of the contract. */
+/**
+ * Returns the authorized admin address of the contract.
+ * 
+ * @returns {Promise<string>} The Stellar public key of the current admin.
+ * 
+ * **Authentication Architecture:**
+ * The bridge contract stores the admin address in its instance storage.
+ * All sensitive administrative operations (e.g., withdrawals, setting limits)
+ * require the transaction to be signed by this exact address. This function
+ * fetches the current state directly from the blockchain to ensure front-end
+ * routing and UI states accurately reflect the source of truth.
+ */
 export async function getAdmin(): Promise<string> {
   return viewCall<string>('get_admin');
 }

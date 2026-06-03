@@ -1,7 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { AuditEntry } from '@/types';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useToast } from '@/hooks/useToast';
+import Skeleton from '@/components/ui/skeleton/Skeleton';
 
 
 interface FilterState {
@@ -13,7 +16,7 @@ interface FilterState {
   endDate: string;
 }
 
-export default function AuditTable() {
+export default function AuditTable({}: AuditTableProps) {
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,8 +32,14 @@ export default function AuditTable() {
   });
 
   const pageSize = 20;
+  const fetchAbortRef = useRef<AbortController | null>(null);
 
   const fetchAuditEntries = useCallback(async () => {
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    const { signal } = controller;
+
     setLoading(true);
     setError(null);
 
@@ -47,7 +56,9 @@ export default function AuditTable() {
       params.append('limit', pageSize.toString());
       params.append('offset', (currentPage * pageSize).toString());
 
-      const response = await fetch(`/api/admin-audit?${params.toString()}`);
+      const response = await fetch(`/api/admin-audit?${params.toString()}`, {
+        signal,
+      });
 
       if (!response.ok) {
         throw new Error(`API error: ${response.statusText}`);
@@ -60,16 +71,51 @@ export default function AuditTable() {
       })));
       setTotalEntries(data.total);
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        return;
+      }
       setError(err instanceof Error ? err.message : 'Failed to fetch audit entries');
       console.error('Audit fetch error:', err);
     } finally {
-      setLoading(false);
+      if (!signal.aborted) {
+        setLoading(false);
+      }
     }
   }, [filters, currentPage]);
 
   useEffect(() => {
-    fetchAuditEntries();
+    void fetchAuditEntries();
+    return () => {
+      fetchAbortRef.current?.abort();
+    };
   }, [fetchAuditEntries]);
+
+  const { isOnline, wasOffline, resetWasOffline } = useOnlineStatus();
+  const { addToast } = useToast();
+  const wasOnlineRef = useRef(true);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const prevOnline = wasOnlineRef.current;
+
+    if (prevOnline && !isOnline) {
+      addToast({
+        message: "You're offline. Audit entries may not update until you reconnect.",
+        severity: 'warning',
+        durationMs: 4500,
+      });
+    } else if (!prevOnline && isOnline && wasOffline) {
+      addToast({
+        message: 'Back online. Audit table will refresh with the latest data.',
+        severity: 'success',
+        durationMs: 3000,
+      });
+      resetWasOffline();
+    }
+
+    wasOnlineRef.current = isOnline;
+  }, [isOnline, wasOffline, addToast, resetWasOffline]);
 
   const handleFilterChange = (key: keyof FilterState, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -282,7 +328,32 @@ export default function AuditTable() {
 
       {/* Audit Table */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
-        {entries.length === 0 && !loading ? (
+        {loading ? (
+          <table className="w-full" aria-label="Loading audit entries" aria-busy="true">
+            <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">Timestamp</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">Admin</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">Action</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">Description</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">TX Hash</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <tr key={i} className="animate-pulse">
+                  <td className="px-6 py-4"><Skeleton className="h-4 w-36" /></td>
+                  <td className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
+                  <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>
+                  <td className="px-6 py-4"><Skeleton className="h-4 w-48" /></td>
+                  <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>
+                  <td className="px-6 py-4"><Skeleton className="h-6 w-16 rounded-full" /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : entries.length === 0 ? (
           <div className="p-8 text-center text-gray-500 dark:text-gray-400">
             <p className="text-lg mb-2">No audit entries found</p>
             <p className="text-sm">Try adjusting your filters or check back later</p>

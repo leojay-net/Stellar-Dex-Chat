@@ -1,10 +1,43 @@
 import {
   AIAnalysisResult,
+  ChatMessage,
   GuardrailCategory,
   GuardrailResult,
   TransactionData,
 } from '@/types';
 import { telemetry } from '@/lib/telemetry';
+import { toastStore } from '@/lib/toastStore';
+
+function isLikelyNetworkError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return false;
+  }
+  if (error instanceof TypeError) {
+    return true;
+  }
+  if (error instanceof DOMException && error.name === 'NetworkError') {
+    return true;
+  }
+  if (error instanceof Error) {
+    const m = error.message.toLowerCase();
+    return (
+      m.includes('failed to fetch') ||
+      m.includes('network') ||
+      m.includes('load failed')
+    );
+  }
+  return false;
+}
+
+function notifyAiNetworkUnavailable(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  toastStore.addToast(
+    "Can't reach the AI service. Check your network connection and try again.",
+    'warning',
+  );
+}
 
 type GuardrailMatch = {
   category: GuardrailCategory;
@@ -12,10 +45,27 @@ type GuardrailMatch = {
 };
 
 /**
+ * Result returned by the pagination helper.
+ */
+export interface PaginationResult<T> {
+  items: T[];
+  currentPage: number;
+  totalPages: number;
+  totalItems: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+}
+
+/**
  * A helper utility class managing AI message analysis and guardrail protection
  * for the Stellar FiatBridge frontend assistant.
+ *
+ * This class includes built-in error boundaries to gracefully handle failures
+ * in AI analysis, network issues, and guardrail evaluation without breaking
+ * the user interface or conversation flow.
  */
 export class AIAssistant {
+  private abortController: AbortController | null = null;
   private static guardrailCounts: Record<GuardrailCategory, number> = {
     unsupported_request: 0,
     wallet_security: 0,
@@ -25,25 +75,91 @@ export class AIAssistant {
   };
 
   static readonly LOW_CONFIDENCE_THRESHOLD = 0.7;
+  static readonly DEFAULT_PAGE_SIZE = 20;
+
+  /**
+   * Safe fallback response returned when AI analysis fails critically.
+   * Used when network errors, parse errors, or unexpected exceptions occur.
+   */
+  private static readonly SAFE_FALLBACK_RESULT: AIAnalysisResult = {
+    intent: 'unknown',
+    confidence: 0,
+    extractedData: {},
+    requiredQuestions: [],
+    suggestedResponse:
+      "I'm having trouble understanding your request. Could you please rephrase it?",
+    guardrail: undefined,
+  };
+
+  /**
+   * Paginate an array of chat messages.
+   *
+   * @param messages - Full array of messages to paginate.
+   * @param page - 1-indexed page number (defaults to 1).
+   * @param pageSize - Number of items per page (defaults to DEFAULT_PAGE_SIZE).
+   * @returns PaginationResult containing the sliced items and metadata.
+   */
+  static paginateMessages(
+    messages: ChatMessage[],
+    page: number = 1,
+    pageSize: number = AIAssistant.DEFAULT_PAGE_SIZE,
+  ): PaginationResult<ChatMessage> {
+    const safePage = Math.max(1, Math.floor(page));
+    const safePageSize = Math.max(1, Math.floor(pageSize));
+    const totalItems = messages.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / safePageSize));
+    const clampedPage = Math.min(safePage, totalPages);
+    const startIndex = (clampedPage - 1) * safePageSize;
+    const endIndex = Math.min(startIndex + safePageSize, totalItems);
+
+    return {
+      items: messages.slice(startIndex, endIndex),
+      currentPage: clampedPage,
+      totalPages,
+      totalItems,
+      hasNextPage: clampedPage < totalPages,
+      hasPreviousPage: clampedPage > 1,
+    };
+  }
 
   /**
    * Analyze the user message and produce a structured AI analysis result.
    * Includes guardrail checks, FAQ matching, deterministic parsing, AI model
    * generation, and merged extracted data.
    *
+   * **Error Boundary**: This method includes comprehensive error handling to ensure
+   * that failures in AI analysis, network issues, or unexpected exceptions do not
+   * crash the user interface. On any critical error, a safe fallback response is
+   * returned, allowing the conversation to continue gracefully.
+   *
    * @param message - Incoming user query or request text.
    * @param context - Optional context values to include in the AI prompt.
-   * @returns AIAnalysisResult with determined intent and suggested response.
+   * @param signal - Optional AbortSignal for cancellation (does not trigger fallback).
+   * @returns AIAnalysisResult with determined intent and suggested response. On errors,
+   *          returns a safe fallback result that allows conversation to continue.
    */
   async analyzeUserMessage(
     message: string,
     context?: Record<string, unknown>,
+    signal?: AbortSignal,
   ): Promise<AIAnalysisResult> {
+    if (this.abortController) {
+      this.abortController.abort();
+    }
+    this.abortController = new AbortController();
+    const controllerSignal = signal || this.abortController.signal;
     try {
+      // Validate input to prevent processing empty or malformed messages
+      if (!message || typeof message !== 'string' || message.trim().length === 0) {
+        console.warn('AIAssistant: Received empty or invalid message');
+        return AIAssistant.SAFE_FALLBACK_RESULT;
+      }
+
       const response = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message, context }),
+        signal: controllerSignal,
       });
 
       if (!response.ok) {
@@ -51,6 +167,12 @@ export class AIAssistant {
       }
 
       const result: AIAnalysisResult = await response.json() as AIAnalysisResult;
+
+      // Validate result structure before processing
+      if (!this.isValidAnalysisResult(result)) {
+        console.warn('AIAssistant: API returned invalid result structure', result);
+        return AIAssistant.SAFE_FALLBACK_RESULT;
+      }
 
       // Record any guardrail triggers for telemetry
       if (result.guardrail?.triggered) {
@@ -65,16 +187,15 @@ export class AIAssistant {
 
       return result;
     } catch (error) {
+      // Re-throw abort errors cleanly without logging -- callers handle cancellation
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
+      if (isLikelyNetworkError(error)) {
+        notifyAiNetworkUnavailable();
+      }
       console.error('AI Analysis Error:', error);
-      return {
-        intent: 'unknown',
-        confidence: 0,
-        extractedData: {},
-        requiredQuestions: [],
-        suggestedResponse:
-          "I'm having trouble understanding your request. Could you please rephrase it?",
-        guardrail: undefined,
-      };
+      return AIAssistant.SAFE_FALLBACK_RESULT;
     }
   }
 
@@ -414,32 +535,91 @@ Choose one of the next actions below and I'll keep it moving.`;
   }
 
   /**
+   * Validates that an AIAnalysisResult object has the required fields.
+   *
+   * **Error Boundary Helper**: Used by analyzeUserMessage to verify API responses
+   * before processing. Prevents crashes from malformed or incomplete responses.
+   *
+   * @param result - The result object to validate.
+   * @returns true if result has all required fields with correct types, false otherwise.
+   */
+  private isValidAnalysisResult(result: unknown): result is AIAnalysisResult {
+    if (!result || typeof result !== 'object') return false;
+    const obj = result as Record<string, unknown>;
+    return (
+      typeof obj.intent === 'string' &&
+      typeof obj.confidence === 'number' &&
+      obj.confidence >= 0 &&
+      obj.confidence <= 1 &&
+      typeof obj.suggestedResponse === 'string' &&
+      Array.isArray(obj.extractedData) || typeof obj.extractedData === 'object' &&
+      Array.isArray(obj.requiredQuestions)
+    );
+  }
+
+  /**
    * Generate a conversational follow-up question when required information is missing.
+   *
+   * **Error Boundary**: Returns a generic fallback question on network errors or
+   * API failures, allowing the conversation to continue without interruption.
    *
    * @param intent - The inferred intent from analysis.
    * @param missingData - Array of missing data keys.
-   * @returns A single conversational question string.
+   * @param signal - Optional AbortSignal for cancellation.
+   * @returns A single conversational question string. Defaults to generic fallback on errors.
    */
   async generateFollowUpQuestion(
     intent: string,
     missingData: string[],
+    signal?: AbortSignal,
   ): Promise<string> {
+    const fallbackQuestion = 'Could you provide more details about your request?';
+
+    if (this.abortController) {
+      this.abortController.abort();
+    }
+    this.abortController = new AbortController();
+    const controllerSignal = signal || this.abortController.signal;
+
     try {
+      // Validate inputs to prevent malformed API calls
+      if (!intent || typeof intent !== 'string' || !Array.isArray(missingData)) {
+        console.warn('AIAssistant: Invalid inputs to generateFollowUpQuestion', { intent, missingData });
+        return fallbackQuestion;
+      }
+
       const response = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: `Generate a single, natural follow-up question for a Stellar DeFi assistant. Intent: ${intent}. Missing data: ${missingData.join(', ')}. Return only the question text.`,
         }),
+        signal: controllerSignal,
       });
-      if (response.ok) {
-        const result = await response.json() as AIAnalysisResult;
-        return result.suggestedResponse || 'Could you provide more details about your request?';
+
+      if (!response.ok) {
+        console.warn(`AIAssistant: Follow-up question API returned ${response.status}`);
+        return fallbackQuestion;
       }
+
+      const result = await response.json() as AIAnalysisResult;
+      const question = result.suggestedResponse || fallbackQuestion;
+
+      // Validate returned question is non-empty
+      if (typeof question === 'string' && question.trim().length > 0) {
+        return question;
+      }
+      return fallbackQuestion;
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
+      if (isLikelyNetworkError(error)) {
+        notifyAiNetworkUnavailable();
+      }
       console.error('Failed to generate follow-up question:', error);
+      return fallbackQuestion;
     }
-    return 'Could you provide more details about your request?';
   }
 
   /**

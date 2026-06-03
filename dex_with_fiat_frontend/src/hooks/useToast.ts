@@ -1,12 +1,13 @@
-import { useSyncExternalStore } from 'react';
+import { useSyncExternalStore, useCallback } from 'react';
 import { AppToast, toastStore } from '@/lib/toastStore';
 
 const EMPTY_ARRAY: AppToast[] = [];
 
 export function useToast() {
+  const getSnapshot = useCallback(() => toastStore.getSnapshot(), []);
   const toasts = useSyncExternalStore(
     (listener) => toastStore.subscribe(listener),
-    () => toastStore.getSnapshot(),
+    getSnapshot,
     () => EMPTY_ARRAY,
   );
 

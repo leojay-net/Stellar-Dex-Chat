@@ -5,7 +5,9 @@ import {
     ChatGuards,
     ChatMachineContext,
     ChatState,
+  copyChatStateSnapshot,
     createChatStateMachine,
+  formatChatStateSnapshot,
 } from './chatStateMachine';
 
 describe('ChatStateMachine', () => {
@@ -662,5 +664,86 @@ describe('ChatStateMachine', () => {
       expect(machine.transition(ChatEvent.RESET_FLOW)).toBe(true);
       expect(machine.getState().state).toBe(ChatState.INITIALIZED);
     });
+  });
+});
+
+// ── Issue #590 regression: shared INITIAL_CONTEXT must not be mutated ─────────
+describe('chatStateMachine race condition regression (#590)', () => {
+  it('two independent machines do not share context state', () => {
+    const machineA = createChatStateMachine();
+    machineA.transition(ChatEvent.INITIALIZE_SESSION);
+    machineA.updateContext({ messageCount: 7, hasUserCancelled: true });
+
+    const machineB = createChatStateMachine();
+    machineB.transition(ChatEvent.INITIALIZE_SESSION);
+
+    // Machine B must start clean — not polluted by machine A's mutations
+    expect(machineB.getState().context.messageCount).toBe(0);
+    expect(machineB.getState().context.hasUserCancelled).toBe(false);
+  });
+
+  it('action callbacks on machine A do not corrupt machine B context', () => {
+    const machineA = createChatStateMachine();
+    machineA.transition(ChatEvent.INITIALIZE_SESSION);
+    machineA.transition(ChatEvent.SEND_MESSAGE);
+    machineA.transition(ChatEvent.ANALYSIS_COMPLETE); // → ANALYZING
+    machineA.transition(ChatEvent.ENCOUNTER_ERROR);   // → ERROR
+    machineA.updateContext({ errorMessage: 'A failed' });
+
+    const machineB = createChatStateMachine();
+    machineB.transition(ChatEvent.INITIALIZE_SESSION);
+
+    expect(machineB.getState().context.errorMessage).toBeNull();
+    expect(machineB.getState().state).toBe(ChatState.INITIALIZED);
+  });
+
+  it('many machines created in sequence all start with zero messageCount', () => {
+    for (let i = 0; i < 5; i++) {
+      const m = createChatStateMachine();
+      m.transition(ChatEvent.INITIALIZE_SESSION);
+      m.updateContext({ messageCount: i + 10 });
+      const fresh = createChatStateMachine();
+      fresh.transition(ChatEvent.INITIALIZE_SESSION);
+      expect(fresh.getState().context.messageCount).toBe(0);
+    }
+  });
+});
+
+describe('chatStateMachine clipboard snapshot helpers', () => {
+  it('formats a stable snapshot string', () => {
+    const context: ChatMachineContext = {
+      messageCount: 2,
+      hasUserCancelled: false,
+      pendingTransactionData: { tokenIn: 'XLM' },
+      needsClarification: false,
+      clarificationQuestion: null,
+      errorMessage: null,
+      lastEventTime: Date.now(),
+      previousState: null,
+    };
+    expect(formatChatStateSnapshot(ChatState.ANALYZING, context)).toContain(
+      'state=ANALYZING',
+    );
+  });
+
+  it('copies snapshot to clipboard when available', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    const context: ChatMachineContext = {
+      messageCount: 1,
+      hasUserCancelled: false,
+      pendingTransactionData: null,
+      needsClarification: false,
+      clarificationQuestion: null,
+      errorMessage: null,
+      lastEventTime: Date.now(),
+      previousState: null,
+    };
+    const copied = await copyChatStateSnapshot(ChatState.SENDING_MESSAGE, context);
+    expect(copied).toBe(true);
+    expect(writeText).toHaveBeenCalledTimes(1);
   });
 });

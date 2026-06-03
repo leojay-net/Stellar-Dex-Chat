@@ -184,4 +184,5 @@ const auditLogExamples = {
   recordUserUpdateAction,
   recordSettingsChangeAction,
 };
+
 export default auditLogExamples;

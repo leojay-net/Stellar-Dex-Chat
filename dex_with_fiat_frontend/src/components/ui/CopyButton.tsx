@@ -9,6 +9,8 @@ interface CopyButtonProps {
   iconClassName?: string;
   successDurationMs?: number;
   tooltipPosition?: 'top' | 'bottom';
+  /** Accessible label override; falls back to a generic "Copy to clipboard". */
+  ariaLabel?: string;
 }
 
 async function copyTextToClipboard(value: string): Promise<boolean> {
@@ -67,6 +69,7 @@ export default function CopyButton({
   iconClassName = 'w-4 h-4',
   successDurationMs = 2000,
   tooltipPosition = 'top',
+  ariaLabel = 'Copy to clipboard',
 }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -107,8 +110,8 @@ export default function CopyButton({
     <button
       type="button"
       onClick={handleCopy}
-      aria-label="Copy to clipboard"
-      title="Copy to clipboard"
+      aria-label={ariaLabel}
+      title={ariaLabel}
       className={`relative inline-flex items-center justify-center rounded p-1 text-gray-400 transition-colors hover:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-transparent ${className}`}
     >
       <span

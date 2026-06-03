@@ -254,6 +254,11 @@ export interface FilterOption {
   count: number;
 }
 
+export interface FilterChipTone {
+  chipClassName: string;
+  countClassName: string;
+}
+
 export interface FilterStats {
   statusOptions: FilterOption[];
   assetOptions: FilterOption[];

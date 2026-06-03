@@ -8,6 +8,14 @@ This directory contains the Soroban smart contracts for the Stellar DEX Chat app
 |----------|-------------|
 | [FiatBridge](./FIAT_BRIDGE_README.md) | Deposit receipt system, withdrawal queue, oracle-based fiat caps, and timelock admin |
 
+## Documentation
+
+| Guide | Description |
+|-------|-------------|
+| [FIAT_BRIDGE_README.md](./FIAT_BRIDGE_README.md) | Full API reference and error code documentation |
+| [docs/VERSION_MIGRATION.md](./docs/VERSION_MIGRATION.md) | Event versioning, upgrade mechanism, and migration guides |
+| [docs/OVERFLOW_PREVENTION.md](./docs/OVERFLOW_PREVENTION.md) | Overflow-prevention strategies and contributor checklist |
+
 ---
 
 ## Architecture Diagram

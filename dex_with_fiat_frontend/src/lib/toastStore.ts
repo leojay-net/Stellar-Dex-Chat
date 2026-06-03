@@ -4,24 +4,31 @@ import { v4 as uuidv4 } from 'uuid';
 export type ToastVariant = 'success' | 'error' | 'info' | 'warning';
 export type ToastSeverity = ToastVariant;
 
-export interface Toast {
+export interface AppToast {
   id: string;
   message: string;
   variant: ToastVariant;
   severity?: ToastSeverity;
   timestamp: number;
+  duration?: number;
   durationMs?: number;
 }
 
-export type AppToast = Toast;
+export interface AddToastOptions {
+  message: string;
+  severity?: string;
+  variant?: ToastVariant;
+  duration?: number;
+  durationMs?: number;
+}
 
-type ToastListener = (toasts: Toast[]) => void;
+type ToastListener = (toasts: AppToast[]) => void;
 
-const toasts: Toast[] = [];
-const listeners: Set<ToastListener> = new Set();
-
-function notifyListeners(): void {
-  listeners.forEach((listener) => listener([...toasts]));
+interface ToastStoreOptions {
+  dedupeWindowMs?: number;
+  defaultDurationMs?: number;
+  now?: () => number;
+  generateId?: () => string;
 }
 
 export const toastStore = {

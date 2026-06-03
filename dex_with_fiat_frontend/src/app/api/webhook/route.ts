@@ -18,9 +18,10 @@ export async function POST(request: NextRequest) {
   );
 
   try {
+    const secretKey = env.PAYSTACK_SECRET_KEY;
     // Fail-closed: reject immediately if the secret key is not configured.
     // Never process a webhook without a verified signature.
-    if (!PAYSTACK_SECRET_KEY) {
+    if (!secretKey) {
       telemetry.addLog(
         span.spanId,
         'error',
@@ -71,7 +72,7 @@ export async function POST(request: NextRequest) {
     });
 
     const hash = crypto
-      .createHmac('sha512', PAYSTACK_SECRET_KEY)
+      .createHmac('sha512', secretKey)
       .update(payload)
       .digest('hex');
 

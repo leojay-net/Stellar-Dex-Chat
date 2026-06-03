@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import jsPDF from 'jspdf';
 import { useChatHistory } from '@/hooks/useChatHistory';
 import { useTxHistory } from '@/hooks/useTxHistory';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import {
   MessageSquare,
   Trash2,
@@ -37,13 +38,29 @@ interface SessionRowProps {
   onDelete: (id: string) => void;
   onTogglePin: (id: string) => void;
   formatDate: (d: Date) => string;
+  recentlyToggledPinId?: string | null;
 }
 
-function SessionRow({ session, isActive, onLoad, onExportJSON, onExportTXT, onDelete, onTogglePin, formatDate }: SessionRowProps) {
+function SessionRow({
+  session,
+  isActive,
+  onLoad,
+  onExportJSON,
+  onExportTXT,
+  onDelete,
+  onTogglePin,
+  formatDate,
+  recentlyToggledPinId,
+}: SessionRowProps) {
   const [showExportMenu, setShowExportMenu] = useState(false);
   return (
     <div
-      className={`group relative p-3 mb-2 rounded-lg cursor-pointer transition-all duration-200 border ${isActive ? 'bg-[var(--color-primary-soft)] border-[var(--color-primary)] shadow-md' : 'border-transparent hover:border-[var(--color-border)] hover:bg-[var(--color-surface-muted)]'}`}
+      data-active={isActive ? 'true' : 'false'}
+      className={`group relative p-3 mb-2 rounded-lg cursor-pointer transition-all duration-200 border ${
+        isActive
+          ? 'bg-[var(--color-primary-soft)] border-[var(--color-primary)] shadow-md'
+          : 'border-transparent hover:border-[var(--color-border)] hover:bg-[var(--color-surface-muted)]'
+      }`}
       onClick={() => onLoad(session.id)}
     >
       <div className="flex items-start justify-between">
@@ -61,8 +78,27 @@ function SessionRow({ session, isActive, onLoad, onExportJSON, onExportTXT, onDe
           )}
         </div>
         <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={(e) => { e.stopPropagation(); onTogglePin(session.id); }} className="theme-text-muted hover:bg-[var(--color-primary-soft)] p-1 rounded transition-all hover:scale-110" title={session.pinned ? 'Unpin' : 'Pin'} aria-label={session.pinned ? 'Unpin conversation' : 'Pin conversation'}>
-            {session.pinned ? <PinOff className="w-3 h-3" /> : <Pin className="w-3 h-3" />}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onTogglePin(session.id);
+            }}
+            className="theme-text-muted hover:bg-[var(--color-primary-soft)] p-1 rounded transition-all hover:scale-110"
+            title={session.pinned ? 'Unpin conversation' : 'Pin conversation'}
+          >
+            {session.pinned ? (
+              <PinOff className={`w-3 h-3${
+                recentlyToggledPinId === session.id
+                  ? ' animate-bounce-once'
+                  : ''
+              }`} />
+            ) : (
+              <Pin className={`w-3 h-3${
+                recentlyToggledPinId === session.id
+                  ? ' animate-bounce-once'
+                  : ''
+              }`} />
+            )}
           </button>
           <div className="relative">
             <button onClick={(e) => { e.stopPropagation(); setShowExportMenu(!showExportMenu); }} className="theme-text-muted hover:bg-[var(--color-primary-soft)] p-1 rounded transition-all hover:scale-110" title="Export" aria-label="Export conversation">
@@ -94,8 +130,26 @@ interface ChatHistorySidebarProps {
   isCollapsed?: boolean;
 }
 
-export default function ChatHistorySidebar({ onLoadSession, onClose, isCollapsed = false }: ChatHistorySidebarProps) {
-  const { pinnedSessions, unpinnedSessions, currentSessionId, deleteSession, clearAllHistory, exportSessionAsJSON, exportSessionAsTXT, searchSessions, togglePin, hasHistory } = useChatHistory();
+const UNDO_TIMEOUT_MS = 5_000;
+
+export default function ChatHistorySidebar({
+  onLoadSession,
+  onClose,
+  isCollapsed = false,
+}: ChatHistorySidebarProps) {
+  const {
+    pinnedSessions,
+    unpinnedSessions,
+    currentSessionId,
+    deleteSession,
+    clearAllHistory,
+    exportSessionAsJSON,
+    exportSessionAsTXT,
+    searchSessions,
+    togglePin,
+    hasHistory,
+    sessions: allSessionsRaw,
+  } = useChatHistory();
   const { entries, clearEntries, updateEntry } = useTxHistory();
   const { connection } = useStellarWallet();
 
@@ -104,6 +158,18 @@ export default function ChatHistorySidebar({ onLoadSession, onClose, isCollapsed
   const [isLoading, setIsLoading] = useState(true);
   const [contractEvents, setContractEvents] = useState<ContractEvent[]>([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
+
+  // ── Optimistic UI state ──────────────────────────────────────────────────
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [recentlyToggledPinId, setRecentlyToggledPinId] = useState<string | null>(null);
+  const pinAnimTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [pendingClearAll, setPendingClearAll] = useState(false);
+  const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stashedSessionsRef = useRef<ChatSession[]>([]);
+  // ────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const fetchEvents = async () => {
@@ -124,12 +190,95 @@ export default function ChatHistorySidebar({ onLoadSession, onClose, isCollapsed
     return () => clearTimeout(timer);
   }, []);
 
+  // Clean up timers on unmount
+  useEffect(() => {
+    return () => {
+      if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
+      if (pinAnimTimerRef.current) clearTimeout(pinAnimTimerRef.current);
+      if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
+    };
+  }, []);
+
   const allSessions = [...pinnedSessions, ...unpinnedSessions];
-  const filteredSessions = searchQuery ? searchSessions(searchQuery) : allSessions;
+  // Filter out the session that is pending deletion so it disappears immediately
+  const visibleSessions = pendingDeleteId
+    ? allSessions.filter((s) => s.id !== pendingDeleteId)
+    : allSessions;
+  const filteredSessions = searchQuery
+    ? searchSessions(searchQuery).filter((s) => s.id !== pendingDeleteId)
+    : visibleSessions;
   const filteredPinned = filteredSessions.filter((s) => s.pinned);
   const filteredUnpinned = filteredSessions.filter((s) => !s.pinned);
+  const filteredSessionIds = filteredSessions.map((s) => s.id).join(',');
+  const historyListRef = useRef<HTMLDivElement | null>(null);
 
-  const handleDeleteSession = (sessionId: string) => { deleteSession(sessionId); setShowDeleteConfirm(null); };
+  useEffect(() => {
+    if (isCollapsed) return;
+
+    const activeRow = historyListRef.current?.querySelector<HTMLElement>('[data-active="true"]');
+    if (!activeRow) return;
+
+    activeRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [currentSessionId, filteredSessionIds, isCollapsed]);
+
+  // ── Optimistic delete with undo ──────────────────────────────────────────
+  const handleDeleteSession = useCallback((sessionId: string) => {
+    setShowDeleteConfirm(null);
+    setPendingDeleteId(sessionId);
+
+    // Clear any previous delete timer
+    if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
+
+    deleteTimerRef.current = setTimeout(() => {
+      deleteSession(sessionId);
+      setPendingDeleteId(null);
+    }, UNDO_TIMEOUT_MS);
+  }, [deleteSession]);
+
+  const undoDelete = useCallback(() => {
+    if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
+    setPendingDeleteId(null);
+  }, []);
+
+  // ── Optimistic pin toggle with animation ─────────────────────────────────
+  const handleTogglePin = useCallback((sessionId: string) => {
+    togglePin(sessionId);
+    setRecentlyToggledPinId(sessionId);
+
+    if (pinAnimTimerRef.current) clearTimeout(pinAnimTimerRef.current);
+    pinAnimTimerRef.current = setTimeout(() => {
+      setRecentlyToggledPinId(null);
+    }, 600);
+  }, [togglePin]);
+
+  // ── Optimistic clear-all with undo ───────────────────────────────────────
+  const handleClearAll = useCallback(() => {
+    // Stash sessions for potential undo
+    stashedSessionsRef.current = [...allSessionsRaw];
+    clearAllHistory();
+    setPendingClearAll(true);
+
+    if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
+    clearTimerRef.current = setTimeout(() => {
+      stashedSessionsRef.current = [];
+      setPendingClearAll(false);
+    }, UNDO_TIMEOUT_MS);
+  }, [allSessionsRaw, clearAllHistory]);
+
+  const undoClearAll = useCallback(() => {
+    if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
+    // Restore stashed sessions by re-saving to localStorage and reloading
+    if (stashedSessionsRef.current.length > 0) {
+      const restored = {
+        currentSessionId: null,
+        sessions: stashedSessionsRef.current,
+      };
+      localStorage.setItem('defi_chat_history', JSON.stringify(restored));
+      window.location.reload();
+    }
+    stashedSessionsRef.current = [];
+    setPendingClearAll(false);
+  }, []);
 
   const handleExportSessionJSON = (sessionId: string) => {
     const r = exportSessionAsJSON(sessionId);
@@ -188,13 +337,53 @@ export default function ChatHistorySidebar({ onLoadSession, onClose, isCollapsed
   };
 
   return (
-    <div className={`theme-surface h-full flex flex-col transition-all duration-300 border-r ${isCollapsed ? 'w-20' : 'w-full'} transition-colors duration-300`}>
-      <div className={`theme-border border-b transition-colors duration-300 ${isCollapsed ? 'p-4 flex flex-col items-center' : 'p-4'}`}>
-        <div className={`flex items-center justify-between mb-4 w-full ${isCollapsed ? 'flex-col gap-4' : ''}`}>
-          {!isCollapsed && <h2 className="theme-text-primary text-lg font-semibold">Activity</h2>}
-          <div className={`flex items-center gap-1 ${isCollapsed ? 'flex-col' : ''}`}>
-            <button onClick={clearAllHistory} className="theme-text-muted hover:bg-[var(--color-danger-soft)] p-2 rounded-lg transition-all duration-200 hover:scale-110" title="Clear all history" aria-label="Clear all history"><Trash2 className="w-4 h-4" /></button>
-            {onClose && <button onClick={onClose} className="theme-text-muted hover:bg-[var(--color-surface-muted)] p-2 rounded-lg transition-all duration-200 hover:scale-110 sm:hidden" title="Close" aria-label="Close chat history"><X className="w-4 h-4" /></button>}
+    <ErrorBoundary
+      title="Sidebar unavailable"
+      message="An unexpected error occurred in the chat history panel. Your conversations are safe."
+      retryLabel="Reload sidebar"
+    >
+    <div
+      className={`theme-surface theme-border h-full flex flex-col transition-all duration-300 border-r ${
+        isCollapsed ? 'w-20' : 'w-full'
+      } transition-colors duration-300`}
+    >
+      <div
+        className={`theme-border border-b transition-colors duration-300 ${
+          isCollapsed ? 'p-4 flex flex-col items-center' : 'p-4'
+        }`}
+      >
+        <div
+          className={`flex items-center justify-between mb-4 w-full ${
+            isCollapsed ? 'flex-col gap-4' : ''
+          }`}
+        >
+          {!isCollapsed && (
+            <h2 className="theme-text-primary text-lg font-semibold">
+              Activity
+            </h2>
+          )}
+          <div
+            className={`flex items-center gap-1 ${
+              isCollapsed ? 'flex-col' : ''
+            }`}
+          >
+            <button
+              onClick={handleClearAll}
+              className="theme-text-muted hover:bg-[var(--color-danger-soft)] p-2 rounded-lg transition-all duration-200 hover:scale-110"
+              title="Clear all history"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="theme-text-muted hover:bg-[var(--color-surface-muted)] p-2 rounded-lg transition-all duration-200 hover:scale-110 sm:hidden"
+                title="Close"
+                aria-label="Close chat history"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
         {!isCollapsed && (
@@ -241,22 +430,147 @@ export default function ChatHistorySidebar({ onLoadSession, onClose, isCollapsed
         ) : filteredSessions.length === 0 ? (
           <EmptyState icon={Search} title="No conversations found" description={`No results for "${searchQuery}"`} cta={{ label: 'Clear search', onClick: () => setSearchQuery('') }} />
         ) : (
-          <div className={`p-2 ${isCollapsed ? 'flex flex-col items-center' : ''}`}>
-            {filteredPinned.length > 0 && (
-              <>
-                {!isCollapsed && <p className="theme-text-muted text-xs font-semibold uppercase tracking-wider px-1 py-1 mt-1">Pinned</p>}
-                {filteredPinned.map((session) => (
-                  <SessionRow key={session.id} session={session} isActive={currentSessionId === session.id} onLoad={onLoadSession} onExportJSON={handleExportSessionJSON} onExportTXT={handleExportSessionTXT} onDelete={(id) => setShowDeleteConfirm(id)} onTogglePin={togglePin} formatDate={formatDate} />
-                ))}
-                {!isCollapsed && filteredUnpinned.length > 0 && <p className="theme-text-muted text-xs font-semibold uppercase tracking-wider px-1 py-1 mt-3">Recent</p>}
-              </>
+          <div className="flex flex-col h-full">
+            {/* Contract Activity Section */}
+            {!isCollapsed && (
+              <div className="px-4 py-3 border-b border-[var(--color-border)] bg-[var(--color-surface-muted)]">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--color-text-primary)] uppercase tracking-wider">
+                    <Activity className="w-3.5 h-3.5 text-blue-500" />
+                    <span>Bridge Activity</span>
+                  </div>
+                  {isLoadingEvents && (
+                    <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                  )}
+                </div>
+                {contractEvents.length > 0 ? (
+                  <div className="space-y-2">
+                    {contractEvents.map((event) => (
+                      <div key={event.id} className="flex items-center justify-between text-[11px] group">
+                        <div className="flex items-center gap-2 overflow-hidden">
+                          {event.type === 'deposit' ? (
+                            <div className="p-1 rounded bg-green-500/10 text-green-500">
+                              <ArrowDownLeft className="w-3 h-3" />
+                            </div>
+                          ) : (
+                            <div className="p-1 rounded bg-orange-500/10 text-orange-500">
+                              <ArrowUpRight className="w-3 h-3" />
+                            </div>
+                          )}
+                          <div className="flex flex-col min-w-0">
+                            <span className="font-medium truncate text-[var(--color-text-secondary)]">
+                              {event.actor.slice(0, 4)}...{event.actor.slice(-4)}
+                            </span>
+                            <span className="text-[10px] text-[var(--color-text-muted)]">
+                              {new Date(event.ledgerClosedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        </div>
+                        <span className={`font-bold ${event.type === 'deposit' ? 'text-green-500' : 'text-orange-500'}`}>
+                          {event.type === 'deposit' ? '+' : '-'}{(parseFloat(event.amount) / 10000000).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-[var(--color-text-muted)] text-center py-2">No recent bridge activity</p>
+                )}
+              </div>
             )}
-            {filteredUnpinned.map((session) => (
-              <SessionRow key={session.id} session={session} isActive={currentSessionId === session.id} onLoad={onLoadSession} onExportJSON={handleExportSessionJSON} onExportTXT={handleExportSessionTXT} onDelete={(id) => setShowDeleteConfirm(id)} onTogglePin={togglePin} formatDate={formatDate} />
-            ))}
+
+            <div ref={historyListRef} className={`p-2 ${isCollapsed ? 'flex flex-col items-center' : ''}`}>
+              {!hasHistory ? (
+                <EmptyState
+                  icon={MessageSquare}
+                  title="No conversations yet"
+                  description="Start chatting to see your history here"
+                  cta={{
+                    label: 'New Conversation',
+                    onClick: () => window.location.reload(),
+                  }}
+                />
+              ) : filteredSessions.length === 0 ? (
+                <EmptyState
+                  icon={Search}
+                  title="No conversations found"
+                  description={`No results for "${searchQuery}"`}
+                  cta={{ label: 'Clear search', onClick: () => setSearchQuery('') }}
+                />
+              ) : (
+                <>
+                  {filteredPinned.length > 0 && (
+                    <>
+                      {!isCollapsed && (
+                        <p className="theme-text-muted text-xs font-semibold uppercase tracking-wider px-1 py-1 mt-1">
+                          Pinned
+                        </p>
+                      )}
+                      {filteredPinned.map((session) => (
+                        <SessionRow
+                          key={session.id}
+                          session={session}
+                          isActive={currentSessionId === session.id}
+                          onLoad={onLoadSession}
+                          onExportJSON={handleExportSessionJSON}
+                          onExportTXT={handleExportSessionTXT}
+                          onDelete={(id) => setShowDeleteConfirm(id)}
+                          onTogglePin={handleTogglePin}
+                          formatDate={formatDate}
+                          recentlyToggledPinId={recentlyToggledPinId}
+                        />
+                      ))}
+                    </>
+                  )}
+                  {filteredUnpinned.length > 0 && (
+                    <>
+                      {!isCollapsed && (
+                        <p className="theme-text-muted text-xs font-semibold uppercase tracking-wider px-1 py-1 mt-3">
+                          Recent
+                        </p>
+                      )}
+                      {filteredUnpinned.map((session) => (
+                        <SessionRow
+                          key={session.id}
+                          session={session}
+                          isActive={currentSessionId === session.id}
+                          onLoad={onLoadSession}
+                          onExportJSON={handleExportSessionJSON}
+                          onExportTXT={handleExportSessionTXT}
+                          onDelete={(id) => setShowDeleteConfirm(id)}
+                          onTogglePin={handleTogglePin}
+                          formatDate={formatDate}
+                          recentlyToggledPinId={recentlyToggledPinId}
+                        />
+                      ))}
+                    </>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>
+
+      {/* ── Undo toast ────────────────────────────────────────────────────── */}
+      {(pendingDeleteId || pendingClearAll) && (
+        <div
+          className="flex items-center justify-between gap-2 px-4 py-2.5 text-xs font-medium border-t border-[var(--color-border)] bg-[var(--color-surface-muted)] animate-slide-up"
+          role="status"
+          aria-live="polite"
+        >
+          <span className="theme-text-secondary">
+            {pendingClearAll ? 'History cleared' : 'Conversation deleted'}
+          </span>
+          <button
+            type="button"
+            onClick={pendingClearAll ? undoClearAll : undoDelete}
+            className="px-2.5 py-1 rounded-md text-[var(--color-primary)] font-semibold hover:bg-[var(--color-primary-soft)] transition-colors"
+          >
+            Undo
+          </button>
+        </div>
+      )}
+      {/* ─────────────────────────────────────────────────────────────────── */}
 
       <div className={`theme-border border-t p-4 ${isCollapsed ? 'flex flex-col items-center' : ''}`}>
         <PriceTicker symbols={['XLM', 'ETH', 'BTC']} currency="usd" />
@@ -265,10 +579,88 @@ export default function ChatHistorySidebar({ onLoadSession, onClose, isCollapsed
             <Coins className="w-4 h-4 text-[var(--color-primary)]" />
             {!isCollapsed && <h3 className="theme-text-primary text-sm font-semibold">Transaction History</h3>}
           </div>
-          {!isCollapsed && (
-            <div className="flex items-center gap-1">
-              <button type="button" onClick={handleExportTransactions} className="theme-text-muted hover:bg-[var(--color-surface-muted)] p-1.5 rounded-md transition-colors" title="Export transaction history" aria-label="Export transaction history"><Download className="w-3.5 h-3.5" /></button>
-              <button type="button" onClick={clearEntries} className="theme-text-muted hover:bg-[var(--color-danger-soft)] p-1.5 rounded-md transition-colors" title="Clear transaction history" aria-label="Clear transaction history"><Trash2 className="w-3.5 h-3.5" /></button>
+
+          {isCollapsed ? (
+            <div className="flex justify-center">
+              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs">
+                {entries.length}
+              </div>
+            </div>
+          ) : entries.length === 0 ? (
+            <EmptyState
+              icon={Coins}
+              title="No transactions yet"
+              description="Deposits, payouts, risk checks, and notes will appear here."
+              className="py-3"
+            />
+          ) : (
+            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+              {entries.slice(0, 8).map((entry) => (
+                <div
+                  key={entry.id}
+                  className="theme-surface-muted theme-border rounded-lg border p-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="theme-text-primary text-xs font-semibold capitalize">
+                        {entry.kind.replace('_', ' ')}
+                      </p>
+                      <p className="theme-text-secondary text-xs mt-1">
+                        {entry.message}
+                      </p>
+                    </div>
+                    <span className="theme-text-muted text-[11px] whitespace-nowrap">
+                      {formatDate(entry.createdAt)}
+                    </span>
+                  </div>
+                  {(entry.amount || entry.fiatAmount) && (
+                    <p className="theme-text-muted text-[11px] mt-2">
+                      {entry.amount
+                        ? `${entry.amount} ${entry.asset || 'XLM'}`
+                        : ''}
+                      {entry.amount && entry.fiatAmount ? ' · ' : ''}
+                      {entry.fiatAmount
+                        ? `${entry.fiatAmount} ${entry.fiatCurrency || 'NGN'}`
+                        : ''}
+                    </p>
+                  )}
+                  {entry.note && (
+                    <p className="theme-text-primary text-xs mt-2">
+                      Note:{' '}
+                      <span className="theme-text-secondary">{entry.note}</span>
+                    </p>
+                  )}
+                  {entry.kind === 'payout' &&
+                    entry.status !== 'cancelled' &&
+                    entry.reference &&
+                    Date.now() - new Date(entry.createdAt).getTime() <
+                      2 * 60 * 1000 && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(
+                              `/api/transfer-status/${entry.reference}`,
+                              { method: 'POST' },
+                            );
+                            const json = await res.json();
+                            if (json.success) {
+                              updateEntry(entry.id, {
+                                status: 'cancelled',
+                                message: 'Payout cancelled.',
+                              });
+                            }
+                          } catch (err) {
+                            console.error('Cancel error:', err);
+                          }
+                        }}
+                        className="mt-2 w-full flex items-center justify-center gap-1 bg-red-500/10 hover:bg-red-500/20 text-red-500 py-1.5 rounded text-xs font-medium transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" /> Cancel Payout
+                      </button>
+                    )}
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -324,5 +716,6 @@ export default function ChatHistorySidebar({ onLoadSession, onClose, isCollapsed
         </div>
       )}
     </div>
+    </ErrorBoundary>
   );
 }

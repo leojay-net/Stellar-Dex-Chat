@@ -49,8 +49,7 @@ export async function GET(request: NextRequest) {
     if (startDate) {
       try {
         filter.startDate = new Date(startDate);
-      } catch (_error) {
-    void _error;
+      } catch {
         return NextResponse.json(
           { error: 'Invalid startDate format. Use ISO 8601 format.' },
           { status: 400 }
@@ -62,8 +61,7 @@ export async function GET(request: NextRequest) {
     if (endDate) {
       try {
         filter.endDate = new Date(endDate);
-      } catch (_error) {
-    void _error;
+      } catch {
         return NextResponse.json(
           { error: 'Invalid endDate format. Use ISO 8601 format.' },
           { status: 400 }

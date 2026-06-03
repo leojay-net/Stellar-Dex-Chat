@@ -34,9 +34,17 @@ const mockRecord = { clientSessionId: 'session-1', reference: 'ref123', status: 
 vi.mock('@/lib/transferStore', () => ({
   isReplayEvent: () => false,
   replayCacheStats: () => ({ size: 0, ttlMs: 0, maxSize: 0 }),
-  getTransferStatus: () => mockRecord,
-  setTransferStatus: () => ({ ...mockRecord, status: 'success' }),
+  getTransferStatus: vi.fn(() => ({ clientSessionId: 'session1' })),
+  setTransferStatus: vi.fn(() => ({
+    reference: 'ref123',
+    status: 'success',
+    amount: 5000,
+    clientSessionId: 'session1',
+  })),
   transferStore: { set: vi.fn(), get: vi.fn() },
+}));
+vi.mock('@/lib/paymentStatusEvents', () => ({
+  publishPaymentStatus: vi.fn(),
 }));
 
 // Import AFTER mocks are registered

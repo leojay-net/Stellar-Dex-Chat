@@ -2,11 +2,11 @@
 
 import { useState, useEffect, ReactNode } from 'react';
 import { X, CheckCircle, AlertCircle, Info, AlertTriangle } from 'lucide-react';
-import { toastStore, Toast, ToastVariant } from '@/lib/toastStore';
+import { toastStore, AppToast, ToastVariant } from '@/lib/toastStore';
 import { useTheme } from '@/contexts/ThemeContext';
 
 interface ToastItemProps {
-  toast: Toast;
+  toast: AppToast;
   onDismiss: (id: string) => void;
   isDarkMode: boolean;
 }
@@ -73,7 +73,7 @@ interface ToastProviderProps {
 }
 
 export function ToastProvider({ children }: ToastProviderProps) {
-  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [toasts, setToasts] = useState<AppToast[]>([]);
   const { isDarkMode } = useTheme();
 
   useEffect(() => {
@@ -85,7 +85,7 @@ export function ToastProvider({ children }: ToastProviderProps) {
   }, []);
 
   const handleDismiss = (id: string) => {
-    toastStore.removeToast(id);
+    toastStore.dismissToast(id);
   };
 
   return (
