@@ -747,6 +747,13 @@ pub struct BatchOkEvent {
     pub total_ops: u32,
 }
 
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct AdminRoleCheckEvent {
+    pub version: u32,
+    pub admin: Address,
+}
+
 /// Emitted after the token balance state is updated on a successful deposit (#499).
 ///
 /// Allows indexers to track the running total without re-reading storage,
@@ -4636,6 +4643,18 @@ impl FiatBridge {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+
+        // Timelock role check (fix #525): admin must not be an operator.
+        // Conflating roles bypasses the governance timelock security model.
+        require!(
+            !Self::is_operator(env.clone(), admin.clone()),
+            Error::NotAllowed
+        );
+        AdminRoleCheckEvent {
+            version: EVENT_VERSION,
+            admin: admin.clone(),
+        }
+        .publish(&env);
 
         let total_ops = operations.len();
         let mut success_count: u32 = 0;

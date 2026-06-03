@@ -5221,3 +5221,63 @@ fn test_set_operator_circuit_breaker_not_affected_by_admin_role_confusion() {
     // Circuit breaker state should be unaffected
     assert!(!bridge.is_circuit_breaker_tripped());
 }
+
+#[test]
+fn test_execute_batch_admin_rejects_operator_as_admin_issue_841() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, admin, _, _, _) = setup_bridge(&env, 10_000);
+
+    // Manually grant operator role to admin (bypassing normal checks to test invariant)
+    env.as_contract(&contract_id, || {
+        env.storage()
+            .instance()
+            .set(&DataKey::Operator(admin.clone()), &true);
+    });
+
+    let mut ops = soroban_sdk::Vec::new(&env);
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "pause"),
+        payload: Bytes::new(&env),
+    });
+
+    // Attempting to execute batch as an admin who is also an operator must fail
+    let result = bridge.try_execute_batch_admin(&ops);
+    assert_eq!(result, Err(Ok(Error::NotAllowed)));
+}
+
+#[test]
+fn test_execute_batch_admin_emits_role_check_event_issue_841() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+
+    let mut ops = soroban_sdk::Vec::new(&env);
+    ops.push_back(BatchAdminOp {
+        op_type: Symbol::new(&env, "pause"),
+        payload: Bytes::new(&env),
+    });
+
+    bridge.execute_batch_admin(&ops);
+
+    let events = env.events().all().filter_by_contract(&contract_id);
+    let raw = events.events();
+    
+    let topic_symbol = soroban_sdk::xdr::ScVal::Symbol(soroban_sdk::xdr::ScSymbol(
+        soroban_sdk::xdr::StringM::try_from("admin_role_check_event").expect("topic"),
+    ));
+    
+    let mut found = false;
+    for event in raw.iter() {
+        use soroban_sdk::xdr::ContractEventBody;
+        if let ContractEventBody::V0(body) = &event.body {
+            if body.topics.iter().any(|t| *t == topic_symbol) {
+                found = true;
+                break;
+            }
+        }
+    }
+    assert!(found, "AdminRoleCheckEvent must be emitted on successful batch execution");
+}
