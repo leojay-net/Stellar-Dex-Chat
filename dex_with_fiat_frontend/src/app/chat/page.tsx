@@ -1,6 +1,10 @@
 'use client';
+import dynamic from 'next/dynamic';
 
-import StellarChatInterface from '@/components/StellarChatInterface';
+const StellarChatInterface = dynamic(
+  () => import('@/components/StellarChatInterface'),
+  { ssr: false }
+);
 
 export default function ChatPage() {
   return (

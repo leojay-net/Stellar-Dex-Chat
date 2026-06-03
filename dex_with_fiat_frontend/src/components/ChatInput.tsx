@@ -83,6 +83,7 @@ export default function ChatInput({
   const selectCommand = (cmd: string) => {
     setMessage(cmd + ' ');
     setShowCommands(false);
+    textareaRef.current?.focus();
   };
 
   const [walletWarning, setWalletWarning] = useState(false);
@@ -123,9 +124,7 @@ export default function ChatInput({
         setSelectedIndex((prev: number) => (prev + 1) % commands.length);
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        setSelectedIndex(
-          (prev: number) => (prev - 1 + commands.length) % commands.length,
-        );
+        setSelectedIndex((prev: number) => (prev - 1 + commands.length) % commands.length);
       } else if (e.key === 'Enter') {
         e.preventDefault();
         selectCommand(commands[selectedIndex].cmd);
@@ -170,9 +169,7 @@ export default function ChatInput({
 
   const normalizedQuery = paletteQuery.trim().toLowerCase();
   const filteredPalette = paletteCommands.filter((cmd) => {
-    if (!normalizedQuery) {
-      return true;
-    }
+    if (!normalizedQuery) return true;
     return (
       cmd.label.toLowerCase().includes(normalizedQuery) ||
       cmd.keywords.includes(normalizedQuery)
@@ -181,13 +178,12 @@ export default function ChatInput({
 
   const executePaletteCommand = (idx: number) => {
     const selected = filteredPalette[idx];
-    if (!selected) {
-      return;
-    }
+    if (!selected) return;
     selected.run();
     setShowPalette(false);
     setPaletteQuery('');
     setPaletteIndex(0);
+    textareaRef.current?.focus();
   };
 
   useEffect(() => {
@@ -217,7 +213,6 @@ export default function ChatInput({
     return () => window.removeEventListener('keydown', handler);
   }, [onNewChat, onOpenHistory, onOpenBridgeModal, onCancelRequest]);
 
-  // Load draft when session changes
   useEffect(() => {
     if (sessionId) {
       const draft = getDraft(sessionId);
@@ -227,10 +222,8 @@ export default function ChatInput({
     }
   }, [sessionId]);
 
-  // Save draft when message changes (debounced 500ms)
   useEffect(() => {
     if (!sessionId) return;
-
     const timer = setTimeout(() => {
       if (message.trim()) {
         saveDraft(sessionId, message);
@@ -238,7 +231,6 @@ export default function ChatInput({
         clearDraft(sessionId);
       }
     }, 500);
-
     return () => clearTimeout(timer);
   }, [message, sessionId]);
 
@@ -272,15 +264,14 @@ export default function ChatInput({
                   setPaletteIndex((prev: number) =>
                     filteredPalette.length > 0
                       ? (prev + 1) % filteredPalette.length
-                      : 0,
+                      : 0
                   );
                 } else if (e.key === 'ArrowUp') {
                   e.preventDefault();
                   setPaletteIndex((prev: number) =>
                     filteredPalette.length > 0
-                      ? (prev - 1 + filteredPalette.length) %
-                        filteredPalette.length
-                      : 0,
+                      ? (prev - 1 + filteredPalette.length) % filteredPalette.length
+                      : 0
                   );
                 } else if (e.key === 'Enter') {
                   e.preventDefault();
@@ -292,6 +283,7 @@ export default function ChatInput({
               autoFocus
               placeholder="Type a command..."
               className="theme-input w-full rounded-lg px-3 py-2 text-sm"
+              aria-label="Command palette input"
             />
           </div>
           <div className="max-h-56 overflow-y-auto py-1">
@@ -301,8 +293,11 @@ export default function ChatInput({
                 type="button"
                 onClick={() => executePaletteCommand(i)}
                 className={`w-full text-left px-3 py-2 text-sm ${
-                  i === paletteIndex ? 'bg-blue-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                  i === paletteIndex
+                    ? 'bg-blue-600 text-white'
+                    : 'hover:bg-gray-100 dark:hover:bg-gray-800'
                 }`}
+                aria-label={cmd.label}
               >
                 {cmd.label}
               </button>
@@ -310,6 +305,7 @@ export default function ChatInput({
           </div>
         </div>
       )}
+
       <AnimatePresence>
         {showCommands && (
           <motion.div
@@ -336,6 +332,7 @@ export default function ChatInput({
                     ? 'bg-blue-50 border-l-4 border-blue-500'
                     : 'hover:bg-gray-50 border-l-4 border-transparent'
                 }`}
+                aria-label={c.desc}
               >
                 <span className="font-bold text-sm text-gray-900">{c.cmd}</span>
                 <span className="text-xs text-gray-500">{c.desc}</span>
@@ -379,6 +376,7 @@ export default function ChatInput({
               target.style.height = 'auto';
               target.style.height = `${Math.min(target.scrollHeight, isMobile ? 100 : 120)}px`;
             }}
+            aria-label="Chat input"
           />
         </div>
 
@@ -426,6 +424,7 @@ export default function ChatInput({
             type="button"
             onClick={() => setMessage(suggestion)}
             className="theme-secondary-button px-3 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg transition-all duration-200 transform hover:scale-105 whitespace-nowrap"
+            aria-label={`Quick suggestion: ${suggestion}`}
           >
             {suggestion}
           </button>

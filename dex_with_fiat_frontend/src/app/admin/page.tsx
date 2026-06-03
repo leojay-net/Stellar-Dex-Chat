@@ -728,6 +728,58 @@ export default function AdminDashboard() {
             </h2>
             <AuditTable />
           </div>
+
+          {auditLoading && (
+            <div className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+              Loading audit entries...
+            </div>
+          )}
+
+          {!auditLoading && auditEntries.length === 0 && (
+            <div className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+              No audit entries found for the selected action type.
+            </div>
+          )}
+
+          <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              Showing {(auditPage - 1) * auditPageSize + (auditEntries.length ? 1 : 0)}-
+              {(auditPage - 1) * auditPageSize + auditEntries.length} of {auditTotal}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setAuditPage((previous) => Math.max(previous - 1, 1))}
+                disabled={auditPage <= 1 || auditLoading}
+                className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <span className="text-sm text-gray-600 dark:text-gray-300">
+                Page {auditPage} of {auditTotalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  setAuditPage((previous) => Math.min(previous + 1, auditTotalPages))
+                }
+                disabled={auditPage >= auditTotalPages || auditLoading}
+                className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+
+        </div>
+
+        {/* Audit Log Section */}
+        <div className="mt-12">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
+            Audit Log
+          </h2>
+          <AuditTable />
         </div>
       </ErrorBoundary>
       </div>

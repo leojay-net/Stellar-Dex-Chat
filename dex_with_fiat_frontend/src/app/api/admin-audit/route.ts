@@ -103,12 +103,13 @@ export async function GET(request: NextRequest) {
         },
       }
     );
-  } catch (error) {
-    console.error('Error retrieving audit entries:', error);
+  } catch (_error) {
+    void _error;
+    console.error('Error retrieving audit entries:', _error);
     return NextResponse.json(
       {
         error: 'Failed to retrieve audit entries',
-        message: error instanceof Error ? error.message : 'Unknown error',
+        message: _error instanceof Error ? _error.message : 'Unknown error',
       },
       { status: 500 }
     );

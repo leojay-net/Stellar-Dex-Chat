@@ -1,11 +1,9 @@
 #![no_std]
-#![allow(clippy::too_many_arguments)]
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, token, xdr::ToXdr, Address,
     Bytes, BytesN, Env, Symbol, Vec,
 };
 
-pub mod math;
 pub mod oracle;
 
 macro_rules! require {
@@ -151,23 +149,6 @@ pub enum Error {
 // ── Models ────────────────────────────────────────────────────────────────
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct WithdrawalProposal {
-    pub to: Address,
-    pub token: Address,
-    pub amount: i128,
-}
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct MultisigProposal {
-    pub creator: Address,
-    pub action: BatchAdminOp,
-    pub approvals: Vec<Address>,
-    pub executed: bool,
-    pub created_at: u32,
-}
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WithdrawRequest {
     pub to: Address,
     pub token: Address,
@@ -197,22 +178,18 @@ pub struct GlobalDailyWithdrawn {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TokenConfig {
     pub limit: i128,
-    pub daily_deposit_limit: i128,
     pub total_deposited: i128,
-    pub total_withdrawn: i128,
-    pub total_liabilities: i128,
 }
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Receipt {
-    pub id: BytesN<32>,
+    pub id: u64,
     pub depositor: Address,
     pub amount: i128,
     pub ledger: u32,
     pub reference: Bytes,
     pub refunded: bool,
-    pub memo_hash: Option<BytesN<32>>,
 }
 
 #[contracttype]
@@ -835,30 +812,21 @@ pub struct InitializedEvent {
 pub enum DataKey {
     Admin,
     PendingAdmin,
-    Paused,
     Token, // Default token
     TokenRegistry(Address),
     AllowlistEnabled,
     Allowed(Address),
     LastDeposit(Address),
     ReceiptCounter,
-    Receipt(BytesN<32>),
-    MinDeposit,
+    Receipt(u64),
     LockPeriod,
     NextRequestID,
-    WithdrawQueueLen,
-    WithdrawQueueHead,
     WithdrawQueue(u64),
     /// Legacy/reserved key. Not currently written to; circuit breaker uses [`CircuitBreakerThreshold`] instead.
     DailyWithdrawLimit,
     WindowStart,
     WindowWithdrawn,
     CooldownLedgers,
-    // Withdrawal cooldown after large deposit
-    WithdrawCooldownLedgers,
-    WithdrawCooldownThreshold,
-    WithdrawalExpiryWindow,
-    LastLargeDeposit(Address),
     UserDeposited(Address),
     NextActionID,
     QueuedAdminAction(u64),
@@ -1037,18 +1005,8 @@ impl FiatBridge {
         Ok(())
     }
 
-    pub fn deposit(
-        env: Env,
-        from: Address,
-        amount: i128,
-        token: Address,
-        reference: Bytes,
-        expected_price: i128,
-        max_slippage: u32,
-        memo_hash: Option<BytesN<32>>,
-    ) -> Result<BytesN<32>, Error> {
+    pub fn deposit(env: Env, from: Address, amount: i128, token: Address, reference: Bytes) -> Result<u64, Error> {
         env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
-        Self::validate_memo_hash(&env, &memo_hash)?;
         from.require_auth();
 
         // Admin co-authentication: deposits require the admin's signature
@@ -1064,143 +1022,49 @@ impl FiatBridge {
 
         Self::require_not_paused(&env)?;
 
-        if amount <= 0 {
-            return Err(Error::ZeroAmount);
-        }
-        if reference.len() > MAX_REFERENCE_LEN {
-            return Err(Error::ReferenceTooLong);
-        }
-        // Last Deposit Record (for Cooldown and Anti-Sandwich)
-        let key = DataKey::LastDeposit(from.clone());
-        let current_ledger = env.ledger().sequence();
-        let cooldown: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::CooldownLedgers)
-            .unwrap_or(0);
-        let anti_sandwich: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::AntiSandwichDelay)
-            .unwrap_or(0);
+        if amount <= 0 { return Err(Error::ZeroAmount); }
+        if reference.len() > MAX_REFERENCE_LEN { return Err(Error::ReferenceTooLong); }
+
+        // Cooldown
+        let cooldown: u32 = env.storage().instance().get(&DataKey::CooldownLedgers).unwrap_or(0);
         if cooldown > 0 {
+            let key = DataKey::LastDeposit(from.clone());
             if let Some(last) = env.storage().temporary().get::<DataKey, u32>(&key) {
-                if current_ledger < last.saturating_add(cooldown) {
+                if env.ledger().sequence() < last.saturating_add(cooldown) {
                     return Err(Error::CooldownActive);
                 }
             }
+            env.storage().temporary().set(&key, &env.ledger().sequence());
+            env.storage().temporary().extend_ttl(&key, cooldown, cooldown);
         }
-
-        env.storage().temporary().set(&key, &current_ledger);
-        let max_delay = cooldown.max(anti_sandwich).max(1);
-        env.storage()
-            .temporary()
-            .extend_ttl(&key, max_delay, max_delay + 100);
 
         // Allowlist
-        let global_allowlist_on: bool = env
-            .storage()
-            .instance()
-            .get(&DataKey::AllowlistEnabled)
-            .unwrap_or(false);
-
-        if global_allowlist_on {
-            if !env
-                .storage()
-                .persistent()
-                .has(&DataKey::Allowed(from.clone()))
-            {
-                return Err(Error::NotAllowed);
-            }
-        } else {
-            // Per-token allowlist check (Issue #354)
-            let token_allowlist_on: bool = env
-                .storage()
-                .instance()
-                .get(&DataKey::TokenAllowlistEnabled(token.clone()))
-                .unwrap_or(false);
-            if token_allowlist_on
-                && !env
-                    .storage()
-                    .persistent()
-                    .has(&DataKey::TokenAllowed(token.clone(), from.clone()))
-            {
-                return Err(Error::NotAllowed);
-            }
-        }
-
-        // Denylist
-        if env
-            .storage()
-            .persistent()
-            .has(&DataKey::Denied(from.clone()))
-        {
-            return Err(Error::AddressDenied);
+        let allowlist_on: bool = env.storage().instance().get(&DataKey::AllowlistEnabled).unwrap_or(false);
+        if allowlist_on && !env.storage().persistent().has(&DataKey::Allowed(from.clone())) {
+            return Err(Error::NotAllowed);
         }
 
         // Registry & Limit
-        let mut config: TokenConfig = env
-            .storage()
-            .persistent()
-            .get(&DataKey::TokenRegistry(token.clone()))
+        let mut config: TokenConfig = env.storage().persistent().get(&DataKey::TokenRegistry(token.clone()))
             .ok_or(Error::TokenNotWhitelisted)?;
-        // ── Issue #113: minimum deposit floor ────────────────────────────
-        let min_deposit: i128 = env
-            .storage()
-            .instance()
-            .get(&DataKey::MinDeposit)
-            .unwrap_or(1);
-        if amount < min_deposit {
-            return Err(Error::BelowMinimum);
-        }
-        if amount > config.limit {
-            return Err(Error::ExceedsLimit);
-        }
-        Self::enforce_daily_deposit_limit(&env, &from, &token, amount, &config)?;
+        if amount > config.limit { return Err(Error::ExceedsLimit); }
 
-        // Fiat Limit & Slippage
-        let actual_price = Self::validate_fiat_limit(&env, &from, &token, amount)?;
-        Self::check_slippage(&env, expected_price, actual_price, max_slippage)?;
+        // Fiat Limit
+        Self::validate_fiat_limit(&env, &from, &token, amount)?;
 
         // Transfer
         let token_client = token::Client::new(&env, &token);
         token_client.transfer(&from, env.current_contract_address(), &amount);
 
         // State update
-        let receipt_counter: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::ReceiptCounter)
-            .unwrap_or(0);
-
-        // Formalize receipt ID derivation (deterministic + unique via counter)
-        // Rule: SHA256(XDR(depositor, amount, ledger, reference, counter))
-        let derivation_data = (
-            from.clone(),
-            amount,
-            env.ledger().sequence(),
-            reference.clone(),
-            receipt_counter,
-        );
-        let receipt_id = env.crypto().sha256(&derivation_data.to_xdr(&env));
-
-        // Collision check (safety)
-        if env
-            .storage()
-            .persistent()
-            .has(&DataKey::Receipt(receipt_id.clone().into()))
-        {
-            return Err(Error::InternalError);
-        }
-
+        let receipt_id: u64 = env.storage().instance().get(&DataKey::ReceiptCounter).unwrap_or(0);
         let receipt = Receipt {
-            id: receipt_id.clone().into(),
+            id: receipt_id,
             depositor: from.clone(),
             amount,
             ledger: env.ledger().sequence(),
             reference,
             refunded: false,
-            memo_hash: memo_hash.clone(),
         };
         env.storage()
             .persistent()
@@ -1283,21 +1147,22 @@ impl FiatBridge {
         }
         .publish(&env);
 
-        Self::check_invariants(&env, &token)?;
-
-        Ok(receipt_hash)
+        Ok(receipt_id)
     }
 
-    /// Validates that `memo_hash`, when provided, is not all zeros.
-    /// A zero hash (32 bytes of `0x00`) is rejected as it indicates a missing or
-    /// placeholder SHA-256 hash rather than a real external transaction reference.
-    fn validate_memo_hash(env: &Env, memo_hash: &Option<BytesN<32>>) -> Result<(), Error> {
-        if let Some(hash) = memo_hash {
-            let zero_hash = BytesN::from_array(env, &[0u8; 32]);
-            if hash == &zero_hash {
-                return Err(Error::InvalidMemoHash);
-            }
+    pub fn withdraw(env: Env, to: Address, amount: i128, token: Address) -> Result<(), Error> {
+        env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+
+        if amount <= 0 { return Err(Error::ZeroAmount); }
+        let client = token::Client::new(&env, &token);
+        if amount > client.balance(&env.current_contract_address()) {
+            return Err(Error::InsufficientFunds);
         }
+        client.transfer(&env.current_contract_address(), &to, &amount);
+        #[allow(deprecated)]
+        env.events().publish((Symbol::new(&env, "withdraw"), to), amount);
         Ok(())
     }
 
@@ -1356,47 +1221,27 @@ impl FiatBridge {
             return Err(Error::InsufficientFunds);
         }
 
+        let execute_amount = match partial_amount {
+            Some(amt) => {
+                if amt <= 0 || amt > request.amount { return Err(Error::ZeroAmount); }
+                amt
+            }
+            None => request.amount,
+        };
+
+        if execute_amount > balance { return Err(Error::InsufficientFunds); }
+
+        token_client.transfer(&env.current_contract_address(), &request.to, &execute_amount);
+
+        if execute_amount == request.amount {
+            env.storage().persistent().remove(&DataKey::WithdrawQueue(request_id));
+        } else {
+            request.amount -= execute_amount;
+            env.storage().persistent().set(&DataKey::WithdrawQueue(request_id), &request);
+        }
+
         Ok(())
     }
-
-    pub fn withdraw(
-        env: Env,
-        caller: Address,
-        to: Address,
-        amount: i128,
-        token: Address,
-    ) -> Result<(), Error> {
-        env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(Error::NotInitialized)?;
-
-        let operator: Option<Address> = env.storage().instance().get(&DataKey::WithdrawOperator);
-
-        if caller == admin {
-            caller.require_auth();
-        } else if let Some(op) = operator {
-            if caller == op {
-                caller.require_auth();
-            } else {
-                return Err(Error::Unauthorized);
-            }
-        } else {
-            return Err(Error::Unauthorized);
-        }
-
-        Self::require_not_paused(&env)?;
-
-        if amount <= 0 {
-            return Err(Error::ZeroAmount);
-        }
-
-        // ── Issue #109: prevent tokens from being locked inside the contract ──
-        if to == env.current_contract_address() {
-            return Err(Error::InvalidRecipient);
-        }
 
         Self::enforce_withdrawal_quota(&env, &to, amount, &token)?;
         // ── Issue #209: circuit breaker check ────────────────────────────
@@ -2156,44 +2001,14 @@ impl FiatBridge {
     }
 
     pub fn set_cooldown(env: Env, ledgers: u32) -> Result<(), Error> {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(Error::NotInitialized)?;
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).ok_or(Error::NotInitialized)?;
         admin.require_auth();
-        env.storage()
-            .instance()
-            .set(&DataKey::CooldownLedgers, &ledgers);
-        Ok(())
-    }
-
-    /// Configure the withdrawal cooldown applied after a large deposit.
-    ///
-    /// - `ledgers`   – number of ledgers to wait before withdrawing.  0 disables the guard.
-    /// - `threshold` – minimum deposit amount (inclusive) that triggers the cooldown.  0 disables.
-    pub fn set_withdrawal_cooldown(env: Env, ledgers: u32, threshold: i128) -> Result<(), Error> {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(Error::NotInitialized)?;
-        admin.require_auth();
-        env.storage()
-            .instance()
-            .set(&DataKey::WithdrawCooldownLedgers, &ledgers);
-        env.storage()
-            .instance()
-            .set(&DataKey::WithdrawCooldownThreshold, &threshold);
+        env.storage().instance().set(&DataKey::CooldownLedgers, &ledgers);
         Ok(())
     }
 
     pub fn set_lock_period(env: Env, ledgers: u32) -> Result<(), Error> {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(Error::NotInitialized)?;
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).ok_or(Error::NotInitialized)?;
         admin.require_auth();
         env.storage().instance().set(&DataKey::LockPeriod, &ledgers);
         Ok(())
@@ -2327,18 +2142,9 @@ impl FiatBridge {
     ///
     /// This prevents accidental lockouts if the wrong address is provided.
     pub fn transfer_admin(env: Env, new_admin: Address) -> Result<(), Error> {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(Error::NotInitialized)?;
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).ok_or(Error::NotInitialized)?;
         admin.require_auth();
-        if new_admin == admin {
-            return Err(Error::SameAdmin);
-        }
-        env.storage()
-            .instance()
-            .set(&DataKey::PendingAdmin, &new_admin);
+        env.storage().instance().set(&DataKey::PendingAdmin, &new_admin);
         Ok(())
     }
 
@@ -2347,11 +2153,7 @@ impl FiatBridge {
     /// Must be called by the `pending_admin` address set in a previous
     /// `transfer_admin` call.
     pub fn accept_admin(env: Env) -> Result<(), Error> {
-        let pending: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::PendingAdmin)
-            .ok_or(Error::NoPendingAdmin)?;
+        let pending: Address = env.storage().instance().get(&DataKey::PendingAdmin).ok_or(Error::NoPendingAdmin)?;
         pending.require_auth();
         env.storage().instance().set(&DataKey::Admin, &pending);
         env.storage().instance().remove(&DataKey::PendingAdmin);
@@ -2360,22 +2162,14 @@ impl FiatBridge {
 
     // ── Fiat Limits & Oracle ──────────────────────────────────────────────
     pub fn set_oracle(env: Env, oracle: Address) -> Result<(), Error> {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(Error::NotInitialized)?;
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).ok_or(Error::NotInitialized)?;
         admin.require_auth();
         env.storage().instance().set(&DataKey::Oracle, &oracle);
         Ok(())
     }
 
     pub fn set_fiat_limit(env: Env, limit_usd_cents: i128) -> Result<(), Error> {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(Error::NotInitialized)?;
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).ok_or(Error::NotInitialized)?;
         admin.require_auth();
         env.storage()
             .instance()
@@ -2486,29 +2280,14 @@ impl FiatBridge {
         Ok(())
     }
 
-    fn validate_fiat_limit(
-        env: &Env,
-        depositor: &Address,
-        token: &Address,
-        amount: i128,
-    ) -> Result<i128, Error> {
-        let oracle_addr = env.storage().instance().get::<_, Address>(&DataKey::Oracle);
-        let fiat_limit = env.storage().instance().get::<_, i128>(&DataKey::FiatLimit);
-
-        if oracle_addr.is_none() && fiat_limit.is_none() {
-            return Ok(0);
-        }
-
-        let price = if let Some(addr) = oracle_addr {
-            let oracle = crate::oracle::OracleClient::new(env, &addr);
-            let p = oracle.get_price(token).unwrap_or(0);
-            if p <= 0 {
-                return Err(Error::OraclePriceInvalid);
-            }
-            p
-        } else {
-            return Err(Error::OracleNotSet);
+    fn validate_fiat_limit(env: &Env, depositor: &Address, token: &Address, amount: i128) -> Result<(), Error> {
+        let fiat_limit: i128 = match env.storage().instance().get(&DataKey::FiatLimit) {
+            Some(l) => l, None => return Ok(()),
         };
+        let oracle_addr: Address = env.storage().instance().get(&DataKey::Oracle).ok_or(Error::OracleNotSet)?;
+        let oracle = crate::oracle::OracleClient::new(env, &oracle_addr);
+        let price = oracle.get_price(token).unwrap_or(0);
+        if price <= 0 { return Err(Error::OracleNotSet); }
 
         if let Some(limit) = fiat_limit {
             // ── Issue #220: use precision-safe fixed-point math ───────────
@@ -2580,23 +2359,12 @@ impl FiatBridge {
         }
 
         let curr = env.ledger().sequence();
-        let key = DataKey::UserDailyDeposit(depositor.clone(), token.clone());
-        let mut record: UserDailyDeposit =
-            env.storage()
-                .instance()
-                .get(&key)
-                .unwrap_or(UserDailyDeposit {
-                    amount: 0,
-                    window_start: curr,
-                });
+        let mut vol: UserDailyVolume = env.storage().instance().get(&DataKey::UserDailyVolume(depositor.clone()))
+            .unwrap_or(UserDailyVolume { usd_cents: 0, window_start: curr });
 
-        if curr >= record.window_start.saturating_add(WINDOW_LEDGERS) {
-            record.amount = 0;
-            record.window_start = curr;
-        }
-
-        if record.amount.saturating_add(amount) > config.daily_deposit_limit {
-            return Err(Error::DailyLimitExceeded);
+        if curr >= vol.window_start + WINDOW_LEDGERS {
+            vol.usd_cents = 0;
+            vol.window_start = curr;
         }
 
         // #499: use checked_add so a crafted large deposit cannot wrap the
@@ -2653,33 +2421,14 @@ impl FiatBridge {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
-        if delay < MIN_TIMELOCK_DELAY {
-            return Err(Error::ActionNotReady);
-        }
-        let id: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::NextActionID)
-            .unwrap_or(0);
+        if delay < MIN_TIMELOCK_DELAY { return Err(Error::ActionNotReady); }
+        let id: u64 = env.storage().instance().get(&DataKey::NextActionID).unwrap_or(0);
         let action = QueuedAdminAction {
-            action_type: action_type.clone(),
-            payload,
-            queued_ledger: env.ledger().sequence(),
+            action_type, payload, queued_ledger: env.ledger().sequence(),
             target_ledger: env.ledger().sequence() + delay,
         };
-        env.storage()
-            .persistent()
-            .set(&DataKey::QueuedAdminAction(id), &action);
-        env.storage()
-            .instance()
-            .set(&DataKey::NextActionID, &(id + 1));
-        AdminActionQueuedEvent {
-            version: EVENT_VERSION,
-            action_type: action_type.clone(),
-            action_id: id,
-            target_ledger: action.target_ledger,
-        }
-        .publish(&env);
+        env.storage().persistent().set(&DataKey::QueuedAdminAction(id), &action);
+        env.storage().instance().set(&DataKey::NextActionID, &(id+1));
         Ok(id)
     }
 
@@ -2708,16 +2457,9 @@ impl FiatBridge {
     /// * [`Error::ActionNotQueued`] – No action exists for the given `id`.
     /// * [`Error::ActionNotReady`]  – The timelock has not yet elapsed.
     pub fn execute_admin_action(env: Env, id: u64) -> Result<(), Error> {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(Error::NotInitialized)?;
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).ok_or(Error::NotInitialized)?;
         admin.require_auth();
-        let action: QueuedAdminAction = env
-            .storage()
-            .persistent()
-            .get(&DataKey::QueuedAdminAction(id))
+        let action: QueuedAdminAction = env.storage().persistent().get(&DataKey::QueuedAdminAction(id))
             .ok_or(Error::ActionNotQueued)?;
         if env.ledger().sequence() <= action.target_ledger {
             return Err(Error::ActionNotReady);
@@ -2829,8 +2571,6 @@ impl FiatBridge {
             if !was_active {
                 operators.push_back(operator.clone());
             }
-        } else if was_active {
-            operators = Self::remove_operator_from_list(&env, &operators, &operator);
         }
         env.storage()
             .instance()
@@ -3036,11 +2776,11 @@ impl FiatBridge {
             .get::<_, bool>(&DataKey::Operator(operator))
             .unwrap_or(false)
     }
-
-    pub fn get_operator_heartbeat(env: Env, operator: Address) -> Option<u32> {
-        env.storage()
-            .instance()
-            .get(&DataKey::OperatorHeartbeat(operator))
+    pub fn get_schema_version(env: Env) -> u32 { env.storage().instance().get(&DataKey::SchemaVersion).unwrap_or(0) }
+    pub fn migrate(env: Env) -> Result<(), Error> {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        Ok(())
     }
 
     /// Returns the next expected nonce for an operator's next heartbeat action.
@@ -5431,7 +5171,6 @@ impl FiatBridge {
                     return;
                 }
             }
-            i += 1;
         }
 
         env.storage()

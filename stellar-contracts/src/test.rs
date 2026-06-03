@@ -93,54 +93,19 @@ fn load_valid_contract_wasm_fixture() -> std::vec::Vec<u8> {
         }
     }
 
-    panic!("soroban-sdk doctest wasm fixture not found")
-}
-
-struct SnapshotEvent {
-    topics: StdVec<String>,
-    data: String,
-}
-
-fn new_snapshot_env() -> Env {
-    Env::new_with_config(EnvTestConfig {
-        capture_snapshot_at_drop: false,
-    })
-}
-
-fn snapshot_path(name: &str) -> PathBuf {
-    PathBuf::from("test_snapshots")
-        .join("events")
-        .join(format!("{name}.json"))
-}
-
-fn escape_json(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('"', "\\\"")
-}
-
-fn render_snapshot(events: &[SnapshotEvent]) -> String {
-    let mut out = String::from("[\n");
-    for (index, event) in events.iter().enumerate() {
-        out.push_str("  {\n");
-        out.push_str("    \"contract\": \"bridge\",\n");
-        out.push_str("    \"topics\": [\n");
-        for (topic_index, topic) in event.topics.iter().enumerate() {
-            out.push_str(&format!(
-                "      \"{}\"{}\n",
-                escape_json(topic),
-                if topic_index + 1 == event.topics.len() {
-                    ""
-                } else {
-                    ","
-                }
-            ));
-        }
-        out.push_str("    ],\n");
-        out.push_str(&format!("    \"data\": \"{}\"\n", escape_json(&event.data)));
-        out.push_str("  }");
-        if index + 1 != events.len() {
-            out.push(',');
-        }
-        out.push('\n');
+    #[test]
+    fn test_deposit_for_cooldown_blocks() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (_contract_id, bridge, _admin, token_addr, _, token_sac) = setup_bridge(&env, 500);
+        let payer = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        token_sac.mint(&payer, &1000);
+        bridge.set_cooldown(&10);
+        bridge.deposit_for(&payer, &beneficiary, &100, &token_addr, &Bytes::new(&env));
+        let result =
+            bridge.try_deposit_for(&payer, &beneficiary, &50, &token_addr, &Bytes::new(&env));
+        assert_eq!(result, Err(Ok(Error::CooldownActive)));
     }
     out.push(']');
     out.push('\n');
@@ -5319,3 +5284,4 @@ fn test_set_operator_circuit_breaker_not_affected_by_admin_role_confusion() {
     // Circuit breaker state should be unaffected
     assert!(!bridge.is_circuit_breaker_tripped());
 }
+ // closes mod tests

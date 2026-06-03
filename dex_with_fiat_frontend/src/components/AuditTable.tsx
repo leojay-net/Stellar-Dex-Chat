@@ -6,9 +6,6 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useToast } from '@/hooks/useToast';
 import Skeleton from '@/components/ui/skeleton/Skeleton';
 
-interface AuditTableProps {
-  onRefresh?: () => void;
-}
 
 interface FilterState {
   actionType: string;

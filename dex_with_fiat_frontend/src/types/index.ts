@@ -231,6 +231,7 @@ export interface AuditLogFilter {
   status?: AuditEntry['status'];
   txHash?: string;
 }
+
 // Filter Types for Transaction Views
 export type TransactionStatus =
   | 'pending'
