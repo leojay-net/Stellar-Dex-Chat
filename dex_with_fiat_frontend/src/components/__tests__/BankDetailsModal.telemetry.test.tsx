@@ -1,8 +1,14 @@
-import React from 'react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import BankDetailsModal from '../BankDetailsModal';
-import { chatTelemetry, setTelemetryConsent } from '@/lib/chatTelemetry';
+import { chatTelemetry } from '@/lib/chatTelemetry';
+
+// Mock dependencies
+vi.mock('@/lib/chatTelemetry', () => ({
+  chatTelemetry: {
+    fiatPayoutStep: vi.fn(),
+  },
+}));
 
 vi.mock('@/hooks/useNotifications', () => ({
   useNotifications: () => ({
@@ -26,24 +32,9 @@ vi.mock('@/hooks/useTxHistory', () => ({
   }),
 }));
 
-vi.mock('@/lib/cryptoPriceService', () => ({
-  fetchLockedQuote: vi.fn().mockResolvedValue({
-    ngnAmount: 1000,
-    xlmAmount: 10,
-    rate: 100,
-    expiresAt: Date.now() + 120000,
-  }),
-}));
-
-vi.mock('@/hooks/useAccessibleModal', () => ({
-  useAccessibleModal: () => ({}),
-}));
-
 vi.mock('@/hooks/useIdempotentAction', () => ({
   useIdempotentAction: () => ({
-    execute: async (
-      fn: (key: string) => Promise<void>,
-    ) => {
+    execute: async (fn: (key: string) => Promise<void>) => {
       await fn('test-key');
       return null;
     },
@@ -51,13 +42,115 @@ vi.mock('@/hooks/useIdempotentAction', () => ({
   }),
 }));
 
-describe('BankDetailsModal telemetry', () => {
+vi.mock('@/hooks/useAccessibleModal', () => ({
+  useAccessibleModal: vi.fn(),
+}));
+
+vi.mock('@/lib/clientSession', () => ({
+  getOrCreateClientSessionId: () => 'test-session-id',
+}));
+
+global.fetch = vi.fn();
+
+describe('BankDetailsModal - Telemetry Tracking', () => {
+  const mockOnClose = vi.fn();
+
   beforeEach(() => {
-    setTelemetryConsent(false);
-    setTelemetryConsent(true);
-    global.fetch = vi.fn().mockResolvedValue({
-      json: () =>
-        Promise.resolve({
+    vi.clearAllMocks();
+    (global.fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, data: [] }),
+    });
+  });
+
+  it('tracks modal open event', () => {
+    render(
+      <BankDetailsModal isOpen={true} onClose={mockOnClose} xlmAmount={100} />,
+    );
+
+    expect(chatTelemetry.fiatPayoutStep).toHaveBeenCalledWith({
+      action: 'open',
+      step: 1,
+      xlmAmount: 100,
+    });
+  });
+
+  it('tracks step changes', async () => {
+    (global.fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: [
+          {
+            id: 1,
+            name: 'Test Bank',
+            code: '001',
+            active: true,
+            country: 'NG',
+            currency: 'NGN',
+            type: 'nuban',
+          },
+        ],
+      }),
+    });
+
+    render(
+      <BankDetailsModal isOpen={true} onClose={mockOnClose} xlmAmount={100} />,
+    );
+
+    await waitFor(() => {
+      expect(chatTelemetry.fiatPayoutStep).toHaveBeenCalledWith({
+        action: 'step_change',
+        step: 1,
+        xlmAmount: 100,
+      });
+    });
+  });
+
+  it('tracks bank selection', async () => {
+    (global.fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: [
+          {
+            id: 1,
+            name: 'Test Bank',
+            code: '001',
+            active: true,
+            country: 'NG',
+            currency: 'NGN',
+            type: 'nuban',
+          },
+        ],
+      }),
+    });
+
+    render(
+      <BankDetailsModal isOpen={true} onClose={mockOnClose} xlmAmount={100} />,
+    );
+
+    await waitFor(() => {
+      const bankButton = screen.getByText('Test Bank');
+      expect(bankButton).toBeInTheDocument();
+    });
+
+    const bankButton = screen.getByText('Test Bank');
+    fireEvent.click(bankButton);
+
+    expect(chatTelemetry.fiatPayoutStep).toHaveBeenCalledWith({
+      action: 'bank_selected',
+      step: 1,
+      xlmAmount: 100,
+      bankCode: '001',
+    });
+  });
+
+  it('tracks account verification success', async () => {
+    (global.fetch as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
           success: true,
           data: [
             {
@@ -65,35 +158,121 @@ describe('BankDetailsModal telemetry', () => {
               name: 'Test Bank',
               code: '001',
               active: true,
-              country: 'Nigeria',
+              country: 'NG',
               currency: 'NGN',
               type: 'nuban',
             },
           ],
         }),
-    }) as unknown as typeof fetch;
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('emits fiat payout open telemetry when the modal becomes visible', async () => {
-    const spy = vi.spyOn(chatTelemetry, 'fiatPayoutStep');
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: { account_name: 'John Doe' },
+        }),
+      });
 
     render(
-      <BankDetailsModal isOpen onClose={vi.fn()} xlmAmount={12} />,
+      <BankDetailsModal isOpen={true} onClose={mockOnClose} xlmAmount={100} />,
     );
 
     await waitFor(() => {
-      expect(spy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: 'open',
-          step: 1,
-          xlmAmount: 12,
-        }),
-      );
+      const bankButton = screen.getByText('Test Bank');
+      fireEvent.click(bankButton);
+    });
+
+    const nextButton = screen.getByText('Next');
+    fireEvent.click(nextButton);
+
+    await waitFor(() => {
+      const accountInput = screen.getByPlaceholderText('0000000000');
+      expect(accountInput).toBeInTheDocument();
+    });
+
+    const accountInput = screen.getByPlaceholderText('0000000000');
+    fireEvent.change(accountInput, { target: { value: '1234567890' } });
+    fireEvent.blur(accountInput);
+
+    await waitFor(() => {
+      expect(chatTelemetry.fiatPayoutStep).toHaveBeenCalledWith({
+        action: 'account_verify_success',
+        step: 2,
+        xlmAmount: 100,
+      });
     });
   });
 
+  it('tracks account verification failure', async () => {
+    (global.fetch as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: [
+            {
+              id: 1,
+              name: 'Test Bank',
+              code: '001',
+              active: true,
+              country: 'NG',
+              currency: 'NGN',
+              type: 'nuban',
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: false,
+          message: 'Invalid account',
+        }),
+      });
+
+    render(
+      <BankDetailsModal isOpen={true} onClose={mockOnClose} xlmAmount={100} />,
+    );
+
+    await waitFor(() => {
+      const bankButton = screen.getByText('Test Bank');
+      fireEvent.click(bankButton);
+    });
+
+    const nextButton = screen.getByText('Next');
+    fireEvent.click(nextButton);
+
+    await waitFor(() => {
+      const accountInput = screen.getByPlaceholderText('0000000000');
+      expect(accountInput).toBeInTheDocument();
+    });
+
+    const accountInput = screen.getByPlaceholderText('0000000000');
+    fireEvent.change(accountInput, { target: { value: '1234567890' } });
+    fireEvent.blur(accountInput);
+
+    await waitFor(() => {
+      expect(chatTelemetry.fiatPayoutStep).toHaveBeenCalledWith({
+        action: 'account_verify_fail',
+        step: 2,
+        xlmAmount: 100,
+        errorMessage: 'Invalid account',
+      });
+    });
+  });
+
+  it('tracks modal close event', () => {
+    const { rerender } = render(
+      <BankDetailsModal isOpen={true} onClose={mockOnClose} xlmAmount={100} />,
+    );
+
+    const closeButton = screen.getByRole('button', { name: /close/i });
+    fireEvent.click(closeButton);
+
+    expect(chatTelemetry.fiatPayoutStep).toHaveBeenCalledWith({
+      action: 'close',
+      step: 1,
+      xlmAmount: 100,
+    });
+  });
 });

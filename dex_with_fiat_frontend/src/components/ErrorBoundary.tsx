@@ -4,6 +4,7 @@ import React from 'react';
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
+  fallback?: React.ReactNode;
   isDarkMode?: boolean;
   title?: string;
   message?: string;
@@ -34,6 +35,10 @@ export default class ErrorBoundary extends React.Component<
 
   public render() {
     if (this.state.hasError) {
+      if (this.props.fallback !== undefined) {
+        return this.props.fallback;
+      }
+
       const isDarkMode = this.props.isDarkMode ?? true;
 
       return (

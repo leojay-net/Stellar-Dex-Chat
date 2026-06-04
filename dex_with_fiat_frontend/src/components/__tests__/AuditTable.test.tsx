@@ -12,6 +12,50 @@ describe('AuditTable', () => {
     vi.restoreAllMocks();
   });
 
+  it('renders skeleton rows while loading and hides them once data arrives', async () => {
+    let resolveFetch!: (value: unknown) => void;
+    const fetchPromise = new Promise((resolve) => { resolveFetch = resolve; });
+
+    vi.stubGlobal('fetch', vi.fn(() => fetchPromise));
+
+    render(React.createElement(AuditTable));
+
+    // While the fetch is in-flight the table should be in aria-busy state
+    const busyTable = await waitFor(() => screen.getByRole('table', { name: /loading audit entries/i }));
+    expect(busyTable).toHaveAttribute('aria-busy', 'true');
+
+    // Skeleton cells are present (5 rows × 6 cells = 30 skeleton divs)
+    const skeletonCells = busyTable.querySelectorAll('td');
+    expect(skeletonCells.length).toBe(30);
+
+    // Resolve the fetch with real data
+    resolveFetch({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        entries: [
+          {
+            id: 'e1',
+            timestamp: new Date().toISOString(),
+            adminAddress: 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
+            actionType: 'deposit',
+            actionDescription: 'real-row',
+            txHash: 'abc123',
+            status: 'success',
+          },
+        ],
+        total: 1,
+      }),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('real-row')).toBeInTheDocument();
+    });
+
+    // The skeleton table should no longer be in the DOM
+    expect(screen.queryByRole('table', { name: /loading audit entries/i })).not.toBeInTheDocument();
+  });
+
   it('does not apply stale fetch results after a newer request (abort)', async () => {
     vi.stubGlobal(
       'fetch',

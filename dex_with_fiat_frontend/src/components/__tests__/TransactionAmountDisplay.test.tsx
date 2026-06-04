@@ -17,6 +17,10 @@ vi.mock('@/hooks/useCurrencyConversion', () => ({
   })),
 }));
 
+vi.mock('@/contexts/UserPreferencesContext', () => ({
+  useUserPreferences: () => ({ fiatCurrency: 'usd' }),
+}));
+
 // Mock framer-motion to avoid animation issues in tests
 vi.mock('framer-motion', () => ({
   motion: {
@@ -130,6 +134,47 @@ describe('TransactionAmountDisplay', () => {
   });
 });
 
+// ── Dynamic theme tokens (issue #593) ──────────────────────────────────
+describe('TransactionAmountDisplay - dynamic theme tokens', () => {
+  afterEach(cleanup);
+
+  it('renders the amount with the primary theme token instead of hardcoded colours', () => {
+    render(<TransactionAmountDisplay amount={100} asset="XLM" />);
+    const amountText = screen.getByText(/100 XLM ≈ \$12\.40 USD/i);
+    expect(amountText).toHaveClass('theme-text-primary');
+    expect(amountText.className).not.toMatch(/text-gray-300/);
+  });
+
+  it('renders the stored fiat line with the muted theme token', () => {
+    render(
+      <TransactionAmountDisplay
+        amount={100}
+        asset="XLM"
+        fiatAmount="12.40"
+        fiatCurrency="USD"
+      />
+    );
+    const storedFiat = screen.getByText(/Stored fiat: 12.40 USD/i);
+    expect(storedFiat).toHaveClass('theme-text-muted');
+    expect(storedFiat.className).not.toMatch(/text-gray-(400|500)/);
+  });
+});
+
+// ── Themed error border colour (issue #596) ─────────────────────────────
+describe('TransactionAmountDisplay - error border colour', () => {
+  afterEach(cleanup);
+
+  it('renders the error state with a themed danger border', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(<TransactionAmountDisplay amount={0} />);
+    const errorMessage = screen.getByText(/Amount must be positive/i);
+    expect(errorMessage).toHaveClass('theme-soft-danger');
+    expect(errorMessage).toHaveClass('border');
+    expect(errorMessage.className).not.toMatch(/text-red-500/);
+    consoleSpy.mockRestore();
+  });
+});
+
 describe('TransactionAmountDisplay - Framer Motion Animations', () => {
   afterEach(cleanup);
 
@@ -185,5 +230,154 @@ describe('TransactionAmountDisplay - Framer Motion Animations', () => {
     rerender(<TransactionAmountDisplay amount={200} asset="XLM" />);
     const displayText2 = screen.getByText(/200 XLM ≈ \$12\.40 USD/i);
     expect(displayText2).toBeInTheDocument();
+  });
+});
+
+// ── Rules of Hooks regression (issue #596 fix) ───────────────────────────────
+// Hooks were previously called after a conditional early return, violating the
+// Rules of Hooks. This caused intermittent glitches (incorrect border colour,
+// stale state) when the component transitioned between valid and invalid props.
+describe('TransactionAmountDisplay - Rules of Hooks regression', () => {
+  afterEach(cleanup);
+
+  it('does not crash when switching from invalid to valid props', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { rerender } = render(<TransactionAmountDisplay amount={0} />);
+    expect(screen.getByText(/Amount must be positive/i)).toBeDefined();
+
+    // Switching to valid props must not throw a hook-order error
+    expect(() => {
+      rerender(<TransactionAmountDisplay amount={100} asset="XLM" />);
+    }).not.toThrow();
+
+    expect(screen.getByText(/100 XLM ≈ \$12\.40 USD/i)).toBeDefined();
+    consoleSpy.mockRestore();
+  });
+
+  it('does not crash when switching from valid to invalid props', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { rerender } = render(<TransactionAmountDisplay amount={100} asset="XLM" />);
+    expect(screen.getByText(/100 XLM ≈ \$12\.40 USD/i)).toBeDefined();
+
+    expect(() => {
+      rerender(<TransactionAmountDisplay amount={null as unknown as number} />);
+    }).not.toThrow();
+
+    consoleSpy.mockRestore();
+  });
+
+  it('attaches containerRef to the DOM element so scrollIntoView is called', () => {
+    const scrollIntoView = vi.fn();
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoView;
+
+    render(<TransactionAmountDisplay amount={100} asset="XLM" />);
+
+    // The ref must be attached to the rendered div, so scrollIntoView fires
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'nearest' });
+  });
+
+  it('renders multiple valid/invalid cycles without hook-order errors', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { rerender } = render(<TransactionAmountDisplay amount={100} asset="XLM" />);
+
+    for (let i = 0; i < 3; i++) {
+      rerender(<TransactionAmountDisplay amount={-1} />);
+      rerender(<TransactionAmountDisplay amount={50 + i} asset="XLM" />);
+    }
+
+    // If no hook-order error, console.error is only called for invalid props
+    const hookErrors = consoleSpy.mock.calls.filter((args) =>
+      String(args[0]).toLowerCase().includes('hook')
+    );
+    expect(hookErrors).toHaveLength(0);
+
+    consoleSpy.mockRestore();
+  });
+});
+
+// ── Optimistic UI (issue #839) ─────────────────────────────────────────────
+
+describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
+  afterEach(cleanup);
+
+  it('shows confirmed conversion when not loading', async () => {
+    const { useCurrencyConversion } = await import('@/hooks/useCurrencyConversion');
+    const mockHook = vi.mocked(useCurrencyConversion);
+    mockHook.mockReturnValue({
+      displayText: '100 XLM ≈ $12.40 USD',
+      isLoading: false,
+      hasError: false,
+      fiatAmount: 12.4,
+      fiatCurrency: 'USD',
+      originalAmount: 100,
+      originalCurrency: 'XLM',
+    });
+
+    render(<TransactionAmountDisplay amount={100} asset="XLM" />);
+    expect(screen.getByText('100 XLM ≈ $12.40 USD')).toBeDefined();
+    expect(screen.getByTestId('transaction-amount-display')).toHaveAttribute(
+      'data-optimistic',
+      'false',
+    );
+  });
+
+  it('shows optimistic estimate while loading after a prior conversion', async () => {
+    const { useCurrencyConversion } = await import('@/hooks/useCurrencyConversion');
+    const mockHook = vi.mocked(useCurrencyConversion);
+    mockHook.mockReturnValue({
+      displayText: '100 XLM ≈ $12.40 USD',
+      isLoading: false,
+      hasError: false,
+      fiatAmount: 12.4,
+      fiatCurrency: 'USD',
+      originalAmount: 100,
+      originalCurrency: 'XLM',
+    });
+
+    const { rerender } = render(<TransactionAmountDisplay amount={100} asset="XLM" />);
+
+    mockHook.mockReturnValue({
+      displayText: '200 XLM ≈ ...',
+      isLoading: true,
+      hasError: false,
+      fiatAmount: null,
+      fiatCurrency: 'USD',
+      originalAmount: 200,
+      originalCurrency: 'XLM',
+    });
+
+    await act(async () => {
+      rerender(<TransactionAmountDisplay amount={200} asset="XLM" />);
+    });
+
+    expect(screen.getByTestId('transaction-amount-display')).toHaveAttribute(
+      'data-optimistic',
+      'true',
+    );
+    expect(screen.getByText(/200 XLM ≈ \$24\.80 USD/i)).toBeDefined();
+  });
+
+  it('falls back to hook display text when loading without a prior rate', async () => {
+    const { useCurrencyConversion } = await import('@/hooks/useCurrencyConversion');
+    const mockHook = vi.mocked(useCurrencyConversion);
+    mockHook.mockReturnValue({
+      displayText: '50 XLM ≈ ...',
+      isLoading: true,
+      hasError: false,
+      fiatAmount: null,
+      fiatCurrency: 'USD',
+      originalAmount: 50,
+      originalCurrency: 'XLM',
+    });
+
+    render(<TransactionAmountDisplay amount={50} asset="XLM" />);
+    expect(screen.getByText('50 XLM ≈ ...')).toBeDefined();
+    expect(screen.getByTestId('transaction-amount-display')).toHaveAttribute(
+      'data-optimistic',
+      'false',
+    );
   });
 });

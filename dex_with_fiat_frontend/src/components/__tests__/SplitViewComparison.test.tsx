@@ -22,6 +22,10 @@ vi.mock('@/hooks/useToast', () => ({
   }),
 }));
 
+vi.mock('@/contexts/ThemeContext', () => ({
+  useTheme: () => ({ isDarkMode: false, toggleDarkMode: vi.fn() }),
+}));
+
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
@@ -313,5 +317,42 @@ describe('SplitViewComparison – race condition regression (#523)', () => {
     fireEvent(window, new Event('offline'));
     await waitFor(() => expect(splitViewAddToastMock).toHaveBeenCalledTimes(1));
     expect(splitViewAddToastMock.mock.calls[0][0].severity).toBe('warning');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Dark mode fallback (Issue #838)
+// ---------------------------------------------------------------------------
+
+describe('SplitViewComparison – dark mode fallback (#838)', () => {
+  afterEach(() => {
+    document.documentElement.removeAttribute('data-theme');
+  });
+
+  it('exposes data-effective-theme from document data-theme when set to dark', () => {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    const splitView = makeSplitView();
+    render(<SplitViewComparison splitView={splitView} sessions={allSessions} />);
+    const dialog = screen.getByTestId('split-view-comparison');
+    expect(dialog.getAttribute('data-effective-theme')).toBe('dark');
+    expect(dialog.className).toContain('bg-slate-950');
+  });
+
+  it('exposes data-effective-theme light and light fallback classes', () => {
+    document.documentElement.setAttribute('data-theme', 'light');
+    const splitView = makeSplitView();
+    render(<SplitViewComparison splitView={splitView} sessions={allSessions} />);
+    const dialog = screen.getByTestId('split-view-comparison');
+    expect(dialog.getAttribute('data-effective-theme')).toBe('light');
+    expect(dialog.className).toContain('bg-slate-50');
+  });
+
+  it('keeps CSS variable classes alongside fallback surface colours', () => {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    const splitView = makeSplitView();
+    render(<SplitViewComparison splitView={splitView} sessions={allSessions} />);
+    const dialog = screen.getByTestId('split-view-comparison');
+    expect(dialog.className).toContain('var(--background)');
+    expect(dialog.className).toContain('bg-slate-950');
   });
 });

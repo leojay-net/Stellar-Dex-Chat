@@ -3,6 +3,22 @@
 import { useState, useEffect, useLayoutEffect } from 'react';
 import { FeatureFlag, getFeatureFlag, FeatureFlagNameSchema } from '@/lib/featureFlags';
 
+function trackFeatureFlag(flag: string, enabled: boolean) {
+  if (typeof window === 'undefined') return;
+  try {
+    const key = `ff_telemetry_${flag}`;
+    const prev = sessionStorage.getItem(key);
+    const next = String(enabled);
+    if (prev === next) return;
+    sessionStorage.setItem(key, next);
+    if (typeof window.gtag === 'function') {
+      window.gtag('event', 'feature_flag_evaluated', { flag_name: flag, flag_enabled: enabled });
+    }
+  } catch {
+    // telemetry must never throw
+  }
+}
+
 const useIsomorphicLayoutEffect =
   typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
@@ -33,6 +49,7 @@ export function useFeatureFlag(flag: FeatureFlag, scrollTargetId?: string) {
 
     const newEnabled = getFeatureFlag(flag);
     setIsEnabled(newEnabled);
+    trackFeatureFlag(flag, newEnabled);
 
     // Auto-scroll behavior: if flag becomes enabled and scrollTargetId is provided, scroll to it
     if (newEnabled && scrollTargetId && typeof window !== 'undefined') {

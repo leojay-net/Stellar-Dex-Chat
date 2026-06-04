@@ -5,6 +5,7 @@ import jsPDF from 'jspdf';
 import { useChatHistory } from '@/hooks/useChatHistory';
 import { useTxHistory } from '@/hooks/useTxHistory';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import {
   MessageSquare,
   Trash2,
@@ -56,6 +57,7 @@ function SessionRow({
 
   return (
     <div
+      data-active={isActive ? 'true' : 'false'}
       className={`group relative p-3 mb-2 rounded-lg cursor-pointer transition-all duration-200 border ${
         isActive
           ? 'bg-[var(--color-primary-soft)] border-[var(--color-primary)] shadow-md'
@@ -260,6 +262,17 @@ export default function ChatHistorySidebar({
     : visibleSessions;
   const filteredPinned = filteredSessions.filter((s) => s.pinned);
   const filteredUnpinned = filteredSessions.filter((s) => !s.pinned);
+  const filteredSessionIds = filteredSessions.map((s) => s.id).join(',');
+  const historyListRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (isCollapsed) return;
+
+    const activeRow = historyListRef.current?.querySelector<HTMLElement>('[data-active="true"]');
+    if (!activeRow) return;
+
+    activeRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [currentSessionId, filteredSessionIds, isCollapsed]);
 
   // ── Optimistic delete with undo ──────────────────────────────────────────
   const handleDeleteSession = useCallback((sessionId: string) => {
@@ -448,6 +461,11 @@ export default function ChatHistorySidebar({
   };
 
   return (
+    <ErrorBoundary
+      title="Sidebar unavailable"
+      message="An unexpected error occurred in the chat history panel. Your conversations are safe."
+      retryLabel="Reload sidebar"
+    >
     <div
       className={`theme-surface theme-border h-full flex flex-col transition-all duration-300 border-r ${
         isCollapsed ? 'w-20' : 'w-full'
@@ -567,7 +585,7 @@ export default function ChatHistorySidebar({
               </div>
             )}
 
-            <div className={`p-2 ${isCollapsed ? 'flex flex-col items-center' : ''}`}>
+            <div ref={historyListRef} className={`p-2 ${isCollapsed ? 'flex flex-col items-center' : ''}`}>
               {!hasHistory ? (
                 <EmptyState
                   icon={MessageSquare}
@@ -823,5 +841,6 @@ export default function ChatHistorySidebar({
         </div>
       )}
     </div>
+    </ErrorBoundary>
   );
 }

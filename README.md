@@ -128,8 +128,54 @@ Before you begin, ensure you have the following installed:
 - **npm** or **yarn**
 - **Rust** & Cargo tooling + `wasm32-unknown-unknown` target
 - **Stellar CLI** (for interacting with Soroban)
+- **Docker** & **Docker Compose** (optional, for quick start)
 
-## Installation & Setup
+## Quick Start with Docker
+
+The fastest way to get the full stack running locally is with Docker Compose. This boots the frontend and a local Soroban network with no manual setup required.
+
+### Prerequisites
+- Docker Desktop or Docker Engine + Docker Compose
+- No need to install Node.js, Rust, or Stellar CLI manually
+
+### Steps
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/leojay-net/DEX-CHAT.git
+cd DEX-CHAT
+
+# 2. Copy the Docker environment file
+cp .env.docker dex_with_fiat_frontend/.env.local
+
+# 3. Start the full stack
+docker compose up
+
+# The services will be available at:
+# - Frontend: http://localhost:3000
+# - Soroban RPC: http://localhost:8000/soroban/rpc
+# - Horizon API: http://localhost:8000
+```
+
+### What's Included
+
+- **soroban-local-net**: Stellar quickstart image running a standalone Soroban network
+- **frontend**: Next.js development server with hot reload
+- **Pre-configured networking**: Services can communicate with each other
+
+### Stopping the Stack
+
+```bash
+# Stop and remove containers
+docker compose down
+
+# Stop and remove containers + volumes (clean slate)
+docker compose down -v
+```
+
+## Installation & Setup (Manual)
+
+If you prefer to run services individually or need more control:
 
 ### 1. Clone the Repository
 

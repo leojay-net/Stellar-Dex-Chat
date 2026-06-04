@@ -22,6 +22,11 @@
   --color-overlay: rgba(15, 23, 42, 0.62);
   --color-scrollbar-track: #e2e8f0;
   --color-scrollbar-thumb: #94a3b8;
+  /* Chart-specific semantic tokens (#452) */
+  --color-chart-primary: var(--color-primary);
+  --color-chart-grid: var(--color-border);
+  --color-chart-text: var(--color-text-muted);
+  --color-chart-background: var(--color-surface);
 }
 
 [data-theme='dark'] {
@@ -46,6 +51,11 @@
   --color-overlay: rgba(2, 6, 23, 0.76);
   --color-scrollbar-track: #111827;
   --color-scrollbar-thumb: #475569;
+  /* Chart-specific semantic tokens (#452) */
+  --color-chart-primary: var(--color-primary);
+  --color-chart-grid: var(--color-border);
+  --color-chart-text: var(--color-text-muted);
+  --color-chart-background: var(--color-surface);
 }
 
 body {
@@ -375,6 +385,22 @@ select:focus {
 
 .theme-input::placeholder {
   color: var(--color-text-muted);
+}
+
+/*
+ * Explicit theme-token border colours for inputs (#632).
+ *
+ * Applying the border colour through a dedicated class (specificity 0,1,0)
+ * reliably beats the Tailwind preflight `*` border-color reset (specificity
+ * 0,0,0), so the intended themed border is rendered deterministically instead
+ * of an incorrect fallback colour. `-invalid` surfaces an error/warning state.
+ */
+.theme-input-border {
+  border-color: var(--color-border);
+}
+
+.theme-input-border-invalid {
+  border-color: var(--color-warning);
 }
 
 .theme-primary-button {

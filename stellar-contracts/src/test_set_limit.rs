@@ -45,8 +45,8 @@ fn fixture_with_limit(limit: i128) -> Fixture<'_> {
     let contract_id = env.register(FiatBridge, ());
     let bridge = FiatBridgeClient::new(&env, &contract_id);
 
-    let reference = Bytes::from_slice(&env, b"test_reference");
-    bridge.init(&admin, &token_addr, &reference);
+    let signers = vec![&env, admin.clone()];
+    bridge.init(&admin, &token_addr, &1_000_000, &1, &signers, &1);
 
     Fixture {
         env,
@@ -86,12 +86,8 @@ fn set_limit_emits_set_limit_event_with_correct_fields() {
     let topic_symbol = ScVal::Symbol(ScSymbol(
         StringM::try_from("set_limit_event").expect("event topic"),
     ));
-    let limit_key = ScVal::Symbol(ScSymbol(
-        StringM::try_from("limit").expect("field name"),
-    ));
-    let token_key = ScVal::Symbol(ScSymbol(
-        StringM::try_from("token").expect("field name"),
-    ));
+    let limit_key = ScVal::Symbol(ScSymbol(StringM::try_from("limit").expect("field name")));
+    let token_key = ScVal::Symbol(ScSymbol(StringM::try_from("token").expect("field name")));
     let expected_token: ScVal = (&f.token_addr).try_into().expect("address → ScVal");
 
     let expected_limit: ScVal = 1_234i128.try_into().expect("i128 → ScVal");
@@ -151,14 +147,27 @@ fn set_limit_takes_effect_for_deposits() {
     // Tighten the per-token cap and confirm a deposit at or above the new
     // limit is rejected with `ExceedsLimit`.
     f.bridge.set_limit(&f.token_addr, &500);
-    let result =
-        f.bridge
-            .try_deposit(&user, &600, &f.token_addr, &Bytes::new(&f.env), &0, &0, &None);
+    let result = f.bridge.try_deposit(
+        &user,
+        &600,
+        &f.token_addr,
+        &Bytes::new(&f.env),
+        &0,
+        &0,
+        &None,
+    );
     assert_eq!(result, Err(Ok(Error::ExceedsLimit)));
 
     // A deposit at the new cap must still succeed.
-    f.bridge
-        .deposit(&user, &500, &f.token_addr, &Bytes::new(&f.env), &0, &0, &None);
+    f.bridge.deposit(
+        &user,
+        &500,
+        &f.token_addr,
+        &Bytes::new(&f.env),
+        &0,
+        &0,
+        &None,
+    );
 }
 
 // ── Rejection paths ────────────────────────────────────────────────────
@@ -283,4 +292,49 @@ fn max_cap_check_runs_before_token_whitelist_check() {
     let stranger = Address::generate(&f.env);
     let result = f.bridge.try_set_limit(&stranger, &10_000);
     assert_eq!(result, Err(Ok(Error::ExceedsLimitMaxCap)));
+}
+
+// ── Issue 4: set_limit boundary checks ──────────────────────────────────
+
+#[test]
+fn set_limit_rejects_zero_limit() {
+    let f = fixture_with_limit(500);
+
+    let result = f.bridge.try_set_limit(&f.token_addr, &0);
+    assert_eq!(result, Err(Ok(Error::ZeroAmount)));
+
+    // The stored limit must remain unchanged
+    assert_eq!(f.bridge.get_limit(), 500);
+}
+
+#[test]
+fn set_limit_rejects_negative_limit() {
+    let f = fixture_with_limit(500);
+
+    let result = f.bridge.try_set_limit(&f.token_addr, &-1);
+    assert_eq!(result, Err(Ok(Error::ZeroAmount)));
+
+    assert_eq!(f.bridge.get_limit(), 500);
+}
+
+#[test]
+fn set_limit_rejects_large_negative_limit() {
+    let f = fixture_with_limit(500);
+
+    let result = f.bridge.try_set_limit(&f.token_addr, &-100_000);
+    assert_eq!(result, Err(Ok(Error::ZeroAmount)));
+
+    assert_eq!(f.bridge.get_limit(), 500);
+}
+
+#[test]
+fn set_limit_positive_limit_succeeds_with_zero_max_cap_set_after() {
+    // Setting a positive limit should succeed even if max_cap hasn't been
+    // explicitly configured (defaults to i128::MAX).
+    let f = fixture_with_limit(500);
+
+    // Set max_cap to a high value, then set limit below it.
+    f.bridge.set_limit_max_cap(&5_000);
+    f.bridge.set_limit(&f.token_addr, &3_000);
+    assert_eq!(f.bridge.get_limit(), 3_000);
 }

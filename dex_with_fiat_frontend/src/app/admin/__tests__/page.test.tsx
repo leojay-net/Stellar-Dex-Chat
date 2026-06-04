@@ -1,3 +1,4 @@
+import React from 'react';
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import '@testing-library/jest-dom';
@@ -21,8 +22,12 @@ vi.mock('@/components/AdminGuard', () => ({
   ),
 }));
 
+const auditTableMock = vi.hoisted(() =>
+  vi.fn(() => <div data-testid="audit-table">Audit Table</div>),
+);
+
 vi.mock('@/components/AuditTable', () => ({
-  default: () => <div data-testid="audit-table">Audit Table</div>,
+  default: (...args: unknown[]) => auditTableMock(...args),
 }));
 
 vi.mock('next/link', () => ({
@@ -37,9 +42,16 @@ vi.mock('next/link', () => ({
 
 globalThis.fetch = vi.fn() as unknown as typeof fetch;
 
+function resetAuditTableMock() {
+  auditTableMock.mockImplementation(() => (
+    <div data-testid="audit-table">Audit Table</div>
+  ));
+}
+
 describe('AdminDashboard - Dark Mode Support', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetAuditTableMock();
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       json: async () => [],
@@ -60,18 +72,24 @@ describe('AdminDashboard - Dark Mode Support', () => {
     expect(container?.className).toContain('theme-');
   });
 
-  it('applies CSS tokens for colors', async () => {
+  it('applies CSS tokens for colors — no raw Tailwind colour classes remain', async () => {
     render(<AdminDashboard />);
 
     await waitFor(() => {
       expect(screen.getByText('Admin Dashboard')).toBeInTheDocument();
     });
 
-    // Verify no hardcoded Tailwind color classes
     const html = document.body.innerHTML;
-    expect(html).not.toMatch(/bg-blue-\d+/);
-    expect(html).not.toMatch(/text-gray-\d+/);
-    expect(html).not.toMatch(/border-gray-\d+/);
+
+    // Acceptance-criteria checks: none of these raw Tailwind colour classes should appear
+    expect(html).not.toMatch(/\bbg-gray-\d+\b/);
+    expect(html).not.toMatch(/\bbg-white\b/);
+    expect(html).not.toMatch(/\bbg-blue-\d+\b/);
+    expect(html).not.toMatch(/\bbg-indigo-\d+\b/);
+    expect(html).not.toMatch(/\btext-gray-\d+\b/);
+    expect(html).not.toMatch(/\bborder-blue-\d+\b/);
+    expect(html).not.toMatch(/\bborder-indigo-\d+\b/);
+    expect(html).not.toMatch(/\bborder-gray-\d+\b/);
   });
 
   it('uses theme utility classes for surfaces', async () => {
@@ -143,6 +161,7 @@ describe('AdminDashboard - Dark Mode Support', () => {
 describe('AdminDashboard - Optimistic UI Updates', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetAuditTableMock();
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation((url) => {
       if (typeof url === 'string' && url.includes('/api/admin/audit-log')) {
         return Promise.resolve({
@@ -319,5 +338,187 @@ describe('AdminDashboard - Optimistic UI Updates', () => {
         actions: [],
       }),
     } as Response);
+  });
+});
+
+describe('AdminDashboard - Clipboard copy button (#834)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetAuditTableMock();
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation((url) => {
+      if (typeof url === 'string' && url.includes('/api/admin/audit-log')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            entries: [
+              {
+                id: '1',
+                timestamp: '2024-01-01T00:00:00Z',
+                action: 'withdrawal_approved',
+                adminAddress: 'GTEST123',
+                parameters: { amount: 100 },
+                result: 'success',
+              },
+            ],
+            page: 1,
+            pageSize: 20,
+            total: 1,
+            totalPages: 1,
+            actions: ['withdrawal_approved'],
+          }),
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => [],
+      } as Response);
+    });
+  });
+
+  it('renders copy buttons for the address, timestamp and parameters columns', async () => {
+    render(<AdminDashboard />);
+
+    expect(
+      await screen.findByRole('button', {
+        name: /copy admin address GTEST123/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /copy timestamp/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /copy parameters/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('copies the admin address to the clipboard when clicked', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(<AdminDashboard />);
+
+    const copyButton = await screen.findByRole('button', {
+      name: /copy admin address GTEST123/i,
+    });
+
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('GTEST123');
+    });
+  });
+
+  it('copies the formatted parameters when the parameters copy button is clicked', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(<AdminDashboard />);
+
+    const copyButton = await screen.findByRole('button', {
+      name: /copy parameters/i,
+    });
+
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('amount: 100');
+    });
+  });
+
+  it('copies the exact ISO timestamp when the timestamp copy button is clicked', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(<AdminDashboard />);
+
+    const copyButton = await screen.findByRole('button', {
+      name: /copy timestamp/i,
+    });
+
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('2024-01-01T00:00:00Z');
+    });
+  });
+
+  it('shows the success-state icon after a successful copy', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(<AdminDashboard />);
+
+    const copyButton = await screen.findByRole('button', {
+      name: /copy admin address GTEST123/i,
+    });
+
+    // Before clicking, the success (green check) icon is not shown.
+    expect(copyButton.querySelector('.text-green-400')).toBeNull();
+
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(copyButton.querySelector('.text-green-400')).not.toBeNull();
+    });
+  });
+});
+
+describe('AdminDashboard - ErrorBoundary protection', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetAuditTableMock();
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    } as Response);
+  });
+
+  it('renders AdminErrorFallback when a child component throws', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    auditTableMock.mockImplementation(() => {
+      throw new Error('Simulated runtime crash');
+    });
+
+    render(<AdminDashboard />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Failed to load dashboard/i)).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+    expect(screen.queryByText('Admin Dashboard')).not.toBeInTheDocument();
+
+    consoleError.mockRestore();
+    auditTableMock.mockImplementation(() => (
+      <div data-testid="audit-table">Audit Table</div>
+    ));
+  });
+
+  it('shows a retry button that reloads the page on click', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const reloadSpy = vi.fn();
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, reload: reloadSpy },
+      writable: true,
+    });
+
+    auditTableMock.mockImplementation(() => {
+      throw new Error('Simulated crash');
+    });
+
+    render(<AdminDashboard />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Failed to load dashboard/i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+    expect(reloadSpy).toHaveBeenCalledTimes(1);
+
+    consoleError.mockRestore();
+    auditTableMock.mockImplementation(() => (
+      <div data-testid="audit-table">Audit Table</div>
+    ));
   });
 });

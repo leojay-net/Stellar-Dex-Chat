@@ -107,6 +107,9 @@ function StellarChatInterfaceContent() {
   >(null);
   const [isReceiptDrawerOpen, setIsReceiptDrawerOpen] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  // Show the chat skeleton until the client has hydrated so the first paint
+  // isn't an empty conversation pane before messages are restored.
+  const [isHydrated, setIsHydrated] = useState(false);
   const { entries: txHistory, clearEntries: clearTxHistory } = useTxHistory();
   const accountDropdownRef = useRef<HTMLDivElement>(null);
   const reconnectNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -149,6 +152,10 @@ function StellarChatInterfaceContent() {
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  useEffect(() => {
+    setIsHydrated(true);
   }, []);
 
   useEffect(() => {
@@ -853,7 +860,7 @@ function StellarChatInterfaceContent() {
 
           {/* Messages */}
           <div className="flex-1 min-h-0 flex flex-col">
-            {isLoading && messages.length === 0 ? (
+            {!isHydrated || (isLoading && messages.length === 0) ? (
               <SkeletonChat />
             ) : (
               <ErrorBoundary

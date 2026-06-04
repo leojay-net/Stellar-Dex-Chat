@@ -347,26 +347,46 @@ try {
 
 ## 4. Execute Batch Admin Function
 
-The `execute_batch_admin` function allows admins to execute multiple administrative operations in a single transaction.
+The `execute_batch_admin` function allows admins to execute multiple administrative operations in a single transaction. This is more efficient than separate calls and maintains consistent state.
 
 ### Function Signature
+
 ```rust
 pub fn execute_batch_admin(env: Env, operations: Vec<BatchAdminOp>) -> Result<BatchResult, Error>
 ```
 
-### TypeScript Implementation
+### Supported Operations
+
+| Operation | Symbol | Payload Type | Description |
+|-----------|--------|--------------|-------------|
+| Set cooldown | `"set_cooldown"` | u32 (big-endian) | Sets cooldown period in ledgers |
+| Set lock period | `"set_lock"` | u32 (big-endian) | Sets lock period in ledgers |
+| Set withdrawal quota | `"set_quota"` | i128 (big-endian) | Sets daily withdrawal quota |
+| Set anti-sandwich delay | `"set_sandwich"` | u32 (big-endian) | Sets anti-sandwich delay in ledgers |
+| Pause | `"pause"` | (empty) | Pauses all user deposits/withdrawals |
+| Unpause | `"unpause"` | (empty) | Resumes user deposits/withdrawals |
+
+### Data Structures
 
 ```typescript
+/**
+ * A single administrative operation in a batch.
+ * Payload is binary-encoded based on operation type.
+ */
 interface BatchAdminOp {
-  op_type: string;
-  payload: Buffer;
+  op_type: string;      // Operation identifier (e.g., "set_cooldown")
+  payload: Buffer;      // Binary-encoded parameters
 }
 
+/**
+ * Result of executing a batch of administrative operations.
+ * Operations continue executing even if some fail (no rollback).
+ */
 interface BatchResult {
-  total_ops: number;
-  success_count: number;
-  failure_count: number;
-  failed_index: number | null;
+  total_ops: number;           // Total operations submitted
+  success_count: number;       // Number of successfully executed operations
+  failure_count: number;       // Number of failed operations
+  failed_index: number | null; // Index of first failure, or null if all succeeded
 }
 
 interface ExecuteBatchAdminParams {
@@ -374,8 +394,23 @@ interface ExecuteBatchAdminParams {
   adminPublicKey: string;
   signTx: (xdr: string) => Promise<string>;
 }
+```
 
-export async function executeBatchAdmin(params: ExecuteBatchAdminParams): Promise<{ hash: string; result: BatchResult }> {
+### TypeScript Implementation
+
+```typescript
+/**
+ * Execute multiple administrative operations in a single batch.
+ * 
+ * Key Behavior:
+ * - Operations execute sequentially in order
+ * - If operation N fails, operations N+1, N+2, ... still execute
+ * - State changes from successful operations persist even if later operations fail
+ * - This is NOT a transaction rollback scenario
+ */
+export async function executeBatchAdmin(
+  params: ExecuteBatchAdminParams
+): Promise<{ hash: string; result: BatchResult }> {
   try {
     const { operations, adminPublicKey, signTx } = params;
     
@@ -385,6 +420,41 @@ export async function executeBatchAdmin(params: ExecuteBatchAdminParams): Promis
     }
     if (operations.length > 100) {
       throw new Error('Maximum 100 operations allowed per batch');
+    }
+    
+    // Validate individual operations
+    for (let i = 0; i < operations.length; i++) {
+      const op = operations[i];
+      
+      // Check payload sizes based on operation type
+      const payloadSize = op.payload?.length ?? 0;
+      
+      if (['set_cooldown', 'set_lock', 'set_sandwich'].includes(op.op_type)) {
+        if (payloadSize !== 4) {
+          throw new Error(
+            `Operation ${i} (${op.op_type}): payload must be exactly 4 bytes ` +
+            `(got ${payloadSize})`
+          );
+        }
+      } else if (op.op_type === 'set_quota') {
+        if (payloadSize !== 16) {
+          throw new Error(
+            `Operation ${i} (set_quota): payload must be exactly 16 bytes ` +
+            `(got ${payloadSize})`
+          );
+        }
+      } else if (['pause', 'unpause'].includes(op.op_type)) {
+        if (payloadSize !== 0) {
+          throw new Error(
+            `Operation ${i} (${op.op_type}): payload must be empty ` +
+            `(got ${payloadSize} bytes)`
+          );
+        }
+      } else {
+        throw new Error(
+          `Operation ${i}: unknown operation type '${op.op_type}'`
+        );
+      }
     }
     
     // Convert operations to ScVals
@@ -407,15 +477,18 @@ export async function executeBatchAdmin(params: ExecuteBatchAdminParams): Promis
     const hash = await submitAndWait(signed);
     
     // Parse the result from transaction return value
-    // Note: You'll need to parse the actual return value from the transaction
+    // The contract returns a BatchResult struct with counts and first failure index
     const result: BatchResult = {
       total_ops: operations.length,
-      success_count: 0, // Parse from actual result
-      failure_count: 0, // Parse from actual result
-      failed_index: null, // Parse from actual result
+      success_count: 0,     // Parse from actual return value
+      failure_count: 0,     // Parse from actual return value
+      failed_index: null,   // Parse from actual return value
     };
     
     console.log(`Batch admin executed: ${hash}`);
+    console.log(`  Total: ${result.total_ops}, Success: ${result.success_count}, ` +
+                `Failure: ${result.failure_count}`);
+    
     return { hash, result };
     
   } catch (error) {
@@ -425,43 +498,232 @@ export async function executeBatchAdmin(params: ExecuteBatchAdminParams): Promis
     if (error.message.includes('Unauthorized')) {
       throw new Error('Only admin can execute batch operations.');
     }
-    if (error.message.includes('BatchOperationFailed')) {
-      throw new Error('One or more operations in the batch failed.');
-    }
     if (error.message.includes('NotInitialized')) {
       throw new Error('Contract is not initialized.');
+    }
+    if (error.message.includes('Overflow')) {
+      throw new Error('Internal counter overflow (extremely unlikely).');
     }
     
     throw error;
   }
 }
+```
 
-// Usage example
-try {
-  const result = await executeBatchAdmin({
-    operations: [
+### Payload Encoding Examples
+
+```typescript
+/**
+ * Helper functions to encode operation payloads.
+ * All numeric values use big-endian byte order.
+ */
+
+// Encode u32 (cooldown, lock, sandwich)
+function encodeU32(value: number): Buffer {
+  const buf = Buffer.alloc(4);
+  buf.writeUInt32BE(value, 0);
+  return buf;
+}
+
+// Encode i128 (withdrawal quota)
+function encodeI128(value: bigint): Buffer {
+  const buf = Buffer.alloc(16);
+  // High 64 bits
+  buf.writeBigInt64BE(value >> 64n, 0);
+  // Low 64 bits
+  buf.writeBigInt64BE(value & 0xFFFFFFFFFFFFFFFFn, 8);
+  return buf;
+}
+
+// Example: Create operations with proper payloads
+const operations: BatchAdminOp[] = [
+  {
+    op_type: 'set_cooldown',
+    payload: encodeU32(100),  // 100 ledgers
+  },
+  {
+    op_type: 'set_lock',
+    payload: encodeU32(50),   // 50 ledgers
+  },
+  {
+    op_type: 'set_quota',
+    payload: encodeI128(BigInt(1_000_000_000)),  // 1000 XLM in stroops
+  },
+  {
+    op_type: 'set_sandwich',
+    payload: encodeU32(3),    // 3 ledgers
+  },
+  {
+    op_type: 'pause',
+    payload: Buffer.alloc(0), // Empty payload
+  },
+];
+```
+
+### Usage Example
+
+```typescript
+async function updateContractConfiguration() {
+  try {
+    // Create batch operations
+    const operations: BatchAdminOp[] = [
       {
-        op_type: 'deny_address',
-        payload: Buffer.from('GB...address-to-deny'),
+        op_type: 'set_cooldown',
+        payload: Buffer.from([0x00, 0x00, 0x00, 0x64]),  // 100 ledgers (big-endian)
       },
       {
-        op_type: 'set_operator',
-        payload: Buffer.from('GB...new-operator'),
+        op_type: 'set_lock',
+        payload: Buffer.from([0x00, 0x00, 0x00, 0x32]),  // 50 ledgers
       },
-    ],
-    adminPublicKey: 'GB...admin-public-key',
-    signTx: async (xdr) => {
-      // Implement your signing logic here
-      return signedXdr;
-    },
-  });
-  console.log('Batch execution successful:', result);
-} catch (error) {
-  console.error('Batch execution error:', error.message);
+      {
+        op_type: 'set_sandwich',
+        payload: Buffer.from([0x00, 0x00, 0x00, 0x03]),  // 3 ledgers
+      },
+    ];
+    
+    // Execute the batch
+    const result = await executeBatchAdmin({
+      operations,
+      adminPublicKey: 'GBXYZ...',
+      signTx: async (xdr) => {
+        // Your wallet signing logic here
+        return signedXdr;
+      },
+    });
+    
+    // Interpret the result
+    console.log(`Batch completed: ${result.hash}`);
+    console.log(`  Total operations: ${result.result.total_ops}`);
+    console.log(`  Successful: ${result.result.success_count}`);
+    console.log(`  Failed: ${result.result.failure_count}`);
+    
+    if (result.result.failure_count > 0) {
+      console.warn(
+        `First failure at operation index: ${result.result.failed_index}`
+      );
+      // Note: Failed operations do NOT rollback earlier successful ones.
+      // Check which operations succeeded and which failed by analyzing events.
+    }
+    
+  } catch (error) {
+    console.error('Failed to update configuration:', error.message);
+  }
 }
 ```
 
-## Error Handling Patterns
+### Batch with Mixed Success/Failure Example
+
+```typescript
+/**
+ * Example: A batch where some operations fail
+ * 
+ * Key point: Successful operations' state changes persist even if later ops fail.
+ */
+async function batchWithPartialFailure() {
+  const operations: BatchAdminOp[] = [
+    {
+      op_type: 'set_cooldown',
+      payload: Buffer.from([0x00, 0x00, 0x00, 0x64]),  // Valid
+    },
+    {
+      op_type: 'set_lock',
+      payload: Buffer.alloc(0),  // ERROR: requires 4 bytes!
+    },
+    {
+      op_type: 'set_sandwich',
+      payload: Buffer.from([0x00, 0x00, 0x00, 0x03]),  // Still executes
+    },
+  ];
+  
+  const result = await executeBatchAdmin({
+    operations,
+    adminPublicKey: 'GBXYZ...',
+    signTx,
+  });
+  
+  // Result will be:
+  // {
+  //   total_ops: 3,
+  //   success_count: 2,       (operations 0 and 2)
+  //   failure_count: 1,       (operation 1)
+  //   failed_index: 1         (first failure at index 1)
+  // }
+  
+  // Contract state:
+  // - Cooldown: updated to 100 (from operation 0)
+  // - Lock period: unchanged (operation 1 failed, no effect)
+  // - Anti-sandwich delay: updated to 3 (from operation 2)
+}
+```
+
+### Error Handling
+
+```typescript
+/**
+ * Proper error handling for batch operations
+ */
+async function executeBatchWithErrorHandling() {
+  try {
+    const result = await executeBatchAdmin({
+      operations: [...],
+      adminPublicKey: 'GBXYZ...',
+      signTx,
+    });
+    
+    if (result.result.failure_count > 0) {
+      // Batch executed but had failures
+      console.warn(
+        `${result.result.success_count}/${result.result.total_ops} operations succeeded. ` +
+        `First failure at index ${result.result.failed_index}`
+      );
+      
+      // Recommended: Query contract state or events to determine exactly which 
+      // operations failed and plan recovery actions
+      
+      // Note: This is NOT an error - failures don't cause rollback.
+      // Operations that succeeded have already changed contract state.
+      
+      // Recovery strategies:
+      // 1. Retry just the failed operation with corrected payload
+      // 2. Check contract state to see which configs were actually updated
+      // 3. Review events to identify exact failure points
+    } else {
+      console.log(`All ${result.result.success_count} operations succeeded!`);
+    }
+    
+  } catch (error) {
+    // Batch did not execute (authorization, initialization, or parsing error)
+    if (error.message.includes('Unauthorized')) {
+      console.error('Caller is not the contract admin');
+    } else if (error.message.includes('NotInitialized')) {
+      console.error('Contract has not been initialized');
+    } else {
+      console.error('Unexpected error:', error.message);
+    }
+  }
+}
+```
+
+### Important Notes
+
+1. **No Rollback on Failure**: Unlike database transactions, batch operations do NOT rollback
+   - Successful operations' changes are final
+   - Failed operations have no effect (but don't undo earlier successes)
+
+2. **Execution Continues**: Even if operation N fails, operation N+1, N+2, ... execute
+
+3. **Payload Validation**: Always validate payload sizes and types before submission
+   - Mismatched payload sizes will cause operations to fail silently
+
+4. **Event Monitoring**: Use contract events to track which operations failed:
+   - `batch_fail` events indicate individual operation failures
+   - `batch_ok` event contains final counts
+
+5. **Authorization**: Only the contract admin can execute batch operations
+
+For more detailed information, see [BATCH_OPERATIONS.md](../stellar-contracts/docs/BATCH_OPERATIONS.md).
+
+
 
 ### Common Error Types
 

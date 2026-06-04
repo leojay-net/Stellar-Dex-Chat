@@ -44,8 +44,46 @@ describe('OfflineStatusBanner', () => {
     });
 
     render(<OfflineStatusBanner />);
-    expect(screen.getByRole('status')).toBeDefined();
+    const banner = screen.getByRole('status');
+    expect(banner).toBeDefined();
     expect(screen.getByText(/You are offline/i)).toBeDefined();
+  });
+
+  it('uses CSS variable tokens for colour — no raw Tailwind colour classes', () => {
+    (useOnlineStatus as any).mockReturnValue({
+      isOnline: false,
+      wasOffline: false,
+      resetWasOffline: mockResetWasOffline,
+    });
+
+    render(<OfflineStatusBanner />);
+    const html = document.body.innerHTML;
+    expect(html).not.toMatch(/\bbg-red-\d+\b/);
+    expect(html).not.toMatch(/\btext-red-\d+\b/);
+    expect(html).not.toMatch(/\bborder-red-\d+\b/);
+  });
+
+  it('marks decorative icons as aria-hidden', () => {
+    (useOnlineStatus as any).mockReturnValue({
+      isOnline: false,
+      wasOffline: false,
+      resetWasOffline: mockResetWasOffline,
+    });
+
+    render(<OfflineStatusBanner />);
+    const hiddenContainers = document.querySelectorAll('[aria-hidden="true"]');
+    expect(hiddenContainers.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('exposes an accessible label on the banner region', () => {
+    (useOnlineStatus as any).mockReturnValue({
+      isOnline: false,
+      wasOffline: false,
+      resetWasOffline: mockResetWasOffline,
+    });
+
+    render(<OfflineStatusBanner />);
+    expect(screen.getByLabelText(/offline status/i)).toBeDefined();
   });
 
   it('shows success toast when coming back online', () => {

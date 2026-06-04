@@ -10,7 +10,7 @@ use super::*;
 use soroban_sdk::{
     testutils::{Address as _, Events as _, Ledger},
     token::StellarAssetClient,
-    Address, Bytes, BytesN, Env,
+    vec, Address, Bytes, BytesN, Env,
 };
 
 fn setup(env: &Env) -> (Address, FiatBridgeClient<'_>, Address, Address, StellarAssetClient<'_>) {
@@ -22,7 +22,8 @@ fn setup(env: &Env) -> (Address, FiatBridgeClient<'_>, Address, Address, Stellar
     let sac = StellarAssetClient::new(env, &token_addr);
     let contract_id = env.register(FiatBridge, ());
     let bridge = FiatBridgeClient::new(env, &contract_id);
-    bridge.init(&admin, &token_addr, &Bytes::from_slice(env, b"ref"));
+    let signers = vec![env, admin.clone()];
+    bridge.init(&admin, &token_addr, &1_000_000, &1, &signers, &1);
     bridge.set_limit(&token_addr, &1_000_000i128);
     (contract_id, bridge, admin, token_addr, sac)
 }

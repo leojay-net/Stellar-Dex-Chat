@@ -12,7 +12,11 @@ import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import AuditTable from '@/components/AuditTable';
 import useBridgeStats from '@/hooks/useBridgeStats';
 import AdminGuard from '@/components/AdminGuard';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import { stroopsToDisplay } from '@/lib/stellarContract';
+import SkeletonHeader from '@/components/ui/skeleton/SkeletonHeader';
+import SkeletonPayout from '@/components/ui/skeleton/SkeletonPayout';
+import CopyButton from '@/components/ui/CopyButton';
 import {
   AreaChart,
   Area,
@@ -59,39 +63,31 @@ function escapeCsvValue(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
 }
 
-// Hook to get theme-aware colors for charts
+// Hook to get theme-aware colors for charts using CSS custom properties (#452).
+// All values are read exclusively from CSS variables — no raw hex values.
 function useChartColors() {
   const [colors, setColors] = useState({
-    primary: '#3b82f6',
-    textMuted: '#9ca3af',
-    border: '#374151',
-    surface: '#1f2937',
-    surfaceBorder: '#374151',
+    primary: 'var(--color-chart-primary)',
+    textMuted: 'var(--color-chart-text)',
+    border: 'var(--color-chart-grid)',
+    surface: 'var(--color-chart-background)',
+    surfaceBorder: 'var(--color-chart-grid)',
   });
 
   useEffect(() => {
     const updateColors = () => {
-      const root = document.documentElement;
-      const computedStyle = getComputedStyle(root);
-
+      const computedStyle = getComputedStyle(document.documentElement);
       setColors({
-        primary:
-          computedStyle.getPropertyValue('--color-primary').trim() || '#3b82f6',
-        textMuted:
-          computedStyle.getPropertyValue('--color-text-muted').trim() ||
-          '#9ca3af',
-        border:
-          computedStyle.getPropertyValue('--color-border').trim() || '#374151',
-        surface:
-          computedStyle.getPropertyValue('--color-surface').trim() || '#1f2937',
-        surfaceBorder:
-          computedStyle.getPropertyValue('--color-border').trim() || '#374151',
+        primary: computedStyle.getPropertyValue('--color-chart-primary').trim(),
+        textMuted: computedStyle.getPropertyValue('--color-chart-text').trim(),
+        border: computedStyle.getPropertyValue('--color-chart-grid').trim(),
+        surface: computedStyle.getPropertyValue('--color-chart-background').trim(),
+        surfaceBorder: computedStyle.getPropertyValue('--color-chart-grid').trim(),
       });
     };
 
     updateColors();
 
-    // Listen for theme changes
     const observer = new MutationObserver(updateColors);
     observer.observe(document.documentElement, {
       attributes: true,
@@ -102,6 +98,28 @@ function useChartColors() {
   }, []);
 
   return colors;
+}
+
+function AdminErrorFallback() {
+  return (
+    <div className="min-h-screen theme-app flex items-center justify-center p-8">
+      <div className="text-center max-w-md">
+        <h2 className="text-2xl font-bold theme-text-primary mb-3">
+          Failed to load dashboard
+        </h2>
+        <p className="theme-text-muted mb-6">
+          Something went wrong while loading the admin dashboard. Please try again.
+        </p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="theme-primary-button px-6 py-2 rounded-md"
+        >
+          Retry
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export default function AdminDashboard() {
@@ -300,11 +318,13 @@ export default function AdminDashboard() {
   if (loadingMetrics) {
     return (
       <div className="min-h-screen theme-app p-8">
-        <div className="max-w-7xl mx-auto">
-          <h1 className="text-3xl font-bold theme-text-primary mb-8">
-            Admin Dashboard
-          </h1>
-          <div className="text-center theme-text-muted">Loading metrics...</div>
+        <div className="max-w-7xl mx-auto space-y-6">
+          <SkeletonHeader />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <SkeletonPayout />
+            <SkeletonPayout />
+            <SkeletonPayout />
+          </div>
         </div>
       </div>
     );
@@ -313,6 +333,7 @@ export default function AdminDashboard() {
   return (
     <AdminGuard>
       <div className="min-h-screen theme-app p-8">
+      <ErrorBoundary fallback={<AdminErrorFallback />}>
         <div className="max-w-7xl mx-auto">
           <div className="flex justify-between items-center mb-8">
             <h1 className="text-3xl font-bold theme-text-primary">
@@ -597,17 +618,37 @@ export default function AdminDashboard() {
                         className="theme-border border-b hover:opacity-80"
                       >
                         <td className="px-6 py-4 whitespace-nowrap text-sm theme-text-primary">
-                          {new Date(entry.timestamp).toLocaleString()}
+                          <span className="inline-flex items-center gap-1.5">
+                            <span>
+                              {new Date(entry.timestamp).toLocaleString()}
+                            </span>
+                            <CopyButton
+                              value={entry.timestamp}
+                              ariaLabel="Copy timestamp"
+                            />
+                          </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm theme-text-primary font-medium">
                           {formatActionLabel(entry.action)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-mono theme-text-primary">
-                          {entry.adminAddress}
+                          <span className="inline-flex items-center gap-1.5">
+                            <span>{entry.adminAddress}</span>
+                            <CopyButton
+                              value={entry.adminAddress}
+                              ariaLabel={`Copy admin address ${entry.adminAddress}`}
+                            />
+                          </span>
                         </td>
                         <td className="px-6 py-4 text-sm theme-text-primary max-w-xl">
-                          <span className="inline-block theme-surface-muted rounded px-2 py-1 break-all">
-                            {formatParameters(entry.parameters)}
+                          <span className="inline-flex items-start gap-1.5">
+                            <span className="inline-block theme-surface-muted rounded px-2 py-1 break-all">
+                              {formatParameters(entry.parameters)}
+                            </span>
+                            <CopyButton
+                              value={formatParameters(entry.parameters)}
+                              ariaLabel="Copy parameters"
+                            />
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
@@ -686,6 +727,7 @@ export default function AdminDashboard() {
             <AuditTable />
           </div>
         </div>
+      </ErrorBoundary>
       </div>
     </AdminGuard>
   );

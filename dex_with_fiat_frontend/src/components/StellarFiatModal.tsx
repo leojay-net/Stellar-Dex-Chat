@@ -73,6 +73,10 @@ export default function StellarFiatModal({
   messages = [],
 }: StellarFiatModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
+  // Synchronous guard against rapid double-submits: state updates are batched,
+  // so the submit button stays enabled across same-tick clicks. A ref closes
+  // that window before React re-renders.
+  const lastSubmitAtRef = useRef(0);
   const { connection, signTx } = useStellarWallet();
   const { addNotification } = useNotifications();
   const { addEntry } = useTxHistory();
@@ -200,6 +204,7 @@ export default function StellarFiatModal({
     setRiskConfirmation('');
     setLastLoggedRiskAmount('');
     setLastActionTimestamp(0);
+    lastSubmitAtRef.current = 0;
 
     if (isAdminMode) {
       return;
@@ -505,6 +510,13 @@ export default function StellarFiatModal({
     if (status === 'loading' || isTxProcessing) {
       return;
     }
+
+    const now = Date.now();
+    if (now - lastSubmitAtRef.current < SUBMIT_COOLDOWN_MS) {
+      return;
+    }
+    lastSubmitAtRef.current = now;
+    setLastActionTimestamp(now);
 
     setStatus('pending');
     setErrorMsg('');

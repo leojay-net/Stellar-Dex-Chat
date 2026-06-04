@@ -890,3 +890,82 @@ describe('useChat race condition regression (#530)', () => {
     harness.cleanup();
   });
 });
+
+// ── Issue #663 regression: memory leak in useChat ─────────────────────────────
+describe('useChat memory leak regression (#663)', () => {
+  beforeEach(() => {
+    analyzeQueue = [];
+    createNewSessionSpy.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('cancelled message uses a unique ID — no Date.now()+1 collision', async () => {
+    analyzeQueue = [new Promise<AnalyzeResult>(() => {})];
+
+    const harness = await setupHook();
+    await flushEffects(1);
+
+    act(() => { void harness.api.sendMessage('slow'); });
+    act(() => { harness.api.cancelPendingRequest(); });
+
+    await flushEffects(2);
+
+    const ids = harness.api.messages.map((m) => m.id);
+    const unique = new Set(ids);
+    expect(unique.size).toBe(ids.length);
+
+    harness.cleanup();
+  });
+
+  it('onTransactionReady is NOT called after component unmounts', async () => {
+    analyzeQueue = [
+      {
+        intent: 'fiat_conversion',
+        confidence: 0.95,
+        extractedData: { tokenIn: 'XLM' },
+        requiredQuestions: [],
+        suggestedResponse: 'ok',
+      },
+      {
+        intent: 'fiat_conversion',
+        confidence: 0.95,
+        extractedData: { fiatCurrency: 'NGN' },
+        requiredQuestions: [],
+        suggestedResponse: 'ok',
+      },
+      {
+        intent: 'fiat_conversion',
+        confidence: 0.95,
+        extractedData: { amountIn: '5' },
+        requiredQuestions: [],
+        suggestedResponse: 'ok',
+      },
+    ];
+
+    const harness = await setupHook();
+    vi.useFakeTimers();
+
+    const onReady = vi.fn();
+    act(() => { harness.api.setTransactionReadyCallback(onReady); });
+
+    await flushEffects(1);
+    await act(async () => { await harness.api.sendMessage('deposit'); });
+    await flushEffects(1);
+    await act(async () => { await harness.api.sendMessage('NGN'); });
+    await flushEffects(1);
+    await act(async () => { await harness.api.sendMessage('5'); });
+    await flushEffects(1);
+
+    // Unmount BEFORE the 1-second timer fires
+    harness.cleanup();
+
+    // Advance past the timer window
+    act(() => { vi.advanceTimersByTime(2000); });
+
+    // The callback must NOT have been called after unmount
+    expect(onReady).not.toHaveBeenCalled();
+  });
+});

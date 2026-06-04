@@ -47,7 +47,9 @@ export class StateMachine<
   constructor(config: StateMachineConfig<State, EventType, Context>) {
     this.config = config;
     this.currentState = config.initial;
-    this.context = config.context as Context;
+    // Shallow-clone so that module-level INITIAL_CONTEXT objects are never mutated
+    // by action callbacks, preventing shared-state race conditions across instances.
+    this.context = config.context ? { ...config.context } : ({} as Context);
   }
 
   /**

@@ -27,6 +27,9 @@ For chat lifecycle logic in `dex_with_fiat_frontend/src/hooks/chatStateMachine.t
 
 - message threshold edges (`2 -> 3` messages) are critical
 - cancellation and error recovery transitions should be sampled from all non-terminal states
+- receipt-query boundaries should be fuzzed around `0`, `ReceiptCounter - 1`, `ReceiptCounter`, and `u64::MAX`
+  to ensure out-of-range queries are rejected before any storage lookups and
+  that stale/expired receipt entries return the distinct `ReceiptNotFound` error.
 - transaction-trigger guards should be fuzzed with sparse transaction payloads
   (token only, amount only, fiat only) to verify minimum-data semantics
 

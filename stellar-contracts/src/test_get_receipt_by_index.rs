@@ -13,17 +13,17 @@ use super::*;
 use soroban_sdk::{
     testutils::Address as _,
     token::StellarAssetClient,
-    Address, Bytes, BytesN, Env,
+    vec, Address, Bytes, BytesN, Env,
 };
 
-fn setup_bridge(
+fn setup_bridge<'a>(
     env: &Env,
 ) -> (
     Address,
-    FiatBridgeClient<'_>,
+    FiatBridgeClient<'a>,
     Address,
     Address,
-    StellarAssetClient<'_>,
+    StellarAssetClient<'a>,
 ) {
     let admin = Address::generate(env);
     let token_admin = Address::generate(env);
@@ -33,8 +33,8 @@ fn setup_bridge(
     let token_sac = StellarAssetClient::new(env, &token_addr);
     let contract_id = env.register(FiatBridge, ());
     let bridge = FiatBridgeClient::new(env, &contract_id);
-    let reference = Bytes::from_slice(env, b"test_reference");
-    bridge.init(&admin, &token_addr, &reference);
+    let signers = vec![env, admin.clone()];
+    bridge.init(&admin, &token_addr, &1_000_000_000, &1, &signers, &1);
     // Set a generous per-token limit so deposits are not blocked by ExceedsLimit.
     bridge.set_limit(&token_addr, &1_000_000_000i128);
     (contract_id, bridge, admin, token_addr, token_sac)
@@ -138,6 +138,8 @@ fn receipt_not_found_when_persistent_entry_missing() {
     token_sac.mint(&user, &10_000);
     let receipt_hash =
         bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // Drop the persistent Receipt entry, leave the index pointing to it.
     env.as_contract(&contract_id, || {
         env.storage()
             .persistent()

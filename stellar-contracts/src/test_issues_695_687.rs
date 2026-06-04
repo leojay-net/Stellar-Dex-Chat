@@ -2,8 +2,8 @@
 
 use crate::{Error, FiatBridge, FiatBridgeClient};
 use soroban_sdk::{
-    testutils::Address as _,
-    token, Address, Bytes, Env, Vec,
+    testutils::{Address as _, Ledger},
+    token, Address, Env, Vec,
 };
 
 fn create_token_contract<'a>(
@@ -33,9 +33,7 @@ fn test_withdraw_fees_replay_protection() {
     let mut signers = Vec::new(&env);
     signers.push_back(admin.clone());
 
-    let reference = Bytes::from_slice(&env, b"test_reference");
-    client.init(&admin, &token_address, &reference);
-    client.set_limit(&token_address, &10_000);
+    client.init(&admin, &token_address, &1_000_000, &100, &signers, &1);
 
     // Mint tokens to contract
     token_admin.mint(&contract_id, &10_000);
@@ -43,8 +41,8 @@ fn test_withdraw_fees_replay_protection() {
     // Simulate fee accrual by depositing
     token_admin.mint(&user, &5_000);
     let reference = soroban_sdk::Bytes::from_slice(&env, b"test");
-    client.deposit(&user, &5_000, &token_address, &reference, &0, &500, &None);
-    client.accrue_fee(&token_address, &1000);
+    client.deposit(&user, &5_000, &token_address, &reference, &0, &0, &None);
+    client.accrue_fee(&token_address, &1_000);
 
     // Get initial nonce (should be 0)
     let nonce = client.get_fee_withdrawal_nonce(&admin);
@@ -83,14 +81,13 @@ fn test_withdraw_fees_nonce_skipping_fails() {
     let mut signers = Vec::new(&env);
     signers.push_back(admin.clone());
 
-    let reference = Bytes::from_slice(&env, b"test_reference");
-    client.init(&admin, &token_address, &reference);
-    client.set_limit(&token_address, &10_000);
+    client.init(&admin, &token_address, &1_000_000, &100, &signers, &1);
 
     token_admin.mint(&contract_id, &10_000);
     token_admin.mint(&user, &5_000);
     let reference = soroban_sdk::Bytes::from_slice(&env, b"test");
-    client.deposit(&user, &5_000, &token_address, &reference, &0, &500, &None);
+    client.deposit(&user, &5_000, &token_address, &reference, &0, &0, &None);
+    client.accrue_fee(&token_address, &1_000);
 
     // Try to use nonce 5 when current is 0 - should fail
     let result = client.try_withdraw_fees(&user, &token_address, &100, &5);
@@ -113,9 +110,7 @@ fn test_request_withdrawal_edge_cases() {
     let mut signers = Vec::new(&env);
     signers.push_back(admin.clone());
 
-    let reference = Bytes::from_slice(&env, b"test_reference");
-    client.init(&admin, &token_address, &reference);
-    client.set_limit(&token_address, &10_000);
+    client.init(&admin, &token_address, &1_000_000, &100, &signers, &1);
 
     // Test 1: Request withdrawal with no balance should fail
     let result = client.try_request_withdrawal(&user, &1_000, &token_address, &None, &0);
@@ -124,7 +119,7 @@ fn test_request_withdrawal_edge_cases() {
     // Test 2: Deposit some funds
     token_admin.mint(&user, &5_000);
     let reference = soroban_sdk::Bytes::from_slice(&env, b"test");
-    client.deposit(&user, &5_000, &token_address, &reference, &0, &500, &None);
+    client.deposit(&user, &5_000, &token_address, &reference, &0, &0, &None);
 
     // Test 3: Request withdrawal to contract itself should fail
     let result = client.try_request_withdrawal(&contract_id, &1_000, &token_address, &None, &0);
@@ -155,14 +150,12 @@ fn test_request_withdrawal_liability_overflow() {
     let mut signers = Vec::new(&env);
     signers.push_back(admin.clone());
 
-    let reference = Bytes::from_slice(&env, b"test_reference");
-    client.init(&admin, &token_address, &reference);
-    client.set_limit(&token_address, &10_000);
+    client.init(&admin, &token_address, &1_000_000, &100, &signers, &1);
 
     // Deposit funds
     token_admin.mint(&user, &5_000);
     let reference = soroban_sdk::Bytes::from_slice(&env, b"test");
-    client.deposit(&user, &5_000, &token_address, &reference, &0, &500, &None);
+    client.deposit(&user, &5_000, &token_address, &reference, &0, &0, &None);
 
     // Request withdrawal that would exceed net deposited
     // This should fail because liabilities can't exceed net deposits
@@ -190,9 +183,7 @@ fn test_request_withdrawal_unwhitelisted_token() {
     let mut signers = Vec::new(&env);
     signers.push_back(admin.clone());
 
-    let reference = Bytes::from_slice(&env, b"test_reference");
-    client.init(&admin, &token_address, &reference);
-    client.set_limit(&token_address, &10_000);
+    client.init(&admin, &token_address, &1_000_000, &100, &signers, &1);
 
     // Try to request withdrawal for unwhitelisted token
     let result = client.try_request_withdrawal(&user, &1_000, &unwhitelisted_address, &None, &0);

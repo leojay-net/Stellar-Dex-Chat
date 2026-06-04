@@ -153,3 +153,79 @@ describe('BankDetailsModal - Zod Validation (integration)', () => {
     });
   });
 });
+
+describe('BankDetailsModal - Zod saveCustomName inline error', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(global, 'fetch').mockImplementation(async (url: string) => {
+      if (url.includes('/api/banks')) {
+        return { ok: true, json: async () => ({ success: true, data: [{ id: 1, name: 'Test Bank', code: '001', active: true }] }) } as Response;
+      }
+      if (url.includes('/api/verify-account')) {
+        return { ok: true, json: async () => ({ success: true, data: { account_name: 'John Doe' } }) } as Response;
+      }
+      throw new Error(`Unhandled: ${url}`);
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it('shows inline Zod error when beneficiary name exceeds 50 characters', async () => {
+    render(<BankDetailsModal {...defaultProps} />);
+
+    // Navigate: select bank → step 2 → enter valid account → save prompt
+    await waitFor(() => expect(screen.getByText('Test Bank')).toBeDefined());
+    fireEvent.click(screen.getByText('Test Bank'));
+    fireEvent.click(screen.getByRole('button', { name: /next/i }));
+
+    const accountInput = await screen.findByPlaceholderText(/0000000000/i);
+    fireEvent.change(accountInput, { target: { value: '1234567890' } });
+    fireEvent.blur(accountInput);
+
+    // Wait for account verification to complete
+    await waitFor(() => expect(screen.getByText(/John Doe/i)).toBeDefined());
+
+    // Open save beneficiary prompt
+    fireEvent.click(screen.getByRole('button', { name: /save beneficiary/i }));
+
+    const nameInput = await screen.findByPlaceholderText(/John Doe/i);
+    fireEvent.change(nameInput, { target: { value: 'A'.repeat(51) } });
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeDefined();
+      expect(screen.getByText(/Beneficiary name must be less than 50 characters/i)).toBeDefined();
+    });
+  });
+
+  it('clears the inline error when the user corrects the beneficiary name', async () => {
+    render(<BankDetailsModal {...defaultProps} />);
+
+    await waitFor(() => expect(screen.getByText('Test Bank')).toBeDefined());
+    fireEvent.click(screen.getByText('Test Bank'));
+    fireEvent.click(screen.getByRole('button', { name: /next/i }));
+
+    const accountInput = await screen.findByPlaceholderText(/0000000000/i);
+    fireEvent.change(accountInput, { target: { value: '1234567890' } });
+    fireEvent.blur(accountInput);
+
+    await waitFor(() => expect(screen.getByText(/John Doe/i)).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: /save beneficiary/i }));
+
+    const nameInput = await screen.findByPlaceholderText(/John Doe/i);
+
+    // Trigger the error
+    fireEvent.change(nameInput, { target: { value: 'A'.repeat(51) } });
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeDefined());
+
+    // Correcting the input clears the error immediately
+    fireEvent.change(nameInput, { target: { value: 'Valid Name' } });
+    await waitFor(() => {
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+  });
+});

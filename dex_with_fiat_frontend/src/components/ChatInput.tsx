@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Send, Loader2, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from '@/contexts/TranslationContext';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
 import { saveDraft, getDraft, clearDraft } from '@/lib/draftUtils';
 import { useIdempotentAction } from '@/hooks/useIdempotentAction';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 interface ChatInputProps {
   onSendMessage: (message: string) => void;
@@ -32,9 +33,19 @@ export default function ChatInput({
   const { t } = useTranslation();
   const { connection } = useStellarWallet();
   const activePlaceholder = placeholder || t('chat.placeholder');
-  const isApplePlatform =
-    typeof navigator !== 'undefined' &&
-    /(Mac|iPhone|iPad|iPod)/i.test(navigator.platform);
+  // Detect the platform after mount rather than during render. Reading
+  // `navigator` during render makes the server (no navigator → false) and an
+  // Apple client (true) disagree, which produces a hydration mismatch on the
+  // shortcut label/aria attributes. Defaulting to the SSR-safe value and
+  // updating in an effect keeps the first client render identical to the
+  // server markup. (#607)
+  const [isApplePlatform, setIsApplePlatform] = useState(false);
+  useEffect(() => {
+    setIsApplePlatform(
+      typeof navigator !== 'undefined' &&
+        /(Mac|iPhone|iPad|iPod)/i.test(navigator.platform),
+    );
+  }, []);
   const submitShortcutLabel = isApplePlatform ? 'Cmd+Enter' : 'Ctrl+Enter';
   const submitShortcutKeys = isApplePlatform ? 'Meta+Enter' : 'Control+Enter';
   const [message, setMessage] = useState('');
@@ -44,6 +55,9 @@ export default function ChatInput({
   const [paletteQuery, setPaletteQuery] = useState('');
   const [paletteIndex, setPaletteIndex] = useState(0);
   
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const isMobile = useMediaQuery('(max-width: 639px)');
+
   const { execute: executeSubmit, isProcessing: isSubmitting } = useIdempotentAction({
     cooldownMs: 1000,
     logSuppressed: true,
@@ -86,6 +100,7 @@ export default function ChatInput({
         setMessage('');
         if (sessionId) clearDraft(sessionId);
         setShowCommands(false);
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, 'chat_message_submit');
     }
   };
@@ -230,10 +245,20 @@ export default function ChatInput({
   return (
     <form
       onSubmit={handleSubmit}
-      className="theme-surface p-4 sm:p-6 transition-colors duration-300 relative border-t sm:border-none"
+      data-testid="chat-input-form"
+      data-mobile-layout={isMobile ? 'stacked' : 'inline'}
+      className={`theme-surface transition-colors duration-300 relative border-t sm:border-none ${
+        isMobile
+          ? 'sticky bottom-0 z-20 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]'
+          : 'p-4 sm:p-6'
+      }`}
     >
       {showPalette && (
-        <div className="absolute inset-x-6 bottom-full mb-3 rounded-xl border theme-surface shadow-2xl z-50">
+        <div
+          className={`absolute bottom-full mb-3 rounded-xl border theme-surface shadow-2xl z-50 ${
+            isMobile ? 'inset-x-3' : 'inset-x-6'
+          }`}
+        >
           <div className="p-3 border-b">
             <input
               value={paletteQuery}
@@ -291,7 +316,9 @@ export default function ChatInput({
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 10 }}
-            className="absolute bottom-full left-6 mb-2 w-64 theme-surface border rounded-xl shadow-2xl overflow-hidden z-50"
+            className={`absolute bottom-full mb-2 theme-surface border rounded-xl shadow-2xl overflow-hidden z-50 ${
+              isMobile ? 'left-3 right-3 w-auto' : 'left-6 w-64'
+            }`}
           >
             <div className="p-2 border-b bg-gray-50/50">
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-2">
@@ -318,38 +345,54 @@ export default function ChatInput({
         )}
       </AnimatePresence>
 
-      <div className="flex items-end space-x-3">
-        <div className="flex-1 relative">
+      <div
+        data-testid="chat-input-controls"
+        className={isMobile ? 'flex flex-col gap-2' : 'flex items-end space-x-3'}
+      >
+        <div className="flex-1 relative min-w-0">
           <textarea
+            data-testid="chat-input-textarea"
             value={message}
             onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={activePlaceholder}
             disabled={isLoading}
             aria-describedby="chat-submit-shortcut"
-            className="theme-input w-full resize-none border rounded-lg px-4 py-3 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            aria-invalid={walletWarning}
+            // Drive the border colour from an explicit theme-token class rather
+            // than leaving it to the Tailwind utility cascade (which could
+            // override `.theme-input`'s border-color and render an incorrect
+            // colour), and surface the wallet-disconnected warning state. (#632)
+            className={`theme-input w-full resize-none border rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed ${
+              isMobile ? 'px-3 py-2.5 text-base' : 'px-4 py-3'
+            } ${
+              walletWarning ? 'theme-input-border-invalid' : 'theme-input-border'
+            }`}
             rows={1}
             style={{
-              minHeight: '48px',
-              maxHeight: '120px',
+              minHeight: isMobile ? '44px' : '48px',
+              maxHeight: isMobile ? '100px' : '120px',
               height: 'auto',
             }}
             onInput={(e: React.FormEvent<HTMLTextAreaElement>) => {
               const target = e.target as HTMLTextAreaElement;
               target.style.height = 'auto';
-              target.style.height = `${Math.min(target.scrollHeight, 120)}px`;
+              target.style.height = `${Math.min(target.scrollHeight, isMobile ? 100 : 120)}px`;
             }}
           />
         </div>
 
         <button
           type="submit"
+          data-testid="chat-input-send"
           disabled={isSubmitDisabled}
           title={`Send message (${submitShortcutLabel})`}
           aria-label={`Send message (${submitShortcutLabel})`}
           aria-describedby="chat-submit-shortcut"
           aria-keyshortcuts={submitShortcutKeys}
-          className="theme-primary-button flex items-center justify-center w-12 h-12 disabled:bg-gray-300 text-white rounded-lg transition-all duration-200 disabled:cursor-not-allowed transform hover:scale-105 disabled:hover:scale-100 shadow-lg"
+          className={`theme-primary-button flex items-center justify-center disabled:bg-gray-300 text-white rounded-lg transition-all duration-200 disabled:cursor-not-allowed transform hover:scale-105 disabled:hover:scale-100 shadow-lg ${
+            isMobile ? 'w-full h-11' : 'w-12 h-12'
+          }`}
         >
           {isLoading || isSubmitting ? (
             <Loader2 className="w-5 h-5 animate-spin" />
@@ -371,6 +414,7 @@ export default function ChatInput({
       )}
 
       {/* Quick suggestions */}
+      <div ref={bottomRef} />
       <div className="flex flex-wrap gap-2 mt-3 sm:mt-4 overflow-x-auto pb-1 no-scrollbar">
         {[
           t('chat.suggestions.convert'),
