@@ -39,6 +39,133 @@ function notifyAiNetworkUnavailable(): void {
   );
 }
 
+/**
+ * Represents a single animation state (initial or animate) with optional
+ * transition configuration compatible with framer-motion's `Variant` type.
+ */
+export type AnimationVariantState = {
+  opacity?: number;
+  y?: number;
+  x?: number;
+  scale?: number;
+  rotate?: number;
+  transition?: {
+    duration: number;
+    ease?: readonly number[] | string;
+    delay?: number;
+    type?: string;
+    stiffness?: number;
+    damping?: number;
+  };
+};
+
+/**
+ * A pair of initial/animate states that framer-motion `motion.div` consumes
+ * via its `variants` prop.
+ */
+export type AnimationVariants = {
+  initial: AnimationVariantState;
+  animate: AnimationVariantState;
+};
+
+/**
+ * Mapping from AI intent (plus a `default` fallback) to animation variants,
+ * allowing each response type to have a distinct entrance animation.
+ */
+export const ASSISTANT_ANIMATION_VARIANTS: Record<
+  AIAnalysisResult['intent'] | 'default',
+  AnimationVariants
+> = {
+  /** Standard slide-up fade for general queries. */
+  query: {
+    initial: { opacity: 0, y: 16, scale: 1 },
+    animate: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: { duration: 0.35, ease: [0.23, 1, 0.32, 1] },
+    },
+  },
+
+  /** Attention-grabbing horizontal shake for guardrail responses. */
+  guardrail: {
+    initial: { opacity: 0, x: -12, scale: 0.97 },
+    animate: {
+      opacity: 1,
+      x: 0,
+      scale: 1,
+      transition: { duration: 0.4, type: 'spring', stiffness: 300, damping: 20 },
+    },
+  },
+
+  /** Scale-up pop for successful fiat conversion confirmations. */
+  fiat_conversion: {
+    initial: { opacity: 0, y: 24, scale: 0.92 },
+    animate: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] },
+    },
+  },
+
+  /** Gentle fade for portfolio check results. */
+  portfolio: {
+    initial: { opacity: 0, y: 10, scale: 1 },
+    animate: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: { duration: 0.3, ease: [0.25, 0.1, 0.25, 1] },
+    },
+  },
+
+  /** Slide-in for technical support replies. */
+  technical_support: {
+    initial: { opacity: 0, y: 20, scale: 0.98 },
+    animate: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: { duration: 0.38, ease: [0.23, 1, 0.32, 1] },
+    },
+  },
+
+  /** Subtle fade for unknown intent fallbacks. */
+  unknown: {
+    initial: { opacity: 0, y: 12, scale: 1 },
+    animate: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: { duration: 0.3, ease: [0.25, 0.1, 0.25, 1] },
+    },
+  },
+
+  /** Baseline default used when no specific intent matches. */
+  default: {
+    initial: { opacity: 0, y: 20, scale: 0.95 },
+    animate: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: { duration: 0.4, ease: [0.23, 1, 0.32, 1] },
+    },
+  },
+};
+
+/**
+ * Reduced-motion safe variants that strip positional transforms,
+ * keeping only a simple opacity fade.
+ */
+export const REDUCED_MOTION_VARIANTS: AnimationVariants = {
+  initial: { opacity: 0 },
+  animate: {
+    opacity: 1,
+    transition: { duration: 0.2 },
+  },
+};
+
 type GuardrailMatch = {
   category: GuardrailCategory;
   reason: string;
@@ -120,6 +247,29 @@ export class AIAssistant {
       hasNextPage: clampedPage < totalPages,
       hasPreviousPage: clampedPage > 1,
     };
+  }
+
+  /**
+   * Resolve the appropriate framer-motion animation variants for a given
+   * AI analysis result.  Returns reduced-motion-safe variants when the
+   * user prefers reduced motion.
+   *
+   * @param analysis - The AI analysis result whose intent drives variant selection.
+   * @param prefersReducedMotion - Whether the user has requested reduced motion.
+   * @returns AnimationVariants object ready to spread into a motion component.
+   */
+  static getAnimationVariants(
+    analysis: AIAnalysisResult,
+    prefersReducedMotion = false,
+  ): AnimationVariants {
+    if (prefersReducedMotion) {
+      return REDUCED_MOTION_VARIANTS;
+    }
+
+    return (
+      ASSISTANT_ANIMATION_VARIANTS[analysis.intent] ??
+      ASSISTANT_ANIMATION_VARIANTS.default
+    );
   }
 
   /**

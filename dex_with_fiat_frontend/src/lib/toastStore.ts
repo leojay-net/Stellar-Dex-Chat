@@ -34,8 +34,8 @@ interface ToastStoreOptions {
 export class ToastStore {
   private toasts: AppToast[] = [];
   private listeners: Set<ToastListener> = new Set();
-  private timers: Map<string, NodeJS.Timeout> = new Map();
-  
+  private timers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+
   private dedupeWindowMs: number;
   private defaultDurationMs: number;
   private now: () => number;
@@ -55,9 +55,12 @@ export class ToastStore {
   private mapSeverityToVariant(severity?: string): ToastVariant {
     if (!severity) return 'info';
     switch (severity.toLowerCase()) {
-      case 'error': return 'error';
-      case 'success': return 'success';
-      case 'warning': return 'warning';
+      case 'error':
+        return 'error';
+      case 'success':
+        return 'success';
+      case 'warning':
+        return 'warning';
       case 'info':
       default:
         return 'info';
@@ -65,11 +68,17 @@ export class ToastStore {
   }
 
   /**
-   * Add a toast notification
+   * Add a toast notification.
+   *
+   * Accepts either:
+   *   addToast({ message, severity, durationMs })
+   *   addToast('message text', 'success')
+   *
+   * Returns the new toast id, or null if the toast was deduped.
    */
   addToast(
     messageOrOptions: string | AddToastOptions,
-    variantParam: ToastVariant = 'info'
+    variantParam: ToastVariant = 'info',
   ): string | null {
     let message: string;
     let variant: ToastVariant;
@@ -80,19 +89,29 @@ export class ToastStore {
       variant = variantParam;
     } else {
       message = messageOrOptions.message;
-      variant = messageOrOptions.variant || this.mapSeverityToVariant(messageOrOptions.severity);
-      duration = messageOrOptions.duration ?? messageOrOptions.durationMs ?? this.defaultDurationMs;
+      variant =
+        messageOrOptions.variant ||
+        this.mapSeverityToVariant(messageOrOptions.severity);
+      duration =
+        messageOrOptions.duration ??
+        messageOrOptions.durationMs ??
+        this.defaultDurationMs;
     }
 
-    // Deduplication logic
-    const currentTime = this.now();
-    const isDuplicate = this.toasts.some(
-      (t) => 
-        t.message === message && 
-        t.variant === variant && 
-        currentTime - t.timestamp < this.dedupeWindowMs
-    );
+    const normalizedMessage = message.trim();
+    if (!normalizedMessage) {
+      return null;
+    }
 
+    const currentTime = this.now();
+
+    // Deduplicate: suppress identical message+variant within the dedupe window
+    const isDuplicate = this.toasts.some(
+      (t) =>
+        t.message === normalizedMessage &&
+        t.variant === variant &&
+        currentTime - t.timestamp < this.dedupeWindowMs,
+    );
     if (isDuplicate) {
       return null;
     }
@@ -100,7 +119,7 @@ export class ToastStore {
     const id = this.generateId();
     const toast: AppToast = {
       id,
-      message,
+      message: normalizedMessage,
       variant,
       timestamp: currentTime,
       duration,
@@ -108,7 +127,7 @@ export class ToastStore {
     };
 
     this.toasts = [...this.toasts, toast];
-    
+
     if (duration > 0) {
       const timer = setTimeout(() => {
         this.dismissToast(id);
@@ -121,19 +140,22 @@ export class ToastStore {
   }
 
   /**
-   * Remove a toast by id (aliased as dismissToast)
+   * Remove a toast by id.
    */
   removeToast(id: string): void {
     const index = this.toasts.findIndex((t) => t.id === id);
     if (index > -1) {
-      this.toasts = [...this.toasts.slice(0, index), ...this.toasts.slice(index + 1)];
-      
+      this.toasts = [
+        ...this.toasts.slice(0, index),
+        ...this.toasts.slice(index + 1),
+      ];
+
       const timer = this.timers.get(id);
       if (timer) {
         clearTimeout(timer);
         this.timers.delete(id);
       }
-      
+
       this.notifyListeners();
     }
   }
@@ -143,15 +165,17 @@ export class ToastStore {
   }
 
   /**
-   * Subscribe to toast changes
+   * Subscribe to toast changes (useSyncExternalStore-compatible).
    */
-  subscribe(listener: ToastListener): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+  subscribe(listener: () => void): () => void {
+    // Wrap to match ToastListener signature while also satisfying bare () => void
+    const wrapped: ToastListener = () => listener();
+    this.listeners.add(wrapped);
+    return () => this.listeners.delete(wrapped);
   }
 
   /**
-   * Get current toasts snapshot
+   * Get current toasts snapshot.
    */
   getToasts(): AppToast[] {
     return this.toasts;
@@ -162,7 +186,7 @@ export class ToastStore {
   }
 
   /**
-   * Clear all toasts
+   * Clear all toasts.
    */
   clearToasts(): void {
     this.toasts = [];
