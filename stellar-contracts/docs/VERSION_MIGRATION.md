@@ -157,13 +157,25 @@ The migration system uses a **cursor-based batch processing** approach to safely
 3. **Batch Processing**: Processes records in configurable batch sizes to stay within resource limits
 4. **Event Emission**: Publishes progress events for monitoring and indexing
 
-### Migration Process
+### Migration Health Check
 
-1. Call `migrate_escrow(batch_size)` with appropriate batch size
-2. Migration is resumable - call multiple times until complete
-3. Check `get_escrow_storage_version()` to verify completion
-4. Migration is idempotent - repeated calls after completion return error
-5. Monitor progress via `get_migration_cursor()` and migration events
+Before initiating or resume a migration, administrators should perform a health check to understand the current state of the escrow dataset.
+
+#### Step 1: Check Current Version
+Query `get_escrow_storage_version()` to determine if the migration is already complete.
+- **Version 0**: Migration not started or in progress.
+- **Version 1**: Migration successfully completed.
+
+#### Step 2: Assess Progress
+Query `get_migration_cursor()` to see the last processed record ID.
+Compare this with the total number of receipts (available via indexers or contract logs) to estimate remaining work.
+
+#### Step 3: Verify Integrity (Optional)
+Spot-check specific records using `get_escrow_record(id)`.
+- If `Some(record)` is returned, the record has been migrated.
+- If `None` is returned, the record is either missing or hasn't been reached by the cursor yet.
+
+---
 
 ### Migration API
 

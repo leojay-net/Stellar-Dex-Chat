@@ -247,7 +247,7 @@ export default function SplitViewComparison({
         severity: 'success',
         durationMs: 2000,
       });
-    } catch (error) {
+    } catch {
       addToast({
         message: 'Failed to copy message',
         severity: 'error',

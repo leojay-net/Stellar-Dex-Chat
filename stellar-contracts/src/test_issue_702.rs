@@ -6,6 +6,7 @@ use soroban_sdk::{
     token, Address, Bytes, Env, Vec,
 };
 
+
 fn create_token_contract<'a>(
     env: &Env,
     admin: &Address,
@@ -88,10 +89,17 @@ fn test_unpause_invariant_emits_correct_event() {
     bridge.unpause();
 
     let events = env.events().all().filter_by_contract(&contract_id);
-    assert!(
-        !events.events().is_empty(),
-        "pause/unpause must emit contract events"
-    );
+    let event_vec = events.events();
+    
+    // Should have at least 2 events (pause and unpause)
+    assert!(event_vec.len() >= 2);
+    
+    // Last event should be unpause event containing admin address
+    let last_event = &event_vec[event_vec.len() - 1];
+    use soroban_sdk::xdr::ContractEventBody;
+    if let ContractEventBody::V0(body) = &last_event.body {
+        assert!(body.topics.len() > 0);
+    }
 }
 
 /// Test that unpause preserves all contract state

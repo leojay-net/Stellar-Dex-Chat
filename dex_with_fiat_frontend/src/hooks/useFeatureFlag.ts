@@ -1,6 +1,16 @@
 'use client';
 
 import { useState, useEffect, useLayoutEffect } from 'react';
+
+declare global {
+  interface Window {
+    gtag?: (
+      command: 'event',
+      action: string,
+      params?: Record<string, unknown>,
+    ) => void;
+  }
+}
 import { FeatureFlag, getFeatureFlag, FeatureFlagNameSchema } from '@/lib/featureFlags';
 
 function trackFeatureFlag(flag: string, enabled: boolean) {

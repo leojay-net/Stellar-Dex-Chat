@@ -22,7 +22,8 @@ describe('AdminGuard', () => {
   it('renders landing page when connection address is empty', async () => {
     vi.mocked(useStellarWallet).mockReturnValue({
       connection: { address: '' },
-    } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as unknown as any);
 
     render(
       <AdminGuard>
@@ -37,7 +38,8 @@ describe('AdminGuard', () => {
   it('shows error if connected address has invalid format (Zod validation)', async () => {
     vi.mocked(useStellarWallet).mockReturnValue({
       connection: { address: 'invalid-address-not-starting-with-g-or-correct-length' },
-    } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as unknown as any);
 
     render(
       <AdminGuard>
@@ -50,8 +52,9 @@ describe('AdminGuard', () => {
 
   it('shows error if contract admin address has invalid format (Zod validation)', async () => {
     vi.mocked(useStellarWallet).mockReturnValue({
-      connection: { address: 'GABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABC' }, // 56 chars
-    } as any);
+      connection: { address: 'GABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDE' }, // 56 chars
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as unknown as any);
     vi.mocked(getAdmin).mockResolvedValue('invalid-admin-address');
 
     render(
@@ -67,7 +70,8 @@ describe('AdminGuard', () => {
     const validAddr = 'GABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABC';
     vi.mocked(useStellarWallet).mockReturnValue({
       connection: { address: validAddr },
-    } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as unknown as any);
     vi.mocked(getAdmin).mockResolvedValue(validAddr);
 
     render(
@@ -86,7 +90,8 @@ describe('AdminGuard', () => {
 
     vi.mocked(useStellarWallet).mockReturnValue({
       connection: { address: userAddr },
-    } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as unknown as any);
     vi.mocked(getAdmin).mockResolvedValue(adminAddr);
 
     render(
@@ -109,7 +114,8 @@ describe('AdminGuard — auto-scroll on access granted (#490)', () => {
     Object.defineProperty(window, 'scrollTo', { value: scrollToSpy, writable: true });
     vi.mocked(useStellarWallet).mockReturnValue({
       connection: { address: validAddr },
-    } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as unknown as any);
   });
 
   it('scrolls to top with smooth behavior when admin access is granted', async () => {
@@ -169,7 +175,8 @@ describe('AdminGuard — offline retry queue', () => {
     vi.clearAllMocks();
     vi.mocked(useStellarWallet).mockReturnValue({
       connection: { address: validAddr },
-    } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as unknown as any);
   });
 
   afterEach(() => {

@@ -15,6 +15,7 @@ import {
   deserializeFilters,
   mergeFilterParams,
 } from '@/lib/filterUrlSerializer';
+import { filterTelemetry } from '@/lib/filterTelemetry';
 
 function areFilterStatesEqual(a: FilterState, b: FilterState): boolean {
   return (
@@ -348,7 +349,7 @@ export function useTransactionFilters(
       const currentFilterState = pendingFilterStateRef.current ?? filterState;
       const currentValues = currentFilterState[category];
       const newValues = currentValues.includes(value as never)
-        ? currentValues.filter((v) => v !== value)
+        ? currentValues.filter((v: string) => v !== value)
         : [...currentValues, value as never];
 
       const newFilterState: FilterState = {
@@ -357,6 +358,12 @@ export function useTransactionFilters(
       };
 
       updateUrl(newFilterState);
+
+      filterTelemetry.toggle({
+        category,
+        value,
+        enabled: !currentValues.includes(value as never),
+      });
     },
     [filterState, updateUrl],
   );
@@ -369,6 +376,7 @@ export function useTransactionFilters(
       network: [],
     };
     updateUrl(emptyFilterState);
+    filterTelemetry.clearAll();
   }, [updateUrl]);
 
   const getFilterChipTone = useCallback(
@@ -411,13 +419,23 @@ export function useTransactionFilters(
             [category]: [],
           };
           updateUrl(newFilterState);
+          filterTelemetry.cycle({
+            category,
+            isCleared: true,
+          });
         } else {
           // Move to next value (replace selection with next single value)
+          const nextValue = availableValues[nextIndex];
           const newFilterState: FilterState = {
             ...currentFilterState,
-            [category]: [availableValues[nextIndex] as never],
+            [category]: [nextValue as never],
           };
           updateUrl(newFilterState);
+          filterTelemetry.cycle({
+            category,
+            nextValue,
+            isCleared: false,
+          });
         }
       }
     },
@@ -446,18 +464,22 @@ export function useTransactionFilters(
         case 'x':
           e.preventDefault();
           clearAllFilters();
+          filterTelemetry.shortcut({ key: 'x', action: 'clear_all' });
           break;
         case '1':
           e.preventDefault();
           cycleFilterCategory('status');
+          filterTelemetry.shortcut({ key: '1', action: 'cycle_status' });
           break;
         case '2':
           e.preventDefault();
           cycleFilterCategory('asset');
+          filterTelemetry.shortcut({ key: '2', action: 'cycle_asset' });
           break;
         case '3':
           e.preventDefault();
           cycleFilterCategory('network');
+          filterTelemetry.shortcut({ key: '3', action: 'cycle_network' });
           break;
       }
     };

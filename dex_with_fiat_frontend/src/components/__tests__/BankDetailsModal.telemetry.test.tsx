@@ -57,7 +57,8 @@ describe('BankDetailsModal - Telemetry Tracking', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (global.fetch as any).mockResolvedValue({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global.fetch as unknown as any).mockResolvedValue({
       ok: true,
       json: async () => ({ success: true, data: [] }),
     });
@@ -76,7 +77,8 @@ describe('BankDetailsModal - Telemetry Tracking', () => {
   });
 
   it('tracks step changes', async () => {
-    (global.fetch as any).mockResolvedValue({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global.fetch as unknown as any).mockResolvedValue({
       ok: true,
       json: async () => ({
         success: true,
@@ -108,7 +110,8 @@ describe('BankDetailsModal - Telemetry Tracking', () => {
   });
 
   it('tracks bank selection', async () => {
-    (global.fetch as any).mockResolvedValue({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global.fetch as unknown as any).mockResolvedValue({
       ok: true,
       json: async () => ({
         success: true,
@@ -147,7 +150,8 @@ describe('BankDetailsModal - Telemetry Tracking', () => {
   });
 
   it('tracks account verification success', async () => {
-    (global.fetch as any)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global.fetch as unknown as any)
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
@@ -204,7 +208,8 @@ describe('BankDetailsModal - Telemetry Tracking', () => {
   });
 
   it('tracks account verification failure', async () => {
-    (global.fetch as any)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global.fetch as unknown as any)
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
@@ -262,7 +267,7 @@ describe('BankDetailsModal - Telemetry Tracking', () => {
   });
 
   it('tracks modal close event', () => {
-    const { rerender } = render(
+    render(
       <BankDetailsModal isOpen={true} onClose={mockOnClose} xlmAmount={100} />,
     );
 

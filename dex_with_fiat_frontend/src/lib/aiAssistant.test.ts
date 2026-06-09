@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const { toastAddMock } = vi.hoisted(() => ({
@@ -14,7 +15,7 @@ vi.mock('./toastStore', () => ({
   },
 }));
 
-import { AIAssistant } from './aiAssistant';
+import { AIAssistant, ASSISTANT_ANIMATION_VARIANTS, REDUCED_MOTION_VARIANTS, AnimationVariants, AIAnalysisResult } from './aiAssistant';
 import type { ChatMessage } from '@/types';
 
 // ---------- Helpers ----------
@@ -240,5 +241,215 @@ describe('AIAssistant abort signal support', () => {
 
     expect(toastAddMock).toHaveBeenCalled();
     consoleErrorSpy.mockRestore();
+
+
+/**
+ * Helper to build a minimal AIAnalysisResult for a given intent.
+ */
+function makeAnalysis(
+  intent: AIAnalysisResult['intent'],
+  overrides: Partial<AIAnalysisResult> = {},
+): AIAnalysisResult {
+  return {
+    intent,
+    confidence: 0.9,
+    extractedData: {},
+    requiredQuestions: [],
+    suggestedResponse: 'test response',
+    ...overrides,
+  };
+}
+
+describe('aiAssistant framer-motion animation', () => {
+  // ── ASSISTANT_ANIMATION_VARIANTS constant ────────────────────────────
+
+  describe('ASSISTANT_ANIMATION_VARIANTS', () => {
+    const ALL_INTENTS: AIAnalysisResult['intent'][] = [
+      'query',
+      'guardrail',
+      'fiat_conversion',
+      'portfolio',
+      'technical_support',
+      'unknown',
+    ];
+
+    it('should have a variant entry for every possible intent', () => {
+      for (const intent of ALL_INTENTS) {
+        expect(ASSISTANT_ANIMATION_VARIANTS).toHaveProperty(intent);
+      }
+    });
+
+    it('should have a "default" fallback entry', () => {
+      expect(ASSISTANT_ANIMATION_VARIANTS).toHaveProperty('default');
+    });
+
+    it('every variant should contain initial and animate states', () => {
+      const keys = Object.keys(ASSISTANT_ANIMATION_VARIANTS) as Array<
+        keyof typeof ASSISTANT_ANIMATION_VARIANTS
+      >;
+
+      for (const key of keys) {
+        const variant = ASSISTANT_ANIMATION_VARIANTS[key];
+        expect(variant).toHaveProperty('initial');
+        expect(variant).toHaveProperty('animate');
+      }
+    });
+
+    it('every initial state should start with opacity 0', () => {
+      const keys = Object.keys(ASSISTANT_ANIMATION_VARIANTS) as Array<
+        keyof typeof ASSISTANT_ANIMATION_VARIANTS
+      >;
+
+      for (const key of keys) {
+        expect(ASSISTANT_ANIMATION_VARIANTS[key].initial.opacity).toBe(0);
+      }
+    });
+
+    it('every animate state should end with opacity 1', () => {
+      const keys = Object.keys(ASSISTANT_ANIMATION_VARIANTS) as Array<
+        keyof typeof ASSISTANT_ANIMATION_VARIANTS
+      >;
+
+      for (const key of keys) {
+        expect(ASSISTANT_ANIMATION_VARIANTS[key].animate.opacity).toBe(1);
+      }
+    });
+
+    it('every animate state should have a transition with a positive duration', () => {
+      const keys = Object.keys(ASSISTANT_ANIMATION_VARIANTS) as Array<
+        keyof typeof ASSISTANT_ANIMATION_VARIANTS
+      >;
+
+      for (const key of keys) {
+        const t = ASSISTANT_ANIMATION_VARIANTS[key].animate.transition;
+        expect(t).toBeDefined();
+        expect(t!.duration).toBeGreaterThan(0);
+      }
+    });
+
+    it('guardrail variant should use horizontal x offset for attention', () => {
+      const guardrail = ASSISTANT_ANIMATION_VARIANTS.guardrail;
+      expect(guardrail.initial.x).toBeDefined();
+      expect(guardrail.initial.x).not.toBe(0);
+    });
+
+    it('guardrail variant should use spring physics', () => {
+      const transition = ASSISTANT_ANIMATION_VARIANTS.guardrail.animate.transition;
+      expect(transition!.type).toBe('spring');
+      expect(transition!.stiffness).toBeGreaterThan(0);
+      expect(transition!.damping).toBeGreaterThan(0);
+    });
+
+    it('fiat_conversion variant should use larger scale-up for emphasis', () => {
+      const fc = ASSISTANT_ANIMATION_VARIANTS.fiat_conversion;
+      expect(fc.initial.scale).toBeLessThan(1);
+      expect(fc.animate.scale).toBe(1);
+    });
+  });
+
+  // ── REDUCED_MOTION_VARIANTS constant ─────────────────────────────────
+
+  describe('REDUCED_MOTION_VARIANTS', () => {
+    it('should only animate opacity (no positional transforms)', () => {
+      const { initial, animate } = REDUCED_MOTION_VARIANTS;
+
+      expect(initial.opacity).toBe(0);
+      expect(initial.y).toBeUndefined();
+      expect(initial.x).toBeUndefined();
+      expect(initial.scale).toBeUndefined();
+
+      expect(animate.opacity).toBe(1);
+      expect(animate.y).toBeUndefined();
+      expect(animate.x).toBeUndefined();
+      expect(animate.scale).toBeUndefined();
+    });
+
+    it('should have a short transition duration', () => {
+      expect(REDUCED_MOTION_VARIANTS.animate.transition!.duration).toBeLessThanOrEqual(0.3);
+    });
+  });
+
+  // ── AIAssistant.getAnimationVariants() ────────────────────────────────
+
+  describe('AIAssistant.getAnimationVariants()', () => {
+    it('should return the correct variant for each intent', () => {
+      const intents: AIAnalysisResult['intent'][] = [
+        'query',
+        'guardrail',
+        'fiat_conversion',
+        'portfolio',
+        'technical_support',
+        'unknown',
+      ];
+
+      for (const intent of intents) {
+        const analysis = makeAnalysis(intent);
+        const result = AIAssistant.getAnimationVariants(analysis);
+        expect(result).toEqual(ASSISTANT_ANIMATION_VARIANTS[intent]);
+      }
+    });
+
+    it('should return reduced-motion variants when prefersReducedMotion is true', () => {
+      const analysis = makeAnalysis('fiat_conversion');
+      const result = AIAssistant.getAnimationVariants(analysis, true);
+      expect(result).toEqual(REDUCED_MOTION_VARIANTS);
+    });
+
+    it('should return reduced-motion variants for guardrail intent when motion is reduced', () => {
+      const analysis = makeAnalysis('guardrail', {
+        guardrail: {
+          triggered: true,
+          category: 'malicious_activity',
+          reason: 'test',
+        },
+      });
+      const result = AIAssistant.getAnimationVariants(analysis, true);
+      expect(result).toEqual(REDUCED_MOTION_VARIANTS);
+    });
+
+    it('should default to false for prefersReducedMotion when omitted', () => {
+      const analysis = makeAnalysis('query');
+      const result = AIAssistant.getAnimationVariants(analysis);
+      // Should return intent-specific variant, not reduced-motion
+      expect(result).toEqual(ASSISTANT_ANIMATION_VARIANTS.query);
+      expect(result).not.toEqual(REDUCED_MOTION_VARIANTS);
+    });
+
+    it('should return a valid AnimationVariants shape for every intent', () => {
+      const intents: AIAnalysisResult['intent'][] = [
+        'query',
+        'guardrail',
+        'fiat_conversion',
+        'portfolio',
+        'technical_support',
+        'unknown',
+      ];
+
+      for (const intent of intents) {
+        const analysis = makeAnalysis(intent);
+        const variants: AnimationVariants = AIAssistant.getAnimationVariants(analysis);
+
+        // Structure checks
+        expect(variants.initial).toBeDefined();
+        expect(variants.animate).toBeDefined();
+        expect(typeof variants.initial.opacity).toBe('number');
+        expect(typeof variants.animate.opacity).toBe('number');
+      }
+    });
+
+    it('should produce distinct variants for guardrail vs query intents', () => {
+      const guardrailVariants = AIAssistant.getAnimationVariants(makeAnalysis('guardrail'));
+      const queryVariants = AIAssistant.getAnimationVariants(makeAnalysis('query'));
+
+      expect(guardrailVariants).not.toEqual(queryVariants);
+    });
+
+    it('should produce distinct variants for fiat_conversion vs default', () => {
+      const fcVariants = AIAssistant.getAnimationVariants(makeAnalysis('fiat_conversion'));
+      const defaultVariants = ASSISTANT_ANIMATION_VARIANTS.default;
+
+      expect(fcVariants).not.toEqual(defaultVariants);
+    });
+
   });
 });

@@ -5,6 +5,7 @@ import { AuditEntry } from '@/types';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useToast } from '@/hooks/useToast';
 import Skeleton from '@/components/ui/skeleton/Skeleton';
+import { withNetworkReadQueue, subscribeToQueue } from '@/lib/networkQueue';
 
 interface AuditTableProps {
   onRefresh?: () => void;
@@ -33,9 +34,19 @@ export default function AuditTable({}: AuditTableProps) {
     startDate: '',
     endDate: '',
   });
+  const [retryQueueCount, setRetryQueueCount] = useState(0);
 
   const pageSize = 20;
   const fetchAbortRef = useRef<AbortController | null>(null);
+
+  // Subscribe to the network queue so the UI can show how many
+  // fetch requests are waiting to be retried when offline.
+  useEffect(() => {
+    const unsubscribe = subscribeToQueue((count) => {
+      setRetryQueueCount(count);
+    });
+    return unsubscribe;
+  }, []);
 
   const fetchAuditEntries = useCallback(async () => {
     fetchAbortRef.current?.abort();
@@ -59,19 +70,28 @@ export default function AuditTable({}: AuditTableProps) {
       params.append('limit', pageSize.toString());
       params.append('offset', (currentPage * pageSize).toString());
 
-      const response = await fetch(`/api/admin-audit?${params.toString()}`, {
-        signal,
-      });
+      const url = `/api/admin-audit?${params.toString()}`;
 
-      if (!response.ok) {
-        throw new Error(`API error: ${response.statusText}`);
-      }
+      const data = await withNetworkReadQueue(
+        async () => {
+          const response = await fetch(url, { signal });
+          if (!response.ok) {
+            throw new Error(`API error: ${response.statusText}`);
+          }
+          return response.json() as Promise<{
+            entries: AuditEntry[];
+            total: number;
+          }>;
+        },
+        'audit-table-fetch',
+      );
 
-      const data = await response.json();
-      setEntries(data.entries.map((entry: AuditEntry) => ({
-        ...entry,
-        timestamp: new Date(entry.timestamp),
-      })));
+      setEntries(
+        data.entries.map((entry: AuditEntry) => ({
+          ...entry,
+          timestamp: new Date(entry.timestamp),
+        })),
+      );
       setTotalEntries(data.total);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
@@ -115,10 +135,12 @@ export default function AuditTable({}: AuditTableProps) {
         durationMs: 3000,
       });
       resetWasOffline();
+      // Flush any queued fetches now that we're back online
+      void fetchAuditEntries();
     }
 
     wasOnlineRef.current = isOnline;
-  }, [isOnline, wasOffline, addToast, resetWasOffline]);
+  }, [isOnline, wasOffline, addToast, resetWasOffline, fetchAuditEntries]);
 
   const handleFilterChange = (key: keyof FilterState, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -208,6 +230,21 @@ export default function AuditTable({}: AuditTableProps) {
 
   return (
     <div className="w-full">
+      {/* Offline retry queue banner */}
+      {retryQueueCount > 0 && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex items-center gap-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg px-4 py-2 mb-4 text-sm text-yellow-800 dark:text-yellow-300"
+        >
+          <span
+            aria-label={`${retryQueueCount} audit ${retryQueueCount === 1 ? 'request' : 'requests'} queued for retry`}
+          >
+            {retryQueueCount} audit {retryQueueCount === 1 ? 'request' : 'requests'} queued — will retry when online
+          </span>
+        </div>
+      )}
+
       {/* Filter Section */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">

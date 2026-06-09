@@ -1,6 +1,7 @@
 import React from 'react';
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { useNotifications } from '@/hooks/useNotifications';
 import '@testing-library/jest-dom';
 import NotificationsCenter from '../NotificationsCenter';
 
@@ -63,8 +64,7 @@ describe('NotificationsCenter – rendering', () => {
   });
 
   it('shows unread badge when there are unread notifications', () => {
-    const { useNotifications } = require('@/hooks/useNotifications');
-    useNotifications.mockReturnValueOnce({
+    vi.mocked(useNotifications).mockReturnValueOnce({
       notifications: [makeNotification()],
       unreadCount: 1,
       markAsRead: mockMarkAsRead,
@@ -116,8 +116,7 @@ describe('NotificationsCenter – keyboard shortcuts', () => {
   });
 
   it('m key marks all as read when panel is open', () => {
-    const { useNotifications } = require('@/hooks/useNotifications');
-    useNotifications.mockReturnValue({
+    vi.mocked(useNotifications).mockReturnValue({
       notifications: [makeNotification()],
       unreadCount: 1,
       markAsRead: mockMarkAsRead,
@@ -133,8 +132,7 @@ describe('NotificationsCenter – keyboard shortcuts', () => {
   });
 
   it('M key (uppercase) also marks all as read', () => {
-    const { useNotifications } = require('@/hooks/useNotifications');
-    useNotifications.mockReturnValue({
+    vi.mocked(useNotifications).mockReturnValue({
       notifications: [makeNotification()],
       unreadCount: 1,
       markAsRead: mockMarkAsRead,
@@ -150,8 +148,7 @@ describe('NotificationsCenter – keyboard shortcuts', () => {
   });
 
   it('d key clears all notifications when panel is open', () => {
-    const { useNotifications } = require('@/hooks/useNotifications');
-    useNotifications.mockReturnValue({
+    vi.mocked(useNotifications).mockReturnValue({
       notifications: [makeNotification()],
       unreadCount: 1,
       markAsRead: mockMarkAsRead,
@@ -167,8 +164,7 @@ describe('NotificationsCenter – keyboard shortcuts', () => {
   });
 
   it('D key (uppercase) also clears notifications', () => {
-    const { useNotifications } = require('@/hooks/useNotifications');
-    useNotifications.mockReturnValue({
+    vi.mocked(useNotifications).mockReturnValue({
       notifications: [makeNotification()],
       unreadCount: 1,
       markAsRead: mockMarkAsRead,

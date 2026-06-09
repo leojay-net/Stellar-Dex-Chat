@@ -26,7 +26,7 @@ describe('OfflineStatusBanner', () => {
   });
 
   it('renders nothing when online', () => {
-    (useOnlineStatus as any).mockReturnValue({
+    vi.mocked(useOnlineStatus).mockReturnValue({
       isOnline: true,
       wasOffline: false,
       resetWasOffline: mockResetWasOffline,
@@ -37,7 +37,7 @@ describe('OfflineStatusBanner', () => {
   });
 
   it('renders banner when offline', () => {
-    (useOnlineStatus as any).mockReturnValue({
+    vi.mocked(useOnlineStatus).mockReturnValue({
       isOnline: false,
       wasOffline: false,
       resetWasOffline: mockResetWasOffline,
@@ -50,7 +50,7 @@ describe('OfflineStatusBanner', () => {
   });
 
   it('uses CSS variable tokens for colour — no raw Tailwind colour classes', () => {
-    (useOnlineStatus as any).mockReturnValue({
+    vi.mocked(useOnlineStatus).mockReturnValue({
       isOnline: false,
       wasOffline: false,
       resetWasOffline: mockResetWasOffline,
@@ -64,7 +64,7 @@ describe('OfflineStatusBanner', () => {
   });
 
   it('marks decorative icons as aria-hidden', () => {
-    (useOnlineStatus as any).mockReturnValue({
+    vi.mocked(useOnlineStatus).mockReturnValue({
       isOnline: false,
       wasOffline: false,
       resetWasOffline: mockResetWasOffline,
@@ -76,7 +76,7 @@ describe('OfflineStatusBanner', () => {
   });
 
   it('exposes an accessible label on the banner region', () => {
-    (useOnlineStatus as any).mockReturnValue({
+    vi.mocked(useOnlineStatus).mockReturnValue({
       isOnline: false,
       wasOffline: false,
       resetWasOffline: mockResetWasOffline,
@@ -87,7 +87,7 @@ describe('OfflineStatusBanner', () => {
   });
 
   it('shows success toast when coming back online', () => {
-    (useOnlineStatus as any).mockReturnValue({
+    vi.mocked(useOnlineStatus).mockReturnValue({
       isOnline: true,
       wasOffline: true,
       resetWasOffline: mockResetWasOffline,
@@ -102,9 +102,9 @@ describe('OfflineStatusBanner', () => {
     expect(mockResetWasOffline).toHaveBeenCalled();
   });
 
-  it('falls back to default message when toast validation fails', () => {
+  it('falls back to default message when toast validation fails', async () => {
     // Mock safeParse to return failure
-    const { offlineStatusToastSchema } = require('@/lib/offlineStatusSchema');
+    const { offlineStatusToastSchema } = await import('@/lib/offlineStatusSchema');
     const originalSafeParse = offlineStatusToastSchema.safeParse;
     offlineStatusToastSchema.safeParse = vi.fn().mockReturnValue({
       success: false,
@@ -114,6 +114,7 @@ describe('OfflineStatusBanner', () => {
       },
     });
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (useOnlineStatus as any).mockReturnValue({
       isOnline: true,
       wasOffline: true,

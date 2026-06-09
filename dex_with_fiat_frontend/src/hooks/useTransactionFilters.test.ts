@@ -1,7 +1,7 @@
 import { renderHook, act } from '@testing-library/react';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import type { TransactionHistoryEntry } from '@/types';
-import { KEYBOARD_SHORTCUTS, useTransactionFilters } from './useTransactionFilters';
+import { KEYBOARD_SHORTCUTS, useTransactionFilters, getAccessibleFilterChipTone } from './useTransactionFilters';
 
 let mockSearchParams = new URLSearchParams('tab=history');
 const mockPush = vi.fn((url: string) => {
@@ -51,16 +51,20 @@ describe('useTransactionFilters', () => {
 
     act(() => {
       result.current.toggleFilter('status', 'completed');
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(51);
+    });
+
+    act(() => {
       result.current.toggleFilter('asset', 'XLM');
     });
 
     expect(mockPush).not.toHaveBeenCalled();
 
     act(() => {
-      vi.advanceTimersByTime(149);
-    });
-    act(() => {
-      vi.advanceTimersByTime(1);
+      vi.advanceTimersByTime(200);
     });
 
     expect(mockPush).toHaveBeenCalledTimes(1);
@@ -90,10 +94,7 @@ describe('useTransactionFilters', () => {
       vi.advanceTimersByTime(150);
     });
 
-    expect(mockPush).toHaveBeenCalledWith(
-      '/transactions?tab=history',
-      { scroll: false }
-    );
+    expect(mockPush).toHaveBeenCalledWith('/transactions', { scroll: false });
   });
 
   it('ignores keyboard shortcuts while typing in an input', () => {
@@ -128,7 +129,7 @@ describe('useTransactionFilters', () => {
 
     expect(
       result.current.getFilterChipTone('status', 'pending', true),
-    ).toBeDefined();
+    ).toEqual(getAccessibleFilterChipTone('status', 'pending', true));
   });
 
   it('applies pending filter state immediately before debounce flush', () => {
@@ -150,6 +151,5 @@ describe('useTransactionFilters', () => {
     expect(KEYBOARD_SHORTCUTS.cycleStatus.key).toBe('1');
     expect(KEYBOARD_SHORTCUTS.cycleAsset.key).toBe('2');
     expect(KEYBOARD_SHORTCUTS.cycleNetwork.key).toBe('3');
-
   });
 });

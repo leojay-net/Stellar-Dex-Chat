@@ -2,6 +2,12 @@
 
 import { toastStore } from './toastStore';
 
+declare global {
+  interface Window {
+    __networkQueueListenerAdded?: boolean;
+  }
+}
+
 type QueuedRequest = {
   id: number;
   name?: string;
@@ -76,12 +82,12 @@ async function processQueue(): Promise<void> {
 }
 
 if (typeof window !== 'undefined') {
-  if (!(window as Window & { __networkQueueListenerAdded?: boolean }).__networkQueueListenerAdded) {
+  if (!window.__networkQueueListenerAdded) {
     window.addEventListener('online', () => {
       console.log('Network is back online; flushing read queue.');
       void processQueue();
     });
-    (window as Window & { __networkQueueListenerAdded?: boolean }).__networkQueueListenerAdded = true;
+    window.__networkQueueListenerAdded = true;
   }
 }
 

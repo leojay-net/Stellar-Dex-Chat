@@ -63,7 +63,9 @@ export type FiatPayoutTelemetryAction =
   | 'account_verify_fail'
   | 'confirm_attempt'
   | 'confirm_success'
-  | 'confirm_error';
+  | 'confirm_error'
+  | 'beneficiary_selected'
+  | 'beneficiary_saved';
 
 export interface FiatPayoutStepPayload {
   action: FiatPayoutTelemetryAction;

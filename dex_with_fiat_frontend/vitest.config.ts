@@ -1,15 +1,13 @@
 import { defineConfig } from 'vitest/config';
-import react from '@vitejs/plugin-react-swc';
 import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig({
-  plugins: [react()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
-  // Override tsconfig's jsx:preserve so vitest can parse JSX inside vi.mock factories.
+  // esbuild jsx:automatic handles React JSX without needing @vitejs/plugin-react
   esbuild: {
     jsx: 'automatic',
   },

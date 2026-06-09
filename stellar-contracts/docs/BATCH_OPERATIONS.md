@@ -298,6 +298,14 @@ pub fn migrate_escrow(env: Env, batch_size: u32) -> Result<u32, Error>
   - `Error::NotAuthorized`: Caller is not the contract admin
   - `Error::NotInitialized`: Contract has not been initialized
 
+### Before You Migrate (Health Check)
+
+Before initiating a migration, administrators should use the view methods to check the current system state:
+
+1. **Verify Version**: Call `get_escrow_storage_version()` to see if the migration is already complete (Version 1) or needs starting (Version 0).
+2. **Check Progress**: Call `get_migration_cursor()` to see how many records have already been processed in previous batches.
+3. **Validate Records**: (Optional) Use `get_escrow_record(id)` to verify that specific record IDs have been successfully transformed.
+
 ### Migration State
 
 The contract maintains migration state in instance storage:

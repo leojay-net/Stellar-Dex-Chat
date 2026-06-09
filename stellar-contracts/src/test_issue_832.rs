@@ -266,4 +266,3 @@ fn test_withdraw_fees_vault_persistence() {
 
     assert_eq!(bridge.get_accrued_fees(&token_addr), 0);
 }
-

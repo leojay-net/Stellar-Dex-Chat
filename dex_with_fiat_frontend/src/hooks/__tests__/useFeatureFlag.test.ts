@@ -4,11 +4,11 @@ import * as featureFlags from '@/lib/featureFlags';
 
 describe('useFeatureFlag', () => {
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('returns the requested feature flag on the first render', () => {
-    jest
+    vi
       .spyOn(featureFlags, 'getFeatureFlag')
       .mockImplementation((flag) => flag === 'enableAdminReconciliation');
 
@@ -23,7 +23,7 @@ describe('useFeatureFlag', () => {
   });
 
   it('updates immediately when the requested flag changes', () => {
-    jest
+    vi
       .spyOn(featureFlags, 'getFeatureFlag')
       .mockImplementation((flag) => flag === 'enableConversionReminders');
 

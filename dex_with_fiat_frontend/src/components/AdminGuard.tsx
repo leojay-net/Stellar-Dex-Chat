@@ -53,7 +53,7 @@ export default function AdminGuard({ children }: AdminGuardProps) {
 
   // Stable ref so the online handler can call the latest checkAdmin without a
   // stale closure, even if connection.address changes between renders.
-  const checkAdminRef = useRef<() => Promise<void>>();
+  const checkAdminRef = useRef<(() => Promise<void>) | undefined>(undefined);
 
   const checkAdmin = useCallback(async () => {
     if (!navigator.onLine) {

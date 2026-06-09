@@ -69,16 +69,6 @@ export interface ChatMachineContext {
   previousState: ChatState | null;
 }
 
-const INITIAL_CONTEXT: ChatMachineContext = {
-  messageCount: 0,
-  hasUserCancelled: false,
-  pendingTransactionData: null,
-  needsClarification: false,
-  clarificationQuestion: null,
-  errorMessage: null,
-  lastEventTime: 0,
-  previousState: null,
-};
 
 /**
  * Guards for conditional transitions
