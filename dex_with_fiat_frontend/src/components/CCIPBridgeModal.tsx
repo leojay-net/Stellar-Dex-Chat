@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import {
   AlertCircle,
   CheckCircle,
@@ -17,7 +17,13 @@ import {
   type CCIPTransferStartResult,
 } from '@/lib/ccipExplorer';
 
-type BridgeState = 'idle' | 'optimistic' | 'initiating' | 'polling' | 'success' | 'error';
+type BridgeState =
+  | 'idle'
+  | 'optimistic'
+  | 'initiating'
+  | 'polling'
+  | 'success'
+  | 'error';
 
 export interface CCIPBridgeModalProps {
   isOpen: boolean;
@@ -36,6 +42,8 @@ export default function CCIPBridgeModal({
   pollIntervalMs = CCIP_POLL_INTERVAL_MS,
   timeoutMs = CCIP_POLL_TIMEOUT_MS,
 }: CCIPBridgeModalProps) {
+  const titleId = useId();
+  const descriptionId = useId();
   const modalRef = useRef<HTMLDivElement>(null);
   const pollingStartedAtRef = useRef<number | null>(null);
   // Fix #520: keep a ref in sync with transactionHash state so the polling
@@ -89,11 +97,12 @@ export default function CCIPBridgeModal({
 
       pollingStartedAtRef.current = Date.now();
       setTransactionHash(nextHash);
-      
+
       // Optimistic UI: set explorer URL immediately for better UX
-      const explorerUrlValue = result.explorerUrl ?? buildCCIPExplorerTransactionUrl(nextHash);
+      const explorerUrlValue =
+        result.explorerUrl ?? buildCCIPExplorerTransactionUrl(nextHash);
       setExplorerUrl(explorerUrlValue);
-      
+
       // Optimistic UI: transition to polling state immediately
       setBridgeState('polling');
     } catch (error) {
@@ -111,66 +120,69 @@ export default function CCIPBridgeModal({
   // Fix #520: pollTransferStatus reads the hash from a ref instead of closing
   // over the state value.  This means the callback identity is stable and the
   // polling interval never fires with a stale hash.
-  const pollTransferStatus = useCallback(async (signal: { aborted: boolean }) => {
-    const hash = transactionHashRef.current;
-    if (!hash) return;
+  const pollTransferStatus = useCallback(
+    async (signal: { aborted: boolean }) => {
+      const hash = transactionHashRef.current;
+      if (!hash) return;
 
-    const pollingStartedAt = pollingStartedAtRef.current;
-    if (
-      pollingStartedAt !== null &&
-      Date.now() - pollingStartedAt >= timeoutMs
-    ) {
-      if (signal.aborted) return;
-      setBridgeState('error');
-      setErrorMessage(
-        'CCIP confirmation timed out after 10 minutes. Please verify the transaction in the explorer and try again.',
-      );
-      return;
-    }
-
-    try {
-      const result = await fetchTransferStatus(hash);
-      if (signal.aborted) return;
-
-      // Optimistic UI: update status immediately
-      setLatestStatus(result.status);
-      if (result.explorerUrl) {
-        setExplorerUrl(result.explorerUrl);
-      }
-
-      if (result.status === 'SUCCESS') {
-        setBridgeState('success');
-        return;
-      }
-
-      if (result.status === 'FAILED' || result.status === 'ERROR') {
-        setBridgeState('error');
-        setErrorMessage(
-          result.errorMessage ??
-            `CCIP transfer failed with status "${result.status}".`,
-        );
-        return;
-      }
-
-      setBridgeState('polling');
-    } catch (error) {
-      if (signal.aborted) return;
-      // Maintain PENDING status during transient errors
-      setLatestStatus('PENDING');
-      setBridgeState('polling');
+      const pollingStartedAt = pollingStartedAtRef.current;
       if (
         pollingStartedAt !== null &&
         Date.now() - pollingStartedAt >= timeoutMs
       ) {
+        if (signal.aborted) return;
         setBridgeState('error');
         setErrorMessage(
-          error instanceof Error
-            ? error.message
-            : 'CCIP confirmation timed out after 10 minutes.',
+          'CCIP confirmation timed out after 10 minutes. Please verify the transaction in the explorer and try again.',
         );
+        return;
       }
-    }
-  }, [fetchTransferStatus, timeoutMs]);
+
+      try {
+        const result = await fetchTransferStatus(hash);
+        if (signal.aborted) return;
+
+        // Optimistic UI: update status immediately
+        setLatestStatus(result.status);
+        if (result.explorerUrl) {
+          setExplorerUrl(result.explorerUrl);
+        }
+
+        if (result.status === 'SUCCESS') {
+          setBridgeState('success');
+          return;
+        }
+
+        if (result.status === 'FAILED' || result.status === 'ERROR') {
+          setBridgeState('error');
+          setErrorMessage(
+            result.errorMessage ??
+              `CCIP transfer failed with status "${result.status}".`,
+          );
+          return;
+        }
+
+        setBridgeState('polling');
+      } catch (error) {
+        if (signal.aborted) return;
+        // Maintain PENDING status during transient errors
+        setLatestStatus('PENDING');
+        setBridgeState('polling');
+        if (
+          pollingStartedAt !== null &&
+          Date.now() - pollingStartedAt >= timeoutMs
+        ) {
+          setBridgeState('error');
+          setErrorMessage(
+            error instanceof Error
+              ? error.message
+              : 'CCIP confirmation timed out after 10 minutes.',
+          );
+        }
+      }
+    },
+    [fetchTransferStatus, timeoutMs],
+  );
 
   useEffect(() => {
     if (
@@ -216,26 +228,30 @@ export default function CCIPBridgeModal({
         ref={modalRef}
         role="dialog"
         aria-modal="true"
-        aria-label="CCIP bridge transfer"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
         tabIndex={-1}
         className="theme-surface theme-border relative w-full max-w-md mx-4 border rounded-2xl shadow-2xl p-6"
       >
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="theme-text-primary text-lg font-semibold">
+            <h2
+              id={titleId}
+              className="theme-text-primary text-lg font-semibold"
+            >
               CCIP Bridge
             </h2>
-            <p className="theme-text-secondary text-sm mt-1">
+            <p id={descriptionId} className="theme-text-secondary text-sm mt-1">
               Start a CCIP transfer and monitor its confirmation state.
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label="Close CCIP bridge modal"
             className="theme-text-muted hover:theme-text-primary transition-colors"
           >
-            <X className="w-5 h-5" />
+            <X aria-hidden="true" className="w-5 h-5" />
           </button>
         </div>
 
@@ -243,6 +259,7 @@ export default function CCIPBridgeModal({
           <button
             type="button"
             onClick={() => void handleStartTransfer()}
+            aria-label="Start CCIP bridge transfer"
             className="theme-primary-button w-full py-3 rounded-lg font-medium"
           >
             Start CCIP Transfer
@@ -250,9 +267,14 @@ export default function CCIPBridgeModal({
         )}
 
         {bridgeState === 'optimistic' && (
-          <div className="text-center py-6">
+          <div
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            className="text-center py-6"
+          >
             <div className="w-14 h-14 bg-blue-500 rounded-full mx-auto mb-4 flex items-center justify-center">
-              <CheckCircle className="w-8 h-8 text-white" />
+              <CheckCircle aria-hidden="true" className="w-8 h-8 text-white" />
             </div>
             <p className="theme-text-primary font-semibold text-lg mb-2">
               Transfer Initiated!
@@ -261,7 +283,10 @@ export default function CCIPBridgeModal({
               Processing your CCIP transfer request...
             </p>
             <div className="flex items-center justify-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
+              <Loader2
+                aria-hidden="true"
+                className="w-4 h-4 animate-spin text-blue-400"
+              />
               <span className="theme-text-secondary text-xs">
                 Preparing transaction
               </span>
@@ -270,8 +295,16 @@ export default function CCIPBridgeModal({
         )}
 
         {bridgeState === 'initiating' && (
-          <div className="flex items-center justify-center gap-3 py-10">
-            <Loader2 className="w-5 h-5 animate-spin text-blue-400" />
+          <div
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            className="flex items-center justify-center gap-3 py-10"
+          >
+            <Loader2
+              aria-hidden="true"
+              className="w-5 h-5 animate-spin text-blue-400"
+            />
             <span className="theme-text-primary text-sm">
               Starting CCIP transfer…
             </span>
@@ -279,9 +312,15 @@ export default function CCIPBridgeModal({
         )}
 
         {bridgeState === 'polling' && (
-          <div className="text-center py-6">
+          <div
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            className="text-center py-6"
+          >
             <Loader2
               data-testid="ccip-polling-spinner"
+              aria-hidden="true"
               className="w-14 h-14 text-blue-400 mx-auto mb-4 animate-spin"
             />
             <p className="theme-text-primary font-semibold text-lg mb-2">
@@ -302,19 +341,26 @@ export default function CCIPBridgeModal({
                 href={explorerUrl}
                 target="_blank"
                 rel="noreferrer"
+                aria-label="View transaction in CCIP explorer"
                 className="inline-flex items-center gap-2 text-blue-400 hover:underline text-sm"
               >
                 View transaction in CCIP explorer
-                <ExternalLink className="w-4 h-4" />
+                <ExternalLink aria-hidden="true" className="w-4 h-4" />
               </a>
             )}
           </div>
         )}
 
         {bridgeState === 'success' && (
-          <div className="text-center py-6">
+          <div
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            className="text-center py-6"
+          >
             <CheckCircle
               data-testid="ccip-success-icon"
+              aria-hidden="true"
               className="w-14 h-14 text-green-500 mx-auto mb-4"
             />
             <p className="theme-text-primary font-semibold text-lg mb-2">
@@ -328,33 +374,36 @@ export default function CCIPBridgeModal({
                 href={explorerUrl}
                 target="_blank"
                 rel="noreferrer"
+                aria-label="View transaction in CCIP explorer"
                 className="inline-flex items-center gap-2 text-blue-400 hover:underline text-sm"
               >
                 View transaction in CCIP explorer
-                <ExternalLink className="w-4 h-4" />
+                <ExternalLink aria-hidden="true" className="w-4 h-4" />
               </a>
             )}
           </div>
         )}
 
         {bridgeState === 'error' && (
-          <div className="text-center py-6">
-            <AlertCircle className="w-14 h-14 text-red-500 mx-auto mb-4" />
+          <div role="alert" className="text-center py-6">
+            <AlertCircle
+              aria-hidden="true"
+              className="w-14 h-14 text-red-500 mx-auto mb-4"
+            />
             <p className="theme-text-primary font-semibold text-lg mb-2">
               CCIP transfer error
             </p>
-            <p className="theme-text-secondary text-sm mb-4">
-              {errorMessage}
-            </p>
+            <p className="theme-text-secondary text-sm mb-4">{errorMessage}</p>
             {explorerUrl && (
               <a
                 href={explorerUrl}
                 target="_blank"
                 rel="noreferrer"
+                aria-label="View transaction in CCIP explorer"
                 className="inline-flex items-center gap-2 text-blue-400 hover:underline text-sm"
               >
                 View transaction in CCIP explorer
-                <ExternalLink className="w-4 h-4" />
+                <ExternalLink aria-hidden="true" className="w-4 h-4" />
               </a>
             )}
           </div>

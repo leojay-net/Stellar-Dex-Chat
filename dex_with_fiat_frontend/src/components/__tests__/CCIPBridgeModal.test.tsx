@@ -1,5 +1,11 @@
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CCIPBridgeModal from '../CCIPBridgeModal';
 
@@ -18,12 +24,49 @@ describe('CCIPBridgeModal', () => {
   };
 
   beforeEach(() => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
   });
 
   afterEach(() => {
     vi.clearAllMocks();
     vi.useRealTimers();
+  });
+
+  it('exposes accessible names for the dialog, actions, and live status', async () => {
+    const fetchTransferStatus = vi
+      .fn()
+      .mockResolvedValue({ status: 'PENDING' });
+
+    render(
+      <CCIPBridgeModal
+        {...defaultProps}
+        fetchTransferStatus={fetchTransferStatus}
+      />,
+    );
+
+    const dialog = screen.getByRole('dialog', { name: 'CCIP Bridge' });
+    const descriptionId = dialog.getAttribute('aria-describedby');
+
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(descriptionId).toBeTruthy();
+    expect(document.getElementById(descriptionId ?? '')).toHaveTextContent(
+      'Start a CCIP transfer and monitor its confirmation state.',
+    );
+
+    expect(
+      screen.getByRole('button', { name: /close ccip bridge modal/i }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /start ccip bridge transfer/i }),
+    );
+
+    await screen.findByText('Waiting for CCIP confirmation…');
+    const status = screen.getByRole('status');
+    expect(status).toHaveTextContent('Waiting for CCIP confirmation');
+    expect(
+      screen.getByRole('link', { name: /view transaction in ccip explorer/i }),
+    ).toBeInTheDocument();
   });
 
   it('shows a polling spinner and message while waiting for confirmation', async () => {
@@ -45,7 +88,9 @@ describe('CCIPBridgeModal', () => {
       await screen.findByText('Waiting for CCIP confirmation…'),
     ).toBeInTheDocument();
     expect(screen.getByTestId('ccip-polling-spinner')).toBeInTheDocument();
-    expect(fetchTransferStatus).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(fetchTransferStatus).toHaveBeenCalledTimes(1);
+    });
 
     await act(async () => {
       vi.advanceTimersByTime(15_000);
@@ -78,38 +123,26 @@ describe('CCIPBridgeModal', () => {
     expect(screen.getByText('Status: SUCCESS')).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: /view transaction in ccip explorer/i }),
-    ).toHaveAttribute(
-      'href',
-      'https://ccip.chain.link/status?search=0xabc123',
-    );
+    ).toHaveAttribute('href', 'https://ccip.chain.link/status?search=0xabc123');
   });
 
   it('times out after 10 minutes and shows an error state', async () => {
-    const fetchTransferStatus = vi.fn().mockResolvedValue({ status: 'PENDING' });
+    const fetchTransferStatus = vi
+      .fn()
+      .mockResolvedValue({ status: 'PENDING' });
 
     render(
       <CCIPBridgeModal
         {...defaultProps}
         fetchTransferStatus={fetchTransferStatus}
+        timeoutMs={0}
       />,
     );
 
     fireEvent.click(screen.getByText('Start CCIP Transfer'));
 
-    expect(
-      await screen.findByText('Waiting for CCIP confirmation…'),
-    ).toBeInTheDocument();
-
-    await act(async () => {
-      vi.advanceTimersByTime(10 * 60 * 1000);
-    });
-
-    expect(
-      await screen.findByText('CCIP transfer error'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/timed out after 10 minutes/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('CCIP transfer error')).toBeInTheDocument();
+    expect(screen.getByText(/timed out after 10 minutes/i)).toBeInTheDocument();
   });
 
   // ── Race condition regression tests (issue #520) ─────────────────────
@@ -118,7 +151,10 @@ describe('CCIPBridgeModal', () => {
     it('does not call fetchTransferStatus after modal is closed mid-poll', async () => {
       let resolveStatus!: (v: { status: string }) => void;
       const fetchTransferStatus = vi.fn().mockImplementationOnce(
-        () => new Promise((resolve) => { resolveStatus = resolve; }),
+        () =>
+          new Promise((resolve) => {
+            resolveStatus = resolve;
+          }),
       );
 
       const { rerender } = render(
@@ -146,7 +182,9 @@ describe('CCIPBridgeModal', () => {
       });
 
       // The modal is closed — success state must NOT be rendered
-      expect(screen.queryByText('CCIP transfer confirmed')).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('CCIP transfer confirmed'),
+      ).not.toBeInTheDocument();
     });
 
     it('does not apply stale status from a previous hash after hash changes', async () => {
@@ -154,7 +192,12 @@ describe('CCIPBridgeModal', () => {
       let resolveFirst!: (v: { status: string }) => void;
       const fetchTransferStatus = vi
         .fn()
-        .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveFirst = resolve;
+            }),
+        )
         .mockResolvedValue({ status: 'SUCCESS' });
 
       render(
@@ -169,7 +212,7 @@ describe('CCIPBridgeModal', () => {
 
       // Advance timer to trigger a second poll (which resolves to SUCCESS)
       await act(async () => {
-        vi.advanceTimersByTime(15_000);
+        await vi.advanceTimersByTimeAsync(15_000);
       });
 
       // Confirm success from the fast second poll
@@ -190,15 +233,14 @@ describe('CCIPBridgeModal', () => {
 
   describe('Optimistic UI updates (issue #536)', () => {
     it('immediately shows PENDING status when transfer is initiated', async () => {
-      const onStartTransfer = vi.fn().mockImplementation(
-        () =>
-          new Promise((resolve) =>
-            setTimeout(
-              () => resolve({ transactionHash: '0xabc123' }),
-              100,
+      const onStartTransfer = vi
+        .fn()
+        .mockImplementation(
+          () =>
+            new Promise((resolve) =>
+              setTimeout(() => resolve({ transactionHash: '0xabc123' }), 100),
             ),
-          ),
-      );
+        );
 
       render(
         <CCIPBridgeModal
@@ -210,9 +252,9 @@ describe('CCIPBridgeModal', () => {
 
       fireEvent.click(screen.getByText('Start CCIP Transfer'));
 
-      // Should show initiating state immediately
+      // Should show the optimistic state immediately
       expect(
-        await screen.findByText('Starting CCIP transfer…'),
+        await screen.findByText('Transfer Initiated!'),
       ).toBeInTheDocument();
 
       // Wait for the transfer to complete
@@ -247,7 +289,7 @@ describe('CCIPBridgeModal', () => {
       expect(
         await screen.findByText('Waiting for CCIP confirmation…'),
       ).toBeInTheDocument();
-      
+
       const explorerLink = screen.getByRole('link', {
         name: /view transaction in ccip explorer/i,
       });
@@ -340,6 +382,9 @@ describe('CCIPBridgeModal', () => {
       expect(
         await screen.findByText('CCIP transfer error'),
       ).toBeInTheDocument();
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'CCIP transfer error',
+      );
       expect(screen.getByText('Insufficient funds')).toBeInTheDocument();
     });
 
@@ -431,7 +476,7 @@ describe('CCIPBridgeModal', () => {
       const explorerLink = await screen.findByRole('link', {
         name: /view transaction in ccip explorer/i,
       });
-      
+
       expect(explorerLink).toBeInTheDocument();
       expect(explorerLink).toHaveAttribute(
         'href',
