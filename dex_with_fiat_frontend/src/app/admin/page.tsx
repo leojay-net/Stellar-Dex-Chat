@@ -731,6 +731,7 @@ export default function AdminDashboard() {
         </div>
       </ErrorBoundary>
       </div>
+      </div>
     </AdminGuard>
   );
 }
