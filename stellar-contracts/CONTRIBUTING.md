@@ -46,6 +46,32 @@ cargo clippy --all-targets --all-features -- -D warnings
 ```
 Ensure that all tests pass before opening a Pull Request. We run automated checks in our CI/CD pipeline, and PRs with failing tests will not be merged.
 
+### Invariant and property tests
+
+Several tests in `src/test.rs` protect accounting invariants instead of only
+checking individual outputs. They are especially important when you touch:
+
+- deposit and withdrawal balance updates
+- fee accrual or fee withdrawal logic
+- escrow migration bookkeeping
+- any change that affects `TokenConfig.total_*` fields
+
+The core bridge invariant is enforced in `FiatBridge::check_invariants()`:
+
+```text
+contract token balance >= total_deposited - total_withdrawn - accrued_fees
+```
+
+When adding a regression or a new feature, prefer one of these patterns:
+
+- add a focused unit test that proves the invariant still holds after the state transition
+- extend the property-based deposit tests when behavior must hold across a range of valid inputs
+- update snapshot expectations if an invariant-preserving change intentionally modifies emitted events
+
+If a test needs manual storage setup, mirror production flows as closely as
+possible. Synthetic state that skips required accounting fields can make an
+otherwise healthy change fail with `InternalError`.
+
 ## Writing New Functions
 
 When adding new functionality to the contracts, please follow these guidelines:
