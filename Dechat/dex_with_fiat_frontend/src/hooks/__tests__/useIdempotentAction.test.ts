@@ -166,24 +166,32 @@ describe('useIdempotentAction', () => {
   });
 
   it('should reset state correctly', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(5_000);
-    const { result } = renderHook(() => useIdempotentAction());
+    const { result } = renderHook(() =>
+      useIdempotentAction({ cooldownMs: 1000 }),
+    );
     const mockAction = vi.fn().mockResolvedValue('success');
 
     await act(async () => {
       await result.current.execute(mockAction, 'test_action');
     });
 
-    expect(result.current.state.lastExecutionTime).toBe(5_000);
+    let blockedResult: string | null = 'not-null';
+    await act(async () => {
+      blockedResult = await result.current.execute(mockAction, 'test_action');
+    });
+    expect(blockedResult).toBeNull();
+    expect(mockAction).toHaveBeenCalledTimes(1);
 
     act(() => {
       result.current.reset();
     });
 
+    await act(async () => {
+      await result.current.execute(mockAction, 'test_action');
+    });
+
+    expect(mockAction).toHaveBeenCalledTimes(2);
     expect(result.current.isProcessing).toBe(false);
-    expect(result.current.state.lastExecutionTime).toBe(-2000);
-    vi.useRealTimers();
   });
 
   it('should handle action errors gracefully', async () => {

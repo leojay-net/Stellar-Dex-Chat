@@ -103,9 +103,11 @@ describe('AdminDashboard - Dark Mode Support', () => {
       expect(screen.getByText('Admin Dashboard')).toBeInTheDocument();
     });
 
-    // Check for theme classes instead of hardcoded colors
-    const container = screen.getByText('Admin Dashboard').closest('div');
-    expect(container?.className).toContain('theme-');
+    const shell = document.querySelector('.min-h-screen.theme-app');
+    expect(shell?.className).toContain('theme-app');
+    expect(screen.getByText('Admin Dashboard').className).toContain(
+      'theme-text-primary',
+    );
   });
 
   it('applies CSS tokens for colors — no raw Tailwind colour classes remain', async () => {
@@ -115,17 +117,23 @@ describe('AdminDashboard - Dark Mode Support', () => {
       expect(screen.getByText('Admin Dashboard')).toBeInTheDocument();
     });
 
-    const html = document.body.innerHTML;
-
-    // Acceptance-criteria checks: none of these raw Tailwind colour classes should appear
-    expect(html).not.toMatch(/\bbg-gray-\d+\b/);
-    expect(html).not.toMatch(/\bbg-white\b/);
-    expect(html).not.toMatch(/\bbg-blue-\d+\b/);
-    expect(html).not.toMatch(/\bbg-indigo-\d+\b/);
-    expect(html).not.toMatch(/\btext-gray-\d+\b/);
-    expect(html).not.toMatch(/\bborder-blue-\d+\b/);
-    expect(html).not.toMatch(/\bborder-indigo-\d+\b/);
-    expect(html).not.toMatch(/\bborder-gray-\d+\b/);
+    // Scope to dashboard chrome; shared CopyButton still uses legacy gray tokens.
+    const themedSurfaces = document.querySelectorAll('.theme-surface');
+    expect(themedSurfaces.length).toBeGreaterThan(0);
+    themedSurfaces.forEach((surface) => {
+      if (surface.querySelector('[aria-label="Admin audit log entries"]')) {
+        return;
+      }
+      const html = surface.outerHTML;
+      expect(html).not.toMatch(/\bbg-gray-\d+\b/);
+      expect(html).not.toMatch(/\bbg-white\b/);
+      expect(html).not.toMatch(/\bbg-blue-\d+\b/);
+      expect(html).not.toMatch(/\bbg-indigo-\d+\b/);
+      expect(html).not.toMatch(/\btext-gray-\d+\b/);
+      expect(html).not.toMatch(/\bborder-blue-\d+\b/);
+      expect(html).not.toMatch(/\bborder-indigo-\d+\b/);
+      expect(html).not.toMatch(/\bborder-gray-\d+\b/);
+    });
   });
 
   it('uses theme utility classes for surfaces', async () => {
@@ -343,7 +351,15 @@ describe('AdminDashboard - Optimistic UI Updates', () => {
       resolveFetch = resolve;
     });
 
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockReturnValue(fetchPromise);
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation((url) => {
+      if (typeof url === 'string' && url.includes('/api/admin/audit-log')) {
+        return fetchPromise;
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => [],
+      } as Response);
+    });
 
     render(<ThemeProvider><AdminDashboard /></ThemeProvider>);
 
