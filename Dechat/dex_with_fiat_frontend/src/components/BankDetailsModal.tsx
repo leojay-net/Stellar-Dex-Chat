@@ -34,10 +34,39 @@ import { getOrCreateClientSessionId } from '@/lib/clientSession';
 import { chatTelemetry } from '@/lib/chatTelemetry';
 import { z } from 'zod';
 
+/** ISO 13616 MOD-97 check used by the IBAN standard. */
+function validateIbanMod97(iban: string): boolean {
+  // Move first 4 chars to end, convert letters to digits (A=10…Z=35), then MOD 97.
+  const rearranged = iban.slice(4) + iban.slice(0, 4);
+  const numeric = rearranged
+    .toUpperCase()
+    .split('')
+    .map((ch) => {
+      const code = ch.charCodeAt(0);
+      return code >= 65 && code <= 90 ? String(code - 55) : ch;
+    })
+    .join('');
+  // BigInt handles the 30+ digit number without loss of precision.
+  return BigInt(numeric) % 97n === 1n;
+}
+
 export const bankDetailsSchema = z.object({
   accountNumber: z
     .string()
     .regex(/^\d{10}$/, 'Account number must be exactly 10 digits'),
+  iban: z
+    .string()
+    .optional()
+    .refine(
+      (val) => {
+        if (!val || val.trim() === '') return true; // optional field
+        const cleaned = val.replace(/\s+/g, '').toUpperCase();
+        // Basic format: 2 letters + 2 digits + 11-30 alphanumeric chars (total 15-34)
+        if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(cleaned)) return false;
+        return validateIbanMod97(cleaned);
+      },
+      { message: 'Invalid IBAN — please check the format and check digits' },
+    ),
   saveCustomName: z
     .string()
     .max(50, 'Beneficiary name must be less than 50 characters')
@@ -175,6 +204,9 @@ export default function BankDetailsModal({
 
   // Step 2 - account details
   const [accountNumber, setAccountNumber] = useState('');
+  const [iban, setIban] = useState('');
+  const [ibanError, setIbanError] = useState('');
+  const [ibanTouched, setIbanTouched] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [verifyError, setVerifyError] = useState('');
   const [verifiedAccount, setVerifiedAccount] =
@@ -302,6 +334,25 @@ export default function BankDetailsModal({
     b.name.toLowerCase().includes(bankSearch.toLowerCase()),
   );
 
+  const validateIban = (value: string): string => {
+    const result = bankDetailsSchema
+      .pick({ iban: true })
+      .safeParse({ iban: value });
+    return result.success ? '' : (result.error.issues[0]?.message ?? 'Invalid IBAN');
+  };
+
+  const handleIbanChange = (value: string) => {
+    setIban(value);
+    if (ibanTouched) {
+      setIbanError(validateIban(value));
+    }
+  };
+
+  const handleIbanBlur = () => {
+    setIbanTouched(true);
+    setIbanError(validateIban(iban));
+  };
+
   const handleVerifyAccount = useCallback(async () => {
     if (!accountNumber || !selectedBank) return;
 
@@ -311,6 +362,18 @@ export default function BankDetailsModal({
     if (!validation.success) {
       setVerifyError(validation.error.issues[0].message);
       return;
+    }
+
+    // Validate IBAN if the user filled it in
+    if (iban.trim()) {
+      const ibanValidation = bankDetailsSchema
+        .pick({ iban: true })
+        .safeParse({ iban });
+      if (!ibanValidation.success) {
+        setIbanError(ibanValidation.error.issues[0]?.message ?? 'Invalid IBAN');
+        setIbanTouched(true);
+        return;
+      }
     }
 
     setVerifying(true);
@@ -357,7 +420,7 @@ export default function BankDetailsModal({
     } finally {
       setVerifying(false);
     }
-  }, [accountNumber, selectedBank, xlmAmount]);
+  }, [accountNumber, iban, ibanTouched, selectedBank, xlmAmount]);
 
   const handleConfirmPayout = async () => {
     if (
@@ -512,6 +575,9 @@ export default function BankDetailsModal({
     setBankSearch('');
     setSelectedBank(null);
     setAccountNumber('');
+    setIban('');
+    setIbanError('');
+    setIbanTouched(false);
     setVerifying(false);
     setVerifyError('');
     setVerifiedAccount(null);
@@ -878,6 +944,51 @@ export default function BankDetailsModal({
                     placeholder="0000000000"
                     className="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
                   />
+                </div>
+
+                <div className="mb-3">
+                  <label className="block text-sm text-gray-400 mb-1">
+                    IBAN{' '}
+                    <span className="text-gray-500 text-xs">(optional — for international transfers)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={iban}
+                    onChange={(e) => handleIbanChange(e.target.value)}
+                    onBlur={handleIbanBlur}
+                    placeholder="GB29 NWBK 6016 1331 9268 19"
+                    aria-describedby={ibanError ? 'iban-error' : undefined}
+                    aria-invalid={ibanTouched && !!ibanError}
+                    className={`w-full bg-gray-800 border rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none uppercase tracking-widest text-sm ${
+                      ibanTouched && ibanError
+                        ? 'border-red-500 focus:border-red-500'
+                        : ibanTouched && iban && !ibanError
+                          ? 'border-green-500 focus:border-green-500'
+                          : 'border-gray-600 focus:border-blue-500'
+                    }`}
+                  />
+                  {ibanTouched && ibanError && (
+                    <motion.p
+                      id="iban-error"
+                      role="alert"
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="flex items-center gap-1 mt-1 text-xs text-red-400"
+                    >
+                      <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                      {ibanError}
+                    </motion.p>
+                  )}
+                  {ibanTouched && iban && !ibanError && (
+                    <motion.p
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="flex items-center gap-1 mt-1 text-xs text-green-400"
+                    >
+                      <CheckCircle className="w-3 h-3 flex-shrink-0" />
+                      IBAN format valid
+                    </motion.p>
+                  )}
                 </div>
 
                 {verifying && (
