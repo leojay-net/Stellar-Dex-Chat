@@ -4,6 +4,9 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - "stellar-contracts/**"
+      - ".github/workflows/contract-tests.yml"
 
 jobs:
   test:
