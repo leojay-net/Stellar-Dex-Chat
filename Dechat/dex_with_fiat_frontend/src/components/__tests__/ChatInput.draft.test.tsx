@@ -77,9 +77,15 @@ describe('ChatInput - Draft Persistence', () => {
   it('should clear draft on successful send', async () => {
     (draftUtils.getDraft as vi.Mock).mockReturnValue('Message to send');
     render(<ChatInput {...defaultProps} />);
-    
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Type a message...')).toHaveValue(
+        'Message to send',
+      );
+    });
+
     const submitButton = screen.getByRole('button', { name: /send message/i });
-    
+
     fireEvent.click(submitButton);
 
     await waitFor(() => {

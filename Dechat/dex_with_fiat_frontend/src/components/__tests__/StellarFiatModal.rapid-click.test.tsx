@@ -19,6 +19,9 @@ vi.mock('@/lib/stellarContract', () => ({
   CONTRACT_ID: 'CTEST_CONTRACT_ID',
   depositToContract: (...args: unknown[]) => depositToContract(...args),
   withdrawFromContract: (...args: unknown[]) => withdrawFromContract(...args),
+  getContractBalance: vi.fn().mockResolvedValue(1_000_000_000_000n),
+  getBridgeLimit: vi.fn().mockResolvedValue(10_000_000_000_000n),
+  getTotalDeposited: vi.fn().mockResolvedValue(0n),
   clearCache: vi.fn(),
   simulateDeposit: vi.fn().mockResolvedValue(null),
   simulateWithdraw: vi.fn().mockResolvedValue(null),
@@ -92,7 +95,7 @@ const defaultProps = {
 
 async function getSubmitButton() {
   return waitFor(
-    () => screen.getByRole('button', { name: /review transaction/i }),
+    () => screen.getByRole('button', { name: /deposit/i }),
     { timeout: 2000 },
   );
 }

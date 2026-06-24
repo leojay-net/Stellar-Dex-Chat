@@ -61,4 +61,6 @@ jobs:
 
       - name: Unit tests with coverage
         run: pnpm test:coverage
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
         # Fails the pipeline if coverage thresholds (stmt 70%, branch 65%, fn 70%) are not met

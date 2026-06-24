@@ -180,8 +180,8 @@ export default function AdminDashboard() {
       }
 
       const payload: AuditLogResponse = await response.json();
-      setAuditEntries(payload.entries);
-      setAuditActions(payload.actions);
+      setAuditEntries(payload.entries ?? []);
+      setAuditActions(payload.actions ?? []);
       setAuditPage(payload.page);
       setAuditPageSize(payload.pageSize);
       setAuditTotal(payload.total);

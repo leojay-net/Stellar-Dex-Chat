@@ -141,21 +141,22 @@ describe('ChatInput - Rapid Click Protection', () => {
   });
 
   it('should log suppressed duplicate attempts', async () => {
-    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation();
-    
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
     render(<ChatInput {...defaultProps} />);
     const textarea = screen.getByPlaceholderText('Type a message...');
 
     fireEvent.change(textarea, { target: { value: 'Test message' } });
 
-    // Rapid submissions
-    fireEvent.keyDown(textarea, { key: 'Enter', code: 'Enter', ctrlKey: true });
-    fireEvent.keyDown(textarea, { key: 'Enter', code: 'Enter', ctrlKey: true });
+    const form = textarea.closest('form');
+    expect(form).toBeTruthy();
+    fireEvent.submit(form!);
+    fireEvent.submit(form!);
 
     await waitFor(() => {
       expect(consoleWarnSpy).toHaveBeenCalledWith(
         expect.stringContaining('Suppressed duplicate'),
-        expect.any(Object)
+        expect.any(Object),
       );
     });
   });

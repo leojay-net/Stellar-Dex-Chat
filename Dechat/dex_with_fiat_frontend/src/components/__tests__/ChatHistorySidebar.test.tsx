@@ -104,7 +104,7 @@ describe('ChatHistorySidebar', () => {
 
   it('auto-scrolls the active conversation into view when rendered', async () => {
     const scrollIntoView = vi.fn();
-    vi.spyOn(window.HTMLElement.prototype, 'scrollIntoView').mockImplementation(scrollIntoView);
+    vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(scrollIntoView);
 
     const sessionA = makeSession('a1');
     const sessionB = makeSession('a2');
@@ -119,7 +119,7 @@ describe('ChatHistorySidebar', () => {
 
   it('re-scrolls the active conversation after the active session changes', async () => {
     const scrollIntoView = vi.fn();
-    vi.spyOn(window.HTMLElement.prototype, 'scrollIntoView').mockImplementation(scrollIntoView);
+    vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(scrollIntoView);
 
     const sessionA = makeSession('b1');
     const sessionB = makeSession('b2');
@@ -219,11 +219,11 @@ describe('ChatHistorySidebar', () => {
     // Animation class should be applied
     const pinBtn = screen.getByTitle('Pin conversation');
     const svg = pinBtn.querySelector('svg');
-    expect(svg?.className).toContain('animate-bounce-once');
+    expect(svg?.getAttribute('class')).toContain('animate-bounce-once');
 
     // After 600ms the animation class should be removed
     await act(async () => { vi.advanceTimersByTime(700); });
-    expect(svg?.className).not.toContain('animate-bounce-once');
+    expect(svg?.getAttribute('class')).not.toContain('animate-bounce-once');
   });
 
   it('shows undo toast after clear-all and calls clearAllHistory immediately', async () => {
@@ -267,45 +267,49 @@ describe('ChatHistorySidebar error boundary (#633)', () => {
   });
 
   it('renders the fallback UI when a child throws and not the crash stack', async () => {
-    // Force PriceTicker (rendered inside the sidebar) to throw
     vi.doMock('@/components/PriceTicker', () => ({
-      default: () => { throw new Error('PriceTicker exploded'); },
+      default: () => {
+        throw new Error('PriceTicker exploded');
+      },
     }));
+    vi.resetModules();
 
-    // Dynamically import so the new mock is picked up
     const { default: ChatHistorySidebarFresh } = await import('@/components/ChatHistorySidebar');
 
-    act(() => {
+    await act(async () => {
       render(
         <ChatHistorySidebarFresh onLoadSession={vi.fn()} isCollapsed={false} />,
       );
+      await vi.advanceTimersByTimeAsync(900);
     });
-
-    await act(async () => { vi.advanceTimersByTime(900); });
 
     expect(screen.getByText('Sidebar unavailable')).toBeTruthy();
     expect(screen.queryByText('PriceTicker exploded')).toBeNull();
 
     vi.doUnmock('@/components/PriceTicker');
+    vi.resetModules();
   });
 
   it('displays the custom retry label from the error boundary props', async () => {
     vi.doMock('@/components/PriceTicker', () => ({
-      default: () => { throw new Error('forced'); },
+      default: () => {
+        throw new Error('forced');
+      },
     }));
+    vi.resetModules();
 
     const { default: ChatHistorySidebarFresh } = await import('@/components/ChatHistorySidebar');
 
-    act(() => {
+    await act(async () => {
       render(
         <ChatHistorySidebarFresh onLoadSession={vi.fn()} isCollapsed={false} />,
       );
+      await vi.advanceTimersByTimeAsync(900);
     });
-
-    await act(async () => { vi.advanceTimersByTime(900); });
 
     expect(screen.getByRole('button', { name: /reload sidebar/i })).toBeTruthy();
 
     vi.doUnmock('@/components/PriceTicker');
+    vi.resetModules();
   });
 });

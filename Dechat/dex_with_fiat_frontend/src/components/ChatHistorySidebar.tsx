@@ -275,7 +275,7 @@ export default function ChatHistorySidebar({
   const historyListRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (isCollapsed) return;
+    if (isCollapsed || isLoading) return;
 
     const activeRow = historyListRef.current?.querySelector<HTMLElement>(
       '[data-active="true"]',
@@ -283,7 +283,7 @@ export default function ChatHistorySidebar({
     if (!activeRow) return;
 
     activeRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }, [currentSessionId, filteredSessionIds, isCollapsed]);
+  }, [currentSessionId, filteredSessionIds, isCollapsed, isLoading]);
 
   // ── Optimistic delete with undo ──────────────────────────────────────────
   const handleDeleteSession = useCallback(

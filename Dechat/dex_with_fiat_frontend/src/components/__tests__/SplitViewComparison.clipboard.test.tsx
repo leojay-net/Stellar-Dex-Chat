@@ -1,7 +1,9 @@
+import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import SplitViewComparison from '../SplitViewComparison';
 import { ChatSession } from '@/types';
+import { ThemeProvider } from '@/contexts/ThemeContext';
 
 // Mock hooks
 vi.mock('@/hooks/useOnlineStatus', () => ({
@@ -24,6 +26,10 @@ Object.assign(navigator, {
     writeText: vi.fn(() => Promise.resolve()),
   },
 });
+
+function renderWithTheme(ui: React.ReactElement) {
+  return render(<ThemeProvider>{ui}</ThemeProvider>);
+}
 
 describe('SplitViewComparison - Clipboard Copy', () => {
   const mockSessions: ChatSession[] = [
@@ -71,7 +77,7 @@ describe('SplitViewComparison - Clipboard Copy', () => {
   });
 
   it('renders copy button on message hover', () => {
-    render(
+    renderWithTheme(
       <SplitViewComparison splitView={mockSplitView} sessions={mockSessions} />,
     );
 
@@ -80,7 +86,7 @@ describe('SplitViewComparison - Clipboard Copy', () => {
   });
 
   it('copies message content to clipboard when copy button is clicked', async () => {
-    render(
+    renderWithTheme(
       <SplitViewComparison splitView={mockSplitView} sessions={mockSessions} />,
     );
 
@@ -97,7 +103,7 @@ describe('SplitViewComparison - Clipboard Copy', () => {
   });
 
   it('shows check icon after successful copy', async () => {
-    render(
+    renderWithTheme(
       <SplitViewComparison splitView={mockSplitView} sessions={mockSessions} />,
     );
 
@@ -107,14 +113,13 @@ describe('SplitViewComparison - Clipboard Copy', () => {
     fireEvent.click(firstCopyButton);
 
     await waitFor(() => {
-      // Check icon should be visible after copy
       const checkIcon = firstCopyButton.querySelector('svg');
       expect(checkIcon).toBeInTheDocument();
     });
   });
 
   it('does not trigger message selection when copy button is clicked', async () => {
-    render(
+    renderWithTheme(
       <SplitViewComparison splitView={mockSplitView} sessions={mockSessions} />,
     );
 
@@ -123,7 +128,6 @@ describe('SplitViewComparison - Clipboard Copy', () => {
 
     fireEvent.click(firstCopyButton);
 
-    // selectMessage should not be called when clicking copy button
     expect(mockSplitView.selectMessage).not.toHaveBeenCalled();
   });
 
@@ -137,7 +141,7 @@ describe('SplitViewComparison - Clipboard Copy', () => {
       },
     });
 
-    render(
+    renderWithTheme(
       <SplitViewComparison splitView={mockSplitView} sessions={mockSessions} />,
     );
 
@@ -152,7 +156,7 @@ describe('SplitViewComparison - Clipboard Copy', () => {
   });
 
   it('copy button is accessible with proper aria labels', () => {
-    render(
+    renderWithTheme(
       <SplitViewComparison splitView={mockSplitView} sessions={mockSessions} />,
     );
 

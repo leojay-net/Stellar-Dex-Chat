@@ -45,7 +45,10 @@ describe('CCIPBridgeModal', () => {
       await screen.findByText('Waiting for CCIP confirmation…'),
     ).toBeInTheDocument();
     expect(screen.getByTestId('ccip-polling-spinner')).toBeInTheDocument();
-    expect(fetchTransferStatus).toHaveBeenCalledTimes(1);
+
+    await waitFor(() => {
+      expect(fetchTransferStatus).toHaveBeenCalledTimes(1);
+    });
 
     await act(async () => {
       vi.advanceTimersByTime(15_000);

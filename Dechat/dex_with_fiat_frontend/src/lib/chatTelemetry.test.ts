@@ -412,7 +412,7 @@ describe('Error boundary behavior', () => {
 
   it('handles errors in getTelemetryConsent gracefully', () => {
     const getItemSpy = vi
-      .spyOn(Storage.prototype, 'getItem')
+      .spyOn(window.localStorage, 'getItem')
       .mockImplementation(() => {
         throw new Error('Storage error');
       });
@@ -425,7 +425,7 @@ describe('Error boundary behavior', () => {
 
   it('handles errors in setTelemetryConsent gracefully', () => {
     const setItemSpy = vi
-      .spyOn(Storage.prototype, 'setItem')
+      .spyOn(window.localStorage, 'setItem')
       .mockImplementation(() => {
         throw new Error('Storage error');
       });

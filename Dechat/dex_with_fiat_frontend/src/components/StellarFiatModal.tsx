@@ -713,7 +713,7 @@ export default function StellarFiatModal({
               </button>
             )}
           </div>
-        ) : isStatusPending ? (
+        ) : isStatusPending || status === 'loading' ? (
           <div className="text-center py-6">
             <Loader2 className="w-14 h-14 text-blue-400 mx-auto mb-4 animate-spin" />
             <p className="text-white font-semibold text-lg mb-2">

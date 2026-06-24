@@ -47,6 +47,40 @@ vi.mock('next/link', () => ({
 
 globalThis.fetch = vi.fn() as unknown as typeof fetch;
 
+const VALID_STELLAR_ADDRESS =
+  'G1234567890123456789012345678901234567890123456789012345';
+
+function mockAdminDashboardFetch() {
+  (globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation((url) => {
+    if (typeof url === 'string' && url.includes('/api/admin/audit-log')) {
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({
+          entries: [
+            {
+              id: '1',
+              timestamp: '2024-01-01T00:00:00Z',
+              action: 'withdrawal_approved',
+              adminAddress: VALID_STELLAR_ADDRESS,
+              parameters: { amount: 100 },
+              result: 'success',
+            },
+          ],
+          page: 1,
+          pageSize: 20,
+          total: 1,
+          totalPages: 1,
+          actions: ['withdrawal_approved', 'withdrawal_rejected'],
+        }),
+      } as Response);
+    }
+    return Promise.resolve({
+      ok: true,
+      json: async () => [],
+    } as Response);
+  });
+}
+
 function resetAuditTableMock() {
   auditTableMock.mockImplementation(() => (
     <div data-testid="audit-table">Audit Table</div>
@@ -57,10 +91,7 @@ describe('AdminDashboard - Dark Mode Support', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetAuditTableMock();
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true,
-      json: async () => [],
-    } as Response);
+    mockAdminDashboardFetch();
   });
 
   it('renders with theme-aware classes', async () => {
@@ -122,8 +153,7 @@ describe('AdminDashboard - Dark Mode Support', () => {
   it('handles loading state with theme classes', () => {
     render(<ThemeProvider><AdminDashboard /></ThemeProvider>);
 
-    const loadingText = screen.getByText('Loading metrics...');
-    expect(loadingText.className).toContain('theme-text-muted');
+    expect(document.querySelector('.animate-pulse')).toBeInTheDocument();
   });
 
   it('includes proper ARIA accessibility labels', async () => {
@@ -472,10 +502,7 @@ describe('AdminDashboard - ErrorBoundary protection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetAuditTableMock();
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true,
-      json: async () => [],
-    } as Response);
+    mockAdminDashboardFetch();
   });
 
   it('renders AdminErrorFallback when a child component throws', async () => {

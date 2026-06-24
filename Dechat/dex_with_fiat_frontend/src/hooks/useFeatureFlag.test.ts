@@ -2,13 +2,29 @@ import React from 'react';
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import { hydrateRoot } from 'react-dom/client';
-import { renderHook, cleanup } from '@testing-library/react';
+import { renderHook, cleanup, waitFor } from '@testing-library/react';
 import { act } from 'react-dom/test-utils';
 import {
   useFeatureFlag,
   featureFlagSectionDividerBorderClass,
 } from './useFeatureFlag';
 import { getFeatureFlag } from '@/lib/featureFlags';
+
+vi.mock('@/lib/featureFlags', () => ({
+  getFeatureFlag: vi.fn(() => false),
+  FeatureFlagNameSchema: {
+    safeParse: (flag: string) => {
+      const valid = ['enableAdminReconciliation', 'enableConversionReminders', 'enableHaptics'];
+      if (valid.includes(flag)) return { success: true, data: flag };
+      return { success: false };
+    },
+    enum: {
+      enableAdminReconciliation: 'enableAdminReconciliation',
+      enableConversionReminders: 'enableConversionReminders',
+      enableHaptics: 'enableHaptics',
+    },
+  },
+}));
 
 function Harness(props: { flag: 'enableAdminReconciliation' | 'enableConversionReminders' }) {
   const isEnabled = useFeatureFlag(props.flag);
@@ -17,6 +33,8 @@ function Harness(props: { flag: 'enableAdminReconciliation' | 'enableConversionR
 
 describe('useFeatureFlag', () => {
   it('hydrates without mismatch warnings and resolves to the client flag value', async () => {
+    vi.mocked(getFeatureFlag).mockReturnValue(true);
+
     const serverMarkup = renderToString(
       React.createElement(Harness, { flag: 'enableAdminReconciliation' })
     );
@@ -27,10 +45,11 @@ describe('useFeatureFlag', () => {
 
     await act(async () => {
       hydrateRoot(container, React.createElement(Harness, { flag: 'enableAdminReconciliation' }));
-      await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    expect(container.textContent).toBe('enabled');
+    await waitFor(() => {
+      expect(container.textContent).toBe('enabled');
+    });
     expect(serverMarkup).toContain('disabled');
     expect(
       consoleErrorSpy.mock.calls.some((args) =>
@@ -77,8 +96,13 @@ describe('useFeatureFlag', () => {
 
     await act(async () => {
       const container = document.createElement('div');
-      hydrateRoot(container, React.createElement(HarnessWithScroll, { flag: 'enableAdminReconciliation' }));
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      container.innerHTML = renderToString(
+        React.createElement(HarnessWithScroll, { flag: 'enableAdminReconciliation' }),
+      );
+      hydrateRoot(
+        container,
+        React.createElement(HarnessWithScroll, { flag: 'enableAdminReconciliation' }),
+      );
     });
 
     expect(scrollIntoViewSpy).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' });
@@ -90,22 +114,6 @@ describe('useFeatureFlag', () => {
 });
 
 // ── Comprehensive renderHook-based tests ──────────────────────────────────────
-
-vi.mock('@/lib/featureFlags', () => ({
-  getFeatureFlag: vi.fn(() => false),
-  FeatureFlagNameSchema: {
-    safeParse: (flag: string) => {
-      const valid = ['enableAdminReconciliation', 'enableConversionReminders', 'enableHaptics'];
-      if (valid.includes(flag)) return { success: true, data: flag };
-      return { success: false };
-    },
-    enum: {
-      enableAdminReconciliation: 'enableAdminReconciliation',
-      enableConversionReminders: 'enableConversionReminders',
-      enableHaptics: 'enableHaptics',
-    },
-  },
-}));
 
 describe('useFeatureFlag – initial state', () => {
   afterEach(() => {

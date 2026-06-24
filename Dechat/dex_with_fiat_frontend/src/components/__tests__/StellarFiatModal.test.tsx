@@ -20,6 +20,11 @@ vi.mock('@/contexts/StellarWalletContext', () => ({
 vi.mock('@/lib/stellarContract', () => ({
   depositToContract: vi.fn(),
   withdrawFromContract: vi.fn(),
+  getContractBalance: vi.fn().mockResolvedValue(1_000_000_000_000n),
+  getBridgeLimit: vi.fn().mockResolvedValue(10_000_000_000_000n),
+  getTotalDeposited: vi.fn().mockResolvedValue(0n),
+  clearCache: vi.fn(),
+  pollTransaction: vi.fn(),
   stroopsToDisplay: (stroops: bigint) => String(Number(stroops) / 1e7),
   BRIDGE_LIMIT_WARNING_PERCENT: 0.9,
 }));

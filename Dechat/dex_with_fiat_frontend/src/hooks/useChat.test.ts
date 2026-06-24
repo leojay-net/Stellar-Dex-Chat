@@ -59,15 +59,6 @@ vi.mock('./chatStateMachine', async () => {
 
   return {
     ...actual,
-    createChatStateMachine: () => {
-      const machine = actual.createChatStateMachine();
-      // Ensure the machine is ready to accept SEND_MESSAGE immediately in tests.
-      if (machine.getState().state === actual.ChatState.UNINITIALIZED) {
-        machine.transition(actual.ChatEvent.INITIALIZE_SESSION);
-        machine.setState(actual.ChatState.AWAITING_USER_INPUT);
-      }
-      return machine;
-    },
   };
 });
 

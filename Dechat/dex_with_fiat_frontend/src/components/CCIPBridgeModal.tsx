@@ -89,6 +89,7 @@ export default function CCIPBridgeModal({
       }
 
       pollingStartedAtRef.current = Date.now();
+      transactionHashRef.current = nextHash;
       setTransactionHash(nextHash);
 
       // Optimistic UI: set explorer URL immediately for better UX
@@ -321,6 +322,11 @@ export default function CCIPBridgeModal({
             <p className="theme-text-secondary text-sm mb-4">
               Status: {latestStatus || 'SUCCESS'}
             </p>
+            {transactionHash && (
+              <p className="theme-text-secondary text-xs mb-4 break-all">
+                Transaction: {transactionHash}
+              </p>
+            )}
             {explorerUrl && (
               <a
                 href={explorerUrl}
@@ -344,6 +350,11 @@ export default function CCIPBridgeModal({
             <p className="theme-text-secondary text-sm mb-4">
               {errorMessage}
             </p>
+            {transactionHash && (
+              <p className="theme-text-secondary text-xs mb-4 break-all">
+                Transaction: {transactionHash}
+              </p>
+            )}
             {explorerUrl && (
               <a
                 href={explorerUrl}

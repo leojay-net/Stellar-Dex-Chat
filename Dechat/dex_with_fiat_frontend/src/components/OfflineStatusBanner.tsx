@@ -57,7 +57,7 @@ export default function OfflineStatusBanner() {
     }
   }, [isOnline, wasOffline, addToast, resetWasOffline]);
 
-  if (isLoading) {
+  if (isLoading && isOnline) {
     return (
       <div
         aria-hidden="true"
@@ -80,7 +80,7 @@ export default function OfflineStatusBanner() {
       aria-live="polite"
       aria-atomic="true"
       aria-label="Offline status"
-      className="fixed top-0 left-0 right-0 z-50 border-b-2 shadow-md bg-red-700 border-red-900"
+      className="fixed top-0 left-0 right-0 z-50 border-b-2 shadow-md bg-[var(--color-danger)] border-[color-mix(in_srgb,var(--color-danger)_80%,black)]"
     >
       <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
         <div className="shrink-0" aria-hidden="true">

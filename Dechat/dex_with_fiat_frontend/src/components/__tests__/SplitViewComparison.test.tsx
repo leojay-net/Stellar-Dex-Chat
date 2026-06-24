@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { renderToString } from 'react-dom/server';
 import { ChatSession, ChatMessage } from '@/types';
 import { UseSplitViewReturn, SplitViewState } from '@/hooks/useSplitView';
 import SplitViewComparison from '@/components/SplitViewComparison';
@@ -253,16 +254,14 @@ describe('SplitViewComparison – network status toasts', () => {
 
   it('prevents hydration mismatch by not rendering timestamps until mounted', () => {
     const splitView = makeSplitView({ leftSessionId: 's1' });
-    const { container } = render(<SplitViewComparison splitView={splitView} sessions={allSessions} />);
+    const markup = renderToString(
+      <ThemeProvider>
+        <SplitViewComparison splitView={splitView} sessions={allSessions} />
+      </ThemeProvider>,
+    );
 
-    // Initially, timestamps should be empty to avoid hydration mismatch
-    const timestampElements = container.querySelectorAll('[data-testid="message-timestamp"]');
-    timestampElements.forEach(el => {
-      expect(el.textContent).toBe('');
-    });
-
-    // Note: In a real hydration scenario, we would check that server and client render match,
-    // but for this test we verify the timestamp is hidden initially
+    expect(markup).toContain('data-testid="message-timestamp"');
+    expect(markup).not.toMatch(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/);
   });
 });
 

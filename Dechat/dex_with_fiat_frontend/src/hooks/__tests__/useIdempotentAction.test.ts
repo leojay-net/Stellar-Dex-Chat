@@ -18,7 +18,7 @@ describe('useIdempotentAction', () => {
 
     let actionResult;
     await act(async () => {
-      actionResult = await result.current?.execute(mockAction, 'test_action');
+      actionResult = await result.current.execute(mockAction, 'test_action');
     });
 
     expect(mockAction).toHaveBeenCalledTimes(1);
@@ -28,19 +28,17 @@ describe('useIdempotentAction', () => {
 
   it('should prevent duplicate submissions during cooldown', async () => {
     const { result } = renderHook(() =>
-      useIdempotentAction({ cooldownMs: 1000 })
+      useIdempotentAction({ cooldownMs: 1000 }),
     );
     const mockAction = vi.fn().mockResolvedValue('success');
 
-    // First execution
     await act(async () => {
-      await result.current?.execute(mockAction, 'test_action');
+      await result.current.execute(mockAction, 'test_action');
     });
 
-    // Second execution (should be suppressed)
     let secondResult;
     await act(async () => {
-      secondResult = await result.current?.execute(mockAction, 'test_action');
+      secondResult = await result.current.execute(mockAction, 'test_action');
     });
 
     expect(mockAction).toHaveBeenCalledTimes(1);
@@ -49,23 +47,20 @@ describe('useIdempotentAction', () => {
 
   it('should allow execution after cooldown period', async () => {
     const { result } = renderHook(() =>
-      useIdempotentAction({ cooldownMs: 100 })
+      useIdempotentAction({ cooldownMs: 100 }),
     );
     const mockAction = vi.fn().mockResolvedValue('success');
 
-    // First execution
     await act(async () => {
-      await result.current?.execute(mockAction, 'test_action');
+      await result.current.execute(mockAction, 'test_action');
     });
 
-    // Wait for cooldown
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 150));
     });
 
-    // Second execution (should succeed)
     await act(async () => {
-      await result.current?.execute(mockAction, 'test_action');
+      await result.current.execute(mockAction, 'test_action');
     });
 
     expect(mockAction).toHaveBeenCalledTimes(2);
@@ -73,24 +68,30 @@ describe('useIdempotentAction', () => {
 
   it('should track isProcessing state correctly', async () => {
     const { result } = renderHook(() => useIdempotentAction());
+    let resolveAction: (value: string) => void = () => {};
     const mockAction = vi.fn(
-      () => new Promise((resolve) => setTimeout(() => resolve('success'), 100))
+      () =>
+        new Promise<string>((resolve) => {
+          resolveAction = resolve;
+        }),
     );
 
     expect(result.current.isProcessing).toBe(false);
 
-    const executePromise = act(async () => {
-      return result.current?.execute(mockAction, 'test_action');
+    let executePromise: Promise<string | null>;
+    act(() => {
+      executePromise = result.current.execute(mockAction, 'test_action');
     });
 
-    // Should be processing during execution
     await waitFor(() => {
       expect(result.current.isProcessing).toBe(true);
     });
 
-    await executePromise;
+    await act(async () => {
+      resolveAction('success');
+      await executePromise;
+    });
 
-    // Should not be processing after completion
     await waitFor(() => {
       expect(result.current.isProcessing).toBe(false);
     });
@@ -99,16 +100,16 @@ describe('useIdempotentAction', () => {
   it('should log suppressed duplicates when enabled', async () => {
     const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { result } = renderHook(() =>
-      useIdempotentAction({ cooldownMs: 1000, logSuppressed: true })
+      useIdempotentAction({ cooldownMs: 1000, logSuppressed: true }),
     );
     const mockAction = vi.fn().mockResolvedValue('success');
 
     await act(async () => {
-      await result.current?.execute(mockAction, 'test_action');
+      await result.current.execute(mockAction, 'test_action');
     });
 
     await act(async () => {
-      await result.current?.execute(mockAction, 'test_action');
+      await result.current.execute(mockAction, 'test_action');
     });
 
     expect(consoleWarnSpy).toHaveBeenCalledWith(
@@ -116,23 +117,23 @@ describe('useIdempotentAction', () => {
       expect.objectContaining({
         actionName: 'test_action',
         cooldownMs: 1000,
-      })
+      }),
     );
   });
 
   it('should not log suppressed duplicates when disabled', async () => {
     const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { result } = renderHook(() =>
-      useIdempotentAction({ cooldownMs: 1000, logSuppressed: false })
+      useIdempotentAction({ cooldownMs: 1000, logSuppressed: false }),
     );
     const mockAction = vi.fn().mockResolvedValue('success');
 
     await act(async () => {
-      await result.current?.execute(mockAction, 'test_action');
+      await result.current.execute(mockAction, 'test_action');
     });
 
     await act(async () => {
-      await result.current?.execute(mockAction, 'test_action');
+      await result.current.execute(mockAction, 'test_action');
     });
 
     expect(consoleWarnSpy).not.toHaveBeenCalled();
@@ -147,7 +148,7 @@ describe('useIdempotentAction', () => {
     });
 
     await act(async () => {
-      await result.current?.execute(mockAction, 'test_action');
+      await result.current.execute(mockAction, 'test_action');
     });
 
     await act(async () => {
@@ -155,7 +156,7 @@ describe('useIdempotentAction', () => {
     });
 
     await act(async () => {
-      await result.current?.execute(mockAction, 'test_action');
+      await result.current.execute(mockAction, 'test_action');
     });
 
     expect(capturedKeys).toHaveLength(2);
@@ -165,21 +166,24 @@ describe('useIdempotentAction', () => {
   });
 
   it('should reset state correctly', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(5_000);
     const { result } = renderHook(() => useIdempotentAction());
     const mockAction = vi.fn().mockResolvedValue('success');
 
     await act(async () => {
-      await result.current?.execute(mockAction, 'test_action');
+      await result.current.execute(mockAction, 'test_action');
     });
 
-    expect(result.current.state.lastExecutionTime).toBeGreaterThan(0);
+    expect(result.current.state.lastExecutionTime).toBe(5_000);
 
     act(() => {
-      result.current?.reset();
+      result.current.reset();
     });
 
     expect(result.current.isProcessing).toBe(false);
-    expect(result.current.state.lastExecutionTime).toBe(0);
+    expect(result.current.state.lastExecutionTime).toBe(-2000);
+    vi.useRealTimers();
   });
 
   it('should handle action errors gracefully', async () => {
@@ -188,7 +192,7 @@ describe('useIdempotentAction', () => {
 
     await act(async () => {
       try {
-        await result.current?.execute(mockAction, 'test_action');
+        await result.current.execute(mockAction, 'test_action');
       } catch (error) {
         expect(error).toEqual(new Error('Action failed'));
       }
@@ -200,48 +204,53 @@ describe('useIdempotentAction', () => {
 
   it('should prevent rapid-click scenarios', async () => {
     const { result } = renderHook(() =>
-      useIdempotentAction({ cooldownMs: 500 })
+      useIdempotentAction({ cooldownMs: 500 }),
     );
     const mockAction = vi.fn().mockResolvedValue('success');
 
-    // Simulate rapid clicks
-    const clicks = Array.from({ length: 5 }, () =>
-      act(async () => {
-        return result.current?.execute(mockAction, 'button_click');
-      })
-    );
+    await act(async () => {
+      await Promise.all([
+        result.current.execute(mockAction, 'button_click'),
+        result.current.execute(mockAction, 'button_click'),
+        result.current.execute(mockAction, 'button_click'),
+        result.current.execute(mockAction, 'button_click'),
+        result.current.execute(mockAction, 'button_click'),
+      ]);
+    });
 
-    await Promise.all(clicks);
-
-    // Only the first click should execute
     expect(mockAction).toHaveBeenCalledTimes(1);
   });
 
   it('should block submissions while processing', async () => {
     const { result } = renderHook(() => useIdempotentAction());
+    let resolveAction: (value: string) => void = () => {};
     const mockAction = vi.fn(
-      () => new Promise((resolve) => setTimeout(() => resolve('success'), 200))
+      () =>
+        new Promise<string>((resolve) => {
+          resolveAction = resolve;
+        }),
     );
 
-    // Start first execution
-    const firstExecution = act(async () => {
-      return result.current?.execute(mockAction, 'test_action');
+    let firstExecution: Promise<string | null>;
+    act(() => {
+      firstExecution = result.current.execute(mockAction, 'test_action');
     });
 
-    // Try to execute again while first is still processing
+    await waitFor(() => {
+      expect(result.current.isProcessing).toBe(true);
+    });
+
+    let secondResult: string | null = null;
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      secondResult = await result.current.execute(mockAction, 'test_action');
     });
 
-    let secondResult;
     await act(async () => {
-      secondResult = await result.current?.execute(mockAction, 'test_action');
+      resolveAction('success');
+      await firstExecution;
     });
-
-    await firstExecution;
 
     expect(mockAction).toHaveBeenCalledTimes(1);
     expect(secondResult).toBeNull();
   });
 });
-
