@@ -12,6 +12,14 @@ export interface ConversionResult {
   displayText: string;
   isLoading: boolean;
   hasError: boolean;
+  forceRefresh: () => Promise<void>;
+}
+
+const RATE_CACHE_TTL_MS = 60 * 1000;
+const rateCache = new Map<string, { price: number; expiresAt: number }>();
+
+function getRateCacheKey(tokenSymbol: string, fiatCurrency: string): string {
+  return `${tokenSymbol.toUpperCase()}_${fiatCurrency.toLowerCase()}`;
 }
 
 /**
@@ -42,7 +50,7 @@ export function useCurrencyConversion(
     return symbolMap[code.toLowerCase()] || '';
   }, []);
 
-  const convertAmount = useCallback(async () => {
+  const convertAmount = useCallback(async (forceRefresh = false) => {
     if (!amount || amount <= 0 || !tokenSymbol) {
       setFiatAmount(null);
       return;
@@ -52,10 +60,26 @@ export function useCurrencyConversion(
     setHasError(false);
 
     try {
-      const prices = await fetchCryptoPrices([tokenSymbol], [fiatCurrency]);
+      const cacheKey = getRateCacheKey(tokenSymbol, fiatCurrency);
+      const cachedRate = rateCache.get(cacheKey);
+      const now = Date.now();
+      let price: number | undefined;
 
-      if (prices && prices[tokenSymbol] && prices[tokenSymbol][fiatCurrency]) {
-        const price = prices[tokenSymbol][fiatCurrency];
+      if (!forceRefresh && cachedRate && cachedRate.expiresAt > now) {
+        price = cachedRate.price;
+      } else {
+        const prices = await fetchCryptoPrices([tokenSymbol], [fiatCurrency]);
+        price = prices?.[tokenSymbol.toUpperCase()]?.[fiatCurrency.toLowerCase()];
+
+        if (typeof price === 'number') {
+          rateCache.set(cacheKey, {
+            price,
+            expiresAt: now + RATE_CACHE_TTL_MS,
+          });
+        }
+      }
+
+      if (typeof price === 'number') {
         const converted = amount * price;
         setFiatAmount(converted);
         setHasError(false);
@@ -75,6 +99,8 @@ export function useCurrencyConversion(
   useEffect(() => {
     convertAmount();
   }, [convertAmount]);
+
+  const forceRefresh = useCallback(() => convertAmount(true), [convertAmount]);
 
   // Format display text
   const displayText = useCallback((): string => {
@@ -106,5 +132,6 @@ export function useCurrencyConversion(
     displayText: displayText(),
     isLoading,
     hasError,
+    forceRefresh,
   };
 }

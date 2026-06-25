@@ -372,6 +372,37 @@ fn test_transfer_admin() {
 }
 
 #[test]
+fn test_get_pending_admin_returns_none_without_transfer() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 100);
+
+    assert_eq!(bridge.get_pending_admin(), None);
+}
+
+#[test]
+fn test_get_pending_admin_returns_address_and_expiry() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| {
+        li.timestamp = 1_000;
+    });
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 100);
+    let new_admin = Address::generate(&env);
+
+    bridge.transfer_admin(&new_admin);
+
+    let pending = bridge.get_pending_admin().expect("pending admin");
+    assert_eq!(pending.0, new_admin);
+    assert!(pending.1 > 1_000);
+
+    bridge.accept_admin();
+    assert_eq!(bridge.get_pending_admin(), None);
+}
+
+#[test]
 fn test_transfer_admin_to_self_fails() {
     let env = Env::default();
     env.mock_all_auths();
@@ -2567,6 +2598,12 @@ fn test_math_mul_div_floor_large_values() {
     // = 9_500_000_000_000 / 100_000 = 95_000_000
     let usd_cents = crate::math::mul_div_floor(1_000_000, 9_500_000, 100_000);
     assert_eq!(usd_cents, 95_000_000);
+}
+
+#[test]
+fn test_math_checked_mul_div_floor_returns_overflow_error() {
+    let result = crate::math::checked_mul_div_floor(i128::MAX, 2, 1);
+    assert_eq!(result, Err(Error::Overflow));
 }
 
 #[test]

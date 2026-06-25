@@ -146,6 +146,105 @@ async function setupHook() {
 }
 
 describe('Message Retry UX', () => {
+  describe('Optimistic Send Flow', () => {
+    afterEach(() => {
+      analyzeQueue = [];
+    });
+
+    it('shows a sent message immediately with pending state', async () => {
+      let resolveAnalysis!: (result: AnalyzeResult) => void;
+      analyzeQueue.push(
+        new Promise<AnalyzeResult>((resolve) => {
+          resolveAnalysis = resolve;
+        }),
+      );
+
+      const hook = await setupHook();
+      try {
+        let sendPromise!: Promise<void>;
+        await act(async () => {
+          sendPromise = hook.api.sendMessage('Hello');
+          await Promise.resolve();
+        });
+
+        const pendingUser = hook.api.messages[hook.api.messages.length - 2];
+        const pendingAssistant = hook.api.messages[hook.api.messages.length - 1];
+
+        expect(pendingUser).toMatchObject({
+          role: 'user',
+          content: 'Hello',
+          metadata: { status: 'pending' },
+        });
+        expect(pendingAssistant).toMatchObject({
+          role: 'assistant',
+          metadata: { status: 'pending' },
+        });
+
+        await act(async () => {
+          resolveAnalysis({
+            intent: 'query',
+            confidence: 0.99,
+            extractedData: {},
+            requiredQuestions: [],
+            suggestedResponse: 'ok',
+          });
+          await sendPromise;
+        });
+
+        const sentUser = hook.api.messages[hook.api.messages.length - 2];
+        const sentAssistant = hook.api.messages[hook.api.messages.length - 1];
+
+        expect(sentUser?.metadata?.status).toBe('sent');
+        expect(sentAssistant).toMatchObject({
+          role: 'assistant',
+          content: 'ok',
+          metadata: { status: 'sent' },
+        });
+      } finally {
+        hook.cleanup();
+      }
+    });
+
+    it('marks the optimistic message and pending response as failed when send fails', async () => {
+      let rejectAnalysis!: (error: Error) => void;
+      analyzeQueue.push(
+        new Promise<AnalyzeResult>((_, reject) => {
+          rejectAnalysis = reject;
+        }),
+      );
+
+      const hook = await setupHook();
+      try {
+        let sendPromise!: Promise<void>;
+        await act(async () => {
+          sendPromise = hook.api.sendMessage('Fail this');
+          await Promise.resolve();
+        });
+
+        await act(async () => {
+          rejectAnalysis(new Error('server failed'));
+          await sendPromise;
+        });
+
+        const failedUser = hook.api.messages[hook.api.messages.length - 2];
+        const failedAssistant = hook.api.messages[hook.api.messages.length - 1];
+
+        expect(failedUser).toMatchObject({
+          role: 'user',
+          content: 'Fail this',
+          metadata: { status: 'failed' },
+        });
+        expect(failedUser?.error?.message).toMatch(/failed/i);
+        expect(failedAssistant).toMatchObject({
+          role: 'assistant',
+          metadata: { status: 'failed' },
+        });
+      } finally {
+        hook.cleanup();
+      }
+    });
+  });
+
   describe('Error State Tracking', () => {
     it('should mark a message as failed with error details', () => {
       const failedMessage: ChatMessage = {
