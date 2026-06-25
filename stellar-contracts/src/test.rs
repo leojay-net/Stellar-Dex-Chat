@@ -691,10 +691,81 @@ mod tests {
     fn test_emergency_drain_invalid_recipient() {
         let env = Env::default();
         env.mock_all_auths();
-        let (contract_id, bridge, admin, token_addr, token, token_sac) = setup_bridge(&env, 1000);
+        let (contract_id, bridge, admin, token_addr, _token, token_sac) = setup_bridge(&env, 1000);
         token_sac.mint(&admin, &100);
         bridge.deposit(&admin, &100, &token_addr, &Bytes::new(&env));
         let result = bridge.try_emergency_drain(&contract_id);
         assert_eq!(result, Err(Ok(Error::InvalidRecipient)));
+    }
+
+    #[test]
+    fn test_total_withdrawn_overflow_protection() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (_, bridge, admin, token_addr, _token, token_sac) = setup_bridge(&env, i128::MAX);
+        
+        // Set TotalWithdrawn to near max value
+        env.as_contract(&bridge.address, || {
+            env.storage()
+                .instance()
+                .set(&DataKey::TotalWithdrawn, &(i128::MAX - 100));
+        });
+        
+        token_sac.mint(&admin, &200);
+        bridge.deposit(&admin, &200, &token_addr, &Bytes::new(&env));
+        
+        // This should succeed (100 + 200 = 300, which is within remaining space)
+        bridge.withdraw(&admin, &100, &token_addr);
+        assert_eq!(bridge.get_total_withdrawn(), i128::MAX);
+        
+        // This should fail due to overflow
+        let result = bridge.try_withdraw(&admin, &1, &token_addr);
+        assert_eq!(result, Err(Ok(Error::ArithmeticOverflow)));
+    }
+
+    #[test]
+    fn test_reconciliation_formula_accuracy() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (_, bridge, admin, token_addr, _token, token_sac) = setup_bridge(&env, 1000);
+        
+        // Initial state: no deposits, no withdrawals
+        assert_eq!(bridge.get_total_deposited(), 0);
+        assert_eq!(bridge.get_total_withdrawn(), 0);
+        assert_eq!(bridge.get_balance(), 0);
+        
+        // Deposit 500
+        token_sac.mint(&admin, &500);
+        bridge.deposit(&admin, &500, &token_addr, &Bytes::new(&env));
+        assert_eq!(bridge.get_total_deposited(), 500);
+        assert_eq!(bridge.get_total_withdrawn(), 0);
+        assert_eq!(bridge.get_balance(), 500);
+        
+        // Withdraw 200
+        bridge.withdraw(&admin, &200, &token_addr);
+        assert_eq!(bridge.get_total_deposited(), 500);
+        assert_eq!(bridge.get_total_withdrawn(), 200);
+        assert_eq!(bridge.get_balance(), 300);
+        
+        // Verify reconciliation formula: balance = total_deposited - total_withdrawn
+        let expected_balance = bridge.get_total_deposited() - bridge.get_total_withdrawn();
+        assert_eq!(bridge.get_balance(), expected_balance);
+        
+        // Deposit another 300
+        token_sac.mint(&admin, &300);
+        bridge.deposit(&admin, &300, &token_addr, &Bytes::new(&env));
+        assert_eq!(bridge.get_total_deposited(), 800);
+        assert_eq!(bridge.get_total_withdrawn(), 200);
+        assert_eq!(bridge.get_balance(), 600);
+        
+        // Withdraw 150
+        bridge.withdraw(&admin, &150, &token_addr);
+        assert_eq!(bridge.get_total_deposited(), 800);
+        assert_eq!(bridge.get_total_withdrawn(), 350);
+        assert_eq!(bridge.get_balance(), 450);
+        
+        // Verify reconciliation formula again
+        let expected_balance = bridge.get_total_deposited() - bridge.get_total_withdrawn();
+        assert_eq!(bridge.get_balance(), expected_balance);
     }
 }
