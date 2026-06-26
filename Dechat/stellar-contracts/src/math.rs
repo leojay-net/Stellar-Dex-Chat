@@ -48,17 +48,14 @@ pub const FIXED_POINT: i128 = 10_000_000;
 /// // Negative: -7 * 3 / 2 = -10.5 → floor → -11
 /// assert_eq!(mul_div_floor(-7, 3, 2), -11);
 /// ```
-pub fn mul_div_floor(a: i128, b: i128, d: i128) -> i128 {
-    // Issue #966: use checked_mul to prevent silent overflow on large deposits
-    let product = a.checked_mul(b).expect("mul_div_floor: overflow in a * b");
-    // Rust integer division already truncates toward zero.
-    // For non-negative products that equals floor; for negative products we
-    // subtract 1 if there is a remainder, giving true floor semantics.
-    Ok(if product >= 0 || product % d == 0 {
+pub fn checked_mul_div_floor(a: i128, b: i128, d: i128) -> Result<i128, Error> {
+    let product = a.checked_mul(b).ok_or(Error::Overflow)?;
+    let quotient = if product >= 0 || product % d == 0 {
         product / d
     } else {
         product / d - 1
-    })
+    };
+    Ok(quotient)
 }
 
 pub fn mul_div_floor(a: i128, b: i128, d: i128) -> i128 {
@@ -96,18 +93,16 @@ pub fn mul_div_floor(a: i128, b: i128, d: i128) -> i128 {
 /// // Exact: 6 * 2 / 3 = 4.0 → ceil → 4
 /// assert_eq!(mul_div_ceil(6, 2, 3), 4);
 /// ```
-pub fn mul_div_ceil(a: i128, b: i128, d: i128) -> i128 {
-    // Issue #966: use checked_mul to prevent silent overflow on large deposits
-    let product = a.checked_mul(b).expect("mul_div_ceil: overflow in a * b");
-    // Ceiling division: (product + d - 1) / d for positive values
-    // For negative products, we use floor semantics (same as mul_div_floor)
-    if product >= 0 {
-        product.checked_add(d - 1).expect("mul_div_ceil: overflow in product + d - 1") / d
+pub fn checked_mul_div_ceil(a: i128, b: i128, d: i128) -> Result<i128, Error> {
+    let product = a.checked_mul(b).ok_or(Error::Overflow)?;
+    let quotient = if product >= 0 {
+        product.checked_add(d - 1).ok_or(Error::Overflow)? / d
     } else if product % d == 0 {
         product / d
     } else {
         product / d - 1
-    })
+    };
+    Ok(quotient)
 }
 
 pub fn mul_div_ceil(a: i128, b: i128, d: i128) -> i128 {
