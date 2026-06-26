@@ -1598,7 +1598,7 @@ impl FiatBridge {
 
         Self::require_not_paused(&env)?;
 
-        let total_ops = items.len() as u32;
+        let total_ops = items.len();
         let current_ledger = env.ledger().sequence();
 
         // Read shared config once
