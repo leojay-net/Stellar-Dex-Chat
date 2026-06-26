@@ -10,7 +10,7 @@ use soroban_sdk::{
 
 use crate::{FiatBridge, FiatBridgeClient};
 
-fn setup(env: &Env) -> (FiatBridgeClient<'_>, Address, Address, TokenClient<'_>) {
+fn setup(env: &Env) -> (FiatBridgeClient, Address, Address, TokenClient) {
     let contract_id = env.register(FiatBridge, ());
     let client = FiatBridgeClient::new(env, &contract_id);
 
