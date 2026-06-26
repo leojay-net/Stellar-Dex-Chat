@@ -12,6 +12,8 @@ export const useChatHistory = () => {
     sessions: [],
   });
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<ChatSession[]>([]);
 
   // Load history from localStorage on mount
   useEffect(() => {
@@ -29,6 +31,20 @@ export const useChatHistory = () => {
       return () => clearTimeout(timeoutId);
     }
   }, [historyState]);
+
+  // Debounced search — avoids triggering a lookup on every keystroke
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    const timeoutId = setTimeout(() => {
+      setSearchResults(
+        ChatHistoryManager.searchSessions(historyState.sessions, searchQuery),
+      );
+    }, 300);
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, historyState.sessions]);
 
   const createNewSession = useCallback(
     (initialMessages: ChatMessage[] = []): string => {
@@ -256,5 +272,10 @@ export const useChatHistory = () => {
 
     // Utils
     hasHistory: historyState.sessions.length > 0,
+
+    // Debounced search
+    searchQuery,
+    setSearchQuery,
+    searchResults,
   };
 };
