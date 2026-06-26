@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   clearCache,
   getContractBalance,
@@ -22,8 +22,17 @@ export default function useBridgeStats(): BridgeStats {
   const [totalDeposited, setTotalDeposited] = useState<bigint | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const refetchStats = useCallback(async () => {
+    if (!isMountedRef.current) return;
     setLoading(true);
     setError(null);
     try {
@@ -32,13 +41,15 @@ export default function useBridgeStats(): BridgeStats {
         getBridgeLimit(),
         getTotalDeposited(),
       ]);
+      if (!isMountedRef.current) return;
       setBalance(b);
       setLimit(l);
       setTotalDeposited(t);
     } catch (err) {
+      if (!isMountedRef.current) return;
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) setLoading(false);
     }
   }, []);
 

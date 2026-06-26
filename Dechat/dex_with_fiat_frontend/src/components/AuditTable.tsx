@@ -40,6 +40,7 @@ export default function AuditTable({}: AuditTableProps) {
     endDate: '',
   });
   const [retryQueueCount, setRetryQueueCount] = useState(0);
+  const [isExporting, setIsExporting] = useState(false);
 
   const pageSize = 20;
   const fetchAbortRef = useRef<AbortController | null>(null);
@@ -148,6 +149,76 @@ export default function AuditTable({}: AuditTableProps) {
 
     wasOnlineRef.current = isOnline;
   }, [isOnline, wasOffline, addToast, resetWasOffline, fetchAuditEntries]);
+
+  const handleExportCSV = useCallback(async () => {
+    setIsExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (filters.actionType) params.append('actionType', filters.actionType);
+      if (filters.status) params.append('status', filters.status);
+      if (filters.adminAddress) params.append('adminAddress', filters.adminAddress);
+      if (filters.txHash) params.append('txHash', filters.txHash);
+      if (filters.startDate) params.append('startDate', filters.startDate);
+      if (filters.endDate) params.append('endDate', filters.endDate);
+      params.append('limit', '10000');
+      params.append('offset', '0');
+      params.append('sortKey', sortKey);
+      params.append('sortOrder', sortOrder);
+
+      const response = await fetch(`/api/admin-audit?${params.toString()}`);
+      if (!response.ok) throw new Error(`Export failed: ${response.statusText}`);
+      const data = await response.json() as { entries: AuditEntry[]; total: number };
+
+      const CHUNK_SIZE = 500;
+      const csvRows: string[] = [
+        ['Timestamp', 'Admin Address', 'Action Type', 'Description', 'TX Hash', 'Status'].join(','),
+      ];
+
+      const processChunk = (start: number): Promise<void> =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            const end = Math.min(start + CHUNK_SIZE, data.entries.length);
+            for (let i = start; i < end; i++) {
+              const e = data.entries[i];
+              csvRows.push([
+                `"${formatTimestamp(new Date(e.timestamp))}"`,
+                `"${e.adminAddress}"`,
+                `"${getActionTypeDisplay(e.actionType)}"`,
+                `"${(e.actionDescription ?? '').replace(/"/g, '""')}"`,
+                `"${e.txHash ?? ''}"`,
+                `"${e.status}"`,
+              ].join(','));
+            }
+            resolve();
+          }, 0);
+        });
+
+      for (let i = 0; i < data.entries.length; i += CHUNK_SIZE) {
+        await processChunk(i);
+      }
+
+      const dateLabel =
+        filters.startDate && filters.endDate
+          ? `${filters.startDate}_to_${filters.endDate}`
+          : filters.startDate
+            ? `from_${filters.startDate}`
+            : filters.endDate
+              ? `to_${filters.endDate}`
+              : new Date().toISOString().slice(0, 10);
+
+      const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `audit-log_${dateLabel}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('CSV export error:', err);
+    } finally {
+      setIsExporting(false);
+    }
+  }, [filters, sortKey, sortOrder]);
 
   const handleFilterChange = (key: keyof FilterState, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -388,6 +459,14 @@ export default function AuditTable({}: AuditTableProps) {
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 font-medium"
           >
             {loading ? 'Loading...' : 'Refresh'}
+          </button>
+          <button
+            onClick={handleExportCSV}
+            disabled={isExporting || loading}
+            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 font-medium"
+            aria-label="Export filtered audit entries as CSV"
+          >
+            {isExporting ? 'Exporting…' : 'Export CSV'}
           </button>
         </div>
       </div>

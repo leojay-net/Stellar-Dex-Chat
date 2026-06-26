@@ -18,7 +18,12 @@ export default function PriceTicker({
   const [prices, setPrices] = useState<TickerData>({});
   const [error, setError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isStale, setIsStale] = useState(false);
   const refreshTimeoutRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryCountRef = useRef(0);
+  const hasPreviousDataRef = useRef(false);
+  const fetchPricesRef = useRef<(() => Promise<void>) | null>(null);
   const isMounted = useRef(true);
   const kbHelpId = useId();
 
@@ -56,32 +61,56 @@ export default function PriceTicker({
     return `${change >= 0 ? '+' : ''}${formatted}%`;
   };
 
-  // Fetch prices
+  // Fetch prices with exponential backoff retry on failure
   const fetchPrices = useCallback(async () => {
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+
     try {
       if (isMounted.current) setError(false);
       const newPrices = await fetchTickerData(symbols, currency);
-
       if (!isMounted.current) return;
 
-      if (Object.keys(newPrices).length === 0) {
-        setError(true);
-      } else {
+      if (Object.keys(newPrices).length > 0) {
         setPrices(newPrices);
+        hasPreviousDataRef.current = true;
+        setIsStale(false);
+        retryCountRef.current = 0;
+      } else {
+        setError(true);
+        if (hasPreviousDataRef.current) setIsStale(true);
+        const delay = Math.min(1000 * Math.pow(2, retryCountRef.current), 30000);
+        retryCountRef.current++;
+        retryTimeoutRef.current = setTimeout(() => {
+          if (isMounted.current && fetchPricesRef.current) void fetchPricesRef.current();
+        }, delay);
       }
     } catch (err) {
       console.error('Failed to fetch ticker data:', err);
-      if (isMounted.current) setError(true);
+      if (!isMounted.current) return;
+      setError(true);
+      if (hasPreviousDataRef.current) setIsStale(true);
+      const delay = Math.min(1000 * Math.pow(2, retryCountRef.current), 30000);
+      retryCountRef.current++;
+      retryTimeoutRef.current = setTimeout(() => {
+        if (isMounted.current && fetchPricesRef.current) void fetchPricesRef.current();
+      }, delay);
     } finally {
       if (isMounted.current) setIsLoading(false);
     }
   }, [symbols, currency]);
 
+  // Keep ref in sync so retry timeouts always call the latest version
+  useEffect(() => {
+    fetchPricesRef.current = fetchPrices;
+  }, [fetchPrices]);
+
   // Initial fetch and setup refresh interval
   useEffect(() => {
-    fetchPrices();
+    void fetchPrices();
 
-    // Setup auto-refresh
     refreshTimeoutRef.current = setInterval(() => {
       if (isMounted.current) {
         void fetchPrices();
@@ -89,9 +118,8 @@ export default function PriceTicker({
     }, refreshInterval);
 
     return () => {
-      if (refreshTimeoutRef.current) {
-        clearInterval(refreshTimeoutRef.current);
-      }
+      if (refreshTimeoutRef.current) clearInterval(refreshTimeoutRef.current);
+      if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
     };
   }, [fetchPrices, refreshInterval]);
 
@@ -167,9 +195,9 @@ export default function PriceTicker({
         </h3>
         <div
           className={`w-2 h-2 rounded-full transition-colors duration-300 ${
-            error ? 'bg-red-500' : 'bg-green-500'
+            isStale ? 'bg-yellow-400' : error ? 'bg-red-500' : 'bg-green-500'
           }`}
-          aria-hidden
+          aria-label={isStale ? 'Stale data — reconnecting' : error ? 'Data unavailable' : 'Live'}
         />
       </div>
 
@@ -284,7 +312,12 @@ export default function PriceTicker({
         </div>
       )}
 
-      {error && Object.keys(prices).length > 0 && (
+      {isStale && (
+        <p className="text-yellow-500 dark:text-yellow-400 text-[10px] mt-2 text-center" aria-live="polite">
+          Prices may be stale — retrying&hellip;
+        </p>
+      )}
+      {error && !isStale && Object.keys(prices).length > 0 && (
         <p className="theme-text-secondary text-[10px] mt-2 text-center opacity-60">
           Last updated • Focus this panel and press R to refresh
         </p>
