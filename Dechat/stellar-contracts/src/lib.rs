@@ -404,6 +404,79 @@ pub struct BatchResult {
     pub failed_index: Option<u32>,
 }
 
+/// A single deposit item within a `batch_deposit` call.
+///
+/// Each item mirrors the per-deposit parameters of the single [`FiatBridge::deposit`]
+/// function, minus the global price/slippage check which is applied once per batch.
+///
+/// # Fields
+///
+/// * `from`       - Depositor address; must have co-signed the batch transaction.
+/// * `amount`     - Token amount to deposit (must be > 0).
+/// * `token`      - Address of the whitelisted token contract.
+/// * `reference`  - Operator reference string (max [`MAX_REFERENCE_LEN`] bytes).
+/// * `memo_hash`  - Optional SHA-256 hash of an external transaction memo.
+///
+/// # Example
+///
+/// ```rust
+/// let item = BatchDepositItem {
+///     from: user_address,
+///     amount: 1_000_000,
+///     token: usdc_address,
+///     reference: Bytes::from_array(&env, b"REF-001"),
+///     memo_hash: None,
+/// };
+/// ```
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BatchDepositItem {
+    /// Depositor; must authenticate via `require_auth` in the batch transaction.
+    pub from: Address,
+    /// Token amount in the token's native units (must be > 0).
+    pub amount: i128,
+    /// Whitelisted token contract address.
+    pub token: Address,
+    /// Operator reference string (max 64 bytes).
+    pub reference: Bytes,
+    /// Optional non-zero SHA-256 hash binding this deposit to an external transaction.
+    pub memo_hash: Option<BytesN<32>>,
+}
+
+/// Result of executing a `batch_deposit` call.
+///
+/// Mirrors [`BatchResult`] but carries the receipt IDs issued for successful
+/// deposits so callers can correlate inputs to on-chain receipts.
+///
+/// # Fields
+///
+/// * `total_ops`     - Total number of deposit items submitted.
+/// * `success_count` - Number of deposits that completed successfully.
+/// * `failure_count` - Number of deposits that failed.
+/// * `failed_index`  - Zero-based index of the **first** failure, or `None`.
+/// * `receipts`      - Receipt IDs for successful deposits (length == `success_count`).
+///
+/// # Atomicity
+///
+/// `batch_deposit` is **all-or-nothing**: if *any* deposit fails, the entire
+/// function returns an error and no state changes or token transfers are
+/// committed.  This differs from `execute_batch_admin`, which continues after
+/// individual failures.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BatchDepositResult {
+    /// Total number of deposit items in the batch.
+    pub total_ops: u32,
+    /// Number of deposits that completed successfully (equals `total_ops` on success).
+    pub success_count: u32,
+    /// Number of deposits that failed (0 on success; entire batch reverts on failure).
+    pub failure_count: u32,
+    /// Zero-based index of the first deposit that failed, or `None` if all succeeded.
+    pub failed_index: Option<u32>,
+    /// Receipt IDs issued for each deposit, in submission order.
+    pub receipts: Vec<BytesN<32>>,
+}
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ConfigSnapshot {
@@ -1448,6 +1521,383 @@ impl FiatBridge {
         Self::check_invariants(&env, &token)?;
 
         Ok(receipt_hash)
+    }
+
+    /// Deposit multiple `(token, amount)` pairs atomically in a single transaction.
+    ///
+    /// Each item is validated and processed using the same rules as the single
+    /// [`Self::deposit`] function.  If **any** item fails, the entire batch
+    /// returns an error and **no** state is committed (all-or-nothing semantics).
+    ///
+    /// This function is more gas-efficient than N separate `deposit` calls because:
+    /// - The contract's instance TTL is extended once.
+    /// - The admin address and global configuration are read from storage once.
+    /// - A single Soroban transaction covers all transfers.
+    ///
+    /// # Parameters
+    /// - `env`              – The Soroban contract environment.
+    /// - `items`            – Vector of [`BatchDepositItem`] structs; must be non-empty.
+    /// - `expected_price`   – Oracle price the caller expects (fixed-point, 7 decimals).
+    /// - `max_slippage`     – Maximum acceptable deviation in basis points (1 bp = 0.01 %).
+    ///
+    /// # Returns
+    /// [`BatchDepositResult`] containing receipt IDs for each deposit on success.
+    ///
+    /// # Errors
+    /// - [`Error::NotInitialized`]          if the contract has not been initialised.
+    /// - [`Error::ContractPaused`]          if the contract is paused.
+    /// - [`Error::ZeroAmount`]              if any item's `amount` is ≤ 0.
+    /// - [`Error::ReferenceTooLong`]        if any item's reference exceeds 64 bytes.
+    /// - [`Error::TokenNotWhitelisted`]     if any item's token is not registered.
+    /// - [`Error::BelowMinimum`]            if any item's amount is below the deposit floor.
+    /// - [`Error::ExceedsLimit`]            if any item's amount exceeds the token limit.
+    /// - [`Error::NotAllowed`]              if any depositor is not on the allowlist.
+    /// - [`Error::AddressDenied`]           if any depositor is on the denylist.
+    /// - [`Error::CooldownActive`]          if any depositor is within the cooldown window.
+    /// - [`Error::DepositRateLimitExceeded`] if any depositor exceeds the per-block cap.
+    /// - [`Error::DailyLimitExceeded`]      if any item would breach the daily deposit limit.
+    /// - [`Error::ExceedsFiatLimit`]        if any item would breach the fiat volume cap.
+    /// - [`Error::SlippageExceeded`]        if the oracle price deviates beyond `max_slippage`.
+    /// - [`Error::InternalError`]           on receipt ID collision or user total overflow.
+    /// - [`Error::Overflow`]                on counter or total_deposited overflow.
+    ///
+    /// # Authorisation
+    /// Every depositor in `items` must have authenticated in this transaction
+    /// (the Soroban runtime verifies `require_auth` for each unique `from` address).
+    /// The contract admin must also co-authenticate once for the batch.
+    ///
+    /// # Fee Semantics
+    /// One protocol fee is charged per deposit within the batch, consistent with
+    /// the single-deposit behaviour.  The fee is deducted from the transferred
+    /// amount as normal.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let items = vec![
+    ///     BatchDepositItem { from: alice, amount: 100_000, token: usdc, reference: ..., memo_hash: None },
+    ///     BatchDepositItem { from: bob,   amount: 200_000, token: usdc, reference: ..., memo_hash: None },
+    /// ];
+    /// let result = contract.batch_deposit(env, items, expected_price, 50)?;
+    /// // result.receipts contains two BytesN<32> receipt IDs
+    /// ```
+    pub fn batch_deposit(
+        env: Env,
+        items: Vec<BatchDepositItem>,
+        expected_price: i128,
+        max_slippage: u32,
+    ) -> Result<BatchDepositResult, Error> {
+        env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
+
+        // Read admin once for the entire batch
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+
+        Self::require_not_paused(&env)?;
+
+        let total_ops = items.len() as u32;
+        let current_ledger = env.ledger().sequence();
+
+        // Read shared config once
+        let cooldown: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::CooldownLedgers)
+            .unwrap_or(0);
+        let anti_sandwich: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::AntiSandwichDelay)
+            .unwrap_or(0);
+        let max_delay = cooldown.max(anti_sandwich).max(1);
+        let global_allowlist_on: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::AllowlistEnabled)
+            .unwrap_or(false);
+        let min_deposit: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::MinDeposit)
+            .unwrap_or(1);
+        let max_per_block: Option<u32> = env
+            .storage()
+            .instance()
+            .get(&DataKey::MaxDepositsPerBlock);
+
+        // Validate and authenticate every depositor up-front; abort on first error
+        for i in 0..items.len() {
+            let item = items.get(i).unwrap();
+
+            Self::validate_memo_hash(&env, &item.memo_hash)?;
+            item.from.require_auth();
+
+            if item.amount <= 0 {
+                return Err(Error::ZeroAmount);
+            }
+            if item.reference.len() > MAX_REFERENCE_LEN {
+                return Err(Error::ReferenceTooLong);
+            }
+
+            // Cooldown check
+            let last_deposit_key = DataKey::LastDeposit(item.from.clone());
+            if cooldown > 0 {
+                if let Some(last) = env
+                    .storage()
+                    .temporary()
+                    .get::<DataKey, u32>(&last_deposit_key)
+                {
+                    if current_ledger < last.saturating_add(cooldown) {
+                        return Err(Error::CooldownActive);
+                    }
+                }
+            }
+
+            // Allowlist / denylist checks
+            if global_allowlist_on {
+                if !env
+                    .storage()
+                    .persistent()
+                    .has(&DataKey::Allowed(item.from.clone()))
+                {
+                    return Err(Error::NotAllowed);
+                }
+            } else {
+                let token_allowlist_on: bool = env
+                    .storage()
+                    .instance()
+                    .get(&DataKey::TokenAllowlistEnabled(item.token.clone()))
+                    .unwrap_or(false);
+                if token_allowlist_on
+                    && !env
+                        .storage()
+                        .persistent()
+                        .has(&DataKey::TokenAllowed(item.token.clone(), item.from.clone()))
+                {
+                    return Err(Error::NotAllowed);
+                }
+            }
+            if env
+                .storage()
+                .persistent()
+                .has(&DataKey::Denied(item.from.clone()))
+            {
+                return Err(Error::AddressDenied);
+            }
+
+            // Per-block rate limit (validated pre-commit; counter written during commit below)
+            if let Some(max) = max_per_block {
+                if max > 0 {
+                    let block_key = DataKey::DepositCountPerBlock(item.from.clone());
+                    let (stored_ledger, count): (u32, u32) = env
+                        .storage()
+                        .temporary()
+                        .get(&block_key)
+                        .unwrap_or((current_ledger, 0));
+                    let new_count = if stored_ledger == current_ledger {
+                        count.saturating_add(1)
+                    } else {
+                        1
+                    };
+                    if new_count > max {
+                        return Err(Error::DepositRateLimitExceeded);
+                    }
+                }
+            }
+
+            // Token registry, deposit floor, and limit checks
+            let config: TokenConfig = env
+                .storage()
+                .persistent()
+                .get(&DataKey::TokenRegistry(item.token.clone()))
+                .ok_or(Error::TokenNotWhitelisted)?;
+            if item.amount < min_deposit {
+                return Err(Error::BelowMinimum);
+            }
+            if item.amount > config.limit {
+                return Err(Error::ExceedsLimit);
+            }
+            Self::enforce_daily_deposit_limit(&env, &item.from, &item.token, item.amount, &config)?;
+
+            // Fiat limit and slippage check (uses shared expected_price / max_slippage)
+            let actual_price =
+                Self::validate_fiat_limit(&env, &item.from, &item.token, item.amount)?;
+            Self::check_slippage(&env, expected_price, actual_price, max_slippage)?;
+        }
+
+        // All items passed validation — commit state changes and transfers
+        let mut receipts: Vec<BytesN<32>> = Vec::new(&env);
+        let mut receipt_counter: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::ReceiptCounter)
+            .unwrap_or(0);
+
+        for i in 0..items.len() {
+            let item = items.get(i).unwrap();
+
+            // Update cooldown / anti-sandwich timer
+            let last_deposit_key = DataKey::LastDeposit(item.from.clone());
+            env.storage()
+                .temporary()
+                .set(&last_deposit_key, &current_ledger);
+            env.storage()
+                .temporary()
+                .extend_ttl(&last_deposit_key, max_delay, max_delay + 100);
+
+            // Update per-block counter
+            if let Some(max) = max_per_block {
+                if max > 0 {
+                    let block_key = DataKey::DepositCountPerBlock(item.from.clone());
+                    let (stored_ledger, count): (u32, u32) = env
+                        .storage()
+                        .temporary()
+                        .get(&block_key)
+                        .unwrap_or((current_ledger, 0));
+                    let new_count = if stored_ledger == current_ledger {
+                        count.saturating_add(1)
+                    } else {
+                        1
+                    };
+                    env.storage()
+                        .temporary()
+                        .set(&block_key, &(current_ledger, new_count));
+                    env.storage().temporary().extend_ttl(&block_key, 2, 10);
+                }
+            }
+
+            // Token transfer
+            let token_client = token::Client::new(&env, &item.token);
+            token_client.transfer(&item.from, env.current_contract_address(), &item.amount);
+
+            // Derive receipt ID
+            let derivation_data = (
+                item.from.clone(),
+                item.amount,
+                current_ledger,
+                item.reference.clone(),
+                receipt_counter,
+            );
+            let receipt_id = env.crypto().sha256(&derivation_data.to_xdr(&env));
+
+            if env
+                .storage()
+                .persistent()
+                .has(&DataKey::Receipt(receipt_id.clone().into()))
+            {
+                return Err(Error::InternalError);
+            }
+
+            let receipt = Receipt {
+                id: receipt_id.clone().into(),
+                depositor: item.from.clone(),
+                amount: item.amount,
+                ledger: current_ledger,
+                reference: item.reference.clone(),
+                refunded: false,
+                memo_hash: item.memo_hash.clone(),
+            };
+            let receipt_hash: BytesN<32> = receipt_id.clone().into();
+            env.storage()
+                .persistent()
+                .set(&DataKey::Receipt(receipt_hash.clone()), &receipt);
+
+            let index_key = DataKey::ReceiptIndex(receipt_counter);
+            env.storage().temporary().set(&index_key, &receipt_hash);
+            env.storage()
+                .temporary()
+                .extend_ttl(&index_key, MIN_TTL, MIN_TTL);
+
+            receipt_counter = receipt_counter
+                .checked_add(1)
+                .ok_or(Error::Overflow)?;
+
+            // Update token registry totals
+            let mut config: TokenConfig = env
+                .storage()
+                .persistent()
+                .get(&DataKey::TokenRegistry(item.token.clone()))
+                .ok_or(Error::NotInitialized)?;
+            config.total_deposited = config
+                .total_deposited
+                .checked_add(item.amount)
+                .ok_or(Error::Overflow)?;
+            env.storage()
+                .persistent()
+                .set(&DataKey::TokenRegistry(item.token.clone()), &config);
+
+            DepositBalanceUpdatedEvent {
+                version: EVENT_VERSION,
+                token: item.token.clone(),
+                total_deposited: config.total_deposited,
+            }
+            .publish(&env);
+
+            // Update per-user deposit total
+            let user_key = DataKey::UserDeposited(item.from.clone());
+            let user_total: i128 = env.storage().instance().get(&user_key).unwrap_or(0);
+            let new_user_total = user_total
+                .checked_add(item.amount)
+                .ok_or(Error::InternalError)?;
+            env.storage().instance().set(&user_key, &new_user_total);
+
+            // Large-deposit withdrawal cooldown
+            let withdraw_threshold: i128 = env
+                .storage()
+                .instance()
+                .get(&DataKey::WithdrawCooldownThreshold)
+                .unwrap_or(0);
+            if withdraw_threshold > 0 && item.amount >= withdraw_threshold {
+                let large_key = DataKey::LastLargeDeposit(item.from.clone());
+                env.storage()
+                    .temporary()
+                    .set(&large_key, &current_ledger);
+                let cooldown_ledgers: u32 = env
+                    .storage()
+                    .instance()
+                    .get(&DataKey::WithdrawCooldownLedgers)
+                    .unwrap_or(0);
+                let ttl = cooldown_ledgers.max(17_280);
+                env.storage().temporary().extend_ttl(&large_key, ttl, ttl);
+            }
+
+            DepositEvent {
+                version: EVENT_VERSION,
+                admin: admin.clone(),
+                from: item.from.clone(),
+                token: item.token.clone(),
+                amount: item.amount,
+                receipt_id: receipt_hash.clone(),
+            }
+            .publish(&env);
+
+            ReceiptIssuedEvent {
+                version: EVENT_VERSION,
+                receipt_id: receipt_hash.clone(),
+                memo_hash: item.memo_hash.clone(),
+            }
+            .publish(&env);
+
+            Self::check_invariants(&env, &item.token)?;
+
+            receipts.push_back(receipt_hash);
+        }
+
+        // Write the updated receipt counter once after the loop
+        env.storage()
+            .instance()
+            .set(&DataKey::ReceiptCounter, &receipt_counter);
+
+        Ok(BatchDepositResult {
+            total_ops,
+            success_count: total_ops,
+            failure_count: 0,
+            failed_index: None,
+            receipts,
+        })
     }
 
     /// Validates that `memo_hash`, when provided, is not all zeros.
@@ -4125,9 +4575,13 @@ impl FiatBridge {
     /// The current fee vault balance for the token, or `0` if no fees are recorded.
     ///
     /// # Notes
-    /// - This is a read-only operation with no side effects
-    /// - Does not perform reconciliation; reflects the ledger state
-    /// - For accurate withdrawal amounts, use [`Self::reconcile_fee_vault`] first
+    /// - This is a pure read-only operation with no side effects.
+    /// - Does not perform reconciliation; reflects the ledger state at the time of
+    ///   the last `accrue_fee` or `withdraw_fees` call.
+    /// - For accurate withdrawal amounts, use [`Self::reconcile_fee_vault`] first.
+    /// - Threshold monitoring is intentionally excluded from this function; callers
+    ///   that need threshold alerts should use [`Self::accrue_fee`] or a dedicated
+    ///   monitoring path, so that view queries cannot inadvertently mutate state.
     ///
     /// # Example
     /// ```ignore
@@ -4135,31 +4589,18 @@ impl FiatBridge {
     /// println!("Outstanding fees: {}", accumulated_fees);
     /// ```
     pub fn get_accrued_fees(env: Env, token: Address) -> i128 {
-        let fees = env
-            .storage()
+        // fix(#1031): removed threshold event emission from this view function.
+        // Emitting an event here used the *current* threshold to evaluate the
+        // recorded balance, which gave callers the false impression that the fee
+        // amount depended on when (or how often) the function was queried.  Any
+        // change to the threshold between deposits caused repeated or absent
+        // threshold events for the same underlying balance, making the data
+        // unreliable.  Threshold breach detection belongs in `accrue_fee` (the
+        // only write path), where it fires exactly once per new accrual.
+        env.storage()
             .persistent()
-            .get(&DataKey::FeeVault(token.clone()))
-            .unwrap_or(0);
-
-        // Check against configured threshold and emit event if exceeded
-        if let Some(threshold) = env
-            .storage()
-            .instance()
-            .get(&DataKey::FeeVaultThreshold(token.clone()))
-        {
-            if fees > threshold {
-                // Emit event indicating threshold exceeded
-                // This is informational - the function still returns the actual value
-                FeeVaultThresholdEvent {
-                    version: EVENT_VERSION,
-                    token: token.clone(),
-                    threshold,
-                }
-                .publish(&env);
-            }
-        }
-
-        fees
+            .get(&DataKey::FeeVault(token))
+            .unwrap_or(0)
     }
 
     /// Sets the maximum allowed fee vault balance for a specific token.
