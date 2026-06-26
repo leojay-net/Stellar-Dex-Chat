@@ -98,7 +98,7 @@ fn deposit_withdraw_fee_cycle() {
     if fee_balance > 0 {
         let fee_recipient = Address::generate(&env);
         let nonce = client.get_fee_withdrawal_nonce(&admin);
-        client.withdraw_fees(&fee_recipient, &token_addr, &fee_balance, &nonce);
+        client.withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &fee_balance, &nonce);
         assert_eq!(token.balance(&fee_recipient), fee_balance);
     }
 }

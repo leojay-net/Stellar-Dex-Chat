@@ -74,7 +74,7 @@ fn test_withdraw_fees_maintains_total_deposited_ge_total_withdrawn() {
     token_admin.mint(&contract_id, &1_000);
     
     // Withdraw fees
-    bridge.withdraw_fees(&fee_recipient, &token_addr, &500, &0);
+    bridge.withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &500, &0);
 
     // After fee withdrawal, total_deposited should be >= total_withdrawn
     let total_deposited = bridge.get_total_deposited();
@@ -103,7 +103,7 @@ fn test_withdraw_fees_maintains_net_deposited_ge_total_liabilities() {
     token_admin.mint(&contract_id, &1_000);
     
     // Withdraw fees
-    bridge.withdraw_fees(&fee_recipient, &token_addr, &500, &0);
+    bridge.withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &500, &0);
 
     // After fee withdrawal, net_deposited should be >= total_liabilities
     let total_deposited = bridge.get_total_deposited();
@@ -134,7 +134,7 @@ fn test_withdraw_fees_maintains_balance_ge_net_deposited() {
     token_admin.mint(&contract_id, &1_000);
     
     // Withdraw fees
-    bridge.withdraw_fees(&fee_recipient, &token_addr, &500, &0);
+    bridge.withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &500, &0);
 
     // After fee withdrawal, on-chain balance should be >= net_deposited
     let balance = token_client.balance(&contract_id);
@@ -165,9 +165,9 @@ fn test_multiple_withdraw_fees_maintain_invariants() {
     token_admin.mint(&contract_id, &2_000);
     
     // Multiple fee withdrawals
-    bridge.withdraw_fees(&fee_recipient, &token_addr, &500, &0);
-    bridge.withdraw_fees(&fee_recipient, &token_addr, &500, &1);
-    bridge.withdraw_fees(&fee_recipient, &token_addr, &500, &2);
+    bridge.withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &500, &0);
+    bridge.withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &500, &1);
+    bridge.withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &500, &2);
 
     // Check all invariants
     let total_deposited = bridge.get_total_deposited();
@@ -205,7 +205,7 @@ fn test_withdraw_fees_after_withdrawal_maintains_invariants() {
     token_admin.mint(&contract_id, &1_000);
     
     // Fee withdrawal after regular withdrawal
-    bridge.withdraw_fees(&fee_recipient, &token_addr, &500, &0);
+    bridge.withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &500, &0);
 
     // Check all invariants
     let total_deposited = bridge.get_total_deposited();
@@ -243,7 +243,7 @@ fn test_withdraw_fees_with_pending_requests_maintains_invariants() {
     token_admin.mint(&contract_id, &1_000);
     
     // Fee withdrawal with pending requests
-    bridge.withdraw_fees(&fee_recipient, &token_addr, &500, &0);
+    bridge.withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &500, &0);
 
     // Check all invariants
     let total_deposited = bridge.get_total_deposited();
@@ -309,7 +309,7 @@ fn test_withdraw_fees_invariants_with_zero_fees() {
     bridge.deposit(&user, &5_000, &token_addr, &reference, &0, &0, &None);
     
     // Attempt to withdraw fees with zero accrued should fail
-    let result = bridge.try_withdraw_fees(&fee_recipient, &token_addr, &100, &0);
+    let result = bridge.try_withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &100, &0);
     assert_eq!(result, Err(Ok(Error::NoFeesToWithdraw)));
 
     // Invariants should still hold
@@ -345,7 +345,7 @@ fn test_withdraw_fees_emits_correct_event() {
     token_admin.mint(&contract_id, &1_000);
     
     // Withdraw fees
-    bridge.withdraw_fees(&fee_recipient, &token_addr, &500, &0);
+    bridge.withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &500, &0);
 
     // Check that FeeWithdrawnEvent was emitted
     let events = env.events().all().filter_by_contract(&contract_id);

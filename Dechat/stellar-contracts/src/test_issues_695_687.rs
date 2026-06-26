@@ -49,18 +49,18 @@ fn test_withdraw_fees_replay_protection() {
     assert_eq!(nonce, 0);
 
     // First withdrawal with correct nonce should succeed
-    client.withdraw_fees(&user, &token_address, &100, &0);
+    client.withdraw_fees(&Some(user.clone()), &token_address, &100, &0);
 
     // Nonce should be incremented
     let nonce_after = client.get_fee_withdrawal_nonce(&admin);
     assert_eq!(nonce_after, 1);
 
     // Try to replay with old nonce - should fail
-    let result = client.try_withdraw_fees(&user, &token_address, &100, &0);
+    let result = client.try_withdraw_fees(&Some(user.clone()), &token_address, &100, &0);
     assert_eq!(result, Err(Ok(Error::StaleNonce)));
 
     // Using correct nonce should work
-    client.withdraw_fees(&user, &token_address, &100, &1);
+    client.withdraw_fees(&Some(user.clone()), &token_address, &100, &1);
     let nonce_final = client.get_fee_withdrawal_nonce(&admin);
     assert_eq!(nonce_final, 2);
 }
@@ -90,7 +90,7 @@ fn test_withdraw_fees_nonce_skipping_fails() {
     client.accrue_fee(&token_address, &1_000);
 
     // Try to use nonce 5 when current is 0 - should fail
-    let result = client.try_withdraw_fees(&user, &token_address, &100, &5);
+    let result = client.try_withdraw_fees(&Some(user.clone()), &token_address, &100, &5);
     assert_eq!(result, Err(Ok(Error::InvalidNonce)));
 }
 

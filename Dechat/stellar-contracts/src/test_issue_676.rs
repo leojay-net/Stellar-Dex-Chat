@@ -97,13 +97,13 @@ fn test_get_accrued_fees_invariant_decreases_on_withdraw() {
     token_sac.mint(&contract_id, &10_000);
     bridge.accrue_fee(&token_addr, &10_000);
 
-    bridge.withdraw_fees(&recipient, &token_addr, &3_000, &0);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &3_000, &0);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 7_000);
 
-    bridge.withdraw_fees(&recipient, &token_addr, &4_000, &1);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &4_000, &1);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 3_000);
 
-    bridge.withdraw_fees(&recipient, &token_addr, &3_000, &2);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &3_000, &2);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 0);
 }
 
@@ -120,13 +120,13 @@ fn test_get_accrued_fees_invariant_never_negative() {
 
     token_sac.mint(&contract_id, &1_000);
     bridge.accrue_fee(&token_addr, &1_000);
-    bridge.withdraw_fees(&recipient, &token_addr, &1_000, &0);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &1_000, &0);
 
     // Vault is now zero
     assert_eq!(bridge.get_accrued_fees(&token_addr), 0);
 
     // Attempting to withdraw from an empty vault must fail
-    let result = bridge.try_withdraw_fees(&recipient, &token_addr, &1, &1);
+    let result = bridge.try_withdraw_fees(&Some(recipient.clone()), &token_addr, &1, &1);
     assert_eq!(result, Err(Ok(Error::NoFeesToWithdraw)));
 
     // Vault must still be zero (not negative)
@@ -158,7 +158,7 @@ fn test_get_accrued_fees_invariant_per_token_isolation() {
     assert_eq!(bridge.get_accrued_fees(&token_b), 3_000);
 
     // Withdraw from token A only
-    bridge.withdraw_fees(&recipient, &token_a, &2_000, &0);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_a, &2_000, &0);
     assert_eq!(bridge.get_accrued_fees(&token_a), 3_000);
     assert_eq!(bridge.get_accrued_fees(&token_b), 3_000);
 }
@@ -224,7 +224,7 @@ fn test_get_accrued_fees_invariant_reconciled_vault_bound() {
     assert_eq!(bridge.get_accrued_fees(&token_addr), 500);
 
     // withdraw_fees triggers reconciliation
-    bridge.withdraw_fees(&recipient, &token_addr, &100, &0);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &100, &0);
 
     // After reconciliation + partial withdrawal, vault <= contract balance
     let contract_balance = token.balance(&contract_id);

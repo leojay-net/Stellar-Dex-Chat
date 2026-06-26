@@ -7,6 +7,7 @@ use soroban_sdk::{
 
 pub mod math;
 pub mod oracle;
+pub mod test_deposit_fuzz;
 
 macro_rules! require {
     ($cond:expr, $err:expr) => {
@@ -963,6 +964,7 @@ pub enum DataKey {
     DeniedIndex(u64),
     DeniedCount,
     FeeVault(Address),
+    FeeVaultRecipient(Address),
     ReceiptIndex(u64),
     // ── Issue #214: deployment config hash ────────────────────────────────
     DeployConfigHash,
@@ -4082,6 +4084,16 @@ impl FiatBridge {
         let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
         env.storage().persistent().set(&key, &(current + amount));
 
+        let fee_recipient: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::WithdrawOperator)
+            .unwrap_or_else(|| env.storage().instance().get(&DataKey::Admin).unwrap());
+        env.storage().persistent().set(
+            &DataKey::FeeVaultRecipient(token.clone()),
+            &fee_recipient,
+        );
+
         FeeAccruedEvent {
             version: EVENT_VERSION,
             token: token.clone(),
@@ -4280,7 +4292,7 @@ impl FiatBridge {
     /// ```
     pub fn withdraw_fees(
         env: Env,
-        to: Address,
+        to: Option<Address>,
         token: Address,
         amount: i128,
         nonce: u64,
@@ -4297,6 +4309,16 @@ impl FiatBridge {
         // Issue #565: amount must be positive
         require!(amount > 0, Error::ZeroAmount);
 
+        // ── Resolve recipient: use snapshot from accrual time if not specified ──
+        let recipient = match to {
+            Some(addr) => addr,
+            None => env
+                .storage()
+                .persistent()
+                .get(&DataKey::FeeVaultRecipient(token.clone()))
+                .ok_or(Error::InvalidRecipient)?,
+        };
+
         // ── Replay protection (Issue #695) ────────────────────────────────
         let nonce_key = DataKey::FeeWithdrawalNonce(admin.clone());
         let expected_nonce: u64 = env.storage().persistent().get(&nonce_key).unwrap_or(0);
@@ -4312,7 +4334,7 @@ impl FiatBridge {
         require!(amount <= contract_balance, Error::InsufficientFunds);
 
         // ── State mutation ────────────────────────────────────────────────
-        token_client.transfer(&env.current_contract_address(), &to, &amount);
+        token_client.transfer(&env.current_contract_address(), &recipient, &amount);
 
         let remaining_fees =
             Self::deduct_fee_vault_ledger(&env, &token, vault_balance, amount)?;
@@ -4322,13 +4344,10 @@ impl FiatBridge {
         env.storage().persistent().set(&nonce_key, &next_nonce);
 
         // ── Audit event ───────────────────────────────────────────────────
-        // Emit full schema so indexers get a self-contained record:
-        // who authorised it, where it went, which token, how much,
-        // which nonce was consumed, and what balance remains.
         FeeWithdrawnEvent {
             version: EVENT_VERSION,
             admin,
-            to,
+            to: recipient,
             token: token.clone(),
             amount,
             nonce,
