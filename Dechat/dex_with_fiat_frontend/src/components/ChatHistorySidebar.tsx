@@ -59,11 +59,10 @@ function SessionRow({
   return (
     <div
       data-active={isActive ? 'true' : 'false'}
-      className={`group relative p-3 mb-2 rounded-lg cursor-pointer transition-all duration-200 border ${
-        isActive
+      className={`group relative p-3 mb-2 rounded-lg cursor-pointer transition-all duration-200 border ${isActive
           ? 'bg-[var(--color-primary-soft)] border-[var(--color-primary)] shadow-md'
           : 'border-transparent hover:border-[var(--color-border)] hover:bg-[var(--color-surface-muted)]'
-      }`}
+        }`}
       onClick={() => onLoad(session.id)}
     >
       <div className="flex items-start justify-between">
@@ -103,19 +102,17 @@ function SessionRow({
           >
             {session.pinned ? (
               <PinOff
-                className={`w-3 h-3${
-                  recentlyToggledPinId === session.id
+                className={`w-3 h-3${recentlyToggledPinId === session.id
                     ? ' animate-bounce-once'
                     : ''
-                }`}
+                  }`}
               />
             ) : (
               <Pin
-                className={`w-3 h-3${
-                  recentlyToggledPinId === session.id
+                className={`w-3 h-3${recentlyToggledPinId === session.id
                     ? ' animate-bounce-once'
                     : ''
-                }`}
+                  }`}
               />
             )}
           </button>
@@ -285,7 +282,7 @@ export default function ChatHistorySidebar({
     e.dataTransfer.effectAllowed = 'move';
     try {
       e.dataTransfer.setData('text/plain', id);
-    } catch {}
+    } catch { }
   }, []);
 
   const onDragOver = useCallback((e: React.DragEvent, id: string) => {
@@ -581,19 +578,16 @@ export default function ChatHistorySidebar({
       retryLabel="Reload sidebar"
     >
       <div
-        className={`theme-surface theme-border h-full flex flex-col transition-all duration-300 border-r ${
-          isCollapsed ? 'w-20' : 'w-full'
-        } transition-colors duration-300`}
+        className={`theme-surface theme-border h-full flex flex-col transition-all duration-300 border-r ${isCollapsed ? 'w-20' : 'w-full'
+          } transition-colors duration-300`}
       >
         <div
-          className={`theme-border border-b transition-colors duration-300 ${
-            isCollapsed ? 'p-4 flex flex-col items-center' : 'p-4'
-          }`}
+          className={`theme-border border-b transition-colors duration-300 ${isCollapsed ? 'p-4 flex flex-col items-center' : 'p-4'
+            }`}
         >
           <div
-            className={`flex items-center justify-between mb-4 w-full ${
-              isCollapsed ? 'flex-col gap-4' : ''
-            }`}
+            className={`flex items-center justify-between mb-4 w-full ${isCollapsed ? 'flex-col gap-4' : ''
+              }`}
           >
             {!isCollapsed && (
               <h2 className="theme-text-primary text-lg font-semibold">
@@ -601,9 +595,8 @@ export default function ChatHistorySidebar({
               </h2>
             )}
             <div
-              className={`flex items-center gap-1 ${
-                isCollapsed ? 'flex-col' : ''
-              }`}
+              className={`flex items-center gap-1 ${isCollapsed ? 'flex-col' : ''
+                }`}
             >
               <button
                 onClick={handleClearAll}
@@ -750,7 +743,7 @@ export default function ChatHistorySidebar({
                             Pinned
                           </p>
                         )}
-                        {filteredPinned.map((session, idx) => (
+                        {filteredPinned.map((session) => (
                           <div
                             key={session.id}
                             draggable
@@ -949,7 +942,7 @@ export default function ChatHistorySidebar({
                       entry.status !== 'cancelled' &&
                       entry.reference &&
                       Date.now() - new Date(entry.createdAt).getTime() <
-                        2 * 60 * 1000 && (
+                      2 * 60 * 1000 && (
                         <button
                           type="button"
                           onClick={async () => {
