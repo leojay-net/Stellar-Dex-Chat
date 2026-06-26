@@ -228,7 +228,6 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
       prev.map((m) =>
         m.id === pendingAssistantId
           ? {
-<<<<<<< HEAD:dex_with_fiat_frontend/src/hooks/useChat.ts
               ...m,
               content:
                 'Sorry, I encountered an error processing your request. Please try again.',
@@ -238,29 +237,19 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
               },
             }
           : m.id === optimisticUserId
-          ? {
-              ...m,
-              error: {
-                message: 'Message failed to send. Please try again.',
-                timestamp: new Date(),
-                retryAttempts: m.error?.retryAttempts ?? 0,
-              },
-              metadata: {
-                ...m.metadata,
-                status: 'failed',
-              },
-            }
-=======
-            ...m,
-            content:
-              'Sorry, I encountered an error processing your request. Please try again.',
-            metadata: {
-              ...m.metadata,
-              status: 'failed',
-            },
-          }
->>>>>>> origin/main:Dechat/dex_with_fiat_frontend/src/hooks/useChat.ts
-          : m,
+            ? {
+                ...m,
+                error: {
+                  message: 'Message failed to send. Please try again.',
+                  timestamp: new Date(),
+                  retryAttempts: m.error?.retryAttempts ?? 0,
+                },
+                metadata: {
+                  ...m.metadata,
+                  status: 'failed',
+                },
+              }
+            : m,
       ),
     );
   }, []);
@@ -438,53 +427,42 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
         prev.map((m) =>
           m.id === pendingAssistantId
             ? {
-              ...m,
-              content: enhancedResponse,
-              metadata: {
-                ...m.metadata,
-                status: 'sent',
-                guardrail: analysis.guardrail,
-                transactionData: shouldShowTransactionData
-                  ? (analysis.extractedData as TransactionData)
-                  : undefined,
-                suggestedActions: generateSuggestedActions(analysis, {
-                  isWalletConnected: connection.isConnected,
-                  messageCount: newMessageCount,
-                  hasTransactionData: !!pendingTransactionData,
-                  shouldAutoTrigger: !!shouldAutoTrigger,
-                  isAdmin: isAdmin,
-                  lowConfidence: needsClarification,
-<<<<<<< HEAD:dex_with_fiat_frontend/src/hooks/useChat.ts
-                  clarificationQuestion: clarificationQuestion || undefined,
-                },
-            }
-            : m,
-        ),
-      );
-
-      setMessages((prev: ChatMessage[]) =>
-        prev.map((m) =>
-          m.id === optimisticUserId
-            ? {
                 ...m,
+                content: enhancedResponse,
                 metadata: {
                   ...m.metadata,
                   status: 'sent',
+                  guardrail: analysis.guardrail,
+                  transactionData: shouldShowTransactionData
+                    ? (analysis.extractedData as TransactionData)
+                    : undefined,
+                  suggestedActions: generateSuggestedActions(analysis, {
+                    isWalletConnected: connection.isConnected,
+                    messageCount: newMessageCount,
+                    hasTransactionData: !!pendingTransactionData,
+                    shouldAutoTrigger: !!shouldAutoTrigger,
+                    isAdmin: isAdmin,
+                    lowConfidence: needsClarification,
+                    clarificationQuestion: clarificationQuestion || undefined,
+                  }),
+                  confirmationRequired:
+                    analysis.intent === 'fiat_conversion' ||
+                    shouldTriggerTransaction,
+                  autoTriggerTransaction: shouldTriggerTransaction,
+                  conversationCount: newMessageCount,
+                  lowConfidence: needsClarification,
+                  clarificationQuestion: clarificationQuestion || undefined,
                 },
               }
-=======
-                }),
-                confirmationRequired:
-                  analysis.intent === 'fiat_conversion' ||
-                  shouldTriggerTransaction,
-                autoTriggerTransaction: shouldTriggerTransaction,
-                conversationCount: newMessageCount,
-                lowConfidence: needsClarification,
-                clarificationQuestion: clarificationQuestion || undefined,
-              },
-            }
->>>>>>> origin/main:Dechat/dex_with_fiat_frontend/src/hooks/useChat.ts
-            : m,
+            : m.id === optimisticUserId
+              ? {
+                  ...m,
+                  metadata: {
+                    ...m.metadata,
+                    status: 'sent',
+                  },
+                }
+              : m,
         ),
       );
 
@@ -802,6 +780,7 @@ function generateSuggestedActions(
     shouldAutoTrigger?: boolean;
     isAdmin?: boolean;
     lowConfidence?: boolean;
+    clarificationQuestion?: string;
   },
 ) {
   const actions = [];
