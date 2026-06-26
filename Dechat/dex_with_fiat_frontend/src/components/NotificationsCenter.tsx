@@ -11,6 +11,7 @@ export default function NotificationsCenter() {
   const [isOpen, setIsOpen] = useState(false);
   const {
     notifications,
+    unreadCount,
     markAsRead,
     markAllAsRead,
     clearNotifications,
@@ -18,30 +19,15 @@ export default function NotificationsCenter() {
   const { isDarkMode } = useTheme();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Optimistic UI state
-  const [localNotifications, setLocalNotifications] = useState(notifications);
-
-  // Sync with global state when it changes
-  useEffect(() => {
-    setLocalNotifications(notifications);
-  }, [notifications]);
-
-  const localUnreadCount = localNotifications.filter((n) => !n.read).length;
-
   const handleMarkAsRead = (id: string) => {
-    setLocalNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
-    );
     markAsRead(id);
   };
 
   const handleMarkAllAsRead = useCallback(() => {
-    setLocalNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     markAllAsRead();
   }, [markAllAsRead]);
 
   const handleClearNotifications = useCallback(() => {
-    setLocalNotifications([]);
     clearNotifications();
   }, [clearNotifications]);
 
@@ -143,9 +129,9 @@ export default function NotificationsCenter() {
         aria-haspopup="true"
       >
         <Bell className="w-5 h-5" />
-        {isMounted && localUnreadCount > 0 && (
+        {isMounted && unreadCount > 0 && (
           <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow">
-            {localUnreadCount > 99 ? '99+' : localUnreadCount}
+            {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
       </button>
@@ -169,7 +155,7 @@ export default function NotificationsCenter() {
               Notifications
             </h3>
             <div className="flex gap-2">
-              {localNotifications.length > 0 && (
+              {notifications.length > 0 && (
                 <>
                   <button
                     onClick={handleMarkAllAsRead}
@@ -197,7 +183,7 @@ export default function NotificationsCenter() {
           </div>
 
           <div className="max-h-[400px] overflow-y-auto">
-            {localNotifications.length === 0 ? (
+            {notifications.length === 0 ? (
               <div
                 className={`px-4 py-8 text-center text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
               >
@@ -207,7 +193,7 @@ export default function NotificationsCenter() {
               <div
                 className={`divide-y ${isDarkMode ? 'divide-gray-800' : 'divide-gray-100'}`}
               >
-                {localNotifications.map((notif) => (
+                {notifications.map((notif) => (
                   <div
                     key={notif.id}
                     className={`px-4 py-3 hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer flex gap-3 ${

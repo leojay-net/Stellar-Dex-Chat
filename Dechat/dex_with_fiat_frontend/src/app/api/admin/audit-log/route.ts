@@ -71,7 +71,10 @@ export async function GET(request: Request) {
     const totalPages = Math.max(Math.ceil(total / DEFAULT_PAGE_SIZE), 1);
     const boundedPage = Math.min(page, totalPages);
     const startIndex = (boundedPage - 1) * DEFAULT_PAGE_SIZE;
-    const entries = filteredEntries.slice(startIndex, startIndex + DEFAULT_PAGE_SIZE);
+    const entries = filteredEntries.slice(
+      startIndex,
+      startIndex + DEFAULT_PAGE_SIZE,
+    );
 
     return Response.json({
       entries,
@@ -85,6 +88,25 @@ export async function GET(request: Request) {
     console.error('Error fetching audit logs:', error);
     return Response.json(
       { error: 'Failed to fetch admin audit logs' },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const authError = requireAdminAuth(request);
+    if (authError) {
+      return authError;
+    }
+
+    mockAuditLogData.splice(0, mockAuditLogData.length);
+
+    return Response.json({ success: true });
+  } catch (error) {
+    console.error('Error clearing audit logs:', error);
+    return Response.json(
+      { error: 'Failed to clear admin audit logs' },
       { status: 500 },
     );
   }

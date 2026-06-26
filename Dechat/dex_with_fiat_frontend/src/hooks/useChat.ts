@@ -17,6 +17,12 @@ import {
   createChatStateMachine,
 } from './chatStateMachine';
 import { useChatHistory } from './useChatHistory';
+import {
+  addQueuedMessage,
+  getAllQueuedMessages,
+  removeQueuedMessage,
+  setQueuedMessageCount,
+} from '@/lib/offlineMessageQueue';
 
 /**
  * Exported state type for backward compatibility
@@ -531,6 +537,8 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
           queued.machineSnapshot,
           requestController,
         );
+        void removeQueuedMessage(queued.optimisticUserId);
+        setQueuedMessageCount(queuedSendsRef.current.length);
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') {
           break;
@@ -543,6 +551,8 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
 
         console.error('Chat replay error:', error);
         markMessageFailed(queued.pendingAssistantId, queued.optimisticUserId);
+        void removeQueuedMessage(queued.optimisticUserId);
+        setQueuedMessageCount(queuedSendsRef.current.length);
         if (machineRef.current.canTransition(ChatEvent.ENCOUNTER_ERROR)) {
           machineRef.current.transition(ChatEvent.ENCOUNTER_ERROR);
         }
@@ -569,6 +579,29 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
     window.addEventListener('online', handleOnline);
     return () => window.removeEventListener('online', handleOnline);
   }, [replayQueuedSends]);
+
+  // Restore any messages still queued in IndexedDB from a previous page
+  // load (covers a reload while offline) and try to send them right away.
+  useEffect(() => {
+    void getAllQueuedMessages().then((records) => {
+      if (records.length === 0) {
+        return;
+      }
+      records
+        .sort((a, b) => a.queuedAt - b.queuedAt)
+        .forEach((record) => {
+          queuedSendsRef.current.push({
+            content: record.content,
+            optimisticUserId: record.optimisticUserId,
+            pendingAssistantId: record.pendingAssistantId,
+            machineSnapshot: record.machineSnapshot as QueuedSend['machineSnapshot'],
+          });
+        });
+      setQueuedMessageCount(queuedSendsRef.current.length);
+      void replayQueuedSends();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const sendMessage = useCallback(
     async (content: string) => {
@@ -651,6 +684,15 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
           pendingAssistantId,
           machineSnapshot,
         });
+        void addQueuedMessage({
+          id: optimisticUserId,
+          content,
+          optimisticUserId,
+          pendingAssistantId,
+          machineSnapshot,
+          queuedAt: Date.now(),
+        });
+        setQueuedMessageCount(queuedSendsRef.current.length);
         setIsLoading(false);
         return;
       }
@@ -678,6 +720,15 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
             pendingAssistantId,
             machineSnapshot,
           });
+          void addQueuedMessage({
+            id: optimisticUserId,
+            content,
+            optimisticUserId,
+            pendingAssistantId,
+            machineSnapshot,
+            queuedAt: Date.now(),
+          });
+          setQueuedMessageCount(queuedSendsRef.current.length);
           return;
         }
 
