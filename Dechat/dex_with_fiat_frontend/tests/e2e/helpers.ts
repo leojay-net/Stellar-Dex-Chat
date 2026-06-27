@@ -81,15 +81,18 @@ export async function connectMockWallet(
   address: string = MOCK_WALLET_ADDRESS,
 ): Promise<void> {
   await installMockWalletBridge(page);
+  // Retry until StellarWalletProvider replaces the init-script stub and persists the address.
   await page.waitForFunction(
-    () => typeof window.mockStellarConnect === 'function',
-  );
-  await page.evaluate((addr) => {
-    window.mockStellarConnect?.(addr);
-  }, address);
-  // Wait until StellarWalletProvider's mockConnect persisted the session.
-  await page.waitForFunction(
-    (addr) => localStorage.getItem('stellar_address') === addr,
+    (addr) => {
+      if (typeof window.mockStellarConnect !== 'function') {
+        return false;
+      }
+      if (localStorage.getItem('stellar_address') === addr) {
+        return true;
+      }
+      window.mockStellarConnect?.(addr);
+      return localStorage.getItem('stellar_address') === addr;
+    },
     address,
     { timeout: 20_000 },
   );
