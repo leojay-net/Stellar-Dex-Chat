@@ -1,0 +1,82 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - heading "Admin Reconciliation Dashboard" [level=1] [ref=e4]
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - generic [ref=e8]: Status
+        - combobox [ref=e9]:
+          - option "All" [selected]
+          - option "Matched"
+          - option "Unmatched"
+          - option "Error"
+      - generic [ref=e10]:
+        - generic [ref=e11]: Start Date
+        - textbox [ref=e12]
+      - generic [ref=e13]:
+        - generic [ref=e14]: End Date
+        - textbox [ref=e15]
+      - button "Export CSV" [ref=e17]
+    - table [ref=e20]:
+      - rowgroup [ref=e21]:
+        - row "Deposit Payout Status" [ref=e22]:
+          - columnheader "Deposit" [ref=e23]
+          - columnheader "Payout" [ref=e24]
+          - columnheader "Status" [ref=e25]
+      - rowgroup [ref=e26]:
+        - row "100.0 XLM 0x123abc... 3/20/2026 100.0 NGN TRF_123456 John Doe - 1234567890 matched completed" [ref=e27]:
+          - cell "100.0 XLM 0x123abc... 3/20/2026" [ref=e28]:
+            - generic [ref=e29]:
+              - generic [ref=e30]: 100.0 XLM
+              - generic [ref=e31]: 0x123abc...
+              - generic [ref=e32]: 3/20/2026
+          - cell "100.0 NGN TRF_123456 John Doe - 1234567890" [ref=e33]:
+            - generic [ref=e34]:
+              - generic [ref=e35]: 100.0 NGN
+              - generic [ref=e36]: TRF_123456
+              - generic [ref=e37]: John Doe - 1234567890
+          - cell "matched completed" [ref=e38]:
+            - generic [ref=e39]: matched
+            - generic [ref=e41]: completed
+        - row "50.0 XLM 0x456def... 3/21/2026 50.0 TRF_789012 Jane Smith - 0987654321 matched pending" [ref=e42]:
+          - cell "50.0 XLM 0x456def... 3/21/2026" [ref=e43]:
+            - generic [ref=e44]:
+              - generic [ref=e45]: 50.0 XLM
+              - generic [ref=e46]: 0x456def...
+              - generic [ref=e47]: 3/21/2026
+          - cell "50.0 TRF_789012 Jane Smith - 0987654321" [ref=e48]:
+            - generic [ref=e49]:
+              - generic [ref=e50]: "50.0"
+              - generic [ref=e51]: TRF_789012
+              - generic [ref=e52]: Jane Smith - 0987654321
+          - cell "matched pending" [ref=e53]:
+            - generic [ref=e54]: matched
+            - generic [ref=e56]: pending
+        - row "25.0 XLM 0x789ghi... 3/22/2026 No payout unmatched" [ref=e57]:
+          - cell "25.0 XLM 0x789ghi... 3/22/2026" [ref=e58]:
+            - generic [ref=e59]:
+              - generic [ref=e60]: 25.0 XLM
+              - generic [ref=e61]: 0x789ghi...
+              - generic [ref=e62]: 3/22/2026
+          - cell "No payout" [ref=e63]:
+            - generic [ref=e64]: No payout
+          - cell "unmatched" [ref=e65]:
+            - generic [ref=e66]: unmatched
+        - row "75.0 XLM 0xabcpqr... 3/23/2026 70.0 TRF_345678 Bob Wilson - 1122334455 error failed" [ref=e67]:
+          - cell "75.0 XLM 0xabcpqr... 3/23/2026" [ref=e68]:
+            - generic [ref=e69]:
+              - generic [ref=e70]: 75.0 XLM
+              - generic [ref=e71]: 0xabcpqr...
+              - generic [ref=e72]: 3/23/2026
+          - cell "70.0 TRF_345678 Bob Wilson - 1122334455" [ref=e73]:
+            - generic [ref=e74]:
+              - generic [ref=e75]: "70.0"
+              - generic [ref=e76]: TRF_345678
+              - generic [ref=e77]: Bob Wilson - 1122334455
+          - cell "error failed" [ref=e78]:
+            - generic [ref=e79]: error
+            - generic [ref=e81]: failed
+  - alert [ref=e82]
+```
