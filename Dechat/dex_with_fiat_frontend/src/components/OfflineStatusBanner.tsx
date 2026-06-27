@@ -5,6 +5,7 @@ import { AlertTriangle, WifiOff } from 'lucide-react';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useToast } from '@/hooks/useToast';
 import { offlineStatusToastSchema } from '@/lib/offlineStatusSchema';
+import { subscribeToQueuedMessageCount } from '@/lib/offlineMessageQueue';
 
 /**
  * Offline Status Banner Component
@@ -16,6 +17,7 @@ export default function OfflineStatusBanner() {
   const { addToast } = useToast();
   const [showBanner, setShowBanner] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -23,6 +25,10 @@ export default function OfflineStatusBanner() {
     }, 300);
 
     return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    return subscribeToQueuedMessageCount(setPendingCount);
   }, []);
 
   useEffect(() => {
@@ -90,6 +96,12 @@ export default function OfflineStatusBanner() {
           <p className="text-sm font-semibold text-white">
             You are offline. Messages will be sent when you reconnect.
           </p>
+          {pendingCount > 0 && (
+            <p className="text-xs text-white/90 mt-0.5">
+              {pendingCount} message{pendingCount === 1 ? '' : 's'} waiting to
+              send
+            </p>
+          )}
         </div>
         <div className="shrink-0" aria-hidden="true">
           <AlertTriangle className="w-5 h-5 text-white" />

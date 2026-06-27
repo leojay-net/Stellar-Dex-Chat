@@ -7,6 +7,7 @@ use soroban_sdk::{
 
 pub mod math;
 pub mod oracle;
+pub mod test_deposit_fuzz;
 
 macro_rules! require {
     ($cond:expr, $err:expr) => {
@@ -486,6 +487,7 @@ pub struct ConfigSnapshot {
     pub pending_admin_proposed_at: Option<u32>,
     pub token: Address,
     pub oracle: Option<Address>,
+    pub fallback_oracle: Option<Address>,
     pub fiat_limit: Option<i128>,
     pub lock_period: u32,
     pub cooldown_ledgers: u32,
@@ -1036,6 +1038,7 @@ pub enum DataKey {
     DeniedIndex(u64),
     DeniedCount,
     FeeVault(Address),
+    FeeVaultRecipient(Address),
     ReceiptIndex(u64),
     // ── Issue #214: deployment config hash ────────────────────────────────
     DeployConfigHash,
@@ -1067,6 +1070,8 @@ pub enum DataKey {
     AdminTransferProposedAt,
     // ── Issue #fee_vault_threshold: per-token fee vault threshold ────────
     FeeVaultThreshold(Address),
+    // ── Issue #965: fallback oracle for price feed staleness ────────────
+    FallbackOracle,
 
     // ── Issue #1003: contract version migration guard ─────────────────────
     /// Monotonically-increasing integer version stored after each upgrade.
@@ -3234,6 +3239,25 @@ impl FiatBridge {
         Ok(())
     }
 
+    /// Sets a fallback price oracle used when the primary oracle returns a stale or invalid price (admin only).
+    ///
+    /// # Parameters
+    /// - `oracle` – Address of the fallback oracle contract implementing the price feed.
+    ///
+    /// # Errors
+    /// - [`Error::NotInitialized`] if the contract has not been initialised.
+    /// - [`Error::Unauthorized`]   if the caller is not the admin.
+    pub fn set_fallback_oracle(env: Env, oracle: Address) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::FallbackOracle, &oracle);
+        Ok(())
+    }
+
     /// Sets the maximum fiat-equivalent deposit limit in USD cents (admin only).
     ///
     /// Used to cap the USD value of deposits when oracle pricing is enabled.
@@ -3376,10 +3400,26 @@ impl FiatBridge {
         let price = if let Some(addr) = oracle_addr {
             let oracle = crate::oracle::OracleClient::new(env, &addr);
             let p = oracle.get_price(token).unwrap_or(0);
-            if p <= 0 {
-                return Err(Error::OraclePriceInvalid);
+            if p > 0 {
+                p
+            } else {
+                // Primary oracle returned stale/invalid price — try fallback.
+                let fallback_addr: Option<Address> = env
+                    .storage()
+                    .instance()
+                    .get(&DataKey::FallbackOracle);
+                if let Some(fb) = fallback_addr {
+                    let fallback_oracle = crate::oracle::OracleClient::new(env, &fb);
+                    let fb_price = fallback_oracle.get_price(token).unwrap_or(0);
+                    if fb_price > 0 {
+                        fb_price
+                    } else {
+                        return Err(Error::OraclePriceInvalid);
+                    }
+                } else {
+                    return Err(Error::OraclePriceInvalid);
+                }
             }
-            p
         } else {
             return Err(Error::OracleNotSet);
         };
@@ -4531,6 +4571,16 @@ impl FiatBridge {
         let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
         env.storage().persistent().set(&key, &(current + amount));
 
+        let fee_recipient: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::WithdrawOperator)
+            .unwrap_or_else(|| env.storage().instance().get(&DataKey::Admin).unwrap());
+        env.storage().persistent().set(
+            &DataKey::FeeVaultRecipient(token.clone()),
+            &fee_recipient,
+        );
+
         FeeAccruedEvent {
             version: EVENT_VERSION,
             token: token.clone(),
@@ -4720,7 +4770,7 @@ impl FiatBridge {
     /// ```
     pub fn withdraw_fees(
         env: Env,
-        to: Address,
+        to: Option<Address>,
         token: Address,
         amount: i128,
         nonce: u64,
@@ -4737,6 +4787,16 @@ impl FiatBridge {
         // Issue #565: amount must be positive
         require!(amount > 0, Error::ZeroAmount);
 
+        // ── Resolve recipient: use snapshot from accrual time if not specified ──
+        let recipient = match to {
+            Some(addr) => addr,
+            None => env
+                .storage()
+                .persistent()
+                .get(&DataKey::FeeVaultRecipient(token.clone()))
+                .ok_or(Error::InvalidRecipient)?,
+        };
+
         // ── Replay protection (Issue #695) ────────────────────────────────
         let nonce_key = DataKey::FeeWithdrawalNonce(admin.clone());
         let expected_nonce: u64 = env.storage().persistent().get(&nonce_key).unwrap_or(0);
@@ -4752,7 +4812,7 @@ impl FiatBridge {
         require!(amount <= contract_balance, Error::InsufficientFunds);
 
         // ── State mutation ────────────────────────────────────────────────
-        token_client.transfer(&env.current_contract_address(), &to, &amount);
+        token_client.transfer(&env.current_contract_address(), &recipient, &amount);
 
         let remaining_fees =
             Self::deduct_fee_vault_ledger(&env, &token, vault_balance, amount)?;
@@ -4762,13 +4822,10 @@ impl FiatBridge {
         env.storage().persistent().set(&nonce_key, &next_nonce);
 
         // ── Audit event ───────────────────────────────────────────────────
-        // Emit full schema so indexers get a self-contained record:
-        // who authorised it, where it went, which token, how much,
-        // which nonce was consumed, and what balance remains.
         FeeWithdrawnEvent {
             version: EVENT_VERSION,
             admin,
-            to,
+            to: recipient,
             token: token.clone(),
             amount,
             nonce,
@@ -5264,6 +5321,7 @@ impl FiatBridge {
             pending_admin_proposed_at: env.storage().instance().get(&DataKey::AdminTransferProposedAt),
             token,
             oracle: env.storage().instance().get(&DataKey::Oracle),
+            fallback_oracle: env.storage().instance().get(&DataKey::FallbackOracle),
             fiat_limit: env.storage().instance().get(&DataKey::FiatLimit),
             lock_period: env
                 .storage()

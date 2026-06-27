@@ -68,7 +68,7 @@ fn test_withdraw_fees_deducts_from_accrued_vault() {
     assert_eq!(initial_vault, 5_000);
 
     // Withdraw fees
-    bridge.withdraw_fees(&recipient, &token_addr, &2_000, &0);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &2_000, &0);
 
     // Verify vault was deducted
     let remaining_vault = bridge.get_accrued_fees(&token_addr);
@@ -92,7 +92,7 @@ fn test_withdraw_fees_fails_when_vault_insufficient() {
     token_admin.mint(&contract_id, &1_000);
 
     // Attempt to withdraw more than accrued
-    let result = bridge.try_withdraw_fees(&recipient, &token_addr, &2_000, &0);
+    let result = bridge.try_withdraw_fees(&Some(recipient.clone()), &token_addr, &2_000, &0);
     
     assert_eq!(result, Err(Ok(Error::FeeWithdrawalExceedsBalance)));
 }
@@ -111,7 +111,7 @@ fn test_withdraw_fees_emits_vault_event() {
     token_admin.mint(&contract_id, &10_000);
 
     // Withdraw fees
-    bridge.withdraw_fees(&recipient, &token_addr, &3_000, &0);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &3_000, &0);
 
     // Check events
     let events = env.events().all().filter_by_contract(&contract_id);
@@ -132,15 +132,15 @@ fn test_withdraw_fees_multiple_withdrawals() {
     token_admin.mint(&contract_id, &10_000);
 
     // First withdrawal
-    bridge.withdraw_fees(&recipient, &token_addr, &2_000, &0);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &2_000, &0);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 8_000);
 
     // Second withdrawal
-    bridge.withdraw_fees(&recipient, &token_addr, &3_000, &1);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &3_000, &1);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 5_000);
 
     // Third withdrawal
-    bridge.withdraw_fees(&recipient, &token_addr, &5_000, &2);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &5_000, &2);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 0);
 
     // Verify total received
@@ -160,14 +160,14 @@ fn test_withdraw_fees_vault_nonce_protection() {
     token_admin.mint(&contract_id, &5_000);
 
     // First withdrawal with nonce 0
-    bridge.withdraw_fees(&recipient, &token_addr, &1_000, &0);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &1_000, &0);
 
     // Attempt replay with same nonce should fail
-    let result = bridge.try_withdraw_fees(&recipient, &token_addr, &1_000, &0);
+    let result = bridge.try_withdraw_fees(&Some(recipient.clone()), &token_addr, &1_000, &0);
     assert_eq!(result, Err(Ok(Error::StaleNonce)));
 
     // Next withdrawal must use incremented nonce
-    bridge.withdraw_fees(&recipient, &token_addr, &1_000, &1);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &1_000, &1);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 3_000);
 }
 
@@ -221,11 +221,11 @@ fn test_withdraw_fees_vault_reconciliation() {
     token_admin.mint(&contract_id, &5_000);
 
     // Attempt to withdraw full accrued amount should fail
-    let result = bridge.try_withdraw_fees(&recipient, &token_addr, &10_000, &0);
+    let result = bridge.try_withdraw_fees(&Some(recipient.clone()), &token_addr, &10_000, &0);
     assert_eq!(result, Err(Ok(Error::FeeWithdrawalExceedsBalance)));
 
     // Withdraw available amount
-    bridge.withdraw_fees(&recipient, &token_addr, &5_000, &0);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &5_000, &0);
     assert_eq!(token_client.balance(&recipient), 5_000);
 }
 
@@ -239,7 +239,7 @@ fn test_withdraw_fees_with_zero_vault() {
     let recipient = Address::generate(&env);
 
     // No fees accrued
-    let result = bridge.try_withdraw_fees(&recipient, &token_addr, &1_000, &0);
+    let result = bridge.try_withdraw_fees(&Some(recipient.clone()), &token_addr, &1_000, &0);
     assert_eq!(result, Err(Ok(Error::NoFeesToWithdraw)));
 }
 
@@ -262,7 +262,7 @@ fn test_withdraw_fees_vault_persistence() {
 
     // Mint tokens and withdraw
     token_admin.mint(&contract_id, &4_500);
-    bridge.withdraw_fees(&recipient, &token_addr, &4_500, &0);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &4_500, &0);
 
     assert_eq!(bridge.get_accrued_fees(&token_addr), 0);
 }

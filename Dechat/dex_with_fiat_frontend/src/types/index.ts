@@ -80,6 +80,8 @@ export interface ChatMessage {
     requestStatus?: 'cancelled';
     /** Delivery/processing status of this specific message. */
     status?: 'pending' | 'sent' | 'failed';
+    deliveredAt?: Date;
+    readAt?: Date;
   };
 }
 

@@ -63,7 +63,7 @@ fn test_withdraw_fees_reconciles_vault_when_ledger_exceeds_balance() {
 
     assert_eq!(bridge.get_accrued_fees(&token_addr), 400);
 
-    bridge.withdraw_fees(&recipient, &token_addr, &100, &0);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &100, &0);
 
     assert_eq!(bridge.get_accrued_fees(&token_addr), 100);
     assert_eq!(token.balance(&recipient), 100);
@@ -81,13 +81,13 @@ fn test_withdraw_fees_uses_fee_vault_after_reconciliation() {
     token_sac.mint(&contract_id, &300);
     bridge.accrue_fee(&token_addr, &250);
 
-    bridge.withdraw_fees(&recipient, &token_addr, &100, &0);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &100, &0);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 150);
 
-    bridge.withdraw_fees(&recipient, &token_addr, &150, &1);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &150, &1);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 0);
 
-    let result = bridge.try_withdraw_fees(&recipient, &token_addr, &1, &2);
+    let result = bridge.try_withdraw_fees(&Some(recipient.clone()), &token_addr, &1, &2);
     assert_eq!(result, Err(Ok(Error::NoFeesToWithdraw)));
 }
 
@@ -107,7 +107,7 @@ fn test_withdraw_fees_rejects_amount_above_reconciled_vault() {
             .set(&DataKey::FeeVault(token_addr.clone()), &250i128);
     });
 
-    let result = bridge.try_withdraw_fees(&recipient, &token_addr, &150, &0);
+    let result = bridge.try_withdraw_fees(&Some(recipient.clone()), &token_addr, &150, &0);
     assert!(
         result == Err(Ok(Error::FeeWithdrawalExceedsBalance))
             || result == Err(Ok(Error::InsufficientFunds)),

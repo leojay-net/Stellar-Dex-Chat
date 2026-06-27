@@ -479,3 +479,28 @@ select:focus {
     0 0 0 2px rgba(59, 130, 246, 0.5),
     0 0 0 4px rgba(59, 130, 246, 0.1);
 }
+
+/* High-contrast mode: ensure all buttons have visible borders */
+@media (forced-colors: active) {
+  button, .btn, [role="button"] {
+    forced-color-adjust: none;
+    border: 1px solid ButtonText;
+  }
+  .wallet-action-sheet-content button {
+    forced-color-adjust: none;
+    border: 2px solid ButtonText;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+  }
+  .wallet-action-sheet-content button:focus-visible {
+    outline: 3px solid Highlight;
+    outline-offset: 2px;
+  }
+  button:focus-visible, .btn:focus-visible, [role="button"]:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+  .theme-overlay {
+    background: Canvas;
+  }
+}

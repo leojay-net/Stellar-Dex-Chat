@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { ReconciliationRecord } from '../../../types';
+import AdminGuard from '@/components/AdminGuard';
 
 export default function ReconciliationDashboard() {
   const [records, setRecords] = useState<ReconciliationRecord[]>([]);
@@ -109,18 +110,21 @@ export default function ReconciliationDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
-        <div className="max-w-7xl mx-auto">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-8">
-            Admin Reconciliation Dashboard
-          </h1>
-          <div className="text-center">Loading...</div>
+      <AdminGuard>
+        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
+          <div className="max-w-7xl mx-auto">
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-8">
+              Admin Reconciliation Dashboard
+            </h1>
+            <div className="text-center">Loading...</div>
+          </div>
         </div>
-      </div>
+      </AdminGuard>
     );
   }
 
   return (
+    <AdminGuard>
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
       <div className="max-w-7xl mx-auto">
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-8">
@@ -277,5 +281,6 @@ export default function ReconciliationDashboard() {
         </div>
       </div>
     </div>
+    </AdminGuard>
   );
 }

@@ -7,7 +7,7 @@ import { useUserPreferences } from '@/contexts/UserPreferencesContext';
 import { useMasking } from '@/hooks/useMasking';
 import { useCurrencyConversion } from '@/hooks/useCurrencyConversion';
 import { ChatMessage } from '@/types';
-import { AlertTriangle, Bot, Clock, Coins, Link, RotateCcw, User, Loader2, RefreshCcw, XCircle } from 'lucide-react';
+import { AlertTriangle, Bot, Check, CheckCheck, Clock, Coins, Link, RotateCcw, User, Loader2, RefreshCcw, XCircle } from 'lucide-react';
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
@@ -184,15 +184,33 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
               </div>
             </div>
 
-            {/* Timestamp */}
+            {/* Timestamp with read receipts */}
             <div
-              className={`flex items-center mt-2 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'} ${isUser ? 'justify-end' : 'justify-start'}`}
+              className={`flex items-center mt-2 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'} ${isUser ? 'justify-end' : 'justify-start'} group/timestamp`}
             >
-              <Clock className="w-3 h-3 mr-1" />
-              {timestamp.toLocaleTimeString([], {
+              <span className="relative">
+                <Clock className="w-3 h-3 mr-1" />
+                <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 rounded bg-black text-white text-[10px] whitespace-nowrap opacity-0 group-hover/timestamp:opacity-100 transition-opacity pointer-events-none z-10">
+                  {timestamp.toLocaleString([], {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                  })}
+                </span>
+              </span>
+              <span>{timestamp.toLocaleTimeString([], {
                 hour: '2-digit',
                 minute: '2-digit',
-              })}
+              })}</span>
+              {isUser && message.metadata?.readAt && (
+                <CheckCheck className="w-3.5 h-3.5 ml-1 text-blue-400" aria-label="Read" />
+              )}
+              {isUser && !message.metadata?.readAt && message.metadata?.deliveredAt && (
+                <Check className="w-3.5 h-3.5 ml-1 text-blue-400" aria-label="Delivered" />
+              )}
             </div>
 
             {/* Error State */}

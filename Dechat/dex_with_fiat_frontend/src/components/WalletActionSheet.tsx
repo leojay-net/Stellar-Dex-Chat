@@ -88,7 +88,9 @@ export default function WalletActionSheet({
       title={title}
       ariaLabel={ariaLabel}
     >
-      {children}
+      <div className="wallet-action-sheet-content">
+        {children}
+      </div>
     </BottomSheet>
   ) : (
     <div className="theme-overlay fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm">
@@ -101,7 +103,9 @@ export default function WalletActionSheet({
         className="theme-surface theme-border relative w-full max-w-md mx-4 border rounded-2xl shadow-2xl p-6"
         data-testid="wallet-action-modal"
       >
-        {children}
+        <div className="wallet-action-sheet-content">
+          {children}
+        </div>
       </div>
     </div>
   );

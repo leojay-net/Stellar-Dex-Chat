@@ -1047,6 +1047,93 @@ fn test_slippage_boundary_exceeded() {
     }
 }
 
+// ── fallback oracle tests (issue #965) ──────────────────────────────────────
+
+#[contract]
+pub struct StaleOracle;
+
+#[contractimpl]
+impl StaleOracle {
+    pub fn get_price(_env: Env, _token: Address) -> Option<i128> {
+        // Simulate a stale oracle that returns no price.
+        None
+    }
+}
+
+#[contract]
+pub struct FallbackPriceOracle;
+
+#[contractimpl]
+impl FallbackPriceOracle {
+    pub fn get_price(_env: Env, _token: Address) -> Option<i128> {
+        // Return 1.05 USD (10,500,000) as fallback price.
+        Some(10_500_000)
+    }
+}
+
+#[test]
+fn test_fallback_oracle_used_when_primary_stale() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _admin, token_addr, _token, token_sac) = setup_bridge(&env, 100_000);
+
+    // Set primary oracle to a stale oracle that returns None.
+    let stale_id = env.register(StaleOracle, ());
+    bridge.set_oracle(&stale_id);
+
+    // Set fallback oracle to one that returns a valid price.
+    let fallback_id = env.register(FallbackPriceOracle, ());
+    bridge.set_fallback_oracle(&fallback_id);
+
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &100_000);
+
+    // Deposit with expected_price matching the fallback oracle (1.05 USD = 10_500_000).
+    // Max slippage of 600 bps allows the fallback price through.
+    bridge.deposit(
+        &user,
+        &1000,
+        &token_addr,
+        &Bytes::new(&env),
+        &10_500_000,
+        &600,
+        &None,
+    );
+    assert_eq!(token.balance(&user), 99_000);
+}
+
+#[test]
+fn test_fallback_oracle_still_fails_when_both_stale() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _admin, token_addr, _token, token_sac) = setup_bridge(&env, 100_000);
+
+    // Set primary oracle to a stale oracle.
+    let stale_id = env.register(StaleOracle, ());
+    bridge.set_oracle(&stale_id);
+
+    // Set fallback oracle to another stale oracle.
+    let stale_fallback_id = env.register(StaleOracle, ());
+    bridge.set_fallback_oracle(&stale_fallback_id);
+
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &100_000);
+
+    // Deposit should fail because both oracles return stale prices.
+    let result = bridge.try_deposit(
+        &user,
+        &1000,
+        &token_addr,
+        &Bytes::new(&env),
+        &10_000_000,
+        &600,
+        &None,
+    );
+    assert_eq!(result, Err(Ok(Error::OraclePriceInvalid)));
+}
+
 // ── event versioning tests ────────────────────────────────────────────────
 #[test]
 fn test_event_version_constant() {
@@ -2017,7 +2104,7 @@ fn test_withdraw_fees_success() {
     assert_eq!(bridge.get_accrued_fees(&token_addr), 200);
 
     // Withdraw fees
-    bridge.withdraw_fees(&recipient, &token_addr, &100, &0);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &100, &0);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 100);
     assert_eq!(token.balance(&recipient), 100);
     assert_eq!(token.balance(&contract_id), 900);
@@ -2088,7 +2175,7 @@ fn test_withdraw_fees_exceeds_accrued() {
 
     bridge.accrue_fee(&token_addr, &50);
 
-    let result = bridge.try_withdraw_fees(&Address::generate(&env), &token_addr, &100, &0);
+    let result = bridge.try_withdraw_fees(&Some(Address::generate(&env)), &token_addr, &100, &0);
     assert_eq!(result, Err(Ok(Error::FeeWithdrawalExceedsBalance)));
 }
 
@@ -2111,7 +2198,7 @@ fn test_fee_vault_isolation_from_principal() {
     assert_eq!(bridge.get_accrued_fees(&token_addr), 200);
 
     // Withdraw fees does NOT affect total_deposited or total_withdrawn
-    bridge.withdraw_fees(&fee_recipient, &token_addr, &200, &0);
+    bridge.withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &200, &0);
     assert_eq!(bridge.get_total_deposited(), 1_000);
     assert_eq!(bridge.get_total_withdrawn(), 0);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 0);
@@ -3261,7 +3348,7 @@ fn test_event_snapshot_fees_withdrawn() {
     });
 
     assert_bridge_events_have_version(&env, &contract_id, || {
-        bridge.withdraw_fees(&recipient, &token_addr, &150, &0);
+        bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &150, &0);
     });
 }
 
@@ -4653,7 +4740,7 @@ fn test_withdraw_fees_edge_case_zero_amount() {
 
     let (_, bridge, _, token_addr, _, _) = setup_bridge(&env, 1000);
 
-    let result = bridge.try_withdraw_fees(&Address::generate(&env), &token_addr, &0, &0);
+    let result = bridge.try_withdraw_fees(&Some(Address::generate(&env)), &token_addr, &0, &0);
     assert_eq!(result, Err(Ok(Error::ZeroAmount)));
 }
 
@@ -4664,7 +4751,7 @@ fn test_withdraw_fees_edge_case_negative_amount() {
 
     let (_, bridge, _, token_addr, _, _) = setup_bridge(&env, 1000);
 
-    let result = bridge.try_withdraw_fees(&Address::generate(&env), &token_addr, &-100, &0);
+    let result = bridge.try_withdraw_fees(&Some(Address::generate(&env)), &token_addr, &-100, &0);
     assert_eq!(result, Err(Ok(Error::ZeroAmount)));
 }
 
@@ -4682,7 +4769,7 @@ fn test_withdraw_fees_edge_case_exact_amount() {
     bridge.accrue_fee(&token_addr, &100);
 
     // Withdraw exactly the accrued amount
-    bridge.withdraw_fees(&recipient, &token_addr, &100, &0);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &100, &0);
 
     assert_eq!(bridge.get_accrued_fees(&token_addr), 0);
     assert_eq!(token.balance(&recipient), 100);
@@ -4700,7 +4787,7 @@ fn test_withdraw_fees_edge_case_exceeds_accrued() {
 
     bridge.accrue_fee(&token_addr, &50);
 
-    let result = bridge.try_withdraw_fees(&Address::generate(&env), &token_addr, &100, &0);
+    let result = bridge.try_withdraw_fees(&Some(Address::generate(&env)), &token_addr, &100, &0);
     assert_eq!(result, Err(Ok(Error::FeeWithdrawalExceedsBalance)));
 }
 
@@ -4711,7 +4798,7 @@ fn test_withdraw_fees_edge_case_no_fees_accrued() {
 
     let (_, bridge, _, token_addr, _, _) = setup_bridge(&env, 1000);
 
-    let result = bridge.try_withdraw_fees(&Address::generate(&env), &token_addr, &1, &0);
+    let result = bridge.try_withdraw_fees(&Some(Address::generate(&env)), &token_addr, &1, &0);
     assert_eq!(result, Err(Ok(Error::NoFeesToWithdraw)));
 }
 
@@ -4728,13 +4815,13 @@ fn test_withdraw_fees_edge_case_multiple_withdrawals() {
     bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
     bridge.accrue_fee(&token_addr, &300);
 
-    bridge.withdraw_fees(&recipient, &token_addr, &100, &0);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &100, &0);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 200);
 
-    bridge.withdraw_fees(&recipient, &token_addr, &100, &1);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &100, &1);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 100);
 
-    bridge.withdraw_fees(&recipient, &token_addr, &100, &2);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &100, &2);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 0);
 }
 
@@ -4751,10 +4838,10 @@ fn test_withdraw_fees_edge_case_stale_nonce() {
     bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
     bridge.accrue_fee(&token_addr, &200);
 
-    bridge.withdraw_fees(&recipient, &token_addr, &100, &0);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &100, &0);
 
     // Replay with nonce 0 should fail with StaleNonce
-    let result = bridge.try_withdraw_fees(&recipient, &token_addr, &100, &0);
+    let result = bridge.try_withdraw_fees(&Some(recipient.clone()), &token_addr, &100, &0);
     assert_eq!(result, Err(Ok(Error::StaleNonce)));
 }
 
@@ -4771,7 +4858,7 @@ fn test_withdraw_fees_edge_case_emits_event() {
     bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
     bridge.accrue_fee(&token_addr, &100);
 
-    bridge.withdraw_fees(&recipient, &token_addr, &50, &0);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &50, &0);
 
     let events = env.events().all().filter_by_contract(&contract_id);
     let raw = events.events();
@@ -4804,7 +4891,7 @@ fn test_withdraw_fees_event_schema_fields_are_correct() {
 
     // Withdraw 150 of 400 accrued; remaining_fees should become 250.
     assert_bridge_events_have_version(&env, &contract_id, || {
-        bridge.withdraw_fees(&recipient, &token_addr, &150, &0);
+        bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &150, &0);
     });
 
     // ── Post-condition checks ─────────────────────────────────────────────
@@ -4872,22 +4959,22 @@ fn test_withdraw_fees_event_remaining_fees_reflects_vault_balance() {
     bridge.accrue_fee(&token_addr, &600);
 
     // First partial withdrawal: 200 out of 600
-    bridge.withdraw_fees(&recipient, &token_addr, &200, &0);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &200, &0);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 400,
         "vault should have 400 remaining after first withdrawal");
 
     // Second partial withdrawal: 100 out of 400
-    bridge.withdraw_fees(&recipient, &token_addr, &100, &1);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &100, &1);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 300,
         "vault should have 300 remaining after second withdrawal");
 
     // Full drain of the rest
-    bridge.withdraw_fees(&recipient, &token_addr, &300, &2);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &300, &2);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 0,
         "vault should be fully drained after third withdrawal");
 
     // Attempting one more withdrawal must fail — no fees left
-    let result = bridge.try_withdraw_fees(&recipient, &token_addr, &1, &3);
+    let result = bridge.try_withdraw_fees(&Some(recipient.clone()), &token_addr, &1, &3);
     assert_eq!(result, Err(Ok(Error::NoFeesToWithdraw)));
 }
 
@@ -4908,7 +4995,7 @@ fn test_withdraw_fees_emits_vault_reconciled_event_issue_840() {
             .set(&DataKey::FeeVault(token_addr.clone()), &400i128);
     });
 
-    bridge.withdraw_fees(&recipient, &token_addr, &100, &0);
+    bridge.withdraw_fees(&Some(recipient.clone()), &token_addr, &100, &0);
 
     let events = env.events().all().filter_by_contract(&contract_id);
     let raw = events.events();
