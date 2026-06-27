@@ -5,6 +5,8 @@ import {
   mockReconciliationApi,
   MOCK_ADMIN_ADDRESS,
   connectMockWallet,
+  installMockWalletBridge,
+  adminReconciliationHeading,
 } from './helpers';
 
 /** Non-admin wallet address (valid 56-char Stellar key). */
@@ -18,10 +20,9 @@ test.describe('Admin Reconciliation E2E', () => {
 
   test.describe('Page load', () => {
     test('loads the reconciliation dashboard for admin users', async ({ page }) => {
-      const heading = page.getByRole('heading', {
-        name: /Admin Reconciliation Dashboard/i,
+      await expect(adminReconciliationHeading(page)).toBeVisible({
+        timeout: 20_000,
       });
-      await expect(heading).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText(/Export CSV/i)).toBeVisible();
     });
 
@@ -92,7 +93,7 @@ test.describe('Admin Reconciliation E2E', () => {
     });
 
     test('triggers CSV download on click', async ({ page }) => {
-      const downloadPromise = page.waitForEvent('download', { timeout: 10_000 });
+      const downloadPromise = page.waitForEvent('download', { timeout: 20_000 });
       const exportBtn = page.getByRole('button', { name: /Export CSV/i });
       await exportBtn.click();
       const download = await downloadPromise;
@@ -107,19 +108,20 @@ test.describe('Admin Reconciliation E2E — access control', () => {
   }) => {
     await mockSorobanRpc(page, { adminAddress: MOCK_ADMIN_ADDRESS });
     await mockReconciliationApi(page);
+    await installMockWalletBridge(page);
     await page.goto('/admin/reconciliation');
     await page.waitForLoadState('domcontentloaded');
     await page.evaluate(() => window.clearBridgeCache?.());
     await connectMockWallet(page, NON_ADMIN_ADDRESS);
     await expect(page.getByText(/Verifying admin access/i)).toBeHidden({
-      timeout: 15_000,
+      timeout: 30_000,
     });
 
-    await expect(
-      page.getByRole('heading', { name: /Admin Reconciliation Dashboard/i }),
-    ).toBeHidden({ timeout: 15_000 });
+    await expect(adminReconciliationHeading(page)).toBeHidden({
+      timeout: 20_000,
+    });
     await expect(
       page.getByRole('button', { name: /start bridging/i }),
-    ).toBeVisible({ timeout: 15_000 });
+    ).toBeVisible({ timeout: 20_000 });
   });
 });

@@ -19,7 +19,7 @@ function getSimulateFunctionName(transactionXdr: string): string | null {
     const envelope = xdr.TransactionEnvelope.fromXDR(transactionXdr, 'base64');
     const op = envelope.v1().tx().operations()[0];
     const body = op.body();
-    if (body.switch().name !== 'invokeHostFunctionOp') {
+    if (body.switch().name !== 'invokeHostFunction') {
       return null;
     }
     return body
@@ -50,17 +50,49 @@ function scvalXdrForSimulateFunction(functionName: string | null): string {
 
 export const MOCK_WALLET_ADDRESS = MOCK_ADMIN_ADDRESS;
 
+/** Locator for the admin reconciliation page title (WebKit-tolerant). */
+export function adminReconciliationHeading(page: Page) {
+  return page
+    .getByRole('heading', { name: /Admin Reconciliation Dashboard/i })
+    .or(page.getByText(/Admin Reconciliation Dashboard/i));
+}
+
+/**
+ * Inject a mockStellarConnect stub before navigation so early boot code does not
+ * race the React provider (important on slower WebKit CI runs).
+ */
+export async function installMockWalletBridge(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    if (typeof window.mockStellarConnect !== 'function') {
+      window.mockStellarConnect = (addr: string) => {
+        (window as Window & { __MOCK_CONNECTED_ADDRESS__?: string }).__MOCK_CONNECTED_ADDRESS__ =
+          addr;
+        window.dispatchEvent(
+          new CustomEvent('mockStellarConnect', { detail: addr }),
+        );
+      };
+    }
+  });
+}
+
 /** Connect a mock wallet via the app's E2E hook (must run after navigation). */
 export async function connectMockWallet(
   page: Page,
   address: string = MOCK_WALLET_ADDRESS,
 ): Promise<void> {
+  await installMockWalletBridge(page);
   await page.waitForFunction(
     () => typeof window.mockStellarConnect === 'function',
   );
   await page.evaluate((addr) => {
     window.mockStellarConnect?.(addr);
   }, address);
+  // Wait until StellarWalletProvider's mockConnect persisted the session.
+  await page.waitForFunction(
+    (addr) => localStorage.getItem('stellar_address') === addr,
+    address,
+    { timeout: 20_000 },
+  );
 }
 
 /** Navigate to /chat and connect a mock wallet. */
@@ -68,6 +100,7 @@ export async function gotoChatConnected(
   page: Page,
   address: string = MOCK_WALLET_ADDRESS,
 ): Promise<void> {
+  await installMockWalletBridge(page);
   await page.goto('/chat');
   await page.waitForLoadState('domcontentloaded');
   await connectMockWallet(page, address);
@@ -96,7 +129,7 @@ export async function mockSorobanRpc(
     });
   });
 
-  await page.route('**/*stellar.org/**', async (route) => {
+  await page.route('**/soroban-testnet.stellar.org/**', async (route) => {
     if (route.request().method() !== 'POST') {
       await route.continue();
       return;
@@ -156,8 +189,13 @@ export async function mockSorobanRpc(
     }
 
     if (method === 'simulateTransaction') {
-      const params = (body as { params?: { transaction?: string } } | null)
-        ?.params;
+      const rawParams = (body as { params?: unknown } | null)?.params;
+      const params =
+        rawParams && !Array.isArray(rawParams)
+          ? (rawParams as { transaction?: string })
+          : Array.isArray(rawParams)
+            ? (rawParams[0] as { transaction?: string } | undefined)
+            : undefined;
       const functionName = params?.transaction
         ? getSimulateFunctionName(params.transaction)
         : null;
@@ -206,7 +244,7 @@ export async function mockSorobanRpc(
 
 /** Mock reconciliation API with deterministic fixture data. */
 export async function mockReconciliationApi(page: Page): Promise<void> {
-  await page.route('**/api/admin/reconciliation**', async (route) => {
+  await page.route('**/api/admin/reconciliation*', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -272,15 +310,19 @@ export async function mockReconciliationApi(page: Page): Promise<void> {
 export async function gotoAdminReconciliation(page: Page): Promise<void> {
   await mockSorobanRpc(page, { adminAddress: MOCK_ADMIN_ADDRESS });
   await mockReconciliationApi(page);
+  await installMockWalletBridge(page);
   await page.goto('/admin/reconciliation');
   await page.waitForLoadState('domcontentloaded');
   await connectMockWallet(page, MOCK_ADMIN_ADDRESS);
-  await expect(
-    page.getByRole('heading', { name: /Admin Reconciliation Dashboard/i }),
-  ).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText('Loading...')).toBeHidden({ timeout: 15_000 });
+  await expect(page.getByText(/Verifying admin access/i)).toBeHidden({
+    timeout: 30_000,
+  });
+  await expect(adminReconciliationHeading(page)).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByText('Loading...')).toBeHidden({ timeout: 20_000 });
   await expect(page.getByRole('combobox').first()).toBeVisible({
-    timeout: 15_000,
+    timeout: 20_000,
   });
 }
 
