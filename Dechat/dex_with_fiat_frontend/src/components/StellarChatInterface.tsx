@@ -77,6 +77,7 @@ function StellarChatInterfaceContent() {
     sessionExpired,
     clearSessionExpired,
     isNetworkMismatch,
+    xlmBalance,
     error: walletError,
   } = useStellarWallet();
   const { isDarkMode, toggleDarkMode } = useTheme();
@@ -675,6 +676,11 @@ function StellarChatInterfaceContent() {
                         {connection.address.slice(0, 6)}…
                         {connection.address.slice(-4)}
                       </span>
+                      {xlmBalance && (
+                        <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          — {xlmBalance} XLM
+                        </span>
+                      )}
                       {accounts.length > 1 && (
                         <ChevronDown
                           className={`w-3 h-3 transition-transform ${showAccountDropdown ? 'rotate-180' : ''}`}

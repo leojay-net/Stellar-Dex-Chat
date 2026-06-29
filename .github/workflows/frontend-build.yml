@@ -1,0 +1,44 @@
+name: Frontend Build Check
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Next.js Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: dex_with_fiat_frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: dex_with_fiat_frontend
+        run: npm ci
+
+      - name: Create .env.local with placeholder values
+        working-directory: dex_with_fiat_frontend
+        run: |
+          cat > .env.local <<'EOF'
+          NEXT_PUBLIC_STELLAR_RPC_URL=${{ secrets.NEXT_PUBLIC_STELLAR_RPC_URL || 'https://soroban-testnet.stellar.org' }}
+          NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT=${{ secrets.NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT || 'CAWYXBN4PSVXD7NIYEWVFFIIIEUCC6PUN3IMG3J2WHKDB4NVIISMXBPR' }}
+          NEXT_PUBLIC_XLM_SAC_CONTRACT=${{ secrets.NEXT_PUBLIC_XLM_SAC_CONTRACT || 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC' }}
+          NEXT_PUBLIC_GEMINI_API_KEY=${{ secrets.NEXT_PUBLIC_GEMINI_API_KEY || 'PLACEHOLDER' }}
+          PAYSTACK_SECRET_KEY=${{ secrets.PAYSTACK_SECRET_KEY || 'PLACEHOLDER' }}
+          PAYOUT_PROVIDER=${{ secrets.PAYOUT_PROVIDER || 'paystack' }}
+          EOF
+
+      - name: Build
+        working-directory: dex_with_fiat_frontend
+        run: npm run build
