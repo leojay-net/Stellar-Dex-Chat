@@ -3213,8 +3213,19 @@ impl FiatBridge {
 
     // ── Issue #209: global circuit breaker ───────────────────────────────
 
-    /// Set the rolling 24-hour withdrawal volume threshold that triggers the
-    /// circuit breaker.  Pass `0` to disable.
+    /// Set the rolling withdrawal volume threshold that trips the global circuit breaker.
+    ///
+    /// The breaker is evaluated across all withdrawal-producing flows that call
+    /// [`Self::check_and_update_circuit_breaker`], including direct withdrawals,
+    /// queued withdrawal requests, and queued withdrawal execution.
+    ///
+    /// - `threshold > 0`: enables the breaker and rejects the withdrawal that
+    ///   would push the rolling total above the threshold.
+    /// - `threshold == 0`: disables the breaker entirely.
+    ///
+    /// This value is stored under [`DataKey::CircuitBreakerThreshold`]. It does
+    /// not itself reset an already-tripped breaker; use [`Self::reset_circuit_breaker`]
+    /// for that operational action.
     pub fn set_circuit_breaker_threshold(env: Env, threshold: i128) -> Result<(), Error> {
         let admin: Address = env
             .storage()
@@ -3228,10 +3239,19 @@ impl FiatBridge {
         Ok(())
     }
 
-    /// Set the number of ledgers after which a tripped circuit breaker
-    /// automatically resets. Pass `0` to use the compile-time default
-    /// (`CIRCUIT_BREAKER_RESET_LEDGERS`). Set to `u32::MAX` to disable
-    /// auto-reset entirely.
+    /// Configure the auto-reset window for a tripped circuit breaker.
+    ///
+    /// The breaker stores the ledger at which it tripped in
+    /// [`DataKey::CircuitBreakerTrippedAt`]. On the next guarded withdrawal or
+    /// heartbeat path, the contract compares the current ledger against that
+    /// trip point plus this reset window.
+    ///
+    /// - `0`: use the default 48-hour window [`CIRCUIT_BREAKER_RESET_LEDGERS`]
+    /// - `u32::MAX`: disable auto-reset entirely
+    /// - any other value: use that many ledgers as the reset window
+    ///
+    /// Auto-reset clears the tripped flag and rolls the global withdrawal window
+    /// forward before the next guarded operation resumes.
     pub fn set_circuit_breaker_reset_window(env: Env, ledgers: u32) -> Result<(), Error> {
         let admin: Address = env
             .storage()
@@ -3252,7 +3272,14 @@ impl FiatBridge {
             .unwrap_or(CIRCUIT_BREAKER_RESET_LEDGERS)
     }
 
-    /// Reset the circuit breaker so withdrawals can resume.
+    /// Manually clear the circuit breaker so guarded operations can resume.
+    ///
+    /// This admin-only action flips [`DataKey::CircuitBreakerTripped`] back to
+    /// `false` and emits [`CircuitBreakerResetEvent`]. It is intended for manual
+    /// recovery after operators have investigated the activity that caused the
+    /// breaker to trip.
+    ///
+    /// This function does not change the configured threshold or reset window.
     pub fn reset_circuit_breaker(env: Env) -> Result<(), Error> {
         let admin: Address = env
             .storage()
