@@ -3769,6 +3769,9 @@ impl FiatBridge {
     }
 }
 
+#[cfg(test)]
+mod test_view_function_snapshots;
+
 #[cfg(any(test, feature = "testutils"))]
 mod test;
 
