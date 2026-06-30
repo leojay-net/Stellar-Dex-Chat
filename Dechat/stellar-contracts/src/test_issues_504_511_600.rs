@@ -178,7 +178,7 @@ fn get_receipt_by_index_blocked_when_circuit_breaker_tripped() {
     assert!(bridge.is_circuit_breaker_tripped());
 
     // Access must be blocked
-    let result = bridge.try_get_receipt_by_index(&0);
+    let result = bridge.try_get_receipt_by_index(&admin, &0);
     assert_eq!(result, Err(Ok(Error::CircuitBreakerActive)));
 }
 
@@ -191,7 +191,7 @@ fn get_receipt_by_index_returns_receipt_when_circuit_breaker_not_tripped() {
 
     let receipt_hash = fund_and_deposit(&env, &bridge, &token_sac, &admin, &token_addr, 500);
 
-    let receipt = bridge.get_receipt_by_index(&0);
+    let receipt = bridge.get_receipt_by_index(&admin, &0);
     assert_eq!(receipt.id, receipt_hash);
 }
 
@@ -206,11 +206,11 @@ fn get_receipt_by_index_returns_none_for_out_of_bounds() {
 
     // Only index 0 exists; index 1 and beyond are out of bounds
     assert_eq!(
-        bridge.try_get_receipt_by_index(&1),
+        bridge.try_get_receipt_by_index(&admin, &1),
         Err(Ok(Error::ReceiptIndexOutOfBounds))
     );
     assert_eq!(
-        bridge.try_get_receipt_by_index(&999),
+        bridge.try_get_receipt_by_index(&admin, &999),
         Err(Ok(Error::ReceiptIndexOutOfBounds))
     );
 }
@@ -233,7 +233,7 @@ fn get_receipt_by_index_accessible_after_circuit_breaker_reset() {
     assert!(!bridge.is_circuit_breaker_tripped());
 
     // After reset, access should be restored
-    let receipt = bridge.get_receipt_by_index(&0);
+    let receipt = bridge.get_receipt_by_index(&admin, &0);
     assert_eq!(receipt.id, receipt_hash);
 }
 

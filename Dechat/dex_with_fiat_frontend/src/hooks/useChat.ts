@@ -554,9 +554,30 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
           m.id === optimisticUserId
             ? {
                 ...m,
+                content: enhancedResponse,
                 metadata: {
                   ...m.metadata,
                   status: 'sent',
+                  guardrail: analysis.guardrail,
+                  transactionData: shouldShowTransactionData
+                    ? (analysis.extractedData as TransactionData)
+                    : undefined,
+                  suggestedActions: generateSuggestedActions(analysis, {
+                    isWalletConnected: connection.isConnected,
+                    messageCount: newMessageCount,
+                    hasTransactionData: !!pendingTransactionData,
+                    shouldAutoTrigger: !!shouldAutoTrigger,
+                    isAdmin: isAdmin,
+                    lowConfidence: needsClarification,
+                    clarificationQuestion: clarificationQuestion || undefined,
+                  }),
+                  confirmationRequired:
+                    analysis.intent === 'fiat_conversion' ||
+                    shouldTriggerTransaction,
+                  autoTriggerTransaction: shouldTriggerTransaction,
+                  conversationCount: newMessageCount,
+                  lowConfidence: needsClarification,
+                  clarificationQuestion: clarificationQuestion || undefined,
                 },
               }
             : m,
@@ -652,23 +673,27 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
   // Restore any messages still queued in IndexedDB from a previous page
   // load (covers a reload while offline) and try to send them right away.
   useEffect(() => {
-    void getAllQueuedMessages().then((records) => {
-      if (records.length === 0) {
-        return;
-      }
-      records
-        .sort((a, b) => a.queuedAt - b.queuedAt)
-        .forEach((record) => {
-          queuedSendsRef.current.push({
-            content: record.content,
-            optimisticUserId: record.optimisticUserId,
-            pendingAssistantId: record.pendingAssistantId,
-            machineSnapshot: record.machineSnapshot as QueuedSend['machineSnapshot'],
+    void getAllQueuedMessages()
+      .then((records) => {
+        if (records.length === 0) {
+          return;
+        }
+        records
+          .sort((a, b) => a.queuedAt - b.queuedAt)
+          .forEach((record) => {
+            queuedSendsRef.current.push({
+              content: record.content,
+              optimisticUserId: record.optimisticUserId,
+              pendingAssistantId: record.pendingAssistantId,
+              machineSnapshot: record.machineSnapshot as QueuedSend['machineSnapshot'],
+            });
           });
-        });
-      setQueuedMessageCount(queuedSendsRef.current.length);
-      void replayQueuedSends();
-    });
+        setQueuedMessageCount(queuedSendsRef.current.length);
+        void replayQueuedSends();
+      })
+      .catch(() => {
+        // Offline queue is best-effort when IndexedDB is unavailable or fails to open.
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -923,6 +948,7 @@ function generateSuggestedActions(
     shouldAutoTrigger?: boolean;
     isAdmin?: boolean;
     lowConfidence?: boolean;
+    clarificationQuestion?: string;
   },
 ) {
   const actions = [];

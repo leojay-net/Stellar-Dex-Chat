@@ -114,7 +114,7 @@ jobs:
         run: pnpm install
 
       - name: Install Playwright browsers
-        run: pnpm test:e2e:install
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
 
       - name: Build for E2E
         run: pnpm build

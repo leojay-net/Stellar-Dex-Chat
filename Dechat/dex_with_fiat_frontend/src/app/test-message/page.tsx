@@ -8,7 +8,7 @@ const sampleMessages: ChatMessage[] = [
   {
     id: 'm1',
     role: 'assistant',
-    content: 'Hello! This message contains a [link](https://example.com) and some **bold** text.',
+    content: 'Hello! This message contains a [link](https://example.com), some **bold** text, and *italic* emphasis with `inline code`.',
     timestamp: new Date(),
     metadata: {
       status: 'sent',

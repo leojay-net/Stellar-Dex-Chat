@@ -87,11 +87,13 @@ class TxHistoryStore {
 
 const txHistoryStore = new TxHistoryStore();
 
+const EMPTY_TX_HISTORY: TransactionHistoryEntry[] = [];
+
 export function useTxHistory() {
   const entries = useSyncExternalStore(
     (listener) => txHistoryStore.subscribe(listener),
     () => txHistoryStore.getSnapshot(),
-    () => [],
+    () => EMPTY_TX_HISTORY,
   );
 
   return {
