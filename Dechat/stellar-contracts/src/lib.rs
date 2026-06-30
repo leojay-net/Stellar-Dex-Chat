@@ -2597,7 +2597,7 @@ impl FiatBridge {
         env.storage()
             .instance()
             .get(&DataKey::UserDeposited(user))
-            .unwrap_or(0))
+            .unwrap_or(0)
     }
 
     pub fn get_daily_deposit_record(env: Env, user: Address) -> Option<UserDailyVolume> {
@@ -2611,7 +2611,7 @@ impl FiatBridge {
             vol.usd_cents = 0;
             vol.window_start = curr;
         }
-        Ok(Some(vol))
+        Some(vol)
     }
 
     pub fn get_total_deposited(env: Env) -> Result<i128, Error> {
