@@ -14,6 +14,7 @@ import {
 import EmptyState from '@/components/ui/EmptyState';
 import CopyButton from '@/components/ui/CopyButton';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
+import { useUserPreferences } from '@/contexts/UserPreferencesContext';
 import {
   BRIDGE_LIMIT_WARNING_PERCENT,
   CONTRACT_ID,
@@ -80,6 +81,7 @@ export default function StellarFiatModal({
   const { connection, signTx } = useStellarWallet();
   const { addNotification } = useNotifications();
   const { addEntry } = useTxHistory();
+  const { highValueThreshold, twoFactorEnabled } = useUserPreferences();
 
   const { execute: executeTransaction, isProcessing: isTxProcessing } =
     useIdempotentAction({
@@ -105,6 +107,8 @@ export default function StellarFiatModal({
   const [lastActionTimestamp, setLastActionTimestamp] = useState(0);
   const [walletBalance, setWalletBalance] = useState<string | null>(null);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
+  const [showTwoFactorModal, setShowTwoFactorModal] = useState(false);
+  const [twoFactorConfirmation, setTwoFactorConfirmation] = useState('');
 
   // Helpers avoid JSX branch narrowing (pending/loading render a separate view).
   const isStatusPending = (status as TxStatus) === 'pending';
@@ -374,8 +378,9 @@ export default function StellarFiatModal({
   const stroopsAmount = !isAmountInvalid ? xlmToStroops(amount) : null;
   const hasValidAmount = stroopsAmount !== null && stroopsAmount > BigInt(0);
   const isRiskyAmount =
+    twoFactorEnabled &&
     Number.isFinite(numericAmount) &&
-    numericAmount >= LARGE_AMOUNT_RISK_THRESHOLD;
+    numericAmount >= highValueThreshold;
   const isDepositFlow = !isAdminMode;
   const isLimitUnavailable =
     isDepositFlow &&
@@ -462,6 +467,12 @@ export default function StellarFiatModal({
   const handleAction = async () => {
     if (!connection.isConnected) return;
 
+    // Show two-factor confirmation modal for high-value transfers
+    if (isRiskyAmount && twoFactorEnabled && !showTwoFactorModal) {
+      setShowTwoFactorModal(true);
+      return;
+    }
+
     const zodMessage = validateStellarFiatModalForm({
       isAdminMode,
       amount,
@@ -469,6 +480,7 @@ export default function StellarFiatModal({
       note,
       riskConfirmation,
       isRiskyAmount,
+      twoFactorConfirmation: showTwoFactorModal ? twoFactorConfirmation : undefined,
     });
     if (zodMessage) {
       setErrorMsg(zodMessage);
@@ -1002,7 +1014,7 @@ export default function StellarFiatModal({
                   Large amount confirmation required
                 </p>
                 <p className="text-xs mb-3">
-                  Amounts above {LARGE_AMOUNT_RISK_THRESHOLD} XLM require an
+                  Amounts above {highValueThreshold} XLM require an
                   additional confirmation phrase before submission.
                 </p>
                 <input
@@ -1103,6 +1115,48 @@ export default function StellarFiatModal({
           </>
         )}
       </div>
+
+      {/* Two-Factor Confirmation Modal */}
+      {showTwoFactorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-white font-semibold text-lg mb-4">
+              Two-Factor Confirmation
+            </h3>
+            <p className="text-gray-300 text-sm mb-4">
+              For your security, please enter the last 4 digits of your wallet address to confirm this high-value transfer.
+            </p>
+            <p className="text-gray-400 text-xs mb-2">
+              Your wallet: {connection.address.slice(0, 8)}…{connection.address.slice(-4)}
+            </p>
+            <input
+              type="text"
+              value={twoFactorConfirmation}
+              onChange={(e) => setTwoFactorConfirmation(e.target.value)}
+              placeholder="Enter last 4 digits"
+              maxLength={4}
+              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 mb-4"
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowTwoFactorModal(false);
+                  setTwoFactorConfirmation('');
+                }}
+                className="flex-1 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAction}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

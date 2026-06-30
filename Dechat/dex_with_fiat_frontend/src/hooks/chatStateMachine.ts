@@ -330,4 +330,82 @@ export async function copyChatStateSnapshot(
   }
 }
 
+/** Default debounce window (ms) for {@link createDebouncedDispatcher}. */
+export const DEFAULT_DISPATCH_DEBOUNCE_MS = 250;
+
+/**
+ * A debounced dispatcher for chat state-machine events.
+ *
+ * Rapid calls to {@link DebouncedChatDispatcher.dispatch} within the debounce
+ * window collapse into a single trailing transition, so bursts of UI events
+ * (e.g. fast typing repeatedly firing `SEND_MESSAGE`, or a flurry of retries)
+ * don't flood the machine. The most recently queued event wins.
+ */
+export interface DebouncedChatDispatcher {
+  /** Queue an event; only the latest event in a burst is applied after the delay. */
+  dispatch: (event: ChatEvent) => void;
+  /**
+   * Immediately apply the pending event (if any), bypassing the remaining
+   * delay. Returns the underlying `transition` result, or `false` when nothing
+   * was pending.
+   */
+  flush: () => boolean;
+  /** Discard any pending event without applying it. */
+  cancel: () => void;
+  /** Whether an event is currently queued and waiting to be applied. */
+  isPending: () => boolean;
+}
+
+/**
+ * Create a debounced dispatcher bound to a chat state machine.
+ *
+ * @param machine - The machine whose `transition` is invoked on flush.
+ * @param delayMs - Debounce window in milliseconds (defaults to
+ *   {@link DEFAULT_DISPATCH_DEBOUNCE_MS}). Non-positive values apply events
+ *   on the next tick.
+ */
+export function createDebouncedDispatcher(
+  machine: StateMachine<ChatState, ChatEvent, ChatMachineContext>,
+  delayMs: number = DEFAULT_DISPATCH_DEBOUNCE_MS,
+): DebouncedChatDispatcher {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let pendingEvent: ChatEvent | null = null;
+
+  const clearTimer = (): void => {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
+
+  const applyPending = (): boolean => {
+    if (pendingEvent === null) return false;
+    const event = pendingEvent;
+    pendingEvent = null;
+    return machine.transition(event);
+  };
+
+  return {
+    dispatch(event: ChatEvent): void {
+      pendingEvent = event;
+      clearTimer();
+      timer = setTimeout(() => {
+        timer = null;
+        applyPending();
+      }, Math.max(0, delayMs));
+    },
+    flush(): boolean {
+      clearTimer();
+      return applyPending();
+    },
+    cancel(): void {
+      clearTimer();
+      pendingEvent = null;
+    },
+    isPending(): boolean {
+      return pendingEvent !== null;
+    },
+  };
+}
+
 export { ChatGuards };

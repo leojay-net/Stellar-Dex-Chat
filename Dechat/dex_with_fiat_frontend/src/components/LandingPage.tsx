@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTheme } from '../contexts/ThemeContext';
+import { fetchTickerData } from '../lib/cryptoPriceService';
 import CopyButton from '@/components/ui/CopyButton';
 import OfflineStatusBanner from '@/components/OfflineStatusBanner';
 
@@ -111,12 +112,38 @@ export default function LandingPage() {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const { isDarkMode, toggleDarkMode } = useTheme();
   const [heroVisible, setHeroVisible] = useState(false);
+  const [xlmPrice, setXlmPrice] = useState<number | null>(null);
+  const [xlmChange, setXlmChange] = useState<number | null>(null);
+  const [priceLoading, setPriceLoading] = useState(true);
 
   const contractAddress =
     'CB4L7Q6M3N7Z6K4L2A3B5C6D7E8F9G0H1I2J3K4L5M6N7O8P9Q0R1S2T3U4V5W6X7Y8Z9'; // Replace with actual deployed address
 
   useEffect(() => {
     setHeroVisible(true);
+  }, []);
+
+  // Fetch XLM price data every 60 seconds
+  useEffect(() => {
+    const fetchPrice = async () => {
+      try {
+        setPriceLoading(true);
+        const tickerData = await fetchTickerData(['XLM'], 'usd');
+        if (tickerData && tickerData.XLM) {
+          setXlmPrice(tickerData.XLM.price);
+          setXlmChange(tickerData.XLM.change24h || 0);
+        }
+      } catch (error) {
+        console.error('Failed to fetch XLM price:', error);
+      } finally {
+        setPriceLoading(false);
+      }
+    };
+
+    fetchPrice();
+    const interval = setInterval(fetchPrice, 60000); // Refresh every 60 seconds
+
+    return () => clearInterval(interval);
   }, []);
 
   const handleGetStarted = () => {
@@ -329,6 +356,46 @@ export default function LandingPage() {
                 </code>
                 <CopyButton value={contractAddress} />
               </div>
+            </div>
+
+            {/* XLM Price Chart Widget */}
+            <div className="mt-4 bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-xl p-6 max-w-md mx-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-[var(--color-text-primary)]">
+                  XLM Price
+                </h3>
+                {priceLoading ? (
+                  <div className="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                ) : (
+                  <span className="text-xs text-[var(--color-text-muted)]">
+                    Live
+                  </span>
+                )}
+              </div>
+              <div className="flex items-baseline gap-3 mb-2">
+                {priceLoading ? (
+                  <div className="h-8 bg-gray-700 rounded animate-pulse w-32"></div>
+                ) : (
+                  <>
+                    <span className="text-3xl font-bold text-[var(--color-text-primary)]">
+                      ${xlmPrice?.toFixed(4) || '0.0000'}
+                    </span>
+                    {xlmChange !== null && (
+                      <span
+                        className={`text-sm font-medium ${
+                          xlmChange >= 0 ? 'text-green-500' : 'text-red-500'
+                        }`}
+                      >
+                        {xlmChange >= 0 ? '+' : ''}
+                        {xlmChange.toFixed(2)}%
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
+              <p className="text-xs text-[var(--color-text-muted)]">
+                24h change • Refreshes every 60s
+              </p>
             </div>
           </div>
         </section>

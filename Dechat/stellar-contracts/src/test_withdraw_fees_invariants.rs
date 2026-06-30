@@ -354,3 +354,82 @@ fn test_withdraw_fees_emits_correct_event() {
     // Should have events including FeeWithdrawnEvent
     assert!(event_vec.len() > 0);
 }
+
+#[test]
+fn test_fee_accrual_monotonicity_across_deposit_sequences() {
+    use soroban_sdk::testutils::Address as _;
+
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, admin, token_addr, token_client, token_admin) = setup_bridge(&env);
+
+    let mut previous_vault_balance: i128 = 0;
+
+    for i in 0u32..1000 {
+        let user = Address::generate(&env);
+        let deposit_amount = ((i as i128) % 10_000) + 1;
+
+        token_admin.mint(&user, &(deposit_amount + 1_000));
+        let reference = Bytes::from_slice(&env, b"monotonic");
+        bridge.deposit(&user, &deposit_amount, &token_addr, &reference, &0, &0, &None);
+
+        let fee_amount = ((i as i128) % 500) + 1;
+        if fee_amount > 0 {
+            token_admin.mint(&contract_id, &fee_amount);
+            bridge.accrue_fee(&token_addr, &fee_amount);
+        }
+
+        let current_vault_balance = bridge.get_accrued_fees(&token_addr);
+        assert!(
+            current_vault_balance >= previous_vault_balance,
+            "fee accrual must be monotonic: iteration={}, previous={}, current={}",
+            i,
+            previous_vault_balance,
+            current_vault_balance,
+        );
+
+        if i % 100 == 99 {
+            let withdraw_amount = (current_vault_balance / 4).max(1);
+            if withdraw_amount <= current_vault_balance {
+                let recipient = Address::generate(&env);
+                let nonce = bridge.get_fee_withdrawal_nonce(&admin);
+                let _ = bridge.try_withdraw_fees(&Some(recipient), &token_addr, &withdraw_amount, &nonce);
+            }
+        }
+
+        previous_vault_balance = bridge.get_accrued_fees(&token_addr);
+    }
+
+    let final_balance = bridge.get_accrued_fees(&token_addr);
+    assert!(final_balance >= 0);
+}
+
+#[test]
+fn test_fee_vault_never_decreases_between_accruals() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, admin, token_addr, token_client, token_admin) = setup_bridge(&env);
+
+    let mut vault_before = bridge.get_accrued_fees(&token_addr);
+    assert_eq!(vault_before, 0);
+
+    for amount in [100, 250, 50, 1000, 1, 999, 500] {
+        token_admin.mint(&contract_id, &amount);
+        bridge.accrue_fee(&token_addr, &amount);
+
+        let vault_after = bridge.get_accrued_fees(&token_addr);
+        assert!(
+            vault_after > vault_before,
+            "fee vault must increase after accrual: before={}, after={}, accrued={}",
+            vault_before,
+            vault_after,
+            amount,
+        );
+        vault_before = vault_after;
+    }
+
+    let balance = token_client.balance(&contract_id);
+    assert!(balance >= vault_before);
+}

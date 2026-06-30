@@ -29,7 +29,9 @@ fn accept_admin_before_delay_returns_too_early() {
 
     let admin = Address::generate(&env);
     let new_admin = Address::generate(&env);
-    let token = Address::generate(&env);
+    let token = env
+        .register_stellar_asset_contract_v2(Address::generate(&env))
+        .address();
 
     let contract_id = env.register(FiatBridge, ());
     let client = FiatBridgeClient::new(&env, &contract_id);
@@ -54,7 +56,9 @@ fn accept_admin_at_delay_boundary_succeeds() {
 
     let admin = Address::generate(&env);
     let new_admin = Address::generate(&env);
-    let token = Address::generate(&env);
+    let token = env
+        .register_stellar_asset_contract_v2(Address::generate(&env))
+        .address();
 
     let contract_id = env.register(FiatBridge, ());
     let client = FiatBridgeClient::new(&env, &contract_id);
@@ -79,7 +83,9 @@ fn cancel_admin_transfer_removes_pending() {
 
     let admin = Address::generate(&env);
     let new_admin = Address::generate(&env);
-    let token = Address::generate(&env);
+    let token = env
+        .register_stellar_asset_contract_v2(Address::generate(&env))
+        .address();
 
     let contract_id = env.register(FiatBridge, ());
     let client = FiatBridgeClient::new(&env, &contract_id);
@@ -104,7 +110,9 @@ fn cancel_when_no_pending_returns_error() {
     env.mock_all_auths();
 
     let admin = Address::generate(&env);
-    let token = Address::generate(&env);
+    let token = env
+        .register_stellar_asset_contract_v2(Address::generate(&env))
+        .address();
 
     let contract_id = env.register(FiatBridge, ());
     let client = FiatBridgeClient::new(&env, &contract_id);
@@ -123,7 +131,9 @@ fn config_snapshot_includes_proposed_at() {
 
     let admin = Address::generate(&env);
     let new_admin = Address::generate(&env);
-    let token = Address::generate(&env);
+    let token = env
+        .register_stellar_asset_contract_v2(Address::generate(&env))
+        .address();
 
     let contract_id = env.register(FiatBridge, ());
     let client = FiatBridgeClient::new(&env, &contract_id);

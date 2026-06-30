@@ -49,8 +49,12 @@ pub const FIXED_POINT: i128 = 10_000_000;
 /// assert_eq!(mul_div_floor(-7, 3, 2), -11);
 /// ```
 pub fn checked_mul_div_floor(a: i128, b: i128, d: i128) -> Result<i128, Error> {
+    // Issue #966: use checked_mul to prevent silent overflow on large deposits
     let product = a.checked_mul(b).ok_or(Error::Overflow)?;
-    let quotient = if product >= 0 || product % d == 0 {
+    // Rust integer division already truncates toward zero.
+    // For non-negative products that equals floor; for negative products we
+    // subtract 1 if there is a remainder, giving true floor semantics.
+    Ok(if product >= 0 || product % d == 0 {
         product / d
     } else {
         product / d - 1
@@ -94,8 +98,11 @@ pub fn mul_div_floor(a: i128, b: i128, d: i128) -> i128 {
 /// assert_eq!(mul_div_ceil(6, 2, 3), 4);
 /// ```
 pub fn checked_mul_div_ceil(a: i128, b: i128, d: i128) -> Result<i128, Error> {
+    // Issue #966: use checked_mul to prevent silent overflow on large deposits
     let product = a.checked_mul(b).ok_or(Error::Overflow)?;
-    let quotient = if product >= 0 {
+    // Ceiling division: (product + d - 1) / d for positive values
+    // For negative products, we use floor semantics (same as mul_div_floor)
+    Ok(if product >= 0 {
         product.checked_add(d - 1).ok_or(Error::Overflow)? / d
     } else if product % d == 0 {
         product / d

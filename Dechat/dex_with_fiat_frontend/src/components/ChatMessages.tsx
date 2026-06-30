@@ -177,7 +177,16 @@ export default function ChatMessages({
       // Only auto-scroll to bottom if we are NOT loading more previous messages
       if (!isLoadingMore && !shouldPreserveScroll) {
         const timer = setTimeout(() => {
-          scrollToBottom();
+          // Check if user is within 100px of bottom before auto-scrolling
+          if (containerRef.current) {
+            const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
+            const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+            
+            // Auto-scroll only if within 100px of bottom
+            if (distanceFromBottom <= 100) {
+              scrollToBottom();
+            }
+          }
         }, 100);
         return () => clearTimeout(timer);
       }

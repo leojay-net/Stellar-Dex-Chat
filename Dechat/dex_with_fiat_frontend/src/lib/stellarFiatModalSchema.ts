@@ -30,6 +30,11 @@ const riskConfirmationSchema = z
   .transform((s) => s.trim().toUpperCase())
   .pipe(z.literal(STELLAR_FIAT_RISK_CONFIRMATION_PHRASE));
 
+const twoFactorConfirmationSchema = z
+  .string()
+  .transform((s) => s.trim())
+  .refine((s) => s.length >= 4, 'Enter at least 4 characters');
+
 /**
  * Validates modal fields before building a Soroban transaction.
  * Returns the first user-facing error message, or `null` when valid.
@@ -41,6 +46,7 @@ export function validateStellarFiatModalForm(input: {
   note: string;
   riskConfirmation: string;
   isRiskyAmount: boolean;
+  twoFactorConfirmation?: string;
 }): string | null {
   if (input.isAdminMode) {
     const r = z
@@ -81,11 +87,13 @@ export function validateStellarFiatModalForm(input: {
       amount: amountStringSchema,
       note: noteSchema,
       riskConfirmation: riskConfirmationSchema,
+      twoFactorConfirmation: input.twoFactorConfirmation ? twoFactorConfirmationSchema : z.string().optional(),
     })
     .safeParse({
       amount: input.amount,
       note: input.note,
       riskConfirmation: input.riskConfirmation,
+      twoFactorConfirmation: input.twoFactorConfirmation,
     });
   if (!r.success) {
     return (

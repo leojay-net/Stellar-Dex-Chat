@@ -41,6 +41,47 @@ flowchart TD
 
 ---
 
+## Circuit Breaker
+
+The FiatBridge uses a **global rolling withdrawal circuit breaker** as a last-resort safety stop for withdrawal flows.
+
+### What it watches
+
+- Every `withdraw`, `request_withdrawal`, and `execute_withdrawal` call contributes to a shared rolling withdrawal total.
+- The total is tracked in `GlobalDailyWithdrawn { amount, window_start }`.
+- The default evaluation window is 24 hours (`WINDOW_LEDGERS`).
+
+### When it trips
+
+- Admin configures the breaker with `set_circuit_breaker_threshold(threshold)`.
+- A threshold of `0` disables the breaker entirely.
+- If a withdrawal would push the rolling total **above** the configured threshold, that withdrawal is rejected and the contract marks the breaker as tripped.
+- The contract emits `CircuitBreakerTrippedEvent { new_total, threshold }` and stores the trip ledger in `CircuitBreakerTrippedAt`.
+
+### What gets blocked
+
+While the breaker is active, the contract refuses high-sensitivity operations that would otherwise continue withdrawal processing, including:
+
+- `withdraw`
+- `request_withdrawal`
+- `execute_withdrawal`
+- `heartbeat`
+- `get_receipt_by_index`
+- selected admin mutations such as `set_limit`
+
+### How reset works
+
+- Admin can clear it manually with `reset_circuit_breaker()`.
+- Admin can configure auto-reset behavior with `set_circuit_breaker_reset_window(ledgers)`.
+- `0` means "use the default 48-hour window" (`CIRCUIT_BREAKER_RESET_LEDGERS`).
+- `u32::MAX` disables auto-reset entirely.
+- On auto-reset, the breaker clears and the rolling withdrawal window is restarted, and the contract emits `CircuitBreakerAutoResetEvent { tripped_at, reset_at }`.
+
+### Operational guidance
+
+- Use the breaker as a **system-wide safety rail**, not as a user-specific rate limiter.
+- Keep the threshold high enough to tolerate normal batched withdrawals but low enough to catch runaway operator or automation behavior.
+- If the breaker trips unexpectedly, inspect recent withdrawal and heartbeat activity before manually resetting it.
 ## Admin Authentication Architecture
 
 Admin privileges in the FiatBridge are strictly tied to the on-chain state. The architecture ensures that no front-end spoofing or bypassed routing can escalate privileges.

@@ -108,6 +108,100 @@ export const telemetryMotionVariants: Variants = {
   },
 };
 
+/** Visual weight applied to a telemetry chip/toast animation. */
+export type TelemetryMotionIntent = 'info' | 'success' | 'warning' | 'error';
+
+/**
+ * Reduced-motion variant set used when the user has requested reduced motion.
+ * Animates opacity only — no transforms — so vestibular-sensitive users are
+ * not exposed to movement while telemetry chips/toasts mount and unmount.
+ */
+export const reducedTelemetryMotionVariants: Variants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { duration: 0.01 } },
+  exit: { opacity: 0, transition: { duration: 0.01 } },
+};
+
+/** Entry offset (px) per intent — higher-signal events animate with more travel. */
+const TELEMETRY_INTENT_OFFSETS: Record<TelemetryMotionIntent, number> = {
+  info: 6,
+  success: 6,
+  warning: 8,
+  error: 10,
+};
+
+/**
+ * Map a telemetry event name to the motion intent that best matches its
+ * visual weight, so higher-signal events (retries/contrast warnings) animate
+ * with a little more emphasis than routine ones.
+ */
+export function telemetryEventMotionIntent(
+  name: ChatEventName,
+): TelemetryMotionIntent {
+  switch (name) {
+    case 'message_retry':
+      return 'error';
+    case 'avatar_color_check':
+      return 'warning';
+    case 'tx_confirm':
+    case 'wallet_connect':
+      return 'success';
+    default:
+      return 'info';
+  }
+}
+
+/**
+ * SSR-safe detection of the user's `prefers-reduced-motion` setting.
+ * Returns false on the server or when matchMedia is unavailable/throws.
+ */
+export function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return false;
+  }
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Build framer-motion variants for telemetry chips/toasts.
+ *
+ * Honors `prefers-reduced-motion` (passed explicitly via `options.reducedMotion`
+ * or auto-detected from the environment) by returning a movement-free fade.
+ * Otherwise returns intent-weighted enter/exit variants.
+ */
+export function getTelemetryMotionVariants(options?: {
+  reducedMotion?: boolean;
+  intent?: TelemetryMotionIntent;
+}): Variants {
+  const reducedMotion = options?.reducedMotion ?? prefersReducedMotion();
+  if (reducedMotion) {
+    return reducedTelemetryMotionVariants;
+  }
+
+  const intent = options?.intent ?? 'info';
+  const offset = TELEMETRY_INTENT_OFFSETS[intent];
+
+  return {
+    hidden: { opacity: 0, y: offset, scale: 0.98 },
+    visible: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: { duration: 0.2, ease: 'easeOut' },
+    },
+    exit: {
+      opacity: 0,
+      y: -Math.round(offset / 2),
+      scale: 0.98,
+      transition: { duration: 0.15, ease: 'easeIn' },
+    },
+  };
+}
+
 // ── Consent key ───────────────────────────────────────────────────────────
 
 const CONSENT_KEY = 'nova_telemetry_consent';

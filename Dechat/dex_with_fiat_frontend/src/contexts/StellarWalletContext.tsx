@@ -17,6 +17,7 @@ import {
   setAllowed,
 } from '@stellar/freighter-api';
 import { Networks } from '@stellar/stellar-sdk';
+import { fetchXlmBalance } from '@/lib/stellarContract';
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const STORAGE_KEY_ADDRESS = 'stellar_address';
@@ -69,6 +70,7 @@ interface StellarWalletContextType {
   connection: StellarWalletConnection;
   accounts: WalletAccount[];
   selectedAccountIndex: number;
+  xlmBalance: string;
   selectAccount: (index: number) => void;
   connect: () => Promise<void>;
   disconnect: () => void;
@@ -94,6 +96,7 @@ const StellarWalletContext = createContext<StellarWalletContextType>({
   connection: defaultConnection,
   accounts: [],
   selectedAccountIndex: 0,
+  xlmBalance: '',
   selectAccount: () => {},
   connect: async () => {},
   disconnect: () => {},
@@ -116,6 +119,7 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [xlmBalance, setXlmBalance] = useState('');
 
   useEffect(() => {
     const check = async () => {
@@ -174,6 +178,7 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
               network: netResult.network || 'TESTNET',
               networkPassphrase: netResult.networkPassphrase || '',
             });
+            fetchXlmBalance(addrResult.address).then(setXlmBalance).catch(() => {});
           }
         })
         .catch(() => {});
@@ -231,6 +236,7 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
         network: netResult.network || 'TESTNET',
         networkPassphrase: passphrase,
       });
+      fetchXlmBalance(addr).then(setXlmBalance).catch(() => {});
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'Failed to connect Freighter',
@@ -247,6 +253,7 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
     setConnection(defaultConnection);
     setAccounts([]);
     setSelectedAccountIndex(0);
+    setXlmBalance('');
     setError(null);
     setSessionExpired(false);
   }, []);
@@ -278,6 +285,7 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
         }));
         localStorage.setItem(STORAGE_KEY_ADDRESS, selectedAccount.address);
         localStorage.setItem(STORAGE_KEY_TIMESTAMP, String(Date.now()));
+        fetchXlmBalance(selectedAccount.address).then(setXlmBalance).catch(() => {});
       } catch (err) {
         setError(
           err instanceof Error ? err.message : 'Failed to switch account',
@@ -321,6 +329,7 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
         connection,
         accounts,
         selectedAccountIndex,
+        xlmBalance,
         selectAccount,
         connect,
         disconnect,

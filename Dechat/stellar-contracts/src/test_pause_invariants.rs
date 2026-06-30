@@ -385,3 +385,32 @@ fn test_pause_blocks_all_state_changing_operations() {
         Err(Ok(Error::ContractPaused))
     );
 }
+
+#[test]
+fn test_pause_blocks_withdrawal_finalization() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, admin, token_addr, token_client, token_admin) = setup_bridge(&env);
+    let user = Address::generate(&env);
+
+    token_admin.mint(&user, &5_000);
+    let reference = Bytes::from_slice(&env, b"test");
+    bridge.deposit(&user, &1_000, &token_addr, &reference, &0, &0, &None);
+
+    let request_id = bridge.request_withdrawal(&user, &500, &token_addr, &None, &0);
+
+    bridge.pause();
+
+    let result = bridge.try_execute_withdrawal(&request_id, &None, &0, &0);
+    assert_eq!(result, Err(Ok(Error::ContractPaused)));
+
+    let balance_after = token_client.balance(&user);
+    assert_eq!(balance_after, 4_000);
+
+    let contract_balance = token_client.balance(&contract_id);
+    assert_eq!(contract_balance, 1_000);
+
+    let total_withdrawn = bridge.get_total_withdrawn().unwrap();
+    assert_eq!(total_withdrawn, 0);
+}

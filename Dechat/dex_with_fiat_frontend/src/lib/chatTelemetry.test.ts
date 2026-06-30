@@ -7,6 +7,10 @@ import {
   setTelemetryConsent,
   TELEMETRY_SCHEMA_VERSION,
   telemetryMotionVariants,
+  reducedTelemetryMotionVariants,
+  getTelemetryMotionVariants,
+  telemetryEventMotionIntent,
+  prefersReducedMotion,
   type ChatEvent,
   type AccessibleAvatarColorTelemetryPayload,
   type MessageSendPayload,
@@ -188,6 +192,61 @@ describe('Telemetry motion variants', () => {
     expect(telemetryMotionVariants.hidden).toBeDefined();
     expect(telemetryMotionVariants.visible).toBeDefined();
     expect(telemetryMotionVariants.exit).toBeDefined();
+  });
+});
+
+// ── Reduced-motion aware variants (issue #674) ─────────────────────────────
+
+describe('getTelemetryMotionVariants (issue #674)', () => {
+  function setReducedMotionPreference(matches: boolean) {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })) as unknown as typeof window.matchMedia;
+  }
+
+  it('returns intent-weighted travel for the default (info) intent', () => {
+    const variants = getTelemetryMotionVariants({ reducedMotion: false });
+    expect((variants.hidden as { y: number }).y).toBe(6);
+    expect((variants.visible as { y: number }).y).toBe(0);
+  });
+
+  it('animates errors with more emphasis than info events', () => {
+    const info = getTelemetryMotionVariants({ reducedMotion: false, intent: 'info' });
+    const error = getTelemetryMotionVariants({ reducedMotion: false, intent: 'error' });
+    expect((error.hidden as { y: number }).y).toBeGreaterThan(
+      (info.hidden as { y: number }).y,
+    );
+  });
+
+  it('returns a movement-free fade when reduced motion is requested', () => {
+    const variants = getTelemetryMotionVariants({ reducedMotion: true });
+    expect(variants).toBe(reducedTelemetryMotionVariants);
+    expect((variants.hidden as { y?: number }).y).toBeUndefined();
+    expect((variants.hidden as { opacity: number }).opacity).toBe(0);
+  });
+
+  it('auto-detects prefers-reduced-motion from matchMedia', () => {
+    setReducedMotionPreference(true);
+    expect(prefersReducedMotion()).toBe(true);
+    expect(getTelemetryMotionVariants()).toBe(reducedTelemetryMotionVariants);
+
+    setReducedMotionPreference(false);
+    expect(prefersReducedMotion()).toBe(false);
+    expect((getTelemetryMotionVariants().hidden as { y: number }).y).toBe(6);
+  });
+
+  it('maps event names to an appropriate motion intent', () => {
+    expect(telemetryEventMotionIntent('message_retry')).toBe('error');
+    expect(telemetryEventMotionIntent('avatar_color_check')).toBe('warning');
+    expect(telemetryEventMotionIntent('tx_confirm')).toBe('success');
+    expect(telemetryEventMotionIntent('message_send')).toBe('info');
   });
 });
 

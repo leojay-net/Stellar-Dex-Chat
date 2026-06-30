@@ -19,6 +19,7 @@ export function useIdempotentAction(options: IdempotentActionOptions = {}) {
   // even when Date.now() returns 0 (e.g. with vi.useFakeTimers()).
   const lastExecutionTime = useRef(-(cooldownMs ?? 2000));
   const idempotencyKey = useRef<string>('');
+  const inFlightActions = useRef(new Map<string, Promise<unknown>>());
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -33,6 +34,22 @@ export function useIdempotentAction(options: IdempotentActionOptions = {}) {
       action: (idempotencyKey: string) => Promise<T>,
       actionName = 'action',
     ): Promise<T | null> => {
+      const inFlightAction = inFlightActions.current.get(actionName);
+      if (inFlightAction) {
+        if (logSuppressed) {
+          console.warn(
+            `[useIdempotentAction] Suppressed duplicate ${actionName} attempt`,
+            {
+              actionName,
+              isProcessing: isProcessingRef.current,
+              deduped: true,
+              timestamp: new Date().toISOString(),
+            },
+          );
+        }
+        return inFlightAction as Promise<T>;
+      }
+
       const now = Date.now();
       const timeSinceLastExecution = now - lastExecutionTime.current;
 
@@ -58,9 +75,11 @@ export function useIdempotentAction(options: IdempotentActionOptions = {}) {
       lastExecutionTime.current = now;
 
       try {
-        const result = await action(idempotencyKey.current);
-        return result;
+        const actionPromise = action(idempotencyKey.current);
+        inFlightActions.current.set(actionName, actionPromise);
+        return await actionPromise;
       } finally {
+        inFlightActions.current.delete(actionName);
         isProcessingRef.current = false;
         if (isMountedRef.current) setIsProcessing(false);
       }
@@ -70,6 +89,7 @@ export function useIdempotentAction(options: IdempotentActionOptions = {}) {
 
   const reset = useCallback(() => {
     isProcessingRef.current = false;
+    inFlightActions.current.clear();
     if (isMountedRef.current) setIsProcessing(false);
     lastExecutionTime.current = -(cooldownMs ?? 2000);
     idempotencyKey.current = '';

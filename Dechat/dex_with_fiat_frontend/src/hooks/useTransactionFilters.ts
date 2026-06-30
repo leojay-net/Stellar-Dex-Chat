@@ -225,6 +225,50 @@ function getToneKeyForCategory(
   return sequence[hashFilterValue(value) % sequence.length];
 }
 
+/**
+ * Guaranteed dark-mode-safe utility classes appended when a tone definition is
+ * missing `dark:` variants. Acts as a neutral fallback so chips remain legible
+ * in dark mode even if a palette is extended without explicit dark-mode classes.
+ */
+export const DARK_MODE_FALLBACK_CLASSES = {
+  chipClassName: 'dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100',
+  countClassName: 'dark:bg-slate-800 dark:text-slate-100',
+} as const;
+
+/**
+ * Append fallback dark-mode classes when `className` declares no `dark:`
+ * variants. Tailwind keeps the last-declared utility per property, so the
+ * appended fallback only takes effect where a dark variant is otherwise absent.
+ */
+export function ensureDarkModeClasses(
+  className: string,
+  fallbackDarkClasses: string,
+): string {
+  if (/(?:^|\s)dark:/.test(className)) {
+    return className;
+  }
+  const trimmed = className.trim();
+  return trimmed ? `${trimmed} ${fallbackDarkClasses}` : fallbackDarkClasses;
+}
+
+/**
+ * Ensure a filter chip tone renders correctly in dark mode by backfilling
+ * fallback `dark:` classes on any field that lacks them. Tones that already
+ * declare dark-mode variants are returned unchanged.
+ */
+export function withDarkModeFallback(tone: FilterChipTone): FilterChipTone {
+  return {
+    chipClassName: ensureDarkModeClasses(
+      tone.chipClassName,
+      DARK_MODE_FALLBACK_CLASSES.chipClassName,
+    ),
+    countClassName: ensureDarkModeClasses(
+      tone.countClassName,
+      DARK_MODE_FALLBACK_CLASSES.countClassName,
+    ),
+  };
+}
+
 export function getAccessibleFilterChipTone(
   category: FilterCategory,
   value: string,
@@ -234,10 +278,10 @@ export function getAccessibleFilterChipTone(
   const palette = FILTER_TONE_PALETTES[toneKey];
   const toneState = selected ? palette.selected : palette.unselected;
 
-  return {
+  return withDarkModeFallback({
     chipClassName: toneState.chipClassName,
     countClassName: toneState.countClassName,
-  };
+  });
 }
 
 /**

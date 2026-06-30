@@ -2,7 +2,9 @@
 
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
 import { AIAssistant } from '@/lib/aiAssistant';
+import { getOrCreateClientSessionId } from '@/lib/clientSession';
 import { perf } from '@/lib/perf';
+import { type PaymentStatusEvent } from '@/lib/paymentStatusEvents';
 import {
   AIAnalysisResult,
   ChatMessage,
@@ -47,6 +49,8 @@ type QueuedSend = {
   };
 };
 
+const POLL_INTERVAL_MS = 3_000;
+
 const useChat = () => {
   const { connection } = useStellarWallet();
   const {
@@ -67,6 +71,13 @@ const useChat = () => {
   const [onTransactionReady, setOnTransactionReady] = useState<
     ((data: TransactionData) => void) | null
   >(null);
+
+  // Transaction status – updated via SSE or polling fallback
+  const [transactionStatus, setTransactionStatus] = useState<PaymentStatusEvent | null>(null);
+
+  // SSE connection and polling fallback refs
+  const sseRef = useRef<EventSource | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const getInitialSuggestedActions = useCallback(() => {
     if (connection.isConnected) {
@@ -109,9 +120,9 @@ I'm your AI specialist for seamless XLM-to-fiat conversions on Stellar. I can he
 **Optimize timing** for better conversion rates
 
 ${connection.isConnected
-          ? `**Freighter Connected**: Ready to check your XLM portfolio and start conversions!`
-          : `**Connect Freighter** to get started with personalized XLM portfolio analysis.`
-        }
+        ? `**Freighter Connected**: Ready to check your XLM portfolio and start conversions!`
+        : `**Connect Freighter** to get started with personalized XLM portfolio analysis.`
+      }
 
 What would you like to do today? I'm here to make your XLM-to-fiat journey smooth and profitable!`,
       timestamp: new Date(),
@@ -146,6 +157,81 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  // ── Transaction status: SSE with 3s polling fallback ─────────────────────────
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const sessionId = getOrCreateClientSessionId();
+    if (!sessionId) return;
+
+    const streamUrl = `/api/payment-status/stream?sessionId=${encodeURIComponent(sessionId)}`;
+
+    const handleStatusEvent = (payload: PaymentStatusEvent) => {
+      setTransactionStatus(payload);
+    };
+
+    const stopPolling = () => {
+      if (pollIntervalRef.current !== null) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+
+    const startPolling = () => {
+      stopPolling();
+      pollIntervalRef.current = setInterval(async () => {
+        const reference =
+          machineRef.current.getState().context.pendingTransactionData?.transactionId;
+        if (!reference) return;
+        try {
+          const res = await fetch(
+            `/api/transfer-status/${encodeURIComponent(reference)}`,
+          );
+          if (res.ok) {
+            const json = (await res.json()) as { success: boolean; data?: PaymentStatusEvent };
+            if (json.success && json.data) {
+              handleStatusEvent(json.data);
+            }
+          }
+        } catch {
+          // network failure during polling — retry on next tick
+        }
+      }, POLL_INTERVAL_MS);
+    };
+
+    if (typeof EventSource === 'undefined') {
+      // SSE not available in this environment — go straight to polling
+      startPolling();
+    } else {
+      const es = new EventSource(streamUrl);
+      sseRef.current = es;
+
+      es.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data as string) as PaymentStatusEvent;
+          handleStatusEvent(payload);
+        } catch {
+          // malformed SSE data — ignore
+        }
+      };
+
+      es.onerror = () => {
+        es.close();
+        sseRef.current = null;
+        // SSE failed — fall back to polling
+        startPolling();
+      };
+    }
+
+    return () => {
+      sseRef.current?.close();
+      sseRef.current = null;
+      stopPolling();
+    };
+  // Re-run only when the session changes so the connection tracks the right session.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSessionId]);
 
   const appendCancelledMessage = useCallback((content: string) => {
     const uid =
@@ -243,19 +329,19 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
               },
             }
           : m.id === optimisticUserId
-            ? {
-                ...m,
-                error: {
-                  message: 'Message failed to send. Please try again.',
-                  timestamp: new Date(),
-                  retryAttempts: m.error?.retryAttempts ?? 0,
-                },
-                metadata: {
-                  ...m.metadata,
-                  status: 'failed',
-                },
-              }
-            : m,
+          ? {
+              ...m,
+              error: {
+                message: 'Message failed to send. Please try again.',
+                timestamp: new Date(),
+                retryAttempts: m.error?.retryAttempts ?? 0,
+              },
+              metadata: {
+                ...m.metadata,
+                status: 'failed',
+              },
+            }
+          : m,
       ),
     );
   }, []);
@@ -449,6 +535,40 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
                     shouldAutoTrigger: !!shouldAutoTrigger,
                     isAdmin: isAdmin,
                     lowConfidence: needsClarification,
+                  }),
+                  confirmationRequired:
+                    analysis.intent === 'fiat_conversion' ||
+                    shouldTriggerTransaction,
+                  autoTriggerTransaction: shouldTriggerTransaction,
+                  conversationCount: newMessageCount,
+                  lowConfidence: needsClarification,
+                  clarificationQuestion: clarificationQuestion || undefined,
+                },
+              }
+            : m,
+        ),
+      );
+
+      setMessages((prev: ChatMessage[]) =>
+        prev.map((m) =>
+          m.id === optimisticUserId
+            ? {
+                ...m,
+                content: enhancedResponse,
+                metadata: {
+                  ...m.metadata,
+                  status: 'sent',
+                  guardrail: analysis.guardrail,
+                  transactionData: shouldShowTransactionData
+                    ? (analysis.extractedData as TransactionData)
+                    : undefined,
+                  suggestedActions: generateSuggestedActions(analysis, {
+                    isWalletConnected: connection.isConnected,
+                    messageCount: newMessageCount,
+                    hasTransactionData: !!pendingTransactionData,
+                    shouldAutoTrigger: !!shouldAutoTrigger,
+                    isAdmin: isAdmin,
+                    lowConfidence: needsClarification,
                     clarificationQuestion: clarificationQuestion || undefined,
                   }),
                   confirmationRequired:
@@ -460,15 +580,7 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
                   clarificationQuestion: clarificationQuestion || undefined,
                 },
               }
-            : m.id === optimisticUserId
-              ? {
-                  ...m,
-                  metadata: {
-                    ...m.metadata,
-                    status: 'sent',
-                  },
-                }
-              : m,
+            : m,
         ),
       );
 
@@ -813,6 +925,7 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
     loadChatSession,
     currentSessionId,
     conversationState,
+    transactionStatus,
     setTransactionReadyCallback,
     setIsAdmin: setIsAdminState,
     cancelPendingRequest,

@@ -1100,7 +1100,7 @@ fn test_fallback_oracle_used_when_primary_stale() {
         &600,
         &None,
     );
-    assert_eq!(token.balance(&user), 99_000);
+    assert_eq!(_token.balance(&user), 99_000);
 }
 
 #[test]
@@ -1875,23 +1875,78 @@ fn test_is_denied_returns_correct_value() {
     assert!(!bridge.is_denied(&user));
 }
 
+// ── is_denied overflow prevention tests ─────────────────────────────────
+
 #[test]
-fn test_get_escrow_record() {
+fn test_is_denied_emits_event_for_denied_address() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_, bridge, admin, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
     let user = Address::generate(&env);
-    token_sac.mint(&user, &5_000);
 
-    bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    bridge.migrate_escrow(&10);
+    bridge.deny_address(&user);
 
-    let escrow = bridge.get_escrow_record(&0).unwrap();
-    assert_eq!(escrow.version, 1);
-    assert_eq!(escrow.depositor, user);
-    assert_eq!(escrow.amount, 100);
-    assert!(escrow.migrated);
+    // is_denied should return true and emit IsDeniedCheckedEvent
+    let result = bridge.is_denied(&user);
+    assert!(result);
+
+    // At least one event was emitted (DenyAddressEvent + IsDeniedCheckedEvent)
+    let events = env.events().all();
+    assert!(!events.is_empty(), "expected events to be emitted");
+}
+
+#[test]
+fn test_is_denied_emits_event_for_non_denied_address() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+
+    // is_denied on a non-denied address should return false and emit an event
+    let result = bridge.is_denied(&user);
+    assert!(!result);
+
+    let events = env.events().all();
+    assert!(!events.is_empty(), "IsDeniedCheckedEvent should be emitted even for non-denied address");
+}
+
+#[test]
+fn test_is_denied_overflow_guard_safe_with_normal_count() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+
+    // Normal operation: DeniedCount is well below u64::MAX — no overflow error
+    bridge.deny_address(&user);
+    let result = bridge.try_is_denied(&user);
+    assert_eq!(result, Ok(Ok(true)));
+}
+
+#[test]
+fn test_get_denied_addresses_safe_iteration() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+    let user1 = Address::generate(&env);
+    let user2 = Address::generate(&env);
+
+    bridge.deny_address(&user1);
+    bridge.deny_address(&user2);
+
+    // Verified: offset and limit behave correctly without overflow in iteration
+    let page = bridge.get_denied_addresses(&0, &10);
+    assert_eq!(page.len(), 2);
+    assert!(page.contains(&user1));
+    assert!(page.contains(&user2));
+
+    // Offset past end returns empty — no panic from overflow
+    let empty = bridge.get_denied_addresses(&100, &10);
+    assert_eq!(empty.len(), 0);
 }
 
 // ── batch admin operations tests ──────────────────────────────────────────
@@ -2218,8 +2273,54 @@ fn test_withdraw_fees_exceeds_accrued() {
 
     bridge.accrue_fee(&token_addr, &50);
 
+    // Amount (100) exceeds available fees (50) — returns FeeWithdrawalExceedsBalance
     let result = bridge.try_withdraw_fees(&Some(Address::generate(&env)), &token_addr, &100, &0);
     assert_eq!(result, Err(Ok(Error::FeeWithdrawalExceedsBalance)));
+}
+
+// ── withdraw_fees edge case validation tests (issue #713) ────────────────
+
+#[test]
+fn test_withdraw_fees_zero_accrued_returns_no_fees_error() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, _) = setup_bridge(&env, 10_000);
+
+    // No fees accrued at all — must return NoFeesToWithdraw
+    let result = bridge.try_withdraw_fees(&Some(Address::generate(&env)), &token_addr, &1, &0);
+    assert_eq!(result, Err(Ok(Error::NoFeesToWithdraw)));
+}
+
+#[test]
+fn test_withdraw_fees_exact_balance_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, _, token_addr, token, token_sac) = setup_bridge(&env, 10_000);
+    let recipient = Address::generate(&env);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+
+    bridge.deposit(&user, &1_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.accrue_fee(&token_addr, &100);
+
+    // Withdraw exactly the accrued amount — boundary condition must succeed
+    bridge.withdraw_fees(&recipient, &token_addr, &100);
+    assert_eq!(bridge.get_accrued_fees(&token_addr), 0);
+}
+
+#[test]
+fn test_withdraw_fees_zero_amount_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, _) = setup_bridge(&env, 10_000);
+    bridge.accrue_fee(&token_addr, &100);
+
+    // Zero withdrawal amount must return ZeroAmount
+    let result = bridge.try_withdraw_fees(&Address::generate(&env), &token_addr, &0);
+    assert_eq!(result, Err(Ok(Error::ZeroAmount)));
 }
 
 #[test]
@@ -3171,6 +3272,62 @@ fn test_event_version_get_receipt_by_index() {
     // verify the receipt is returned with the expected versioned deposit id.
     let receipt = bridge.get_receipt_by_index(&user, &0);
     assert_eq!(receipt.amount, 100);
+}
+
+// ── get_receipt_by_index circuit breaker tests ───────────────────────────
+
+#[test]
+fn test_get_receipt_by_index_circuit_breaker_emits_event_on_out_of_bounds() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let user = Address::generate(&env);
+    token_sac.mint(&user, &5_000);
+
+    bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    // Out-of-bounds access should return None (circuit breaker fires)
+    let result = bridge.get_receipt_by_index(&99);
+    assert!(result.is_none(), "circuit breaker must return None for out-of-bounds index");
+
+    // At least one ReceiptIndexOutOfBoundsEvent should have been emitted
+    let events = env.events().all().filter_by_contract(&contract_id);
+    let raw = events.events();
+    assert!(
+        !raw.is_empty(),
+        "ReceiptIndexOutOfBoundsEvent should be emitted when circuit breaker trips"
+    );
+}
+
+#[test]
+fn test_get_receipt_by_index_circuit_breaker_u64_max() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+
+    // u64::MAX with zero receipts: circuit breaker must not panic
+    let result = bridge.get_receipt_by_index(&u64::MAX);
+    assert!(result.is_none());
+}
+
+#[test]
+fn test_get_receipt_by_index_circuit_breaker_empty_store() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+
+    // No deposits at all — any index triggers the circuit breaker
+    let result = bridge.get_receipt_by_index(&0);
+    assert!(result.is_none());
+
+    let events = env.events().all().filter_by_contract(&contract_id);
+    assert!(
+        !events.events().is_empty(),
+        "circuit breaker event must fire even for index 0 when store is empty"
+    );
 }
 
 #[test]

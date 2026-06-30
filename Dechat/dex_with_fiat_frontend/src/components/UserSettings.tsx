@@ -16,6 +16,7 @@ import {
 import { useAccessibleModal } from '@/hooks/useAccessibleModal';
 import { useChatTelemetry } from '@/hooks/useChatTelemetry';
 import { useBeneficiaries, Beneficiary } from '@/hooks/useBeneficiaries';
+import { useWatchlist } from '@/hooks/useWatchlist';
 
 interface UserSettingsProps {
   isOpen: boolean;
@@ -33,11 +34,21 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
     setRemindersEnabled,
     reminderFrequency,
     setReminderFrequency,
+    highValueThreshold,
+    setHighValueThreshold,
+    twoFactorEnabled,
+    setTwoFactorEnabled,
   } = useUserPreferences();
   const { consented: telemetryConsented, setConsent: setTelemetryConsent } = useChatTelemetry();
   const { beneficiaries, isLoaded, addBeneficiary, deleteBeneficiary, renameBeneficiary } = useBeneficiaries();
+  const { watchlist, isLoaded: watchlistLoaded, addAddress, removeAddress } = useWatchlist();
   const panelRef = useRef<HTMLDivElement>(null);
-  
+
+  // Watchlist states
+  const [showAddWatch, setShowAddWatch] = useState(false);
+  const [watchAddress, setWatchAddress] = useState('');
+  const [watchLabel, setWatchLabel] = useState('');
+
   // Beneficiary management states
   const [showAddBeneficiary, setShowAddBeneficiary] = useState(false);
   const [editingBeneficiary, setEditingBeneficiary] = useState<Beneficiary | null>(null);
@@ -307,6 +318,149 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
             )}
           </section>
 
+          {/* Watchlist section (issue #1032) */}
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <h3
+                className={`text-xs font-semibold uppercase tracking-wider ${
+                  isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                }`}
+              >
+                Wallet Watchlist
+              </h3>
+              <button
+                onClick={() => {
+                  setWatchAddress('');
+                  setWatchLabel('');
+                  setShowAddWatch(!showAddWatch);
+                }}
+                className={`p-1.5 rounded-lg transition-colors ${
+                  isDarkMode
+                    ? 'text-blue-400 hover:bg-blue-900/20'
+                    : 'text-blue-600 hover:bg-blue-100'
+                }`}
+                aria-label="Add wallet to watchlist"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+            <p className={`text-xs mb-4 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+              Receive a toast and browser notification when a watched wallet receives funds.
+            </p>
+
+            {showAddWatch && (
+              <div className={`p-3 rounded-lg mb-3 border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+                <div className="space-y-3">
+                  <div>
+                    <label className={`text-xs font-medium block mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                      Stellar Address
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="G…"
+                      value={watchAddress}
+                      onChange={(e) => setWatchAddress(e.target.value)}
+                      aria-label="Wallet address to watch"
+                      className={`w-full px-3 py-2 rounded-lg text-sm border transition-colors font-mono ${
+                        isDarkMode
+                          ? 'bg-gray-700 border-gray-600 text-white focus:border-blue-500'
+                          : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`text-xs font-medium block mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                      Label (optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g., Treasury"
+                      value={watchLabel}
+                      onChange={(e) => setWatchLabel(e.target.value)}
+                      aria-label="Label for this address"
+                      className={`w-full px-3 py-2 rounded-lg text-sm border transition-colors ${
+                        isDarkMode
+                          ? 'bg-gray-700 border-gray-600 text-white focus:border-blue-500'
+                          : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500'
+                      }`}
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        if (watchAddress.trim()) {
+                          addAddress(watchAddress.trim(), watchLabel.trim());
+                          setWatchAddress('');
+                          setWatchLabel('');
+                          setShowAddWatch(false);
+                        }
+                      }}
+                      className="flex-1 py-2 rounded-lg text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
+                    >
+                      <Check className="w-3 h-3" />
+                      Add
+                    </button>
+                    <button
+                      onClick={() => setShowAddWatch(false)}
+                      className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${
+                        isDarkMode
+                          ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {watchlistLoaded ? (
+              watchlist.length === 0 ? (
+                <p className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                  No addresses being watched.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {watchlist.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className={`p-2 rounded-lg border flex items-center justify-between group ${
+                        isDarkMode
+                          ? 'bg-gray-800 border-gray-700 hover:border-gray-600'
+                          : 'bg-gray-50 border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className={`text-xs font-medium truncate ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>
+                          {entry.label || entry.address.slice(0, 8)}
+                        </p>
+                        <p className={`text-[10px] font-mono truncate ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                          {entry.address.slice(0, 6)}…{entry.address.slice(-4)}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => removeAddress(entry.id)}
+                        aria-label={`Remove ${entry.label || entry.address} from watchlist`}
+                        className={`p-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity ${
+                          isDarkMode
+                            ? 'text-red-400 hover:bg-red-900/20'
+                            : 'text-red-600 hover:bg-red-100'
+                        }`}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : (
+              <p className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                Loading…
+              </p>
+            )}
+          </section>
+
           {/* Currency section */}
           <section>
             <h3
@@ -435,6 +589,85 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                 );
               })}
             </ul>
+          </section>
+
+          {/* High-Value Transfer Security section */}
+          <section
+            className={`pt-6 border-t ${featureFlagSectionDividerBorderClass(isDarkMode)}`}
+          >
+            <h3
+              className={`text-xs font-semibold uppercase tracking-wider mb-3 ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-500'
+              }`}
+            >
+              High-Value Transfer Security
+            </h3>
+            <p
+              className={`text-xs mb-4 ${
+                isDarkMode ? 'text-gray-500' : 'text-gray-400'
+              }`}
+            >
+              Configure additional security for large transfers
+            </p>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span
+                  className={`text-sm ${
+                    isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                  }`}
+                >
+                  Enable two-factor confirmation
+                </span>
+                <button
+                  onClick={() => setTwoFactorEnabled(!twoFactorEnabled)}
+                  aria-pressed={twoFactorEnabled}
+                  aria-label="Two-factor confirmation"
+                  className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors focus:outline-none ${
+                    twoFactorEnabled ? 'bg-blue-600' : 'bg-gray-700'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                      twoFactorEnabled ? 'translate-x-5.5' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {twoFactorEnabled && (
+                <div className="space-y-2">
+                  <label
+                    className={`text-[10px] font-bold uppercase tracking-widest ${
+                      isDarkMode ? 'text-gray-500' : 'text-gray-400'
+                    }`}
+                  >
+                    Threshold (XLM)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={highValueThreshold}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value, 10);
+                      if (!isNaN(value) && value > 0) {
+                        setHighValueThreshold(value);
+                      }
+                    }}
+                    className={`w-full px-3 py-2 rounded-lg text-sm border transition-colors ${
+                      isDarkMode
+                        ? 'bg-gray-700 border-gray-600 text-white focus:border-blue-500'
+                        : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500'
+                    }`}
+                    aria-label="High-value transfer threshold in XLM"
+                  />
+                  <p className={`text-[10px] ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                    Transfers above this amount will require additional confirmation
+                  </p>
+                </div>
+              )}
+            </div>
           </section>
 
           {/* Telemetry section */}

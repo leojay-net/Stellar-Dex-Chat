@@ -1,5 +1,5 @@
 import { TransactionData } from '@/types';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     ChatEvent,
     ChatGuards,
@@ -7,6 +7,8 @@ import {
     ChatState,
   copyChatStateSnapshot,
     createChatStateMachine,
+  createDebouncedDispatcher,
+  DEFAULT_DISPATCH_DEBOUNCE_MS,
   formatChatStateSnapshot,
 } from './chatStateMachine';
 
@@ -745,5 +747,83 @@ describe('chatStateMachine clipboard snapshot helpers', () => {
     const copied = await copyChatStateSnapshot(ChatState.SENDING_MESSAGE, context);
     expect(copied).toBe(true);
     expect(writeText).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── Debounced dispatcher (issue #588) ───────────────────────────────────────
+describe('createDebouncedDispatcher (issue #588)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  it('applies a single dispatched event after the debounce delay', () => {
+    const machine = createChatStateMachine();
+    machine.transition(ChatEvent.INITIALIZE_SESSION);
+    const dispatcher = createDebouncedDispatcher(machine, 200);
+
+    dispatcher.dispatch(ChatEvent.SEND_MESSAGE);
+    // Not applied yet — still within the debounce window.
+    expect(machine.getState().state).toBe(ChatState.INITIALIZED);
+    expect(dispatcher.isPending()).toBe(true);
+
+    vi.advanceTimersByTime(200);
+    expect(machine.getState().state).toBe(ChatState.SENDING_MESSAGE);
+    expect(dispatcher.isPending()).toBe(false);
+  });
+
+  it('collapses a burst of events into the latest one', () => {
+    const machine = createChatStateMachine();
+    machine.transition(ChatEvent.INITIALIZE_SESSION);
+    const transitionSpy = vi.spyOn(machine, 'transition');
+    const dispatcher = createDebouncedDispatcher(machine, 150);
+
+    // Rapid burst — only the last event should be applied once.
+    dispatcher.dispatch(ChatEvent.CLEAR_CHAT);
+    dispatcher.dispatch(ChatEvent.LOAD_SESSION);
+    dispatcher.dispatch(ChatEvent.SEND_MESSAGE);
+
+    vi.advanceTimersByTime(150);
+
+    expect(transitionSpy).toHaveBeenCalledTimes(1);
+    expect(transitionSpy).toHaveBeenCalledWith(ChatEvent.SEND_MESSAGE);
+    expect(machine.getState().state).toBe(ChatState.SENDING_MESSAGE);
+  });
+
+  it('flush applies the pending event immediately and returns the result', () => {
+    const machine = createChatStateMachine();
+    machine.transition(ChatEvent.INITIALIZE_SESSION);
+    const dispatcher = createDebouncedDispatcher(machine);
+
+    dispatcher.dispatch(ChatEvent.SEND_MESSAGE);
+    const result = dispatcher.flush();
+
+    expect(result).toBe(true);
+    expect(machine.getState().state).toBe(ChatState.SENDING_MESSAGE);
+    expect(dispatcher.isPending()).toBe(false);
+
+    // Nothing left to flush.
+    expect(dispatcher.flush()).toBe(false);
+  });
+
+  it('cancel discards the pending event without applying it', () => {
+    const machine = createChatStateMachine();
+    machine.transition(ChatEvent.INITIALIZE_SESSION);
+    const dispatcher = createDebouncedDispatcher(machine, 200);
+
+    dispatcher.dispatch(ChatEvent.SEND_MESSAGE);
+    dispatcher.cancel();
+
+    vi.advanceTimersByTime(500);
+    expect(machine.getState().state).toBe(ChatState.INITIALIZED);
+    expect(dispatcher.isPending()).toBe(false);
+  });
+
+  it('exposes a sensible default debounce window', () => {
+    expect(DEFAULT_DISPATCH_DEBOUNCE_MS).toBeGreaterThan(0);
   });
 });
