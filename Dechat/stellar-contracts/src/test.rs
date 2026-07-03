@@ -1873,7 +1873,7 @@ fn test_is_denied_emits_event_for_denied_address() {
 
     // At least one event was emitted (DenyAddressEvent + IsDeniedCheckedEvent)
     let events = env.events().all();
-    assert!(events.len() > 0, "expected events to be emitted");
+    assert!(events.events().len() > 0, "expected events to be emitted");
 }
 
 #[test]
@@ -1889,7 +1889,7 @@ fn test_is_denied_emits_event_for_non_denied_address() {
     assert!(!result);
 
     let events = env.events().all();
-    assert!(events.len() > 0, "IsDeniedCheckedEvent should be emitted even for non-denied address");
+    assert!(events.events().len() > 0, "IsDeniedCheckedEvent should be emitted even for non-denied address");
 }
 
 #[test]
@@ -3159,12 +3159,12 @@ fn test_get_receipt_by_index_out_of_range() {
     // Index 1 does not exist (only one deposit at index 0)
     assert_eq!(
         bridge.try_get_receipt_by_index(&1),
-        Ok(None)
+        Ok(Ok(None))
     );
     // Large out-of-range index
     assert_eq!(
         bridge.try_get_receipt_by_index(&999),
-        Ok(None)
+        Ok(Ok(None))
     );
 }
 
@@ -3186,11 +3186,11 @@ fn test_get_receipt_by_index_nonexistent_index() {
     // Indexes that were never written return ReceiptIndexOutOfBounds.
     assert_eq!(
         bridge.try_get_receipt_by_index(&50),
-        Ok(None)
+        Ok(Ok(None))
     );
     assert_eq!(
         bridge.try_get_receipt_by_index(&u64::MAX),
-        Ok(None)
+        Ok(Ok(None))
     );
 }
 
@@ -3211,7 +3211,7 @@ fn test_get_receipt_by_index_stale_temporary_index_returns_not_found() {
 
     assert_eq!(
         bridge.try_get_receipt_by_index(&0),
-        Ok(None)
+        Ok(Ok(None))
     );
 }
 
@@ -3234,7 +3234,7 @@ fn test_get_receipt_by_index_missing_persistent_receipt_returns_not_found() {
 
     assert_eq!(
         bridge.try_get_receipt_by_index(&0),
-        Ok(None)
+        Ok(Ok(None))
     );
 }
 
@@ -4698,10 +4698,10 @@ fn test_deposit_invariant_receipt_issued_event() {
     let receipt_id = bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
 
     // Verify receipt was created (receipts are indexed, so we get by index 0)
-    let receipt = bridge.get_receipt_by_index(&0);
-    assert_eq!(receipt.unwrap().depositor, user);
-    assert_eq!(receipt.unwrap().amount, 100);
-    assert!(!receipt.unwrap().refunded);
+    let receipt = bridge.get_receipt_by_index(&0).expect("receipt should exist");
+    assert_eq!(receipt.depositor, user);
+    assert_eq!(receipt.amount, 100);
+    assert!(!receipt.refunded);
 }
 
 #[test]
