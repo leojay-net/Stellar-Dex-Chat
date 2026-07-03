@@ -29,6 +29,26 @@ vi.mock('@/lib/stellarContract', () => ({
   BRIDGE_LIMIT_WARNING_PERCENT: 0.9,
 }));
 
+vi.mock('@/contexts/UserPreferencesContext', () => ({
+  useUserPreferences: () => ({
+    fiatCurrency: 'usd',
+    currencySymbol: '$',
+    setFiatCurrency: vi.fn(),
+    remindersEnabled: false,
+    setRemindersEnabled: vi.fn(),
+    reminderFrequency: 'weekly',
+    setReminderFrequency: vi.fn(),
+    maskingEnabled: false,
+    setMaskingEnabled: vi.fn(),
+    maskingStyle: 'asterisk',
+    setMaskingStyle: vi.fn(),
+    highValueThreshold: 500,
+    setHighValueThreshold: vi.fn(),
+    twoFactorEnabled: false,
+    setTwoFactorEnabled: vi.fn(),
+  }),
+}));
+
 const onClose = vi.fn();
 const onDepositSuccess = vi.fn();
 
