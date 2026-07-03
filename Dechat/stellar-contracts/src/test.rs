@@ -1873,7 +1873,7 @@ fn test_is_denied_emits_event_for_denied_address() {
 
     // At least one event was emitted (DenyAddressEvent + IsDeniedCheckedEvent)
     let events = env.events().all();
-    assert!(events.events().len() > 0, "expected events to be emitted");
+    assert!(!events.events().is_empty(), "expected events to be emitted");
 }
 
 #[test]
@@ -1889,7 +1889,7 @@ fn test_is_denied_emits_event_for_non_denied_address() {
     assert!(!result);
 
     let events = env.events().all();
-    assert!(events.events().len() > 0, "IsDeniedCheckedEvent should be emitted even for non-denied address");
+    assert!(!events.events().is_empty(), "IsDeniedCheckedEvent should be emitted even for non-denied address");
 }
 
 #[test]
