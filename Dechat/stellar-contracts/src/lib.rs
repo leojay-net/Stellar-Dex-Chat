@@ -2971,6 +2971,7 @@ impl FiatBridge {
     }
 
     /// Returns [`Error::AddressDenied`] when `address` is on the denylist.
+    #[allow(dead_code)]
     fn reject_if_denied(env: &Env, address: &Address) -> Result<(), Error> {
         if env
             .storage()
@@ -2983,6 +2984,7 @@ impl FiatBridge {
     }
 
     /// Requires `caller` to authenticate and not be on the denylist.
+    #[allow(dead_code)]
     fn require_authed_not_denied(env: &Env, caller: &Address) -> Result<(), Error> {
         caller.require_auth();
         Self::reject_if_denied(env, caller)

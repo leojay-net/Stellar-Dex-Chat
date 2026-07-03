@@ -3139,10 +3139,10 @@ fn test_get_receipt_by_index_valid() {
 
     let receipt_hash = bridge.deposit(&user, &100, &token_addr, &Bytes::new(&env), &0, &0, &None);
 
-    let receipt = bridge.get_receipt_by_index(&0);
-    assert_eq!(receipt.unwrap().id, receipt_hash);
-    assert_eq!(receipt.unwrap().depositor, user);
-    assert_eq!(receipt.unwrap().amount, 100);
+    let receipt = bridge.get_receipt_by_index(&0).expect("receipt should exist");
+    assert_eq!(receipt.id, receipt_hash);
+    assert_eq!(receipt.depositor, user);
+    assert_eq!(receipt.amount, 100);
 }
 
 #[test]
