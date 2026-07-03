@@ -3928,11 +3928,6 @@ impl FiatBridge {
             .get(&DataKey::FeeWithdrawalNonce)
             .unwrap_or(0)
     }
-        env.storage()
-            .instance()
-            .get(&DataKey::FeeWithdrawalNonce)
-            .unwrap_or(0)
-    }
 }
 
 #[cfg(test)]
