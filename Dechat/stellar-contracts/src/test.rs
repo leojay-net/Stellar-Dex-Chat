@@ -2945,7 +2945,7 @@ fn test_circuit_breaker_also_blocks_execute_withdrawal() {
     token_sac.mint(&user, &5_000);
 
     bridge.deposit(&user, &2000, &token_addr, &Bytes::new(&env), &0, &0, &None);
-    bridge.set_circuit_breaker_threshold(&500);
+    bridge.set_circuit_breaker_threshold(&300);
 
     // Queue both withdrawal requests before tripping the breaker
     let r1 = bridge.request_withdrawal(&user, &400, &token_addr, &None, &0);

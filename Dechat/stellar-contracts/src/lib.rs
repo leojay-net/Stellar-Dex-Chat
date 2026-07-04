@@ -263,6 +263,7 @@ pub struct DepositEvent {
     pub from: Address,
     pub token: Address,
     pub amount: i128,
+    pub receipt_id: BytesN<32>,
 }
 
 #[contractevent]
@@ -439,6 +440,23 @@ pub struct FeeWithdrawnEvent {
 
 #[contractevent]
 #[derive(Clone, Debug)]
+pub struct FeeVaultReconciledEvent {
+    pub version: u32,
+    pub token: Address,
+    pub vault_ledger: i128,
+    pub on_chain_balance: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct AdminRoleCheckEvent {
+    pub version: u32,
+    pub admin: Address,
+    pub is_operator: bool,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
 pub struct RescueEvent {
     pub version: u32,
     pub token: Address,
@@ -459,6 +477,15 @@ pub struct QuotaResetEvent {
     pub version: u32,
     pub user: Address,
     pub window_start: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct WithdrawalQuotaConsumedEvent {
+    pub version: u32,
+    pub user: Address,
+    pub amount: i128,
+    pub total: i128,
 }
 
 #[contractevent]
@@ -972,6 +999,7 @@ impl FiatBridge {
             from: from.clone(),
             token: token.clone(),
             amount,
+            receipt_id: receipt_hash.clone(),
         }
         .publish(&env);
 
@@ -2081,6 +2109,11 @@ impl FiatBridge {
             .instance()
             .get::<_, bool>(&DataKey::Operator(operator.clone()))
             .unwrap_or(false);
+
+        // Return NotOperator when attempting to deactivate a non-operator
+        if !active && !was_active {
+            return Err(Error::NotOperator);
+        }
         let max_operators: u32 = env
             .storage()
             .instance()
@@ -2526,6 +2559,19 @@ impl FiatBridge {
             .unwrap_or(to);
 
         let token_client = token::Client::new(&env, &token);
+
+        // Issue #840: emit reconciliation event when vault ledger exceeds on-chain balance
+        let on_chain_balance = token_client.balance(&env.current_contract_address());
+        if current > on_chain_balance {
+            FeeVaultReconciledEvent {
+                version: EVENT_VERSION,
+                token: token.clone(),
+                vault_ledger: current,
+                on_chain_balance,
+            }
+            .publish(&env);
+        }
+
         token_client.transfer(&env.current_contract_address(), &recipient, &amount);
 
         env.storage().persistent().set(&key, &(current - amount));
@@ -2993,6 +3039,14 @@ impl FiatBridge {
             .instance()
             .set(&DataKey::UserDailyWithdrawal(user.clone()), &record);
 
+        WithdrawalQuotaConsumedEvent {
+            version: EVENT_VERSION,
+            user: user.clone(),
+            amount,
+            total: record.amount,
+        }
+        .publish(env);
+
         Ok(())
     }
 
@@ -3218,6 +3272,14 @@ impl FiatBridge {
         if admin_is_operator {
             return Err(Error::NotAllowed);
         }
+
+        // Emit role check event for auditability
+        AdminRoleCheckEvent {
+            version: EVENT_VERSION,
+            admin: admin.clone(),
+            is_operator: false,
+        }
+        .publish(&env);
 
         let total_ops = operations.len();
         let mut success_count: u32 = 0;
@@ -3516,7 +3578,7 @@ impl FiatBridge {
             .instance()
             .set(&DataKey::GlobalDailyWithdrawn, &vol);
 
-        if new_total > threshold {
+        if new_total >= threshold {
             // Trip the breaker — record when it was tripped.
             env.storage()
                 .instance()
