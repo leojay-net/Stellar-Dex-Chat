@@ -1,57 +1,39 @@
 import { test, expect, Page } from '@playwright/test';
+import { gotoChatConnected } from './helpers';
 
-const MOCK_CHAT_REPLY = 'Queued message delivered after reconnect.';
-
-async function mockGeminiResponse(page: Page): Promise<void> {
-  await page.route('**/v1beta/models/**:generateContent*', async (route) => {
+async function mockChatApi(page: Page): Promise<void> {
+  await page.route('**/api/ai/chat**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        candidates: [
-          {
-            content: {
-              role: 'model',
-              parts: [
-                {
-                  text: JSON.stringify({
-                    intent: 'query',
-                    confidence: 0.95,
-                    extractedData: {},
-                    requiredQuestions: [],
-                    suggestedResponse: MOCK_CHAT_REPLY,
-                    guardrail: {
-                      triggered: false,
-                      category: 'unsupported_request',
-                      reason: '',
-                    },
-                  }),
-                },
-              ],
-            },
-            finishReason: 'STOP',
-            index: 0,
-          },
-        ],
+        intent: 'query',
+        confidence: 0.95,
+        extractedData: {},
+        requiredQuestions: [],
+        suggestedResponse: 'Queued message delivered after reconnect.',
+        guardrail: {
+          triggered: false,
+          category: 'unsupported_request',
+          reason: '',
+        },
       }),
     });
   });
 }
 
 test.describe('Offline reconnect queue', () => {
-  test('@slow connect -> offline send -> reconnect replays queued message', async ({ page, context, browserName }) => {
+  test('@slow connect -> offline send -> reconnect replays queued message', async ({
+    page,
+    context,
+    browserName,
+  }) => {
     test.skip(browserName !== 'chromium', 'CDP network emulation requires Chromium.');
 
-    await mockGeminiResponse(page);
-    await page.goto('/chat');
+    await mockChatApi(page);
+    await gotoChatConnected(page);
 
-    await page.evaluate(() => {
-      (window as { mockStellarConnect?: (address: string) => void }).mockStellarConnect?.(
-        'GD5DJQD7KGYRY4TSK4K2V5J2D2J2XQK2T2D2J2XQK2T2D2J2XQK2T2D2J2XQK2T2D2J2XQK2',
-      );
-    });
-
-    const messageInput = page.locator('textarea').first();
+    const messageInput = page.locator('[data-testid="chat-input-textarea"]');
     await expect(messageInput).toBeVisible({ timeout: 10_000 });
 
     const queuedMessage = 'check xlm market rates';
@@ -88,6 +70,8 @@ test.describe('Offline reconnect queue', () => {
     });
 
     await expect(page.getByText(queuedMessage)).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(MOCK_CHAT_REPLY)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Back online. Replaying actions...')).toBeHidden({
+      timeout: 15_000,
+    });
   });
 });

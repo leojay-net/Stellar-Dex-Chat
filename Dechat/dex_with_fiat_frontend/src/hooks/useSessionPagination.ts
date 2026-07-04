@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { DEFAULT_PAGE_SIZE, getNextMessageCount } from '@/lib/chatPaginationUtils';
+import { DEFAULT_PAGE_SIZE } from '@/lib/chatPaginationUtils';
 
 /**
  * Generic list pagination hook following the same virtualisation pattern
@@ -30,10 +30,13 @@ export const useSessionPagination = <T,>(allItems: T[], pageSize: number = DEFAU
 
     // small delay for smoother UX, mirrors useChatPagination
     setTimeout(() => {
-      setVisibleCount((prev: number) => getNextMessageCount(allItems, prev, pageSize));
+      setVisibleCount((prev: number) => {
+        const next = prev + pageSize;
+        return Math.min(next, allItems.length);
+      });
       setIsLoadingMore(false);
     }, 300);
-  }, [hasMore, isLoadingMore, allItems, pageSize]);
+  }, [hasMore, isLoadingMore, allItems.length, pageSize]);
 
   return {
     visibleItems,

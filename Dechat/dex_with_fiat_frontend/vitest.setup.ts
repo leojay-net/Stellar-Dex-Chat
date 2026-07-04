@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom';
-import { vi } from 'vitest';
+import { afterEach, vi } from 'vitest';
+import { resetNetworkQueueForTests } from '@/lib/networkQueue';
 
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
@@ -57,3 +58,7 @@ console.error = (...args: unknown[]) => {
   }
   originalError.apply(console, args);
 };
+
+afterEach(() => {
+  resetNetworkQueueForTests();
+});

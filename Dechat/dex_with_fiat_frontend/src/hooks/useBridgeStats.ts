@@ -1,3 +1,5 @@
+'use client';
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   clearCache,
@@ -12,9 +14,19 @@ export type BridgeStats = {
   totalDeposited: bigint | null;
   loading: boolean;
   error: string | null;
+  fetchCount: number;
+  lastFetchedAt: Date | null;
   refetchStats: () => Promise<void>;
   refresh: () => Promise<void>;
 };
+
+function dispatchTelemetry(event: string, detail?: Record<string, unknown>) {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('bridge_stats_telemetry', { detail: { event, ...detail } }),
+    );
+  }
+}
 
 export default function useBridgeStats(): BridgeStats {
   const [balance, setBalance] = useState<bigint | null>(null);
@@ -22,10 +34,13 @@ export default function useBridgeStats(): BridgeStats {
   const [totalDeposited, setTotalDeposited] = useState<bigint | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fetchCount, setFetchCount] = useState(0);
+  const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
     isMountedRef.current = true;
+    dispatchTelemetry('bridge_stats_mounted');
     return () => {
       isMountedRef.current = false;
     };
@@ -45,15 +60,21 @@ export default function useBridgeStats(): BridgeStats {
       setBalance(b);
       setLimit(l);
       setTotalDeposited(t);
+      setFetchCount((c) => c + 1);
+      setLastFetchedAt(new Date());
+      dispatchTelemetry('bridge_stats_fetch_success', { balance: b, limit: l });
     } catch (err) {
       if (!isMountedRef.current) return;
-      setError(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+      dispatchTelemetry('bridge_stats_fetch_error', { error: msg });
     } finally {
       if (isMountedRef.current) setLoading(false);
     }
   }, []);
 
   const refresh = useCallback(async () => {
+    dispatchTelemetry('bridge_stats_manual_refresh');
     clearCache();
     await refetchStats();
   }, [refetchStats]);
@@ -64,7 +85,7 @@ export default function useBridgeStats(): BridgeStats {
 
     const interval = setInterval(() => {
       void refetchStats();
-    }, 30000); // 30 seconds
+    }, 30000);
 
     return () => clearInterval(interval);
   }, [refetchStats]);
@@ -75,6 +96,8 @@ export default function useBridgeStats(): BridgeStats {
     totalDeposited,
     loading,
     error,
+    fetchCount,
+    lastFetchedAt,
     refetchStats,
     refresh,
   };

@@ -107,6 +107,16 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
       h3: ({ children }) => (
         <h3 className="text-sm font-bold mb-1">{children}</h3>
       ),
+      a: ({ href, children }) => (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-400 hover:underline"
+        >
+          {children}
+        </a>
+      ),
     }),
     [isDarkMode],
   );
@@ -116,6 +126,7 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
 
   return (
     <motion.div
+      data-testid="message"
       initial={shouldAnimate ? "initial" : false}
       animate="animate"
       variants={variants}

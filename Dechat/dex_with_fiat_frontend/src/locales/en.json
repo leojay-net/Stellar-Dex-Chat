@@ -41,8 +41,15 @@
     "title": "DexFiat · Stellar",
     "subtitle": "AI-Powered XLM-to-Fiat",
     "connect": "Connect Freighter",
+    "connect_freighter": "Connect Freighter",
     "disconnect": "Disconnect",
+    "disconnect_title": "Disconnect wallet",
+    "new_chat_title": "New chat",
     "settings": "Settings",
+    "settings_title": "Settings",
+    "settings_aria_label": "Open settings",
+    "switch_account": "Switch account",
+    "active_account": "Active",
     "receipts": "Receipts"
   },
   "receipt": {

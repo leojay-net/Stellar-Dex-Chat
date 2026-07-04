@@ -52,7 +52,6 @@ interface StellarFiatModalProps {
 type TxStatus = 'idle' | 'pending' | 'loading' | 'success' | 'error';
 
 const PENDING_TX_KEY = 'stellar_pending_tx';
-const LARGE_AMOUNT_RISK_THRESHOLD = 500;
 const SUBMIT_COOLDOWN_MS = 2000;
 
 interface PendingTxRecord {
@@ -758,8 +757,8 @@ export default function StellarFiatModal({
                     onClick={() => handlePreset(preset)}
                     disabled={isTransactionBusy}
                     className={`flex-1 py-1.5 rounded-md text-xs font-medium border transition-colors ${activePreset === preset
-                        ? 'bg-blue-600 border-blue-500 text-white'
-                        : 'bg-gray-800 border-gray-600 text-gray-300 hover:border-blue-500 hover:text-white'
+                      ? 'bg-blue-600 border-blue-500 text-white'
+                      : 'bg-gray-800 border-gray-600 text-gray-300 hover:border-blue-500 hover:text-white'
                       } ${isTransactionBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
                   >
                     {preset}
@@ -779,8 +778,8 @@ export default function StellarFiatModal({
                 disabled={isTransactionBusy}
                 aria-invalid={isAmountInvalid || isOverLimit ? true : undefined}
                 className={`w-full bg-gray-800 border rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed ${isAmountInvalid || isOverLimit
-                    ? 'border-red-500 focus:border-red-400'
-                    : 'border-gray-600 focus:border-blue-500'
+                  ? 'border-red-500 focus:border-red-400'
+                  : 'border-gray-600 focus:border-blue-500'
                   }`}
               />
               {isAmountInvalid && amount && (
@@ -937,10 +936,10 @@ export default function StellarFiatModal({
                   </h3>
                   <div
                     className={`w-2 h-2 rounded-full ${isOverLimit
-                        ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]'
-                        : isHighLimitUsage
-                          ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)]'
-                          : 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]'
+                      ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]'
+                      : isHighLimitUsage
+                        ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)]'
+                        : 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]'
                       }`}
                   />
                 </div>
@@ -974,10 +973,10 @@ export default function StellarFiatModal({
                     <div className="h-1.5 w-full rounded-full bg-[var(--color-surface-elevated)] overflow-hidden mb-2">
                       <div
                         className={`h-full rounded-full transition-all duration-500 ${isOverLimit
-                            ? 'bg-red-500'
-                            : isHighLimitUsage
-                              ? 'bg-amber-400'
-                              : 'bg-blue-500'
+                          ? 'bg-red-500'
+                          : isHighLimitUsage
+                            ? 'bg-amber-400'
+                            : 'bg-blue-500'
                           }`}
                         style={{ width: `${Math.min(usagePercent, 100)}%` }}
                       />

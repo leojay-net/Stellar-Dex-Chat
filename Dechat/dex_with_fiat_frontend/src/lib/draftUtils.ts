@@ -22,11 +22,9 @@ export const saveDraft = (sessionId: string, content: string): void => {
     timestamp: Date.now(),
   };
   try {
-    // Use sessionStorage for transient per-tab drafts so they're preserved
-    // across background/foreground transitions but not across separate tabs.
-    sessionStorage.setItem(`${DRAFT_PREFIX}${sessionId}`, JSON.stringify(draft));
+    localStorage.setItem(`${DRAFT_PREFIX}${sessionId}`, JSON.stringify(draft));
   } catch (e) {
-    console.error('Failed to save draft to sessionStorage', e);
+    console.error('Failed to save draft to localStorage', e);
   }
 };
 
@@ -62,9 +60,9 @@ export const getDraft = (sessionId: string, ttlSeconds: number = DEFAULT_TTL): s
 export const clearDraft = (sessionId: string): void => {
   if (typeof window === 'undefined' || !sessionId) return;
   try {
-    sessionStorage.removeItem(`${DRAFT_PREFIX}${sessionId}`);
+    localStorage.removeItem(`${DRAFT_PREFIX}${sessionId}`);
   } catch (e) {
-    console.error('Failed to clear draft from sessionStorage', e);
+    console.error('Failed to clear draft from localStorage', e);
   }
 };
 
@@ -77,13 +75,11 @@ export const clearExpiredDrafts = (ttlSeconds: number = DEFAULT_TTL): void => {
   const now = Date.now();
   const keysToRemove: string[] = [];
 
-  // Use index-based iteration so it works correctly in jsdom where
-  // Object.keys(localStorage) may not enumerate spied-on keys.
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (key && key.startsWith(DRAFT_PREFIX)) {
       try {
-        const item = sessionStorage.getItem(key);
+        const item = localStorage.getItem(key);
         if (item) {
           const draft: Draft = JSON.parse(item);
           const expiryTime = draft.timestamp + ttlSeconds * 1000;

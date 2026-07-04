@@ -16,6 +16,7 @@ async function verifyConnectivity(): Promise<boolean> {
       mode: 'no-cors',
       signal: controller.signal,
     });
+    void response;
 
     clearTimeout(timeoutId);
     return true;

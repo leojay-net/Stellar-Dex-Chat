@@ -13,12 +13,12 @@ export interface QueuedMessageRecord {
   queuedAt: number;
 }
 
+function isIndexedDbAvailable(): boolean {
+  return typeof indexedDB !== 'undefined';
+}
+
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    if (typeof indexedDB === 'undefined') {
-      reject(new Error('IndexedDB is not available in this environment.'));
-      return;
-    }
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
@@ -34,6 +34,9 @@ function openDb(): Promise<IDBDatabase> {
 export async function addQueuedMessage(
   record: QueuedMessageRecord,
 ): Promise<void> {
+  if (!isIndexedDbAvailable()) {
+    return;
+  }
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -44,6 +47,9 @@ export async function addQueuedMessage(
 }
 
 export async function removeQueuedMessage(id: string): Promise<void> {
+  if (!isIndexedDbAvailable()) {
+    return;
+  }
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -54,6 +60,9 @@ export async function removeQueuedMessage(id: string): Promise<void> {
 }
 
 export async function getAllQueuedMessages(): Promise<QueuedMessageRecord[]> {
+  if (!isIndexedDbAvailable()) {
+    return [];
+  }
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readonly');

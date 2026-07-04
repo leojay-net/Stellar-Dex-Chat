@@ -1,6 +1,6 @@
 import React from 'react';
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { useNotifications } from '@/hooks/useNotifications';
 import '@testing-library/jest-dom';
 import NotificationsCenter from '../NotificationsCenter';
@@ -8,12 +8,23 @@ import NotificationsCenter from '../NotificationsCenter';
 const mockMarkAllAsRead = vi.fn();
 const mockClearNotifications = vi.fn();
 const mockMarkAsRead = vi.fn();
+const emptyNotifications: ReturnType<typeof useNotifications>['notifications'] = [];
+
+function resetNotificationsMock() {
+  vi.mocked(useNotifications).mockImplementation(() => ({
+    notifications: emptyNotifications,
+    unreadCount: 0,
+    markAsRead: mockMarkAsRead,
+    markAllAsRead: mockMarkAllAsRead,
+    clearNotifications: mockClearNotifications,
+  }));
+}
 
 vi.mock('@/hooks/useNotifications', () => ({
   useNotifications: vi.fn(() => ({
-    notifications: [],
+    notifications: emptyNotifications,
     unreadCount: 0,
-    markAsRead: mockMarkAllAsRead,
+    markAsRead: mockMarkAsRead,
     markAllAsRead: mockMarkAllAsRead,
     clearNotifications: mockClearNotifications,
   })),
@@ -42,10 +53,21 @@ function makeNotification(overrides = {}) {
   };
 }
 
+async function openNotificationsPanel() {
+  render(<NotificationsCenter />);
+  await act(async () => {});
+  fireEvent.click(screen.getByRole('button', { name: /notifications/i }));
+}
+
 describe('NotificationsCenter – rendering', () => {
+  beforeEach(() => {
+    resetNotificationsMock();
+  });
+
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    resetNotificationsMock();
   });
 
   it('renders the bell button', () => {
@@ -58,15 +80,15 @@ describe('NotificationsCenter – rendering', () => {
     expect(screen.queryByText('Notifications')).not.toBeInTheDocument();
   });
 
-  it('shows the dropdown when the bell button is clicked', () => {
-    render(<NotificationsCenter />);
-    fireEvent.click(screen.getByRole('button', { name: /notifications/i }));
+  it('shows the dropdown when the bell button is clicked', async () => {
+    await openNotificationsPanel();
     expect(screen.getByText('Notifications')).toBeInTheDocument();
   });
 
-  it('shows unread badge when there are unread notifications', () => {
-    vi.mocked(useNotifications).mockReturnValueOnce({
-      notifications: [makeNotification()],
+  it('shows unread badge when there are unread notifications', async () => {
+    const notifications = [makeNotification()];
+    vi.mocked(useNotifications).mockReturnValue({
+      notifications,
       unreadCount: 1,
       markAsRead: mockMarkAsRead,
       markAllAsRead: mockMarkAllAsRead,
@@ -74,7 +96,7 @@ describe('NotificationsCenter – rendering', () => {
     });
 
     render(<NotificationsCenter />);
-    expect(screen.getByText('1')).toBeInTheDocument();
+    expect(await screen.findByText('1')).toBeInTheDocument();
   });
 
   it('bell button exposes aria-expanded reflecting open state', () => {
@@ -86,17 +108,21 @@ describe('NotificationsCenter – rendering', () => {
     expect(btn).toHaveAttribute('aria-expanded', 'true');
   });
 
-  it('shows "No notifications yet" when list is empty and panel is open', () => {
-    render(<NotificationsCenter />);
-    fireEvent.click(screen.getByRole('button', { name: /notifications/i }));
+  it('shows "No notifications yet" when list is empty and panel is open', async () => {
+    await openNotificationsPanel();
     expect(screen.getByText(/No notifications yet/i)).toBeInTheDocument();
   });
 });
 
 describe('NotificationsCenter – keyboard shortcuts', () => {
+  beforeEach(() => {
+    resetNotificationsMock();
+  });
+
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    resetNotificationsMock();
   });
 
   it('Escape closes the panel when it is open', () => {
@@ -219,9 +245,14 @@ describe('NotificationsCenter – keyboard shortcuts', () => {
 });
 
 describe('NotificationsCenter – click-outside', () => {
+  beforeEach(() => {
+    resetNotificationsMock();
+  });
+
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    resetNotificationsMock();
   });
 
   it('closes when clicking outside the dropdown', () => {
