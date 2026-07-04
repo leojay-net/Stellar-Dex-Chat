@@ -1118,6 +1118,7 @@ impl FiatBridge {
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
         Self::require_not_paused(&env)?;
+        Self::require_circuit_breaker_clear(&env)?;
 
         if amount <= 0 {
             return Err(Error::ZeroAmount);
@@ -1212,7 +1213,20 @@ impl FiatBridge {
             .persistent()
             .get(&DataKey::TokenRegistry(token.clone()))
             .ok_or(Error::TokenNotWhitelisted)?;
-        config.total_liabilities = config.total_liabilities.checked_add(amount).ok_or(Error::InternalError)?;
+
+        // Verify the new liabilities don't exceed net deposited
+        let user_deposited: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::UserDeposited(to.clone()))
+            .unwrap_or(0);
+        let new_liabilities = config.total_liabilities.checked_add(amount).ok_or(Error::Overflow)?;
+        let net_deposited = config.total_deposited.saturating_sub(config.total_withdrawn);
+        if new_liabilities > net_deposited || amount > user_deposited {
+            return Err(Error::InsufficientFunds);
+        }
+
+        config.total_liabilities = new_liabilities;
         env.storage()
             .persistent()
             .set(&DataKey::TokenRegistry(token.clone()), &config);
@@ -1588,6 +1602,8 @@ impl FiatBridge {
         if limit > max_cap {
             return Err(Error::ExceedsLimitMaxCap);
         }
+        // Block if circuit breaker is active
+        Self::require_circuit_breaker_clear(&env)?;
         let mut config: TokenConfig = env
             .storage()
             .persistent()
@@ -2049,6 +2065,16 @@ impl FiatBridge {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+
+        // Reject admin as operator (role confusion guard)
+        if operator == admin {
+            return Err(Error::NotAllowed);
+        }
+        // Reject contract address as operator
+        if operator == env.current_contract_address() {
+            return Err(Error::InvalidRecipient);
+        }
+
         Self::prune_inactive_operators_internal(&env);
         let was_active = env
             .storage()
@@ -2095,6 +2121,17 @@ impl FiatBridge {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+        // Reject if reduction would go below current active operator count
+        if max_operators > 0 {
+            let current_count: u32 = env
+                .storage()
+                .instance()
+                .get(&DataKey::OperatorCount)
+                .unwrap_or(0);
+            if current_count > max_operators {
+                return Err(Error::ExceedsLimit);
+            }
+        }
         env.storage()
             .instance()
             .set(&DataKey::MaxOperators, &max_operators);
@@ -2135,6 +2172,8 @@ impl FiatBridge {
 
     pub fn heartbeat(env: Env, operator: Address, nonce: u64) -> Result<(), Error> {
         operator.require_auth();
+        // Check circuit breaker before processing
+        Self::require_circuit_breaker_clear(&env)?;
         if !env
             .storage()
             .instance()
@@ -2966,8 +3005,36 @@ impl FiatBridge {
         {
             return Err(Error::ContractPaused);
         }
-
         Ok(())
+    }
+
+    /// Returns `CircuitBreakerActive` if the circuit breaker is currently tripped
+    /// and the auto-reset window has not yet elapsed.
+    fn require_circuit_breaker_clear(env: &Env) -> Result<(), Error> {
+        let tripped: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::CircuitBreakerTripped)
+            .unwrap_or(false);
+        if !tripped {
+            return Ok(());
+        }
+        let reset_window: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::CircuitBreakerResetWindow)
+            .unwrap_or(CIRCUIT_BREAKER_RESET_LEDGERS);
+        let tripped_at: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::CircuitBreakerTrippedAt)
+            .unwrap_or(0);
+        let curr = env.ledger().sequence();
+        if reset_window != u32::MAX && curr > tripped_at.saturating_add(reset_window) {
+            // Auto-reset window elapsed — allow through (the next mutation will clear it).
+            return Ok(());
+        }
+        Err(Error::CircuitBreakerActive)
     }
 
     /// Returns [`Error::AddressDenied`] when `address` is on the denylist.
@@ -3141,6 +3208,16 @@ impl FiatBridge {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+
+        // Issue #841: reject if admin has been granted the operator role (role confusion)
+        let admin_is_operator: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Operator(admin.clone()))
+            .unwrap_or(false);
+        if admin_is_operator {
+            return Err(Error::NotAllowed);
+        }
 
         let total_ops = operations.len();
         let mut success_count: u32 = 0;

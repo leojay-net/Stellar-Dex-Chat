@@ -41,6 +41,7 @@ fn snapshot_get_receipt_by_index() {
 
     let depositor = Address::generate(&env);
     let deposit_amount: i128 = 1_000_000;
+    StellarAssetClient::new(&env, &token_addr).mint(&depositor, &deposit_amount);
 
     client.deposit(&depositor, &deposit_amount, &token_addr, &Bytes::new(&env), &0, &0, &None);
 
@@ -101,6 +102,7 @@ fn snapshot_get_total_deposited() {
 
     let depositor = Address::generate(&env);
     let deposit_amount: i128 = 1_000_000;
+    StellarAssetClient::new(&env, &token_addr).mint(&depositor, &deposit_amount);
     client.deposit(&depositor, &deposit_amount, &token_addr, &Bytes::new(&env), &0, &0, &None);
 
     let updated_total = client.get_total_deposited();
@@ -120,6 +122,9 @@ fn snapshot_get_total_deposited_cumulative() {
     let depositor2 = Address::generate(&env);
     let deposit1 = 1_000_000i128;
     let deposit2 = 2_000_000i128;
+    let sac = StellarAssetClient::new(&env, &token_addr);
+    sac.mint(&depositor1, &deposit1);
+    sac.mint(&depositor2, &deposit2);
 
     client.deposit(&depositor1, &deposit1, &token_addr, &Bytes::new(&env), &0, &0, &None);
     let total_after_first = client.get_total_deposited();
@@ -142,6 +147,7 @@ fn snapshot_receipt_field_immutability() {
     let depositor = Address::generate(&env);
     let deposit_amount: i128 = 1_000_000;
     let block_ledger = env.ledger().sequence();
+    StellarAssetClient::new(&env, &token_addr).mint(&depositor, &deposit_amount);
 
     client.deposit(&depositor, &deposit_amount, &token_addr, &Bytes::new(&env), &0, &0, &None);
 
