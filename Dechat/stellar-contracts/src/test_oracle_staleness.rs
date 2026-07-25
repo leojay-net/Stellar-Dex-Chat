@@ -5,7 +5,6 @@
 //!   2. A price just *outside* the freshness window is rejected.
 //!   3. The exact threshold boundary is handled correctly (fence-post).
 
-#![cfg(test)]
 extern crate std;
 
 use crate::oracle::TimestampedPrice;

@@ -52,12 +52,30 @@ jobs:
         run: cargo build --target wasm32-unknown-unknown --release
 
       - name: Check WASM size
+        env:
+          # Regression guard for the deployed contract only. Raised from the
+          # previous 55000: that limit was never actually enforced (the old
+          # check globbed *.wasm, so SIZE held two values and `[` aborted with
+          # "too many arguments" — which, as an `if` condition, silently read
+          # as false). The contract has since grown to ~87 KB.
+          MAX_WASM_BYTES: "92160" # 90 KB
         run: |
+          set -euo pipefail
+          ARTIFACT=target/wasm32-unknown-unknown/release/stellar_contracts.wasm
+
           ls -la target/wasm32-unknown-unknown/release/*.wasm
-          SIZE=$(ls -la target/wasm32-unknown-unknown/release/*.wasm | awk '{print $5}')
-          echo "Current WASM size: $SIZE bytes"
-          if [ $SIZE -gt 55000 ]; then
-            echo "Error: WASM size $SIZE bytes exceeds 55 KB limit"
+
+          if [ ! -f "$ARTIFACT" ]; then
+            echo "Error: expected contract artifact $ARTIFACT was not produced"
+            exit 1
+          fi
+
+          SIZE=$(wc -c < "$ARTIFACT" | tr -d '[:space:]')
+          echo "Contract WASM size: $SIZE bytes (limit ${MAX_WASM_BYTES})"
+          echo "Contract WASM size: \`$SIZE\` bytes (limit \`${MAX_WASM_BYTES}\`)" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$SIZE" -gt "$MAX_WASM_BYTES" ]; then
+            echo "Error: WASM size $SIZE bytes exceeds ${MAX_WASM_BYTES} byte limit"
             exit 1
           fi
 

@@ -4,52 +4,22 @@ header = """
 
 All notable changes to this project will be documented in this file.
 """
+# NOTE: `body` is rendered once *per release*, so the release fields
+# (`version`, `timestamp`, `commits`) are at the root of the context.
+# There is no `releases` variable here — only `footer` gets that.
 body = """
-{% for release in releases %}
-## [{% if release.version %}{{ release.version }}{% else %}Unreleased{% endif %}]{% if release.timestamp %} - {{ release.timestamp | date(format=\"%Y-%m-%d\") }}{% endif %}
 
-### Added
-{% for commit in release.commits %}
-{% if commit.group == "Added" %}
-- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ commit.message | upper_first }}
-{% endif %}
-{% endfor %}
+## [{% if version %}{{ version }}{% else %}Unreleased{% endif %}]{% if timestamp %} - {{ timestamp | date(format=\"%Y-%m-%d\") }}{% endif %}
+{% for section in ["Added", "Fixed", "Changed", "Deprecated", "Removed", "Security"] %}
+{%- set section_commits = commits | filter(attribute="group", value=section) %}
+{%- if section_commits | length > 0 %}
 
-### Fixed
-{% for commit in release.commits %}
-{% if commit.group == "Fixed" %}
+### {{ section }}
+{% for commit in section_commits %}
 - {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ commit.message | upper_first }}
-{% endif %}
-{% endfor %}
-
-### Changed
-{% for commit in release.commits %}
-{% if commit.group == "Changed" %}
-- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ commit.message | upper_first }}
-{% endif %}
-{% endfor %}
-
-### Deprecated
-{% for commit in release.commits %}
-{% if commit.group == "Deprecated" %}
-- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ commit.message | upper_first }}
-{% endif %}
-{% endfor %}
-
-### Removed
-{% for commit in release.commits %}
-{% if commit.group == "Removed" %}
-- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ commit.message | upper_first }}
-{% endif %}
-{% endfor %}
-
-### Security
-{% for commit in release.commits %}
-{% if commit.group == "Security" %}
-- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ commit.message | upper_first }}
-{% endif %}
-{% endfor %}
-{% endfor %}
+{%- endfor %}
+{%- endif %}
+{%- endfor %}
 """
 trim = true
 

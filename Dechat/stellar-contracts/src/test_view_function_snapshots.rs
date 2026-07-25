@@ -1,8 +1,6 @@
 //! Snapshot tests for contract view functions.
 //! Tests the return shapes of get_receipt_by_index, get_accrued_fees, and get_total_deposited.
 
-#![cfg(test)]
-
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     token::{Client as TokenClient, StellarAssetClient},
