@@ -220,7 +220,8 @@ describe('ChatInput - Rapid Click Protection', () => {
 
     expect(submitButton).toHaveAttribute('title', 'Send message (Ctrl+Enter)');
     expect(submitButton).toHaveAttribute('aria-keyshortcuts', 'Control+Enter');
-    expect(textarea).toHaveAttribute('aria-describedby', 'chat-submit-shortcut');
+    expect(textarea.getAttribute('aria-describedby')).toContain('chat-submit-shortcut');
+    expect(textarea.getAttribute('aria-describedby')).toContain('chat-input-status');
     expect(screen.getByText(/send message with ctrl\+enter/i)).toBeInTheDocument();
   });
 });
