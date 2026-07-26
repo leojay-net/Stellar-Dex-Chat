@@ -204,6 +204,9 @@ pub struct UserDailyDeposit {
     pub window_start: u32,
 }
 
+/// A depositor's escrowed position: the persistent successor to the evictable
+/// [`Receipt`], written by [`FiatBridge::migrate_escrow`] and read by
+/// [`FiatBridge::get_escrow_record`]. `amount` is in the token's smallest unit.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EscrowRecord {
@@ -3237,6 +3240,72 @@ impl FiatBridge {
         Ok(migrated_count)
     }
 
+    /// Look up a single migrated escrow position by its sequential id.
+    ///
+    /// This is the read side of the receipt→escrow migration and the intended
+    /// way for indexers, dashboards and off-chain reconciliation jobs to
+    /// enumerate escrowed balances: ids are dense and start at `0`, so a caller
+    /// can walk `0..get_migration_cursor()` without knowing any receipt hashes.
+    /// It is a plain storage read — no authentication is required and no state
+    /// is mutated, so it is safe to call from a simulation.
+    ///
+    /// An id maps to the position the originating [`Receipt`] occupied in
+    /// `DataKey::ReceiptIndex`, so escrow id `n` always describes the `n`-th
+    /// deposit the bridge ever recorded.
+    ///
+    /// # Parameters
+    ///
+    /// - `id`: zero-based index of the escrow record, in deposit order. Values
+    ///   at or above [`FiatBridge::get_migration_cursor`] have not been migrated yet.
+    ///
+    /// # Returns
+    ///
+    /// - `Some(record)` — the stored [`EscrowRecord`] for `id`.
+    /// - `None` — in three distinct situations, which this function does *not*
+    ///   distinguish between:
+    ///   1. `id` is beyond the migration cursor, so the record has simply not
+    ///      been written yet (call [`FiatBridge::migrate_escrow`] to advance);
+    ///   2. `id` is past the end of the receipt range and will never exist;
+    ///   3. the source receipt had been evicted from `temporary` storage before
+    ///      migration reached it, so that cursor position was skipped and left
+    ///      permanently empty.
+    ///
+    ///   Compare `id` against [`FiatBridge::get_migration_cursor`] and
+    ///   [`FiatBridge::get_escrow_storage_version`] to tell case 1 from cases 2 and 3.
+    ///
+    /// # Errors
+    ///
+    /// None. This function cannot fail: a missing entry is reported as `None`
+    /// rather than an [`Error`], and it neither requires auth nor panics.
+    ///
+    /// # Notes
+    ///
+    /// - Reading does not extend the entry's TTL. A record whose persistent TTL
+    ///   has lapsed reads back as `None`; use the receipt TTL-bumping paths to
+    ///   keep long-lived positions alive.
+    /// - The returned `version` field should be checked against
+    ///   [`ESCROW_STORAGE_VERSION`] before interpreting the payload, so that a
+    ///   future schema bump surfaces as a version mismatch rather than a
+    ///   silently misread record.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Two deposits, then a migration large enough to cover both.
+    /// bridge.deposit(&user, &100, &token, &Bytes::new(&env), &0, &0, &None);
+    /// bridge.deposit(&user, &250, &token, &Bytes::new(&env), &0, &0, &None);
+    /// assert_eq!(bridge.migrate_escrow(&10), 2);
+    ///
+    /// // Ids are dense and ordered by deposit, so escrow 1 is the 250 deposit.
+    /// let record = bridge.get_escrow_record(&1).expect("migrated");
+    /// assert_eq!(record.amount, 250);
+    /// assert_eq!(record.depositor, user);
+    /// assert_eq!(record.version, ESCROW_STORAGE_VERSION);
+    /// assert!(record.migrated);
+    ///
+    /// // Nothing was ever deposited at index 2.
+    /// assert!(bridge.get_escrow_record(&2).is_none());
+    /// ```
     pub fn get_escrow_record(env: Env, id: u64) -> Option<EscrowRecord> {
         env.storage().persistent().get(&DataKey::EscrowRecord(id))
     }
