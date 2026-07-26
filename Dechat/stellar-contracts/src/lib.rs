@@ -3406,17 +3406,57 @@ impl FiatBridge {
 
     /// Set the rolling withdrawal volume threshold that trips the global circuit breaker.
     ///
-    /// The breaker is evaluated across all withdrawal-producing flows that call
-    /// [`Self::check_and_update_circuit_breaker`], including direct withdrawals,
-    /// queued withdrawal requests, and queued withdrawal execution.
+    /// When cumulative withdrawal volume inside the current 24-hour ledger window
+    /// reaches or exceeds `threshold`, the breaker trips: the offending withdrawal
+    /// still executes, but every subsequent guarded operation returns
+    /// [`Error::CircuitBreakerActive`] until the breaker is cleared.
     ///
-    /// - `threshold > 0`: enables the breaker and rejects the withdrawal that
-    ///   would push the rolling total above the threshold.
-    /// - `threshold == 0`: disables the breaker entirely.
+    /// The breaker is evaluated on every withdrawal-producing path that calls
+    /// [`Self::check_and_update_circuit_breaker`], which covers:
+    /// - direct operator withdrawals ([`Self::withdraw`])
+    /// - queued withdrawal execution ([`Self::execute_withdrawal`])
+    /// - queued withdrawal requests ([`Self::request_withdrawal`])
     ///
-    /// This value is stored under [`DataKey::CircuitBreakerThreshold`]. It does
-    /// not itself reset an already-tripped breaker; use [`Self::reset_circuit_breaker`]
-    /// for that operational action.
+    /// # Parameters
+    ///
+    /// - `threshold`:
+    ///   - `> 0` — enables the breaker; trips when the rolling 24-hour volume
+    ///     meets or exceeds this value (in the token's smallest unit).
+    ///   - `== 0` — disables the breaker entirely; all guarded paths skip the
+    ///     volume check.
+    ///   - Negative values are treated the same as `0` (disabled) because the
+    ///     internal check is `threshold <= 0`.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::NotInitialized`] — contract has not been initialised yet
+    ///   (no admin stored in instance storage).
+    /// - Panics with a Soroban auth error if the caller is not the current admin.
+    ///
+    /// # Notes
+    ///
+    /// - The new threshold takes effect immediately for the **next** withdrawal
+    ///   evaluation; it does not retroactively clear or trip the breaker.
+    /// - To clear an already-tripped breaker, call [`Self::reset_circuit_breaker`].
+    /// - To read the currently configured threshold, call
+    ///   [`Self::get_circuit_breaker_threshold`].
+    /// - To configure how long the breaker stays tripped before auto-reset, call
+    ///   [`Self::set_circuit_breaker_reset_window`].
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Enable: trip the breaker if more than 10 000 stroops are withdrawn
+    /// // within any rolling 24-hour window (~17 280 ledgers).
+    /// bridge.set_circuit_breaker_threshold(&env, 10_000)?;
+    ///
+    /// // Disable: no volume limit enforced.
+    /// bridge.set_circuit_breaker_threshold(&env, 0)?;
+    /// ```
     pub fn set_circuit_breaker_threshold(env: Env, threshold: i128) -> Result<(), Error> {
         let admin: Address = env
             .storage()
@@ -3430,19 +3470,69 @@ impl FiatBridge {
         Ok(())
     }
 
-    /// Configure the auto-reset window for a tripped circuit breaker.
+    /// Set how long the circuit breaker stays tripped before it clears itself automatically.
     ///
-    /// The breaker stores the ledger at which it tripped in
-    /// [`DataKey::CircuitBreakerTrippedAt`]. On the next guarded withdrawal or
-    /// heartbeat path, the contract compares the current ledger against that
-    /// trip point plus this reset window.
+    /// When the breaker trips, the contract records the current ledger sequence in
+    /// [`DataKey::CircuitBreakerTrippedAt`]. On every subsequent guarded path
+    /// ([`Self::require_circuit_breaker_clear`] and
+    /// [`Self::check_and_update_circuit_breaker`]), the contract evaluates:
     ///
-    /// - `0`: use the default 48-hour window [`CIRCUIT_BREAKER_RESET_LEDGERS`]
-    /// - `u32::MAX`: disable auto-reset entirely
-    /// - any other value: use that many ledgers as the reset window
+    /// ```text
+    /// current_ledger > tripped_at + reset_window
+    /// ```
     ///
-    /// Auto-reset clears the tripped flag and rolls the global withdrawal window
-    /// forward before the next guarded operation resumes.
+    /// If that condition holds, the breaker auto-resets: the tripped flag is
+    /// cleared, the 24-hour withdrawal volume window is rolled forward, and a
+    /// [`CircuitBreakerAutoResetEvent`] is emitted before the operation continues.
+    ///
+    /// If it does not hold (or auto-reset is disabled), the operation returns
+    /// [`Error::CircuitBreakerActive`].
+    ///
+    /// # Parameters
+    ///
+    /// - `ledgers`:
+    ///   - `u32::MAX` — disables auto-reset entirely; the breaker will remain
+    ///     tripped until [`Self::reset_circuit_breaker`] is called manually.
+    ///   - any other value — the breaker auto-resets this many ledgers after it
+    ///     tripped (e.g. `17_280` ≈ 24 h, `34_560` ≈ 48 h).
+    ///   - Note: passing `0` means the condition `current > tripped_at + 0` is
+    ///     true on the very next ledger, so the breaker effectively auto-resets
+    ///     immediately. This is almost never what you want; use
+    ///     [`Self::reset_circuit_breaker`] for an instant manual clear instead.
+    ///
+    /// When no value has been explicitly stored (i.e. this function has never been
+    /// called), the runtime falls back to [`CIRCUIT_BREAKER_RESET_LEDGERS`]
+    /// (~48 hours).
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::NotInitialized`] — contract has not been initialised (no admin
+    ///   in instance storage).
+    /// - Panics with a Soroban auth error if the caller is not the current admin.
+    ///
+    /// # Notes
+    ///
+    /// - The new window takes effect immediately for the next guarded evaluation;
+    ///   it does not retroactively change whether the breaker is currently tripped.
+    /// - To read the active window, call [`Self::get_circuit_breaker_reset_window`].
+    /// - To set the volume threshold that trips the breaker, call
+    ///   [`Self::set_circuit_breaker_threshold`].
+    /// - To clear a tripped breaker right now without waiting for auto-reset, call
+    ///   [`Self::reset_circuit_breaker`].
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Auto-reset after ~24 hours (~17 280 ledgers at 5 s/ledger).
+    /// bridge.set_circuit_breaker_reset_window(&env, 17_280)?;
+    ///
+    /// // Disable auto-reset — only a manual reset_circuit_breaker call can clear it.
+    /// bridge.set_circuit_breaker_reset_window(&env, u32::MAX)?;
+    /// ```
     pub fn set_circuit_breaker_reset_window(env: Env, ledgers: u32) -> Result<(), Error> {
         let admin: Address = env
             .storage()
@@ -3456,6 +3546,14 @@ impl FiatBridge {
         Ok(())
     }
 
+    /// Return the auto-reset window that is currently in effect, in ledgers.
+    ///
+    /// If no value has been explicitly configured via
+    /// [`Self::set_circuit_breaker_reset_window`], this returns the compile-time
+    /// default [`CIRCUIT_BREAKER_RESET_LEDGERS`] (~48 hours).
+    ///
+    /// A return value of [`u32::MAX`] means auto-reset is disabled; the breaker
+    /// will stay tripped until [`Self::reset_circuit_breaker`] is called manually.
     pub fn get_circuit_breaker_reset_window(env: Env) -> u32 {
         env.storage()
             .instance()
@@ -3463,14 +3561,49 @@ impl FiatBridge {
             .unwrap_or(CIRCUIT_BREAKER_RESET_LEDGERS)
     }
 
-    /// Manually clear the circuit breaker so guarded operations can resume.
+    /// Manually clear a tripped circuit breaker so guarded operations can resume immediately.
     ///
-    /// This admin-only action flips [`DataKey::CircuitBreakerTripped`] back to
-    /// `false` and emits [`CircuitBreakerResetEvent`]. It is intended for manual
-    /// recovery after operators have investigated the activity that caused the
-    /// breaker to trip.
+    /// Use this when operators have investigated the withdrawal activity that triggered the
+    /// breaker and have determined it is safe to resume. It is the only way to clear the
+    /// breaker when auto-reset is disabled (`reset_window == u32::MAX`) or when you cannot
+    /// wait for the auto-reset window to elapse.
     ///
-    /// This function does not change the configured threshold or reset window.
+    /// The function:
+    /// 1. Flips [`DataKey::CircuitBreakerTripped`] to `false`.
+    /// 2. Emits [`CircuitBreakerResetEvent`] with the current ledger sequence.
+    ///
+    /// It does **not** clear [`DataKey::CircuitBreakerTrippedAt`] (the ledger at which the
+    /// breaker tripped), so that value remains available for audit purposes until the next
+    /// trip overwrites it.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success. Calling this function when the breaker is already clear is a
+    /// no-op — it succeeds silently.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::NotInitialized`] — contract has not been initialised (no admin in instance
+    ///   storage).
+    /// - Panics with a Soroban auth error if the caller is not the current admin.
+    ///
+    /// # Notes
+    ///
+    /// - This function does not change the configured threshold or reset window.
+    /// - To check the current breaker state, call [`Self::is_circuit_breaker_tripped`].
+    /// - To change the volume threshold that triggers the breaker, call
+    ///   [`Self::set_circuit_breaker_threshold`].
+    /// - To configure how long the breaker stays tripped before clearing automatically,
+    ///   call [`Self::set_circuit_breaker_reset_window`].
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // After investigating a threshold breach, re-enable normal operations.
+    /// assert!(bridge.is_circuit_breaker_tripped());
+    /// bridge.reset_circuit_breaker()?;
+    /// assert!(!bridge.is_circuit_breaker_tripped());
+    /// ```
     pub fn reset_circuit_breaker(env: Env) -> Result<(), Error> {
         let admin: Address = env
             .storage()
@@ -3485,6 +3618,11 @@ impl FiatBridge {
         Ok(())
     }
 
+    /// Return the currently configured rolling-volume threshold.
+    ///
+    /// A return value of `0` means the circuit breaker is disabled and no
+    /// volume limit is enforced.  See [`Self::set_circuit_breaker_threshold`]
+    /// for the full semantics.
     pub fn get_circuit_breaker_threshold(env: Env) -> i128 {
         env.storage()
             .instance()
@@ -3492,6 +3630,54 @@ impl FiatBridge {
             .unwrap_or(0)
     }
 
+    /// Return `true` if the circuit breaker is currently tripped.
+    /// Return whether the circuit breaker is currently tripped.
+    ///
+    /// This is a pure read — it reflects the stored flag at the moment of the call
+    /// and does **not** evaluate whether the auto-reset window has elapsed. A breaker
+    /// that has been tripped but whose reset window has since passed will still read
+    /// `true` here until the next guarded withdrawal or heartbeat path triggers the
+    /// auto-reset logic in [`Self::check_and_update_circuit_breaker`] or
+    /// [`Self::require_circuit_breaker_clear`].
+    ///
+    /// Use this function to:
+    /// - gate off-chain alerting or monitoring dashboards,
+    /// - assert post-conditions in integration tests, or
+    /// - verify state before calling [`Self::reset_circuit_breaker`].
+    ///
+    /// # Returns
+    ///
+    /// - `true` — the breaker is tripped; all guarded withdrawal paths will return
+    ///   [`Error::CircuitBreakerActive`] until the breaker is cleared.
+    /// - `false` — the breaker is clear, or has never been tripped (the storage key
+    ///   is absent and defaults to `false`).
+    ///
+    /// # Notes
+    ///
+    /// - No parameters; no errors; cannot panic.
+    /// - To clear a tripped breaker manually, call [`Self::reset_circuit_breaker`].
+    /// - To configure how long the breaker stays tripped before clearing automatically,
+    ///   call [`Self::set_circuit_breaker_reset_window`].
+    /// - To set the withdrawal volume threshold that triggers the breaker, call
+    ///   [`Self::set_circuit_breaker_threshold`].
+    /// - To read the currently configured threshold value, call
+    ///   [`Self::get_circuit_breaker_threshold`].
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Before any threshold breach the breaker is clear.
+    /// assert!(!bridge.is_circuit_breaker_tripped());
+    ///
+    /// // A withdrawal that pushes rolling volume past the threshold trips it.
+    /// bridge.set_circuit_breaker_threshold(&env, 500)?;
+    /// bridge.withdraw(&admin, &user, &600, &token_addr)?; // succeeds but trips
+    /// assert!(bridge.is_circuit_breaker_tripped());
+    ///
+    /// // After a manual reset, guarded operations resume.
+    /// bridge.reset_circuit_breaker()?;
+    /// assert!(!bridge.is_circuit_breaker_tripped());
+    /// ```
     pub fn is_circuit_breaker_tripped(env: Env) -> bool {
         env.storage()
             .instance()
