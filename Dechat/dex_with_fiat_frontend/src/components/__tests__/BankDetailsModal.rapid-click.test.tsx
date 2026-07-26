@@ -42,6 +42,7 @@ vi.mock('@/lib/chatTelemetry', () => ({
   chatTelemetry: { fiatPayoutStep: vi.fn() },
 }));
 vi.mock('framer-motion', () => ({
+  useReducedMotion: () => false,
   motion: {
     div: ({ children, ...props }: any) => <div {...props}>{children}</div>,
     button: ({ children, ...props }: any) => <button {...props}>{children}</button>,
