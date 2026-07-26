@@ -450,6 +450,18 @@ function StellarChatInterfaceContent() {
     [connect, isNetworkMismatch, sendMessage],
   );
 
+  /**
+   * Resend a message that failed to send (issue #1043).
+   *
+   * `content` is the original text captured at send time, so the user never has
+   * to retype it. Both the automatic backoff retries and the manual Retry button
+   * in the message's error state land here.
+   */
+  const handleRetryMessage = useCallback(
+    (_messageId: string, content: string) => sendMessage(content),
+    [sendMessage],
+  );
+
   // ── Health badge helper ─────────────────────────────────────────────────────
   const healthBadge = {
     checking: {
@@ -961,6 +973,7 @@ function StellarChatInterfaceContent() {
                 <ChatMessages
                   messages={messages}
                   onActionClick={handleActionClick}
+                  onRetry={handleRetryMessage}
                   isLoading={isLoading}
                 />
               </ErrorBoundary>

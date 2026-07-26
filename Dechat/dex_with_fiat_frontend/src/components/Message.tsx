@@ -12,6 +12,7 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 import { toDate } from '@/lib/messageUtils';
+import { MAX_AUTO_RETRIES, useMessageRetry } from '@/hooks/useMessageRetry';
 import { useTranslation } from '@/contexts/TranslationContext';
 import { motion, useReducedMotion } from 'framer-motion';
 import CopyButton from '@/components/ui/CopyButton';
@@ -23,7 +24,12 @@ interface MessageProps {
     actionType: string,
     data?: Record<string, unknown>,
   ) => void;
-  onRetry?: (messageId: string) => void;
+  /**
+   * Resend a message that failed to send. Receives the message id and the
+   * *original* content the user typed (from `originalPayload` when available),
+   * so the caller never has to reconstruct it and the user never has to retype.
+   */
+  onRetry?: (messageId: string, content: string) => void | Promise<void>;
   shouldAnimate?: boolean;
 }
 
@@ -43,6 +49,19 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
   const { t } = useTranslation();
   const isPending = message.metadata?.status === 'pending';
   const isFailed = message.metadata?.status === 'failed';
+
+  // Resend uses the payload captured at send time so the user's original text
+  // survives any post-failure rewrite of `content`.
+  const retryContent = message.originalPayload?.content ?? message.content;
+  const retry = useMessageRetry({
+    messageId: message.id,
+    content: retryContent,
+    isFailed: hasError,
+    onRetry,
+  });
+  // Attempts already recorded on the message, plus the ones this component has
+  // made since it mounted.
+  const totalRetryAttempts = (message.error?.retryAttempts ?? 0) + retry.attempts;
 
 
   // Currency conversion hook for transaction amounts
@@ -216,6 +235,8 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
             {/* Error State */}
             {hasError && (
               <div
+                data-testid="message-error"
+                role="alert"
                 className={`mt-3 inline-flex flex-col gap-2 rounded-lg border px-3 py-2 text-xs ${
                   isDarkMode
                     ? 'border-red-700 bg-red-950/40 text-red-200'
@@ -228,23 +249,51 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
                     {message.error?.message || 'Failed to send message'}
                   </span>
                 </div>
-                {message.error?.retryAttempts && message.error.retryAttempts > 0 && (
+                {totalRetryAttempts > 0 && (
                   <div className="text-xs opacity-75">
-                    Retry attempts: {message.error.retryAttempts}
+                    Retry attempts: {totalRetryAttempts}
                   </div>
                 )}
                 {onRetry && (
-                  <button
-                    onClick={() => onRetry(message.id)}
-                    className={`mt-2 flex items-center justify-center gap-2 px-3 py-1 rounded-lg text-xs font-medium transition-all transform hover:scale-105 active:scale-95 ${
-                      isDarkMode
-                        ? 'bg-red-700/40 hover:bg-red-700/60 border border-red-600'
-                        : 'bg-red-100 hover:bg-red-200 border border-red-300'
-                    }`}
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                    Retry
-                  </button>
+                  <>
+                    <div
+                      className="text-xs opacity-75"
+                      aria-live="polite"
+                      data-testid="message-retry-status"
+                    >
+                      {retry.isRetrying
+                        ? t('chat.resending')
+                        : retry.secondsUntilNextRetry !== null
+                          ? t('chat.retry_countdown', {
+                              seconds: retry.secondsUntilNextRetry,
+                              attempt: retry.attempts + 1,
+                              max: MAX_AUTO_RETRIES,
+                            })
+                          : t('chat.retry_exhausted', {
+                              max: MAX_AUTO_RETRIES,
+                            })}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={retry.retryNow}
+                      disabled={retry.isRetrying}
+                      data-testid="message-retry-button"
+                      aria-label={t('chat.retry_message', {
+                        content: retryContent,
+                      })}
+                      title={retryContent}
+                      className={`mt-2 flex items-center justify-center gap-2 px-3 py-1 rounded-lg text-xs font-medium transition-all transform hover:scale-105 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 ${
+                        isDarkMode
+                          ? 'bg-red-700/40 hover:bg-red-700/60 border border-red-600'
+                          : 'bg-red-100 hover:bg-red-200 border border-red-300'
+                      }`}
+                    >
+                      <RotateCcw
+                        className={`w-3 h-3 ${retry.isRetrying ? 'animate-spin' : ''}`}
+                      />
+                      {retry.isRetrying ? t('common.loading') : t('common.retry')}
+                    </button>
+                  </>
                 )}
               </div>
             )}

@@ -22,6 +22,11 @@ interface ChatMessagesProps {
     actionType: string,
     data?: Record<string, unknown>,
   ) => void;
+  /**
+   * Resend a message that failed to send. Receives the failed message's id and
+   * its original content, ready to be submitted again as-is.
+   */
+  onRetry?: (messageId: string, content: string) => void | Promise<void>;
   isLoading?: boolean;
   searchQuery?: string;
 }
@@ -107,6 +112,7 @@ function HelpCard({
 export default function ChatMessages({
   messages: allMessages,
   onActionClick,
+  onRetry,
   isLoading = false,
   searchQuery = '',
 }: ChatMessagesProps) {
@@ -402,6 +408,7 @@ export default function ChatMessages({
               key={message.id}
               message={message}
               onActionClick={onActionClick}
+              onRetry={onRetry}
               shouldAnimate={isReadyToAnimate && !isLoadingMore && !seenMessageIds.current.has(message.id)}
             />
           ))}

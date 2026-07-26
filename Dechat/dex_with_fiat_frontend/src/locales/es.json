@@ -35,7 +35,11 @@
       "convert": "Convertir 100 USDC a USD"
     },
     "error_message": "Error al enviar el mensaje. Verifique su conexión.",
-    "cancelled_message": "Solicitud cancelada por el usuario."
+    "cancelled_message": "Solicitud cancelada por el usuario.",
+    "resending": "Reenviando…",
+    "retry_countdown": "Reintentando automáticamente en {seconds}s (intento {attempt} de {max})",
+    "retry_exhausted": "Reintentos automáticos agotados tras {max} intentos.",
+    "retry_message": "Reenviar mensaje: {content}"
   },
   "header": {
     "title": "DexFiat · Stellar",
