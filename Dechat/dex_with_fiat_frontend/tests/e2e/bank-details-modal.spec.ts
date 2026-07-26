@@ -205,7 +205,9 @@ test.describe('BankDetailsModal — Step 3: confirm payout', () => {
   });
 
   test('shows confirm payout screen with quote details', async ({ page }) => {
-    await expect(page.getByText(/confirm/i)).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Confirm Payout' }),
+    ).toBeVisible();
   });
 
   test('payout note field accepts text up to 160 characters', async ({ page }) => {
