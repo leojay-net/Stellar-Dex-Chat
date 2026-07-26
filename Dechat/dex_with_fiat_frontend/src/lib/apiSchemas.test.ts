@@ -26,8 +26,11 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
         .mockResolvedValue('success');
 
       const promise = withRetry(fn);
-      
-      // First attempt fails
+
+      // Fake timers are installed, so the backoff sleep between attempts only
+      // resolves once the pending timers are drained.
+      await vi.runAllTimersAsync();
+
       await expect(promise).resolves.toBe('success');
       expect(fn).toHaveBeenCalledTimes(2);
     });
@@ -36,7 +39,15 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
       const fn = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
       const config: RetryConfig = { maxRetries: 2 };
 
-      await expect(withRetry(fn, config)).rejects.toThrow('Failed to fetch');
+      // Attach the rejection handler before draining timers, otherwise the
+      // rejection lands while nothing is listening and surfaces as an
+      // unhandled rejection.
+      const assertion = expect(withRetry(fn, config)).rejects.toThrow(
+        'Failed to fetch',
+      );
+      await vi.runAllTimersAsync();
+      await assertion;
+
       expect(fn).toHaveBeenCalledTimes(3); // initial + 2 retries
     });
 
@@ -46,7 +57,6 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
         .mockRejectedValueOnce(new TypeError('Failed to fetch'))
         .mockResolvedValue('success');
 
-      const startTime = Date.now();
       const promise = withRetry(fn, { initialDelayMs: 100, maxRetries: 2 });
       
       // Advance timers for first retry
@@ -70,8 +80,10 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
 
     it('should not retry on AbortError', async () => {
       const fn = vi.fn().mockRejectedValue(new DOMException('Aborted', 'AbortError'));
-      
-      await expect(withRetry(fn)).rejects.toThrow('AbortError');
+
+      await expect(withRetry(fn)).rejects.toThrow(
+        expect.objectContaining({ name: 'AbortError' }),
+      );
       expect(fn).toHaveBeenCalledTimes(1);
     });
 
@@ -85,7 +97,10 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
           error instanceof Error && error.message === 'Custom error'
       };
 
-      await expect(withRetry(fn, config)).resolves.toBe('success');
+      const promise = withRetry(fn, config);
+      await vi.runAllTimersAsync();
+
+      await expect(promise).resolves.toBe('success');
       expect(fn).toHaveBeenCalledTimes(2);
     });
 
@@ -117,17 +132,23 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
     it('should add jitter to avoid thundering herd', async () => {
       const delays: number[] = [];
       const originalSetTimeout = global.setTimeout;
-      
-      global.setTimeout = vi.fn((callback, delay) => {
+
+      const spy: typeof global.setTimeout = ((
+        callback: Parameters<typeof global.setTimeout>[0],
+        delay?: number,
+      ) => {
         delays.push(delay as number);
         return originalSetTimeout(callback, delay);
-      }) as any;
+      }) as typeof global.setTimeout;
+      global.setTimeout = spy;
 
       const fn = vi.fn()
         .mockRejectedValueOnce(new TypeError('Failed to fetch'))
         .mockResolvedValue('success');
 
-      await withRetry(fn, { initialDelayMs: 1000 });
+      const promise = withRetry(fn, { initialDelayMs: 1000 });
+      await vi.runAllTimersAsync();
+      await promise;
 
       // Delay should be close to 1000ms but with jitter (±25%)
       expect(delays[0]).toBeGreaterThan(750);
@@ -154,7 +175,10 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
         .mockResolvedValueOnce({ ok: false, status: 500, statusText: 'Internal Server Error' } as Response)
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ data: 'test' }) } as Response);
 
-      const result = await fetchWithRetry('https://api.example.com/test');
+      const promise = fetchWithRetry('https://api.example.com/test');
+      await vi.runAllTimersAsync();
+      const result = await promise;
+
       expect(result.ok).toBe(true);
       expect(fetch).toHaveBeenCalledTimes(2);
     });
@@ -164,7 +188,10 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
         .mockResolvedValueOnce({ ok: false, status: 503, statusText: 'Service Unavailable' } as Response)
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ data: 'test' }) } as Response);
 
-      const result = await fetchWithRetry('https://api.example.com/test');
+      const promise = fetchWithRetry('https://api.example.com/test');
+      await vi.runAllTimersAsync();
+      const result = await promise;
+
       expect(result.ok).toBe(true);
       expect(fetch).toHaveBeenCalledTimes(2);
     });
@@ -174,7 +201,10 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
         .mockResolvedValueOnce({ ok: false, status: 429, statusText: 'Too Many Requests' } as Response)
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ data: 'test' }) } as Response);
 
-      const result = await fetchWithRetry('https://api.example.com/test');
+      const promise = fetchWithRetry('https://api.example.com/test');
+      await vi.runAllTimersAsync();
+      const result = await promise;
+
       expect(result.ok).toBe(true);
       expect(fetch).toHaveBeenCalledTimes(2);
     });
@@ -226,7 +256,10 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
         retryableStatusCodes: [418],
       };
 
-      const result = await fetchWithRetry('https://api.example.com/test', {}, config);
+      const promise = fetchWithRetry('https://api.example.com/test', {}, config);
+      await vi.runAllTimersAsync();
+      const result = await promise;
+
       expect(result.ok).toBe(true);
       expect(fetch).toHaveBeenCalledTimes(2);
     });
@@ -235,8 +268,13 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
   describe('default configuration', () => {
     it('should use default maxRetries of 3', async () => {
       const fn = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
-      
-      await expect(withRetry(fn)).rejects.toThrow('Failed to fetch');
+
+      const assertion = expect(withRetry(fn)).rejects.toThrow(
+        'Failed to fetch',
+      );
+      await vi.runAllTimersAsync();
+      await assertion;
+
       expect(fn).toHaveBeenCalledTimes(4); // initial + 3 retries
     });
 

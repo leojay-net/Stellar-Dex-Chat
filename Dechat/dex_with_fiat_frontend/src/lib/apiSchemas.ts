@@ -31,6 +31,29 @@ export const verifyAccountSchema = z.object({
 export type VerifyAccountInput = z.infer<typeof verifyAccountSchema>;
 
 /**
+ * Error thrown by {@link fetchWithRetry} when the server answers with a
+ * non-OK status.
+ *
+ * Carries the status and the original `Response` as typed fields so
+ * {@link withRetry} can decide whether the status is retryable without
+ * casting. Previously these were stapled onto a plain `Error` through `any`,
+ * which left the status invisible to the retry check.
+ */
+export class HttpResponseError extends Error {
+  /** HTTP status code of the failed response. */
+  readonly status: number;
+  /** The original response, for callers that need headers or a body. */
+  readonly response: Response;
+
+  constructor(response: Response) {
+    super(`HTTP ${response.status}: ${response.statusText}`);
+    this.name = 'HttpResponseError';
+    this.status = response.status;
+    this.response = response;
+  }
+}
+
+/**
  * Retry configuration for API requests with exponential backoff
  */
 export interface RetryConfig {
@@ -126,10 +149,16 @@ export async function withRetry<T>(
     } catch (error) {
       lastError = error;
 
+      // An aborted request must never be retried, whatever the caller's
+      // `retryableErrors` says — the caller asked us to stop.
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
+
       // Check if error is retryable
       const isRetryableError = mergedConfig.retryableErrors(error);
       const isRetryableStatus =
-        error instanceof Response &&
+        (error instanceof HttpResponseError || error instanceof Response) &&
         mergedConfig.retryableStatusCodes.includes(error.status);
 
       if (!isRetryableError && !isRetryableStatus) {
@@ -164,10 +193,7 @@ export async function fetchWithRetry(
     
     if (!response.ok) {
       // Throw error to trigger retry for non-OK responses
-      const error = new Error(`HTTP ${response.status}: ${response.statusText}`);
-      (error as any).status = response.status;
-      (error as any).response = response;
-      throw error;
+      throw new HttpResponseError(response);
     }
     
     return response;

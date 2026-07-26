@@ -240,8 +240,7 @@ describe('AIAssistant abort signal support', () => {
 
     expect(toastAddMock).toHaveBeenCalled();
     consoleErrorSpy.mockRestore();
-
-
+  });
 });
 
 /**
@@ -489,7 +488,11 @@ describe('aiAssistant request retry with exponential backoff', () => {
         }),
     );
 
-    const result = await assistant.analyzeUserMessage('hello');
+    // Fake timers are installed, so the backoff sleep between attempts only
+    // resolves once the pending timers are drained.
+    const promise = assistant.analyzeUserMessage('hello');
+    await vi.runAllTimersAsync();
+    const result = await promise;
 
     expect(result.intent).toBe('query');
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -503,7 +506,9 @@ describe('aiAssistant request retry with exponential backoff', () => {
 
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const result = await assistant.analyzeUserMessage('hello');
+    const promise = assistant.analyzeUserMessage('hello');
+    await vi.runAllTimersAsync();
+    const result = await promise;
 
     expect(result.intent).toBe('unknown');
     expect(fetch).toHaveBeenCalledTimes(4); // initial + 3 retries
@@ -582,7 +587,9 @@ describe('aiAssistant request retry with exponential backoff', () => {
         }),
     );
 
-    const result = await assistant.generateFollowUpQuestion('query', ['name']);
+    const promise = assistant.generateFollowUpQuestion('query', ['name']);
+    await vi.runAllTimersAsync();
+    const result = await promise;
 
     expect(result).toBe('What is your name?');
     expect(fetch).toHaveBeenCalledTimes(2);
