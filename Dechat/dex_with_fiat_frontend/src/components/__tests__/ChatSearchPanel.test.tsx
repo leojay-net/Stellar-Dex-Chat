@@ -62,6 +62,7 @@ describe('ChatSearchPanel – keyboard shortcuts (#1183)', () => {
     // not just for the (synchronously-rendered) results container to exist.
     // Generous timeout: real (non-fake) timers under a loaded test runner.
     await screen.findByText('Bridging XLM', {}, { timeout: 3000 });
+    await screen.findByRole('option', { selected: true });
 
     fireEvent.keyDown(root, { key: 'Enter' });
 
@@ -75,6 +76,7 @@ describe('ChatSearchPanel – keyboard shortcuts (#1183)', () => {
 
     fireEvent.change(input, { target: { value: 'XLM' } });
     await screen.findByText('Wallet setup', {}, { timeout: 3000 });
+    await screen.findByRole('option', { selected: true });
 
     fireEvent.keyDown(root, { key: 'ArrowDown' });
     fireEvent.keyDown(root, { key: 'Enter' });
