@@ -76,9 +76,11 @@ export const useChatHistory = () => {
 
   const updateCurrentSession = useCallback(
     (messages: ChatMessage[]) => {
-      if (!historyState.currentSessionId) return;
-
       setHistoryState((prev) => {
+        // Guard inside the functional updater so it always reads fresh state,
+        // not the stale closure value of historyState.currentSessionId (#1223).
+        if (!prev.currentSessionId) return prev;
+
         const sessionIndex = prev.sessions.findIndex(
           (s) => s.id === prev.currentSessionId,
         );
@@ -90,7 +92,6 @@ export const useChatHistory = () => {
           lastUpdated: new Date(),
         };
 
-        // Update title if this is the first user message
         const updatedSessionWithTitle =
           ChatHistoryManager.updateSessionTitle(updatedSession);
 
@@ -103,7 +104,7 @@ export const useChatHistory = () => {
         };
       });
     },
-    [historyState.currentSessionId],
+    [],
   );
 
   const loadSession = useCallback(
