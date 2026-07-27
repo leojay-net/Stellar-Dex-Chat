@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import {
+  debounce,
   findHighlights,
   splitByHighlights,
   searchChatHistory,
@@ -285,5 +286,79 @@ describe('searchChatHistory – date range', () => {
     });
     expect(result.matches).toHaveLength(1);
     expect(result.matches[0].highlights).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// debounce — stale-closure regression tests (#1225)
+// ---------------------------------------------------------------------------
+
+describe('debounce', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('calls fn after the delay', () => {
+    const fn = vi.fn();
+    const d = debounce(fn, 200);
+    d('a');
+    expect(fn).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(200);
+    expect(fn).toHaveBeenCalledOnce();
+    expect(fn).toHaveBeenCalledWith('a');
+  });
+
+  it('resets the timer on rapid successive calls (debounce behaviour)', () => {
+    const fn = vi.fn();
+    const d = debounce(fn, 300);
+    d('first');
+    vi.advanceTimersByTime(100);
+    d('second');
+    vi.advanceTimersByTime(100);
+    d('third');
+    vi.advanceTimersByTime(300);
+    expect(fn).toHaveBeenCalledOnce();
+    expect(fn).toHaveBeenCalledWith('third');
+  });
+
+  it('regression: calls the latest fn after updateFn (stale-closure fix)', () => {
+    // Bug: before fix, `fn` was captured at debounce() call time and never
+    // updated, so a re-rendered callback was never reflected.
+    const originalFn = vi.fn();
+    const updatedFn = vi.fn();
+    const d = debounce(originalFn, 100);
+    d.updateFn(updatedFn); // simulate caller updating fn after re-render
+    d('payload');
+    vi.advanceTimersByTime(100);
+    expect(originalFn).not.toHaveBeenCalled();
+    expect(updatedFn).toHaveBeenCalledWith('payload');
+  });
+
+  it('cancel() prevents a pending callback from firing', () => {
+    const fn = vi.fn();
+    const d = debounce(fn, 200);
+    d('x');
+    d.cancel(); // e.g. called in useEffect cleanup on component unmount
+    vi.advanceTimersByTime(200);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('resets timer reference to null after firing (no stale timer ID)', () => {
+    const fn = vi.fn();
+    const d = debounce(fn, 100);
+    d('first');
+    vi.advanceTimersByTime(100); // timer fires, should be null now
+    // cancel on an already-fired timer must be a no-op, not throw
+    expect(() => d.cancel()).not.toThrow();
+  });
+
+  it('allows a second call after cancel without the first leaking', () => {
+    const fn = vi.fn();
+    const d = debounce(fn, 150);
+    d('a');
+    d.cancel();
+    d('b');
+    vi.advanceTimersByTime(150);
+    expect(fn).toHaveBeenCalledOnce();
+    expect(fn).toHaveBeenCalledWith('b');
   });
 });

@@ -21,16 +21,45 @@ export interface SearchResults {
   totalMessages: number;
 }
 
+export interface DebouncedFn<T extends (...args: unknown[]) => void> {
+  (...args: Parameters<T>): void;
+  /** Cancel any pending invocation. Call on component unmount to avoid stale callbacks. */
+  cancel(): void;
+  /** Swap the underlying function without resetting the timer. Prevents stale-closure bugs
+   *  when the caller's callback is recreated on each render (e.g. an inline arrow function). */
+  updateFn(newFn: T): void;
+}
+
 /** Debounce helper — returns a debounced version of `fn`. */
 export function debounce<T extends (...args: unknown[]) => void>(
   fn: T,
   delayMs: number,
-): (...args: Parameters<T>) => void {
+): DebouncedFn<T> {
   let timer: ReturnType<typeof setTimeout> | null = null;
-  return (...args: Parameters<T>) => {
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), delayMs);
+  // Store the latest fn so callers can update it via updateFn() without
+  // recreating the debounced wrapper (fixes stale-closure on re-render).
+  let latestFn: T = fn;
+
+  function debounced(...args: Parameters<T>): void {
+    if (timer !== null) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null; // reset so future clearTimeout checks are accurate
+      latestFn(...args);
+    }, delayMs);
+  }
+
+  debounced.cancel = (): void => {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
   };
+
+  debounced.updateFn = (newFn: T): void => {
+    latestFn = newFn;
+  };
+
+  return debounced;
 }
 
 /**
