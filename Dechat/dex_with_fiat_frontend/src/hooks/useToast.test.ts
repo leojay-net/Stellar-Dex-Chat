@@ -5,19 +5,19 @@ import { toastStore } from '@/lib/toastStore';
 
 describe('useToast telemetry', () => {
   let dispatchedEvents: CustomEvent[] = [];
+  let telemetryListener: (e: Event) => void;
 
   beforeEach(() => {
     dispatchedEvents = [];
     toastStore.clearToasts();
-    window.addEventListener('toast_telemetry', (e) => {
+    telemetryListener = (e) => {
       dispatchedEvents.push(e as CustomEvent);
-    });
+    };
+    window.addEventListener('toast_telemetry', telemetryListener);
   });
 
   afterEach(() => {
-    window.removeEventListener('toast_telemetry', (e) => {
-      dispatchedEvents.push(e as CustomEvent);
-    });
+    window.removeEventListener('toast_telemetry', telemetryListener);
     toastStore.clearToasts();
   });
 
