@@ -211,9 +211,17 @@ describe('SplitViewComparison – message selection sync', () => {
 // ---------------------------------------------------------------------------
 
 describe('SplitViewComparison – network status toasts', () => {
+  beforeEach(() => {
+    // useOnlineStatus verifies real connectivity with a network call — stub it so
+    // the "online" transition resolves deterministically instead of depending on
+    // whether the test sandbox can actually reach the network.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true } as Response));
+  });
+
   afterEach(() => {
     cleanup();
     splitViewAddToastMock.mockClear();
+    vi.unstubAllGlobals();
   });
 
   it('shows a warning toast when the browser goes offline while open', async () => {
@@ -270,9 +278,15 @@ describe('SplitViewComparison – network status toasts', () => {
 // ---------------------------------------------------------------------------
 
 describe('SplitViewComparison – race condition regression (#523)', () => {
+  beforeEach(() => {
+    // See the "network status toasts" describe block above for why this is stubbed.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true } as Response));
+  });
+
   afterEach(() => {
     cleanup();
     splitViewAddToastMock.mockClear();
+    vi.unstubAllGlobals();
   });
 
   it('detects offline→online transition even when events fire in rapid succession', async () => {

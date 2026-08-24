@@ -254,9 +254,10 @@ export default function BankDetailsModal({
   // Fetch banks when modal opens
   useEffect(() => {
     if (!isOpen) return;
+    const controller = new AbortController();
     setBanksLoading(true);
     setBanksError('');
-    fetch('/api/banks')
+    fetch('/api/banks', { signal: controller.signal })
       .then((r) => r.json())
       .then((json: { success: boolean; data: Bank[]; message?: string }) => {
         if (json.success) {
@@ -265,8 +266,14 @@ export default function BankDetailsModal({
           setBanksError(json.message ?? 'Failed to load banks');
         }
       })
-      .catch(() => setBanksError('Failed to load banks. Please try again.'))
-      .finally(() => setBanksLoading(false));
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setBanksError('Failed to load banks. Please try again.');
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setBanksLoading(false);
+      });
+    return () => controller.abort();
   }, [isOpen]);
 
   // Fetch a locked quote when the user reaches step 3

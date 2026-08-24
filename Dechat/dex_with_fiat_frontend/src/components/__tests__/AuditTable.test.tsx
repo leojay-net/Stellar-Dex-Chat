@@ -138,6 +138,9 @@ describe('AuditTable', () => {
   });
 
   it('shows a warning toast when the browser goes offline while open', async () => {
+    // useOnlineStatus verifies real connectivity with a network call — stub fetch
+    // so it resolves deterministically instead of hitting the live network.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeSuccessResponse([])));
     const addToastSpy = vi.spyOn(toastStore, 'addToast');
     render(React.createElement(AuditTable));
 
@@ -149,11 +152,14 @@ describe('AuditTable', () => {
           severity: 'warning',
           message: expect.stringMatching(/offline/i),
         }),
+        undefined,
       );
     });
   });
 
   it('shows a success toast when coming back online after offline', async () => {
+    // See the previous test for why fetch is stubbed here.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeSuccessResponse([])));
     const addToastSpy = vi.spyOn(toastStore, 'addToast');
     render(React.createElement(AuditTable));
 
@@ -169,6 +175,7 @@ describe('AuditTable', () => {
           severity: 'success',
           message: expect.stringMatching(/online|refresh/i),
         }),
+        undefined,
       );
     });
   });

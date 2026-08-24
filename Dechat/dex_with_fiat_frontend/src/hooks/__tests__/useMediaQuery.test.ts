@@ -59,13 +59,17 @@ describe('useMediaQuery', () => {
 
   it('returns false during SSR (window is undefined)', () => {
     const originalWindow = global.window;
-    // @ts-expect-error Testing SSR scenario
-    delete global.window;
+    try {
+      // @ts-expect-error Testing SSR scenario
+      delete global.window;
 
-    const { result } = renderHook(() => useMediaQuery('(min-width: 768px)'));
-    expect(result.current).toBe(false);
-
-    global.window = originalWindow;
+      const { result } = renderHook(() => useMediaQuery('(min-width: 768px)'));
+      expect(result.current).toBe(false);
+    } finally {
+      // Restore even if renderHook throws, so later tests in this file don't
+      // inherit a deleted global.window.
+      global.window = originalWindow;
+    }
   });
 
   // ── Updates ────────────────────────────────────────────────────────────

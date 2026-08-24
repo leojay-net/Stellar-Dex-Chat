@@ -21,7 +21,6 @@ const mockGetTotalDeposited = vi.mocked(getTotalDeposited);
 
 describe('useBridgeStats', () => {
   beforeEach(() => {
-    vi.useFakeTimers();
     mockGetContractBalance.mockResolvedValue(100n);
     mockGetBridgeLimit.mockResolvedValue(1000n);
     mockGetTotalDeposited.mockResolvedValue(500n);
@@ -47,6 +46,7 @@ describe('useBridgeStats', () => {
   });
 
   it('does not update state after unmount', async () => {
+    vi.useFakeTimers();
     let resolveBalance!: (v: bigint) => void;
     mockGetContractBalance.mockReturnValue(
       new Promise<bigint>((resolve) => { resolveBalance = resolve; }),
@@ -93,7 +93,7 @@ describe('useBridgeStats', () => {
 
     // Now resolve the first (stale) fetch — its result should be discarded
     resolveFirst(111n);
-    await vi.runAllTimersAsync();
+    await new Promise((r) => setTimeout(r, 0));
 
     // The newer fetch result (999n) should be preserved
     expect(result.current.balance).toBe(999n);
