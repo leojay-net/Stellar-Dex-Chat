@@ -3,22 +3,20 @@
 //! Invariants asserted here:
 //!
 //! * `total_liabilities` decreases by `request.amount` after the call;
-//! * Withdrawal request is removed from the queue;
+//! * Withdrawal request is removed from storage;
 //! * `WithdrawQueueLen` decreases by 1;
-//! * `TierQueueLen(tier)` decreases by 1;
-//! * Unauthorised callers are rejected and leave no state change;
+//! * Failure paths (unexpired, nonexistent) return expected errors;
 //! * Failure paths do not partially mutate storage.
-//!
-//! See [`docs/INVARIANT_TESTING.md`](docs/INVARIANT_TESTING.md) for the
-//! invariant-testing strategy and contributor checklist.
 
 #![cfg(test)]
 
 use crate::{Error, FiatBridge, FiatBridgeClient};
 use soroban_sdk::{
-    testutils::{Address as _, Events as _, Ledger},
-    token, Address, Env, Vec,
+    testutils::{Address as _, Ledger},
+    token, vec, Address, Bytes, Env,
 };
+
+const WITHDRAWAL_EXPIRY_WINDOW_LEDGERS: u32 = 17_280;
 
 fn create_token_contract<'a>(
     env: &Env,
@@ -33,14 +31,13 @@ fn create_token_contract<'a>(
 
 fn setup_bridge(
     env: &Env,
-    expiry_window: u32,
 ) -> (
     Address,
-    FiatBridgeClient,
+    FiatBridgeClient<'_>,
     Address,
     Address,
-    token::Client,
-    token::StellarAssetClient,
+    token::Client<'_>,
+    token::StellarAssetClient<'_>,
 ) {
     let admin = Address::generate(env);
     let (token_client, token_admin) = create_token_contract(env, &admin);
@@ -49,11 +46,7 @@ fn setup_bridge(
     let contract_id = env.register(FiatBridge, ());
     let client = FiatBridgeClient::new(env, &contract_id);
 
-    let mut signers = Vec::new(env);
-    signers.push_back(admin.clone());
-
-    // Set withdrawal expiry window
-    client.set_withdrawal_expiry_window(&env, expiry_window);
+    let signers = vec![env, admin.clone()];
 
     client.init(&admin, &token_address, &1_000_000, &100, &signers, &1, &0);
 
@@ -72,33 +65,30 @@ fn test_reclaim_expired_withdrawal_decreases_liabilities() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (contract_id, bridge, admin, token_addr, token_client, token_admin) = setup_bridge(&env, 1000);
+    let (_, bridge, _, token_addr, _, token_admin) = setup_bridge(&env);
 
     let user = Address::generate(&env);
     let reference = Bytes::from_slice(&env, b"test");
 
-    // Deposit XLM
-    token_admin.mint(&user, &50000);
+    // Deposit tokens
+    token_admin.mint(&user, &50_000);
     bridge.deposit(&user, &1000, &token_addr, &reference, &0, &0, &None);
 
-    // Create an expired withdrawal request
-    let request_id = bridge.request_withdrawal(&user, &token_addr, &100, &100, &0, &0, &0, &0);
+    // Create a withdrawal request
+    let request_id = bridge.request_withdrawal(&user, &100, &token_addr, &None, &0);
+
+    let initial_liabilities = bridge.get_total_liabilities();
+    assert_eq!(initial_liabilities, 100);
 
     // Advance ledger past the expiry window
-    env.ledger().set_sequence_number(env.ledger().sequence() + 1001);
+    env.ledger().set_sequence_number(env.ledger().sequence() + WITHDRAWAL_EXPIRY_WINDOW_LEDGERS + 10);
 
-    // Reclaim the expired withdrawal (admin call)
-    bridge.reclaim_expired_withdrawal(&env, request_id);
+    // Reclaim the expired withdrawal
+    bridge.reclaim_expired_withdrawal(&request_id);
 
     // After reclamation, total_liabilities should have decreased
-    let config = bridge.get_config(&token_addr);
-    let liabilities = config.total_liabilities;
-    // Liabilities should have decreased by the reclaimed amount
-    // (100 stroops was deposited, 100 was reclaimed)
-    assert!(
-        liabilities <= 999999, // initial was 1_000_000 - 100 deposited = 999_900, minus 100 reclaimed = 999_800
-        "Liabilities should decrease after reclamation"
-    );
+    let final_liabilities = bridge.get_total_liabilities();
+    assert_eq!(final_liabilities, 0);
 }
 
 #[test]
@@ -106,69 +96,33 @@ fn test_reclaim_expired_withdrawal_removes_from_queue() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (contract_id, bridge, admin, token_addr, token_client, token_admin) = setup_bridge(&env, 1000);
+    let (_, bridge, _, token_addr, _, token_admin) = setup_bridge(&env);
 
     let user = Address::generate(&env);
     let reference = Bytes::from_slice(&env, b"test");
 
-    // Deposit XLM
-    token_admin.mint(&user, &50000);
+    // Deposit tokens
+    token_admin.mint(&user, &50_000);
     bridge.deposit(&user, &1000, &token_addr, &reference, &0, &0, &None);
 
     // Create a withdrawal request
-    let request_id = bridge.request_withdrawal(&user, &token_addr, &100, &200, &0, &0, &0, &0);
+    let request_id = bridge.request_withdrawal(&user, &100, &token_addr, &None, &0);
+
+    let initial_len = bridge.get_wq_depth();
+    assert_eq!(initial_len, 1);
 
     // Advance ledger past the expiry window
-    env.ledger().set_sequence_number(env.ledger().sequence() + 1001);
+    env.ledger().set_sequence_number(env.ledger().sequence() + WITHDRAWAL_EXPIRY_WINDOW_LEDGERS + 10);
 
-    // Get initial queue length
-    let initial_len = bridge.get_withdraw_queue_len();
-
-    // Reclaim the expired withdrawal (admin call)
-    bridge.reclaim_expired_withdrawal(&env, request_id);
+    // Reclaim the expired withdrawal
+    bridge.reclaim_expired_withdrawal(&request_id);
 
     // After reclamation, queue length should have decreased
-    let final_len = bridge.get_withdraw_queue_len();
-    assert!(
-        final_len < initial_len,
-        "WithdrawQueueLen should decrease after reclamation"
-    );
-}
+    let final_len = bridge.get_wq_depth();
+    assert_eq!(final_len, 0);
 
-#[test]
-fn test_unauthorised_reclaim_is_rejected() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (contract_id, bridge, admin, token_addr, token_client, token_admin) = setup_bridge(&env, 1000);
-
-    let user = Address::generate(&env);
-    let reference = Bytes::from_slice(&env, b"test");
-
-    // Deposit XLM
-    token_admin.mint(&user, &50000);
-    bridge.deposit(&user, &1000, &token_addr, &reference, &0, &0, &None);
-
-    // Create a withdrawal request
-    let request_id = bridge.request_withdrawal(&user, &token_addr, &100, &200, &0, &0, &0, &0);
-
-    // Advance ledger past the expiry window
-    env.ledger().set_sequence_number(env.ledger().sequence() + 1001);
-
-    // Try to reclaim with non-admin (should fail)
-    let other = Address::generate(&env);
-    let result = bridge.reclaim_expired_withdrawal(&env, request_id);
-    assert!(
-        result.is_err(),
-        "Unauthorised reclamation should be rejected"
-    );
-
-    // State should be unchanged - request should still exist
-    let request = bridge.get_withdraw_request(request_id);
-    assert!(
-        request.is_some(),
-        "Request should still exist after unauthorised attempt"
-    );
+    // Request should no longer exist in storage
+    assert_eq!(bridge.get_withdrawal_request(&request_id), None);
 }
 
 #[test]
@@ -176,49 +130,28 @@ fn test_reclaim_nonexistent_request_is_rejected() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (contract_id, bridge, admin, token_addr, token_client, token_admin) = setup_bridge(&env, 1000);
+    let (_, bridge, _, _, _, _) = setup_bridge(&env);
 
-    let user = Address::generate(&env);
-    let reference = Bytes::from_slice(&env, b"test");
-
-    // Deposit XLM
-    token_admin.mint(&user, &50000);
-    bridge.deposit(&user, &1000, &token_addr, &reference, &0, &0, &None);
-
-    // Try to reclaim a non-existent request ID
-    let result = bridge.reclaim_expired_withdrawal(&env, 999999);
-    assert!(
-        result.is_err(),
-        "Reclaiming non-existent request should be rejected"
-    );
+    let result = bridge.try_reclaim_expired_withdrawal(&999999);
+    assert_eq!(result, Err(Ok(Error::RequestNotFound)));
 }
 
 #[test]
-fn test_reclaim_not_expaulted_is_rejected() {
+fn test_reclaim_not_expired_is_rejected() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (contract_id, bridge, admin, token_addr, token_client, token_admin) = setup_bridge(&env, 1000);
+    let (_, bridge, _, token_addr, _, token_admin) = setup_bridge(&env);
 
     let user = Address::generate(&env);
     let reference = Bytes::from_slice(&env, b"test");
 
-    // Deposit XLM
-    token_admin.mint(&user, &50000);
+    token_admin.mint(&user, &50_000);
     bridge.deposit(&user, &1000, &token_addr, &reference, &0, &0, &None);
 
-    // Create a withdrawal request (not yet expired)
-    let request_id = bridge.request_withdrawal(&user, &token_addr, &100, &100, &0, &0, &0, &0);
+    let request_id = bridge.request_withdrawal(&user, &100, &token_addr, &None, &0);
 
     // Try to reclaim before expiry window (should fail)
-    let result = bridge.reclaim_expired_withdrawal(&env, request_id);
-    assert!(
-        result.is_err_and(|e| e == Error::WithdrawalLocked),
-        "Reclaiming before expiry should return WithdrawalLocked error"
-    );
-}
-
-fn get_config(bridge: &FiatBridgeClient, token: Address) -> token::TokenConfig {
-    // This is a helper to get token config - may need adjustment based on actual API
-    bridge.get_token_registry(token)
+    let result = bridge.try_reclaim_expired_withdrawal(&request_id);
+    assert_eq!(result, Err(Ok(Error::WithdrawalLocked)));
 }
