@@ -5384,6 +5384,18 @@ impl FiatBridge {
             .get(&DataKey::UpgradeProposal)
             .ok_or(Error::UpgradeProposalMissing)?;
 
+        if let Some(timing) = env.storage().instance()
+            .get::<_, UpgradeProposalTiming>(&DataKey::UpgradeProposalTiming)
+        {
+            // A timing record accompanies all new proposals. Do not execute a
+            // proposal if its immutable deadline no longer agrees with it.
+            if timing.wasm_hash != proposal.wasm_hash
+                || timing.executable_after != proposal.executable_after
+            {
+                return Err(Error::InternalError);
+            }
+        }
+
         if env.ledger().sequence() < proposal.executable_after {
             return Err(Error::UpgradeNotReady);
         }
@@ -5391,6 +5403,7 @@ impl FiatBridge {
         env.deployer()
             .update_current_contract_wasm(proposal.wasm_hash.clone());
         env.storage().instance().remove(&DataKey::UpgradeProposal);
+        env.storage().instance().remove(&DataKey::UpgradeProposalTiming);
         env.events()
             .publish((EVENT_VERSION, Symbol::new(&env, "upg_exec")), proposal.wasm_hash);
         Ok(())
@@ -5432,6 +5445,7 @@ impl FiatBridge {
             .ok_or(Error::UpgradeProposalMissing)?;
 
         env.storage().instance().remove(&DataKey::UpgradeProposal);
+        env.storage().instance().remove(&DataKey::UpgradeProposalTiming);
         UpgradeCancelledEvent {
             version: EVENT_VERSION,
             admin: admin.clone(),

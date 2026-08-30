@@ -70,9 +70,13 @@ fn execute_upgrade_before_delay_rejected() {
     let wasm_hash = BytesN::from_array(&env, &[0u8; 32]);
 
     bridge.propose_upgrade(&wasm_hash);
+    let proposal_before = bridge.get_upgrade_proposal().unwrap();
+    let timing_before = bridge.get_upgrade_proposal_timing().unwrap();
 
     let result = bridge.try_execute_upgrade();
     assert_eq!(result, Err(Ok(Error::UpgradeNotReady)));
+    assert_eq!(bridge.get_upgrade_proposal(), Some(proposal_before));
+    assert_eq!(bridge.get_upgrade_proposal_timing(), Some(timing_before));
 }
 
 #[test]
