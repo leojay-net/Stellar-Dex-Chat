@@ -85,9 +85,16 @@ fn load_valid_contract_wasm_fixture() -> std::vec::Vec<u8> {
             continue;
         }
 
-        let candidate = registry_path.join("soroban-sdk-25.3.0/doctest_fixtures/contract.wasm");
-        if candidate.exists() {
-            return std::fs::read(candidate).expect("unable to read fixture wasm");
+        if let Ok(sdk_dirs) = std::fs::read_dir(&registry_path) {
+            for sdk_dir in sdk_dirs.flatten() {
+                let name = sdk_dir.file_name();
+                if name.to_string_lossy().starts_with("soroban-sdk-") {
+                    let candidate = sdk_dir.path().join("doctest_fixtures/contract.wasm");
+                    if candidate.exists() {
+                        return std::fs::read(candidate).expect("unable to read fixture wasm");
+                    }
+                }
+            }
         }
     }
 
@@ -528,7 +535,7 @@ fn test_execute_withdrawal_operator_limit_enforced() {
     bridge.execute_withdrawal(&req1, &None, &0, &0, &0);
 
     let req2 = bridge.request_withdrawal(&user, &100, &token_addr, &None, &0);
-    bridge.execute_withdrawal(&req2, &None, &0, &0, &0);
+    bridge.execute_withdrawal(&req2, &None, &0, &0, &1);
     // Both succeed — per-operator enforcement is a future protocol upgrade
 }
 
@@ -554,7 +561,7 @@ fn test_execute_withdrawal_operator_limit_resets_after_window() {
     });
 
     let req2 = bridge.request_withdrawal(&user, &100, &token_addr, &None, &0);
-    bridge.execute_withdrawal(&req2, &None, &0, &0, &0);
+    bridge.execute_withdrawal(&req2, &None, &0, &0, &1);
     assert_eq!(token_sac.balance(&user), 700);
 }
 
@@ -2974,7 +2981,7 @@ fn test_circuit_breaker_also_blocks_execute_withdrawal() {
     assert!(bridge.is_circuit_breaker_tripped());
 
     // The second queued withdrawal execution is now blocked
-    let result = bridge.try_execute_withdrawal(&r2, &None, &0, &0, &0);
+    let result = bridge.try_execute_withdrawal(&r2, &None, &0, &0, &1);
     assert_eq!(result, Err(Ok(Error::CircuitBreakerActive)));
 }
 
@@ -5430,11 +5437,11 @@ fn test_withdraw_fees_batch_nonce_replay_rejected() {
     tokens.push_back(token_a_addr.clone());
 
     // Fresh contract: per-caller nonce starts at 0.
-    assert_eq!(bridge.get_fee_withdrawal_batch_nonce(&admin), 0);
+    assert_eq!(bridge.get_fee_withdrawal_nonce(&admin), 0);
 
     // First batch withdrawal uses nonce 0 and increments to 1.
     bridge.withdraw_fees_batch(&recipient, &tokens, &0);
-    assert_eq!(bridge.get_fee_withdrawal_batch_nonce(&admin), 1);
+    assert_eq!(bridge.get_fee_withdrawal_nonce(&admin), 1);
     assert_eq!(token_a.balance(&recipient), 100);
 
     // Replaying the same nonce must be rejected (stale nonce).
@@ -5463,13 +5470,13 @@ fn test_withdraw_fees_batch_nonce_is_per_caller() {
 
     // An unrelated caller has its own independent nonce counter at 0.
     let other = Address::generate(&env);
-    assert_eq!(bridge.get_fee_withdrawal_batch_nonce(&admin), 0);
-    assert_eq!(bridge.get_fee_withdrawal_batch_nonce(&other), 0);
+    assert_eq!(bridge.get_fee_withdrawal_nonce(&admin), 0);
+    assert_eq!(bridge.get_fee_withdrawal_nonce(&other), 0);
 
     // Admin's nonce advances to 1 for its own counter only.
     bridge.withdraw_fees_batch(&recipient, &tokens, &0);
-    assert_eq!(bridge.get_fee_withdrawal_batch_nonce(&admin), 1);
-    assert_eq!(bridge.get_fee_withdrawal_batch_nonce(&other), 0);
+    assert_eq!(bridge.get_fee_withdrawal_nonce(&admin), 1);
+    assert_eq!(bridge.get_fee_withdrawal_nonce(&other), 0);
 }
 
 #[test]
@@ -5494,7 +5501,7 @@ fn test_withdraw_fees_batch_emits_nonce_event() {
     });
 
     // The per-caller nonce advanced, confirming the nonce event fired.
-    assert_eq!(bridge.get_fee_withdrawal_batch_nonce(&admin), 1);
+    assert_eq!(bridge.get_fee_withdrawal_nonce(&admin), 1);
 }
 
 /// Verifies that the `remaining_fees` value in the emitted event matches

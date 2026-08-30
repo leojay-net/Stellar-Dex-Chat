@@ -361,3 +361,54 @@ describe('SplitViewComparison – dark mode fallback (#838)', () => {
     expect(dialog.className).toContain('bg-slate-950');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Optimistic UI updates
+// ---------------------------------------------------------------------------
+
+describe('SplitViewComparison – optimistic UI updates', () => {
+  afterEach(cleanup);
+
+  it('optimistically updates message selection immediately on click', () => {
+    const splitView = makeSplitView();
+    renderWithTheme(<SplitViewComparison splitView={splitView} sessions={allSessions} />);
+
+    const messageBtn = screen.getAllByRole('button', { name: /User message|Assistant message/ })[0];
+    fireEvent.click(messageBtn);
+
+    // Optimistically shows the "Message selected" badge immediately
+    expect(screen.getByText('Message selected')).toBeInTheDocument();
+    expect(messageBtn).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('optimistically swaps threads immediately on swap button click', () => {
+    const splitView = makeSplitView({ leftSessionId: 's1', rightSessionId: 's2' });
+    renderWithTheme(<SplitViewComparison splitView={splitView} sessions={allSessions} />);
+
+    // Left pane has Thread Alpha, Right pane has Thread Beta
+    const leftPane = screen.getByTestId('split-pane-left');
+    const rightPane = screen.getByTestId('split-pane-right');
+    expect(leftPane).toHaveTextContent('Hello from thread A');
+    expect(rightPane).toHaveTextContent('Hello from thread B');
+
+    // Click Swap
+    fireEvent.click(screen.getByTestId('swap-threads-btn'));
+
+    // Optimistically swapped immediately
+    expect(leftPane).toHaveTextContent('Hello from thread B');
+    expect(rightPane).toHaveTextContent('Hello from thread A');
+  });
+
+  it('optimistically updates thread selection when changing dropdown', () => {
+    const splitView = makeSplitView({ leftSessionId: 's1', rightSessionId: null });
+    renderWithTheme(<SplitViewComparison splitView={splitView} sessions={allSessions} />);
+
+    const rightSelect = screen.getByRole('combobox', { name: /Select Right thread/i });
+    fireEvent.change(rightSelect, { target: { value: 's2' } });
+
+    // Right pane immediately shows thread B messages
+    const rightPane = screen.getByTestId('split-pane-right');
+    expect(rightPane).toHaveTextContent('Hello from thread B');
+  });
+});
+

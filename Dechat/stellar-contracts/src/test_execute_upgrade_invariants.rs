@@ -1,11 +1,23 @@
-#![cfg(test)]
+//! Invariant tests for [`FiatBridge::execute_upgrade`].
+//!
+//! `execute_upgrade` consumes a pending [`UpgradeProposal`] whose time lock has
+//! expired, invokes `deployer().update_current_contract_wasm`, removes the
+//! proposal from storage, and emits an event. The invariants asserted here are:
+//!
+//! * executing an upgrade requires an existing proposal; attempting to execute
+//!   without one fails with `UpgradeProposalMissing` and writes nothing;
+//! * executing before `executable_after` is reached fails with `UpgradeNotReady`
+//!   and leaves the proposal intact in storage;
+//! * failed upgrade attempts leave core contract accounting untouched.
 
 use crate::{Error, FiatBridge, FiatBridgeClient};
 use proptest::prelude::*;
 use soroban_sdk::{
-    testutils::Address as _,
+    testutils::{Address as _, Ledger},
     token, Address, BytesN, Env, Vec,
 };
+
+const MIN_UPGRADE_DELAY: u32 = 1_000;
 
 fn create_token_contract<'a>(
     env: &Env,
@@ -18,18 +30,9 @@ fn create_token_contract<'a>(
     )
 }
 
-fn setup_bridge(
-    env: &Env,
-) -> (
-    Address,
-    FiatBridgeClient<'_>,
-    Address,
-    Address,
-    token::Client<'_>,
-    token::StellarAssetClient<'_>,
-) {
+fn setup_bridge(env: &Env) -> (FiatBridgeClient<'_>, Address) {
     let admin = Address::generate(env);
-    let (token_client, token_admin) = create_token_contract(env, &admin);
+    let (token_client, _token_admin) = create_token_contract(env, &admin);
     let token_address = token_client.address.clone();
 
     let contract_id = env.register(FiatBridge, ());
@@ -40,29 +43,42 @@ fn setup_bridge(
 
     client.init(&admin, &token_address, &1_000_000, &100, &signers, &1, &0);
 
+    (client, admin)
+}
+
+fn setup_uninitialised(env: &Env) -> FiatBridgeClient<'_> {
+    let contract_id = env.register(FiatBridge, ());
+    FiatBridgeClient::new(env, &contract_id)
+}
+
+fn hash_of(env: &Env, byte: u8) -> BytesN<32> {
+    BytesN::from_array(env, &[byte; 32])
+}
+
+fn state_fingerprint(bridge: &FiatBridgeClient) -> (i128, i128, i128, Address) {
     (
-        contract_id,
-        client,
-        admin,
-        token_address,
-        token_client,
-        token_admin,
+        bridge.get_limit(),
+        bridge.get_total_deposited(),
+        bridge.get_total_withdrawn(),
+        bridge.get_admin(),
     )
 }
 
 #[test]
-fn execute_upgrade_without_proposal_rejected() {
+fn execute_upgrade_without_proposal_fails_with_missing_error() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_, bridge, _, _, _, _) = setup_bridge(&env);
+    let (bridge, _admin) = setup_bridge(&env);
+    let before = state_fingerprint(&bridge);
 
     let result = bridge.try_execute_upgrade();
     assert_eq!(result, Err(Ok(Error::UpgradeProposalMissing)));
+    assert_eq!(before, state_fingerprint(&bridge));
 }
 
 #[test]
-fn execute_upgrade_before_delay_rejected() {
+fn execute_upgrade_before_timelock_fails_with_not_ready_error() {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -73,6 +89,7 @@ fn execute_upgrade_before_delay_rejected() {
     let proposal_before = bridge.get_upgrade_proposal().unwrap();
     let timing_before = bridge.get_upgrade_proposal_timing().unwrap();
 
+    // Sequence has not advanced to proposal.executable_after
     let result = bridge.try_execute_upgrade();
     assert_eq!(result, Err(Ok(Error::UpgradeNotReady)));
     assert_eq!(bridge.get_upgrade_proposal(), Some(proposal_before));
@@ -80,49 +97,36 @@ fn execute_upgrade_before_delay_rejected() {
 }
 
 #[test]
-fn execute_upgrade_no_proposal_no_state_change() {
+fn execute_upgrade_uninitialised_fails() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (contract_id, bridge, _, _, token_client, _) = setup_bridge(&env);
-
-    let total_deposited_before = bridge.get_total_deposited();
-    let total_withdrawn_before = bridge.get_total_withdrawn();
-    let balance_before = token_client.balance(&contract_id);
-
-    let _ = bridge.try_execute_upgrade();
-
-    let total_deposited_after = bridge.get_total_deposited();
-    let total_withdrawn_after = bridge.get_total_withdrawn();
-    let balance_after = token_client.balance(&contract_id);
-
-    assert_eq!(total_deposited_before, total_deposited_after);
-    assert_eq!(total_withdrawn_before, total_withdrawn_after);
-    assert_eq!(balance_before, balance_after);
+    let bridge = setup_uninitialised(&env);
+    let result = bridge.try_execute_upgrade();
+    assert_eq!(result, Err(Ok(Error::UpgradeProposalMissing)));
 }
 
 proptest! {
     #[test]
-    fn execute_upgrade_invariants_hold(
-        _delay in 34_560u32..=100_000,
+    fn execute_upgrade_premature_always_leaves_proposal_intact(
+        offset in 0u32..MIN_UPGRADE_DELAY
     ) {
         let env = Env::default();
         env.mock_all_auths();
 
-        let (contract_id, bridge, _, _, token_client, _) = setup_bridge(&env);
+        let (bridge, _admin) = setup_bridge(&env);
+        let hash = hash_of(&env, 0xBB);
+        bridge.propose_upgrade(&hash);
 
-        let total_deposited_before = bridge.get_total_deposited();
-        let total_withdrawn_before = bridge.get_total_withdrawn();
-        let balance_before = token_client.balance(&contract_id);
+        // Advance ledger partially, but less than MIN_UPGRADE_DELAY
+        if offset > 0 {
+            env.ledger().with_mut(|l| l.sequence_number += offset);
+        }
 
-        let _ = bridge.try_execute_upgrade();
+        let result = bridge.try_execute_upgrade();
+        prop_assert_eq!(result, Err(Ok(Error::UpgradeNotReady)));
 
-        let total_deposited_after = bridge.get_total_deposited();
-        let total_withdrawn_after = bridge.get_total_withdrawn();
-        let balance_after = token_client.balance(&contract_id);
-
-        prop_assert_eq!(total_deposited_before, total_deposited_after);
-        prop_assert_eq!(total_withdrawn_before, total_withdrawn_after);
-        prop_assert_eq!(balance_before, balance_after);
+        let p = bridge.get_upgrade_proposal().unwrap();
+        prop_assert_eq!(p.wasm_hash, hash);
     }
 }
