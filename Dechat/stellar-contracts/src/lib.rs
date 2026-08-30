@@ -5796,6 +5796,9 @@ mod test_revoke_multisig_approval_invariants;
 mod test_get_multisig_proposal_invariants;
 
 #[cfg(test)]
+mod test_propose_multisig_action_invariants;
+
+#[cfg(test)]
 mod test_propose_upgrade_invariants;
 
 #[cfg(test)]
