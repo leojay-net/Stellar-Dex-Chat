@@ -1022,6 +1022,9 @@ impl FiatBridge {
         Self::validate_memo_hash(&env, &memo_hash)?;
         from.require_auth();
         Self::require_not_paused(&env)?;
+        // Reject a tripped breaker before any quota accounting or token call.
+        // The rolling-volume helper below still handles lazy auto-reset.
+        Self::require_circuit_breaker_clear(&env)?;
 
         if amount <= 0 {
             return Err(Error::ZeroAmount);
@@ -5812,3 +5815,6 @@ mod test_set_circuit_breaker_threshold_invariants;
 
 #[cfg(test)]
 mod test_set_circuit_breaker_reset_window_invariants;
+
+#[cfg(test)]
+mod test_withdraw_circuit_breaker;
