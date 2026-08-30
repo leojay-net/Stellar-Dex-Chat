@@ -195,6 +195,17 @@ pub struct UpgradeProposal {
     pub executable_after: u32,
 }
 
+/// Auditable timing metadata for an upgrade proposal.
+/// Stored separately so pre-existing `UpgradeProposal` values remain decodable.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UpgradeProposalTiming {
+    pub wasm_hash: BytesN<32>,
+    pub proposed_at: u32,
+    pub delay: u32,
+    pub executable_after: u32,
+}
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UserDailyWithdrawal {
@@ -758,6 +769,7 @@ pub enum DataKey {
     // ── Issue #107: governed upgrade mechanism ───────────────────────────
     UpgradeProposal,
     UpgradeDelay,
+    UpgradeProposalTiming,
     // ── Issue #100: M-of-N multi-signature admin control ─────────────────
     Signers,
     Threshold,
@@ -5341,12 +5353,22 @@ impl FiatBridge {
             .get(&DataKey::UpgradeDelay)
             .unwrap_or(MIN_UPGRADE_DELAY);
 
+        let proposed_at = env.ledger().sequence();
         let proposal = UpgradeProposal {
             wasm_hash: new_wasm_hash.clone(),
-            executable_after: env.ledger().sequence().saturating_add(delay),
+            executable_after: proposed_at.saturating_add(delay),
         };
 
         env.storage().instance().set(&DataKey::UpgradeProposal, &proposal);
+        env.storage().instance().set(
+            &DataKey::UpgradeProposalTiming,
+            &UpgradeProposalTiming {
+                wasm_hash: new_wasm_hash.clone(),
+                proposed_at,
+                delay,
+                executable_after: proposal.executable_after,
+            },
+        );
         env.events().publish(
             (EVENT_VERSION, Symbol::new(&env, "upg_prop")),
             (new_wasm_hash, proposal.executable_after),
@@ -5422,6 +5444,38 @@ impl FiatBridge {
 
     pub fn get_upgrade_proposal(env: Env) -> Option<UpgradeProposal> {
         env.storage().instance().get(&DataKey::UpgradeProposal)
+    }
+
+    /// Return the ledger and delay recorded for the pending upgrade.
+    pub fn get_upgrade_proposal_timing(env: Env) -> Option<UpgradeProposalTiming> {
+        env.storage().instance().get(&DataKey::UpgradeProposalTiming)
+    }
+
+    /// Add timing metadata to a proposal made by earlier contract versions.
+    /// Its original execution deadline remains unchanged.
+    pub fn migrate_upgrade_proposal_timing(env: Env) -> Result<(), Error> {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        if env.storage().instance().has(&DataKey::UpgradeProposalTiming) {
+            return Ok(());
+        }
+        if let Some(proposal) = env.storage().instance()
+            .get::<_, UpgradeProposal>(&DataKey::UpgradeProposal)
+        {
+            let delay = env.storage().instance().get(&DataKey::UpgradeDelay)
+                .unwrap_or(MIN_UPGRADE_DELAY);
+            env.storage().instance().set(
+                &DataKey::UpgradeProposalTiming,
+                &UpgradeProposalTiming {
+                    wasm_hash: proposal.wasm_hash,
+                    proposed_at: proposal.executable_after.saturating_sub(delay),
+                    delay,
+                    executable_after: proposal.executable_after,
+                },
+            );
+        }
+        Ok(())
     }
 
     // ── Issue #100: Multi-sig Logic ──────────────────────────────────────────
