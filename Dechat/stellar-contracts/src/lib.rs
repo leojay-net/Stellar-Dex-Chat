@@ -5577,6 +5577,11 @@ impl FiatBridge {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+        // A recovery target must be externally controllable. Pointing it at
+        // this contract would make the configured recovery route unusable.
+        if recovery == env.current_contract_address() {
+            return Err(Error::InvalidRecipient);
+        }
         if cap <= 0 {
             return Err(Error::ZeroAmount);
         }

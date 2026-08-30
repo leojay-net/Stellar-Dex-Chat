@@ -787,6 +787,20 @@ fn test_set_emergency_recovery_non_admin_cannot_call() {
     assert_eq!(bridge.get_emergency_recovery_cap(), None);
 }
 
+/// The configured recovery address must remain externally controlled even
+/// when an authenticated admin submits the update.
+#[test]
+fn test_set_emergency_recovery_rejects_contract_as_recovery_target() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (contract_id, bridge, _, _, _, _) = setup_bridge(&env, 1_000);
+
+    let result = bridge.try_set_emergency_recovery(&contract_id, &500);
+
+    assert_eq!(result, Err(Ok(Error::InvalidRecipient)));
+    assert_eq!(bridge.get_emergency_recovery_cap(), None);
+}
+
 // ── withdrawal cooldown tests ─────────────────────────────────────────────
 
 #[test]
