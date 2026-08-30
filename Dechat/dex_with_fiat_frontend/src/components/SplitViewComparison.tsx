@@ -45,9 +45,15 @@ function ThreadPane({
   const [copiedMessageId, setCopiedMessageId] = React.useState<string | null>(
     null,
   );
+  const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   React.useEffect(() => {
     setMounted(true);
+    return () => {
+      if (copyResetTimerRef.current !== null) {
+        clearTimeout(copyResetTimerRef.current);
+      }
+    };
   }, []);
 
   const scrollToMessage = (id: string) => {
@@ -74,7 +80,14 @@ function ThreadPane({
     e.stopPropagation();
     onCopyMessage(content);
     setCopiedMessageId(messageId);
-    setTimeout(() => setCopiedMessageId(null), 2000);
+    // A previous copy's timeout must not clear feedback for a newer copy.
+    if (copyResetTimerRef.current !== null) {
+      clearTimeout(copyResetTimerRef.current);
+    }
+    copyResetTimerRef.current = setTimeout(() => {
+      setCopiedMessageId(null);
+      copyResetTimerRef.current = null;
+    }, 2000);
   };
 
   const formatTimestamp = (timestamp: number | Date) => {
