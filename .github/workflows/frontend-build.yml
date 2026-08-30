@@ -23,7 +23,8 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
         with:
-          version: 8
+          # pnpm-lock.yaml uses lockfile v9, which pnpm 8 cannot read.
+          version: 9
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
