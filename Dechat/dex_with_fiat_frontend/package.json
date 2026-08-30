@@ -67,7 +67,7 @@
     "eslint-config-next": "15.3.5",
     "happy-dom": "^20.9.0",
     "jsdom": "^29.0.1",
-    "prettier": "^3.8.1",
+    "prettier": "^3.9.6",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.5"
