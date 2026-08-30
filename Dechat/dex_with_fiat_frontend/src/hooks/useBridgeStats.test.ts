@@ -53,10 +53,12 @@ describe('useBridgeStats', () => {
 
     function StatsSnapshot() {
       const { balance, loading } = useBridgeStats();
-      return <output>{`${balance ?? 'empty'}:${loading}`}</output>;
+      return React.createElement('output', null, `${balance ?? 'empty'}:${loading}`);
     }
 
-    expect(renderToString(<StatsSnapshot />)).toBe('<output>empty:false</output>');
+    expect(renderToString(React.createElement(StatsSnapshot))).toBe(
+      '<output>empty:false</output>',
+    );
     expect(mockGetContractBalance).not.toHaveBeenCalled();
   });
 
