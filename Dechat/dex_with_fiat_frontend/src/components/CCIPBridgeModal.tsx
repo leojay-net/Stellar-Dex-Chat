@@ -44,6 +44,8 @@ export default function CCIPBridgeModal({
   timeoutMs = CCIP_POLL_TIMEOUT_MS,
   network,
 }: CCIPBridgeModalProps) {
+  const dialogTitleId = 'ccip-bridge-modal-title';
+  const dialogDescriptionId = 'ccip-bridge-modal-description';
   const modalRef = useRef<HTMLDivElement>(null);
   const pollingStartedAtRef = useRef<number | null>(null);
   // Fix #520: keep a ref in sync with transactionHash state so the polling
@@ -291,23 +293,30 @@ export default function CCIPBridgeModal({
         ref={modalRef}
         role="dialog"
         aria-modal="true"
-        aria-label="CCIP bridge transfer"
+        aria-labelledby={dialogTitleId}
+        aria-describedby={dialogDescriptionId}
         tabIndex={-1}
         className="theme-surface theme-border relative w-full max-w-md mx-4 border rounded-2xl shadow-2xl p-6"
       >
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="theme-text-primary text-lg font-semibold">
+            <h2
+              id={dialogTitleId}
+              className="theme-text-primary text-lg font-semibold"
+            >
               CCIP Bridge
             </h2>
-            <p className="theme-text-secondary text-sm mt-1">
+            <p
+              id={dialogDescriptionId}
+              className="theme-text-secondary text-sm mt-1"
+            >
               Start a CCIP transfer and monitor its confirmation state.
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label="Close CCIP bridge dialog"
             className="theme-text-muted hover:theme-text-primary transition-colors"
           >
             <X className="w-5 h-5" />
@@ -337,6 +346,7 @@ export default function CCIPBridgeModal({
               setNetworkChangedWhileActive(false);
               void handleStartTransfer();
             }}
+            aria-label="Start CCIP transfer"
             className="theme-primary-button w-full py-3 rounded-lg font-medium"
           >
             Start CCIP Transfer
@@ -376,6 +386,7 @@ export default function CCIPBridgeModal({
           <div className="text-center py-6">
             <Loader2
               data-testid="ccip-polling-spinner"
+              aria-label="CCIP transfer confirmation in progress"
               className="w-14 h-14 text-blue-400 mx-auto mb-4 animate-spin"
             />
             <p className="theme-text-primary font-semibold text-lg mb-2">
@@ -388,7 +399,8 @@ export default function CCIPBridgeModal({
             )}
             {transactionHash && (
               <p className="theme-text-secondary text-xs mb-4 break-all">
-                Transaction: {transactionHash}
+                <span className="sr-only">Transaction hash: </span>
+                <span aria-hidden>Transaction: </span>{transactionHash}
               </p>
             )}
             {explorerUrl && (
@@ -399,7 +411,7 @@ export default function CCIPBridgeModal({
                 className="inline-flex items-center gap-2 text-blue-400 hover:underline text-sm"
               >
                 View transaction in CCIP explorer
-                <ExternalLink className="w-4 h-4" />
+                <ExternalLink className="w-4 h-4" aria-hidden />
               </a>
             )}
           </div>
@@ -419,7 +431,8 @@ export default function CCIPBridgeModal({
             </p>
             {transactionHash && (
               <p className="theme-text-secondary text-xs mb-4 break-all">
-                Transaction: {transactionHash}
+                <span className="sr-only">Transaction hash: </span>
+                <span aria-hidden>Transaction: </span>{transactionHash}
               </p>
             )}
             {explorerUrl && (
@@ -430,7 +443,7 @@ export default function CCIPBridgeModal({
                 className="inline-flex items-center gap-2 text-blue-400 hover:underline text-sm"
               >
                 View transaction in CCIP explorer
-                <ExternalLink className="w-4 h-4" />
+                <ExternalLink className="w-4 h-4" aria-hidden />
               </a>
             )}
           </div>
@@ -447,7 +460,8 @@ export default function CCIPBridgeModal({
             </p>
             {transactionHash && (
               <p className="theme-text-secondary text-xs mb-4 break-all">
-                Transaction: {transactionHash}
+                <span className="sr-only">Transaction hash: </span>
+                <span aria-hidden>Transaction: </span>{transactionHash}
               </p>
             )}
             {explorerUrl && (
@@ -458,7 +472,7 @@ export default function CCIPBridgeModal({
                 className="inline-flex items-center gap-2 text-blue-400 hover:underline text-sm"
               >
                 View transaction in CCIP explorer
-                <ExternalLink className="w-4 h-4" />
+                <ExternalLink className="w-4 h-4" aria-hidden />
               </a>
             )}
           </div>
