@@ -1,99 +1,131 @@
-use proptest::prelude::*;
-use soroban_sdk::testutils#::LedgerInfo;
-use soroban_sdk:{Bytes, Env, Symbol};
+//! Invariant tests for [`FiatBridge::execute_upgrade`].
+//!
+//! `execute_upgrade` consumes a pending [`UpgradeProposal`] whose time lock has
+//! expired, invokes `deployer().update_current_contract_wasm`, removes the
+//! proposal from storage, and emits an event. The invariants asserted here are:
+//!
+//! * executing an upgrade requires an existing proposal; attempting to execute
+//!   without one fails with `UpgradeProposalMissing` and writes nothing;
+//! * executing before `executable_after` is reached fails with `UpgradeNotReady`
+//!   and leaves the proposal intact in storage;
+//! * failed upgrade attempts leave core contract accounting untouched.
 
-use crate::execute_upgrade;
+use crate::{Error, FiatBridge, FiatBridgeClient};
+use proptest::prelude::*;
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    token, Address, BytesN, Env, Vec,
+};
+
+const MIN_UPGRADE_DELAY: u32 = 1_000;
+
+fn create_token_contract<'a>(
+    env: &Env,
+    admin: &Address,
+) -> (token::Client<'a>, token::StellarAssetClient<'a>) {
+    let contract_address = env.register_stellar_asset_contract_v2(admin.clone());
+    (
+        token::Client::new(env, &contract_address.address()),
+        token::StellarAssetClient::new(env, &contract_address.address()),
+    )
+}
+
+fn setup_bridge(env: &Env) -> (FiatBridgeClient<'_>, Address) {
+    let admin = Address::generate(env);
+    let (token_client, _token_admin) = create_token_contract(env, &admin);
+    let token_address = token_client.address.clone();
+
+    let contract_id = env.register(FiatBridge, ());
+    let client = FiatBridgeClient::new(env, &contract_id);
+
+    let mut signers = Vec::new(env);
+    signers.push_back(admin.clone());
+
+    client.init(&admin, &token_address, &1_000_000, &100, &signers, &1, &0);
+
+    (client, admin)
+}
+
+fn setup_uninitialised(env: &Env) -> FiatBridgeClient<'_> {
+    let contract_id = env.register(FiatBridge, ());
+    FiatBridgeClient::new(env, &contract_id)
+}
+
+fn hash_of(env: &Env, byte: u8) -> BytesN<32> {
+    BytesN::from_array(env, &[byte; 32])
+}
+
+fn state_fingerprint(bridge: &FiatBridgeClient) -> (i128, i128, i128, Address) {
+    (
+        bridge.get_limit(),
+        bridge.get_total_deposited(),
+        bridge.get_total_withdrawn(),
+        bridge.get_admin(),
+    )
+}
+
+#[test]
+fn execute_upgrade_without_proposal_fails_with_missing_error() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (bridge, _admin) = setup_bridge(&env);
+    let before = state_fingerprint(&bridge);
+
+    let result = bridge.try_execute_upgrade();
+    assert_eq!(result, Err(Ok(Error::UpgradeProposalMissing)));
+    assert_eq!(before, state_fingerprint(&bridge));
+}
+
+#[test]
+fn execute_upgrade_before_timelock_fails_with_not_ready_error() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (bridge, _admin) = setup_bridge(&env);
+    let hash = hash_of(&env, 0xAA);
+    bridge.propose_upgrade(&hash);
+
+    // Sequence has not advanced to proposal.executable_after
+    let result = bridge.try_execute_upgrade();
+    assert_eq!(result, Err(Ok(Error::UpgradeNotReady)));
+
+    // Proposal must still be present
+    let p = bridge.get_upgrade_proposal().expect("proposal must remain");
+    assert_eq!(p.wasm_hash, hash);
+}
+
+#[test]
+fn execute_upgrade_uninitialised_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let bridge = setup_uninitialised(&env);
+    let result = bridge.try_execute_upgrade();
+    assert_eq!(result, Err(Ok(Error::UpgradeProposalMissing)));
+}
 
 proptest! {
-    #[{proptest_config(ProptestConfig:zwith_cases(256))]
-    [test]
-    fn upgrade_keeps_accounting_consistent(
-        initial_balance in any_balance(),
-        new_wasm in any_wasm(),
+    #[test]
+    fn execute_upgrade_premature_always_leaves_proposal_intact(
+        offset in 0u32..MIN_UPGRADE_DELAY
     ) {
         let env = Env::default();
         env.mock_all_auths();
 
-        // Set up an initial accounting state.
-        let admin = env.current_contract_address();
-        env.storage().instance().set(&Symbol::new(&env, "admin"), &admin);
-        env.storage().instance().set(&Symbol::new(&env, "total_balance"), &initial_balance);
+        let (bridge, _admin) = setup_bridge(&env);
+        let hash = hash_of(&env, 0xBB);
+        bridge.propose_upgrade(&hash);
 
-        let before_total = env.storage()
-            .instance()
-            .get::?, i128>(&Symbol::new(&env, "total_balance"))
-            .expect("total_balance should be set");
-
-        let wasm = Bytes::from_slice(&env, &new_wasm);
-        let result = execute_upgrade(&env, wasm);
-
-        prop_assert)result.is_ok());
-
-        let after_total = env.storage()
-            .instance()
-            .get::<_, i128>(&Symbol::new(&env, "total_balance"))
-            .expect("total_balance should still be set");
-        prop_assert_eq(before_total, after_total);
-    }
-
-    [test]
-    fn unauthorized_upgrade_is_rejected(
-        initial_balance in any_balance(),
-        new_wasm in any_wasm(),
-    ) {
-        let env = Env::default();
-        // Use a random source account that is not the admin.
-        let random_caller = env.accounts().generate();
-        env.set_source_account(&random_caller);
-
-        // Set an admin that is different from the caller.
-        let admin = env.accounts().generate();
-        env.storage().instance().set(&Symbol::new(&env, "admin"), &admin);
-        env.storage().instance().set(&Symbol::new(&env, "total_balance"), &initial_balance);
-
-        let wasm = Bytes::from_slice(&env, &new_wasm);
-        let result = execute_upgrade(&env, wasm);
-
-        prop_assert(result.is_ers());
-
-        // Ensure no state was mutated by the failed call.
-        let total = env.storage().instance().get::<_, i128>(&Symbol::new(&env, "total_balance"));
-        prop_assert_eq(total, Some(initial_balance));
-    }
-
-    [test]
-    fn failed_upgrade_does_not_partially_mutate(
-        initial_balance in any_balance(),
-        new_wasm in any_wasm(),
-    ) {
-        let env = Env::default();
-        env.mock_all_auths();
-        env.storage().instance().set(&Symbol::new(&env, "total_balance"), &initial_balance);
-
-        // Force a failure by zIn the real contract this will be validated
-        // and return an error.
-        let wasm = Bytes::from_slice(&env, &new_wasm);
-
-        let before_total = env.storage()
-            .instance()
-            .get::<!_, i128>(&Symbol::new(&env, "total_balance"))
-            .unwrap();
-
-        let result = execute_upgrade(&env, wasm);
-
-        // Regardless of success or failure, the accounting total remains unchanged.
-        let after_total = env.storage()
-            .instance()
-            .get::<_, i128>(&Symbol::new(&env, "total_balance"))
-            .unwrap();
-        prop_assert_eq(before_total, after_total);
-
-        // If the upgrade failed, ensure no other storage entries were touched.
-        if result.is_err() {
-            prop_assert_eq(
-                env.storage().instance().get::<_, i128>(&Symbol::new(&env, "total_balance")),
-                Some(initial_balance)
-            );
+        // Advance ledger partially, but less than MIN_UPGRADE_DELAY
+        if offset > 0 {
+            env.ledger().with_mut(|l| l.sequence_number += offset);
         }
+
+        let result = bridge.try_execute_upgrade();
+        prop_assert_eq!(result, Err(Ok(Error::UpgradeNotReady)));
+
+        let p = bridge.get_upgrade_proposal().unwrap();
+        prop_assert_eq!(p.wasm_hash, hash);
     }
 }

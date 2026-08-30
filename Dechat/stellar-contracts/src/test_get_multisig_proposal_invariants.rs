@@ -20,6 +20,8 @@
 //! See [`docs/INVARIANT_TESTING.md`](docs/INVARIANT_TESTING.md) for the
 //! invariant-testing strategy and contributor checklist.
 
+#![allow(clippy::explicit_counter_loop)]
+
 use crate::{BatchAdminOp, FiatBridge, FiatBridgeClient};
 use proptest::prelude::*;
 use soroban_sdk::{
@@ -382,11 +384,8 @@ proptest! {
         let proposer = signers.get(0).unwrap();
         let id = bridge.propose_multisig_action(&proposer, &sample_action(&env));
 
-        let mut expected = 1u32; // the proposer's implicit approval
-        for i in 1..signers.len() {
+        for (i, expected) in (1..signers.len()).zip(2u32..) {
             bridge.approve_multisig_action(&signers.get(i).unwrap(), &id);
-            expected += 1;
-
             let p = bridge.get_multisig_proposal(&id).unwrap();
             prop_assert_eq!(p.approvals.len(), expected);
         }

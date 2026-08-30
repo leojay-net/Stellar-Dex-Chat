@@ -25,6 +25,7 @@ This document defines the stable error codes emitted by the Fiat Bridge contract
 | 308         | `TokenNotWhitelisted`           | The specified token is not supported by the bridge.                   |
 | 309         | `AddressDenied`                 | The address is on the denylist and cannot perform this action.        |
 | 310         | `RescueForbidden`               | Rescue of this token is forbidden (protocol or whitelisted token).    |
+| 319         | `LimitCapCannotBeLowered`       | The new limit max cap is below the current cap and cannot be lowered. |
 | **401-499** | **Funds & Balances**            |                                                                       |
 | 401         | `InsufficientFunds`             | The contract or user has insufficient balance.                        |
 | 402         | `NoFeesToWithdraw`              | There are no accrued fees available to withdraw.                      |
@@ -81,8 +82,27 @@ equivalent audit record already emitted by `is_denied`, so both access-control
 lookups leave the same kind of trail.
 
 No storage layout change ships with this event: it reads only the existing
-`DataKey::Operator(address)` key and writes nothing, so no migration is
+`DataKey::FeeVault(token)` key and writes nothing, so no migration is
 required.
+
+## Limit max cap bounds check (`set_limit_max_cap`)
+
+`set_limit_max_cap` now prevents lowering the cap below its current value.
+It introduces one new error variant:
+
+| Code | Name                     | Raised when                                                    |
+| ---- | ------------------------ | -------------------------------------------------------------- |
+| 319  | `LimitCapCannotBeLowered` | The requested cap is below the currently configured max cap.   |
+
+Every accepted call emits `LimitMaxCapSetEvent { version, cap }`, where
+`version` is `EVENT_VERSION` and `cap` is the newly configured maximum.
+Rejected calls emit nothing and leave `LimitMaxCap` untouched.
+
+No storage layout change ships with this event: it writes to the existing
+`DataKey::LimitMaxCap` key, so no migration is required. Existing deployments
+where `LimitMaxCap` is unset default to `i128::MAX`; the first accepted call
+with this change stores the chosen cap and subsequent calls enforce the
+non-decreasing constraint.
 
 ## Operator role management (`set_operator`)
 

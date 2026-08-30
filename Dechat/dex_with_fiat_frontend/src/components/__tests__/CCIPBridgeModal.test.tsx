@@ -2,6 +2,7 @@ import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CCIPBridgeModal from '../CCIPBridgeModal';
+import { toastStore } from '@/lib/toastStore';
 
 vi.mock('@/hooks/useAccessibleModal', () => ({
   useAccessibleModal: () => undefined,
@@ -179,7 +180,7 @@ describe('CCIPBridgeModal', () => {
 
       // Advance timer to trigger a second poll (which resolves to SUCCESS)
       await act(async () => {
-        vi.advanceTimersByTime(15_000);
+        await vi.advanceTimersByTimeAsync(15_000);
       });
 
       // Confirm success from the fast second poll
@@ -986,17 +987,17 @@ describe('CCIPBridgeModal', () => {
       ).toBeInTheDocument();
 
       await act(async () => {
-        vi.advanceTimersByTime(15_000);
+        await vi.advanceTimersByTimeAsync(15_000);
       });
       expect(screen.getByText('Latest status: IN_PROGRESS')).toBeInTheDocument();
 
       await act(async () => {
-        vi.advanceTimersByTime(15_000);
+        await vi.advanceTimersByTimeAsync(15_000);
       });
       expect(screen.getByText('Latest status: COMPLETING')).toBeInTheDocument();
 
       await act(async () => {
-        vi.advanceTimersByTime(15_000);
+        await vi.advanceTimersByTimeAsync(15_000);
       });
       expect(screen.getByText('CCIP transfer confirmed')).toBeInTheDocument();
     });
@@ -1043,4 +1044,86 @@ describe('CCIPBridgeModal', () => {
       expect(liveRegion.textContent).toMatch(/Insufficient allowance/);
     });
   });
+
+  // ── Network status toasts ──────────────────────────────────────────────────
+
+  describe('network status toasts', () => {
+    it('shows a warning toast when the browser goes offline while modal is open', async () => {
+      const addToastSpy = vi.spyOn(toastStore, 'addToast');
+      render(<CCIPBridgeModal {...defaultProps} />);
+
+      fireEvent(window, new Event('offline'));
+
+      await waitFor(() => {
+        expect(addToastSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            severity: 'warning',
+            message: expect.stringMatching(/offline.*CCIP/i),
+          }),
+          undefined,
+        );
+      });
+    });
+
+    it('shows a success toast when coming back online after being offline', async () => {
+      const addToastSpy = vi.spyOn(toastStore, 'addToast');
+      render(<CCIPBridgeModal {...defaultProps} />);
+
+      fireEvent(window, new Event('offline'));
+      await waitFor(() => expect(addToastSpy).toHaveBeenCalled());
+
+      addToastSpy.mockClear();
+      fireEvent(window, new Event('online'));
+
+      await waitFor(() => {
+        expect(addToastSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            severity: 'success',
+            message: expect.stringMatching(/online.*CCIP/i),
+          }),
+          undefined,
+        );
+      });
+    });
+
+    it('does not show network status toasts when the modal is closed', async () => {
+      const addToastSpy = vi.spyOn(toastStore, 'addToast');
+      render(<CCIPBridgeModal {...defaultProps} isOpen={false} />);
+
+      fireEvent(window, new Event('offline'));
+      fireEvent(window, new Event('online'));
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(addToastSpy).not.toHaveBeenCalled();
+    });
+
+    it('handles rapid offline->online transitions without dropping toasts', async () => {
+      const addToastSpy = vi.spyOn(toastStore, 'addToast');
+      render(<CCIPBridgeModal {...defaultProps} />);
+
+      fireEvent(window, new Event('offline'));
+      fireEvent(window, new Event('online'));
+
+      await waitFor(() => {
+        const calls = addToastSpy.mock.calls;
+        const severities = calls.map((c) => {
+          const arg = c[0];
+          return typeof arg === 'string' ? 'info' : arg.severity;
+        });
+        expect(severities).toContain('warning');
+        expect(severities).toContain('success');
+      });
+    });
+
+    it('does not emit an online toast without a prior offline event', async () => {
+      const addToastSpy = vi.spyOn(toastStore, 'addToast');
+      render(<CCIPBridgeModal {...defaultProps} />);
+
+      fireEvent(window, new Event('online'));
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(addToastSpy).not.toHaveBeenCalled();
+    });
+  });
 });
+

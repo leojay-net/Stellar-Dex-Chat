@@ -823,6 +823,21 @@
                       "val": {
                         "u64": "0"
                       }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
+                            "symbol": "WithdrawalExecutionNonce"
+                          },
+                          {
+                            "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "u64": "2"
+                      }
                     }
                   ]
                 }
@@ -1226,6 +1241,14 @@
                   },
                   "val": {
                     "i128": "100"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "nonce"
+                  },
+                  "val": {
+                    "u64": "2"
                   }
                 },
                 {

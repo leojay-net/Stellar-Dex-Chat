@@ -177,6 +177,7 @@
     ],
     [],
     [],
+    [],
     []
   ],
   "ledger": {
@@ -759,6 +760,21 @@
                       },
                       "val": {
                         "u64": "0"
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
+                            "symbol": "WithdrawalExecutionNonce"
+                          },
+                          {
+                            "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "u64": "1"
                       }
                     }
                   ]
