@@ -1,4 +1,6 @@
+import React from 'react';
 import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderToString } from 'react-dom/server';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import useBridgeStats from './useBridgeStats';
 
@@ -44,6 +46,18 @@ describe('useBridgeStats', () => {
     expect(result.current.totalDeposited).toBe(500n);
     expect(result.current.fetchCount).toBe(1);
     expect(result.current.error).toBeNull();
+  });
+
+  it('keeps the server snapshot free of fetched values until hydration', () => {
+    mockGetContractBalance.mockResolvedValue(999n);
+
+    function StatsSnapshot() {
+      const { balance, loading } = useBridgeStats();
+      return <output>{`${balance ?? 'empty'}:${loading}`}</output>;
+    }
+
+    expect(renderToString(<StatsSnapshot />)).toBe('<output>empty:false</output>');
+    expect(mockGetContractBalance).not.toHaveBeenCalled();
   });
 
   it('does not update state after unmount', async () => {

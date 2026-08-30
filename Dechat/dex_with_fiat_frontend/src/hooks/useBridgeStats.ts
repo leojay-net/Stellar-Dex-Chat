@@ -36,7 +36,10 @@ export default function useBridgeStats(): BridgeStats {
   const [error, setError] = useState<string | null>(null);
   const [fetchCount, setFetchCount] = useState(0);
   const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
-  const isMountedRef = useRef(true);
+  // A client component may be rendered on the server before it is hydrated.
+  // Keep async updates disabled until React has committed the client instance;
+  // this makes the server snapshot and the first client render deterministic.
+  const isMountedRef = useRef(false);
   const fetchIdRef = useRef(0);
 
   useEffect(() => {
@@ -44,6 +47,9 @@ export default function useBridgeStats(): BridgeStats {
     dispatchTelemetry('bridge_stats_mounted');
     return () => {
       isMountedRef.current = false;
+      // Invalidate any request which was started by this mounted instance.
+      // This also covers Strict Mode's mount/cleanup/remount cycle.
+      fetchIdRef.current += 1;
     };
   }, []);
 
