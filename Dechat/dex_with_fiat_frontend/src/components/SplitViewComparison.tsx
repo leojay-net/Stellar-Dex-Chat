@@ -84,6 +84,7 @@ function ThreadPane({
     if (copyResetTimerRef.current !== null) {
       clearTimeout(copyResetTimerRef.current);
     }
+    await onCopyMessage(content);
     copyResetTimerRef.current = setTimeout(() => {
       setCopiedMessageId(null);
       copyResetTimerRef.current = null;
@@ -240,8 +241,6 @@ export default function SplitViewComparison({
     setRightSession,
     swapSessions,
     selectMessage,
-    leftSession,
-    rightSession,
   } = splitView;
 
   const { isOnline, wasOffline, resetWasOffline } = useOnlineStatus();
