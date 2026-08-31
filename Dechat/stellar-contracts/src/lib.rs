@@ -2752,12 +2752,6 @@ impl FiatBridge {
         // Increment fee withdrawal nonce for replay protection tracking
         env.storage().instance().set(&DataKey::FeeWithdrawalNonce, &(current_nonce + 1));
         
-        // ── Issue #829: Emit nonce increment event for replay protection
-        env.events().publish(
-            (Symbol::new(&env, "fee_nonce_inc"), admin.clone()),
-            current_nonce + 1,
-        );
-        
         FeeWithdrawnEvent { version: EVENT_VERSION, to: recipient, amount }.publish(&env);
         Ok(())
     }
