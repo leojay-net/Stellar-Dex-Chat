@@ -5836,3 +5836,15 @@ mod test_execute_withdrawal_invariants;
 #[cfg(test)]
 mod test_is_denied_invariants;
 
+#[cfg(test)]
+mod test_get_withdrawal_request_invariants;
+
+#[cfg(test)]
+mod test_cancel_withdrawal_invariants;
+
+#[cfg(test)]
+mod test_set_fee_recipient_invariants;
+
+#[cfg(test)]
+mod test_set_withdrawal_expiry_invariants;
+
