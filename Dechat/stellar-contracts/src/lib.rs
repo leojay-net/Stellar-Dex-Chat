@@ -3766,6 +3766,19 @@ impl FiatBridge {
             return Err(Error::ZeroAmount);
         }
 
+        // Reject i128::MAX to prevent overflow in subsequent arithmetic
+        if amount == i128::MAX {
+            return Err(Error::ExceedsLimit);
+        }
+
+        // Reject self-referential addresses - rescuing to admin or contract address is meaningless
+        if to == admin {
+            return Err(Error::InvalidRecipient);
+        }
+        if to == env.current_contract_address() {
+            return Err(Error::InvalidRecipient);
+        }
+
         // Forbid rescue of the primary protocol asset
         let primary_token: Address = env
             .storage()

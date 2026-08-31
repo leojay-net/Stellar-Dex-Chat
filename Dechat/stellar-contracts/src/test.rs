@@ -2449,6 +2449,62 @@ fn test_rescue_insufficient_balance() {
     assert_eq!(result, Err(Ok(Error::InsufficientFunds)));
 }
 
+#[test]
+fn test_rescue_negative_amount_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+    let stray_admin = Address::generate(&env);
+    let (stray_addr, _, _) = create_token(&env, &stray_admin);
+
+    let result = bridge.try_rescue_token(&stray_addr, &Address::generate(&env), &-1);
+    assert_eq!(result, Err(Ok(Error::ZeroAmount)));
+}
+
+#[test]
+fn test_rescue_i128_max_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+    let stray_admin = Address::generate(&env);
+    let (stray_addr, _, _) = create_token(&env, &stray_admin);
+
+    let result = bridge.try_rescue_token(&stray_addr, &Address::generate(&env), &i128::MAX);
+    assert_eq!(result, Err(Ok(Error::ExceedsLimit)));
+}
+
+#[test]
+fn test_rescue_to_admin_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, admin, _, _, _) = setup_bridge(&env, 10_000);
+    let stray_admin = Address::generate(&env);
+    let (stray_addr, _, stray_sac) = create_token(&env, &stray_admin);
+
+    stray_sac.mint(&contract_id, &100);
+
+    let result = bridge.try_rescue_token(&stray_addr, &admin, &50);
+    assert_eq!(result, Err(Ok(Error::InvalidRecipient)));
+}
+
+#[test]
+fn test_rescue_to_contract_address_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+    let stray_admin = Address::generate(&env);
+    let (stray_addr, _, stray_sac) = create_token(&env, &stray_admin);
+
+    stray_sac.mint(&contract_id, &100);
+
+    let result = bridge.try_rescue_token(&stray_addr, &contract_id, &50);
+    assert_eq!(result, Err(Ok(Error::InvalidRecipient)));
+}
+
 // ── nonce-based replay protection tests ───────────────────────────────────
 
 #[test]
