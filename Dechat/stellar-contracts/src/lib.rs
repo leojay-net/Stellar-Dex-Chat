@@ -208,6 +208,17 @@ pub struct UpgradeProposal {
     pub executable_after: u32,
 }
 
+/// Auditable timing metadata for an upgrade proposal.
+/// Stored separately so pre-existing `UpgradeProposal` values remain decodable.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UpgradeProposalTiming {
+    pub wasm_hash: BytesN<32>,
+    pub proposed_at: u32,
+    pub delay: u32,
+    pub executable_after: u32,
+}
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UserDailyWithdrawal {
@@ -247,6 +258,22 @@ pub struct BatchAdminOp {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BatchResult {
     pub total_ops: u32,
+    pub success_count: u32,
+    pub failure_count: u32,
+    pub failed_index: Option<u32>,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HeartbeatItem {
+    pub operator: Address,
+    pub nonce: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BatchHeartbeatResult {
+    pub total_items: u32,
     pub success_count: u32,
     pub failure_count: u32,
     pub failed_index: Option<u32>,
@@ -392,6 +419,14 @@ pub struct SetMinDepositEvent {
 
 #[contractevent]
 #[derive(Clone, Debug)]
+pub struct SetLimitEvent {
+    pub version: u32,
+    pub token: Address,
+    pub limit: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
 pub struct SlippageEvent {
     pub version: u32,
     pub slippage_bps: u32,
@@ -474,6 +509,24 @@ pub struct HeartbeatEvent {
 }
 
 #[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HeartbeatBatchEvent {
+    pub version: u32,
+    pub total_items: u32,
+    pub success_count: u32,
+    pub failure_count: u32,
+    pub ledger: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HeartbeatBatchFailEvent {
+    pub version: u32,
+    pub index: u32,
+    pub total_items: u32,
+}
+
+#[contractevent]
 #[derive(Clone, Debug)]
 pub struct NonceIncrementedEvent {
     pub version: u32,
@@ -492,7 +545,6 @@ pub struct InitNonceIncrementedEvent {
 #[contractevent]
 #[derive(Clone, Debug)]
 pub struct OperatorPrunedEvent {
-    #[topic]
     pub version: u32,
     pub operator: Address,
     pub ledger: u32,
@@ -670,7 +722,6 @@ pub struct ReceiptOobEvent {
 #[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WithdrawalExpiredEvent {
-    #[topic]
     pub version: u32,
     pub request_id: u64,
     pub to: Address,
@@ -681,7 +732,6 @@ pub struct WithdrawalExpiredEvent {
 #[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CircuitBreakerAutoResetEvent {
-    #[topic]
     pub version: u32,
     pub tripped_at: u32,
     pub reset_at: u32,
@@ -779,6 +829,7 @@ pub enum DataKey {
     // ── Issue #107: governed upgrade mechanism ───────────────────────────
     UpgradeProposal,
     UpgradeDelay,
+    UpgradeProposalTiming,
     // ── Issue #100: M-of-N multi-signature admin control ─────────────────
     Signers,
     Threshold,
@@ -800,6 +851,8 @@ pub enum DataKey {
     WithdrawalExecutionNonce(Address),
     InitNonce(Address),
     UpgradeCancellationNonce(Address),
+    /// Per-admin replay-protection nonce for `set_limit`.
+    SetLimitNonce(Address),
 }
 
 const ORACLE_PRICE_DECIMALS: i128 = 10_000_000;
@@ -991,6 +1044,13 @@ impl FiatBridge {
             .unwrap_or(0)
     }
 
+    pub fn get_set_limit_nonce(env: Env, admin: Address) -> u64 {
+        env.storage()
+            .instance()
+            .get(&DataKey::SetLimitNonce(admin))
+            .unwrap_or(0)
+    }
+
     /// Deposits tokens into the bridge vault, minting a cryptographic receipt and updating accumulators.
     ///
     /// # Overflow Prevention & Safety Invariants
@@ -1048,6 +1108,9 @@ impl FiatBridge {
         Self::validate_memo_hash(&env, &memo_hash)?;
         from.require_auth();
         Self::require_not_paused(&env)?;
+        // Reject a tripped breaker before any quota accounting or token call.
+        // The rolling-volume helper below still handles lazy auto-reset.
+        Self::require_circuit_breaker_clear(&env)?;
 
         if amount <= 0 {
             return Err(Error::ZeroAmount);
@@ -2002,13 +2065,42 @@ impl FiatBridge {
             .set(&DataKey::WithdrawQueueHead, &Option::<u64>::None);
     }
 
-    pub fn set_limit(env: Env, token: Address, limit: i128) -> Result<(), Error> {
+    /// Sets the per-transaction limit for a specific token with replay protection.
+    ///
+    /// # Overflow Prevention & Safety Invariants
+    /// - **Nonce Validation**: Validates and increments the admin's `SetLimitNonce` using checked arithmetic
+    ///   to prevent nonce overflow (though practically impossible at u64).
+    /// - **Max Cap Guard**: Validates `limit <= max_cap` where `max_cap` defaults to `i128::MAX` but can be
+    ///   configured to prevent unbounded limit values.
+    /// - **State Validation Order**: Nonce validation occurs before any state changes, ensuring failed
+    ///   nonce checks do not modify the token limit.
+    /// - **Zero Amount Guard**: Rejects `limit <= 0` via `ZeroAmount` error to prevent zero/negative limits.
+    ///
+    /// # Arguments
+    /// * `env` – The Soroban host environment.
+    /// * `token` – The token address for which the limit is being set.
+    /// * `limit` – The new per-transaction limit in stroops (must be $> 0$).
+    /// * `nonce` – Monotonic replay protection nonce for the admin (from `get_set_limit_nonce`).
+    ///
+    /// # Errors
+    /// * [`Error::NotInitialized`] – If the contract has not been initialized.
+    /// * [`Error::StaleNonce`] – If the provided nonce is less than the expected nonce.
+    /// * [`Error::InvalidNonce`] – If the provided nonce is greater than the expected nonce.
+    /// * [`Error::ExceedsLimitMaxCap`] – If `limit > configured_max_cap`.
+    /// * [`Error::CircuitBreakerActive`] – If the circuit breaker is currently tripped.
+    /// * [`Error::TokenNotWhitelisted`] – If the token is not registered in the token registry.
+    /// * [`Error::ZeroAmount`] – If `limit <= 0`.
+    pub fn set_limit(env: Env, token: Address, limit: i128, nonce: u64) -> Result<(), Error> {
         let admin: Address = env
             .storage()
             .instance()
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+        
+        // Validate and increment nonce for replay protection
+        Self::validate_and_increment_set_limit_nonce(&env, &admin, nonce)?;
+        
         // Check against configured max cap
         let max_cap: i128 = env
             .storage()
@@ -2028,7 +2120,15 @@ impl FiatBridge {
         config.limit = limit;
         env.storage()
             .persistent()
-            .set(&DataKey::TokenRegistry(token), &config);
+            .set(&DataKey::TokenRegistry(token.clone()), &config);
+        
+        SetLimitEvent {
+            version: EVENT_VERSION,
+            token: token.clone(),
+            limit,
+        }
+        .publish(&env);
+        
         Ok(())
     }
 
@@ -2780,7 +2880,7 @@ impl FiatBridge {
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
 
-        let current_slippage_threshold: u32 = Self::get_slippage_threshold(env);
+        let current_slippage_threshold: u32 = Self::get_slippage_threshold(env.clone());
         if current_slippage_threshold > 10000 {
             return Err(Error::SlippageTooHigh);
         }
@@ -2933,9 +3033,76 @@ impl FiatBridge {
     }
 
     pub fn heartbeat(env: Env, operator: Address, nonce: u64) -> Result<(), Error> {
-        operator.require_auth();
-        // Check circuit breaker before processing
+        Self::emit_telemetry(&env, Symbol::new(&env, "heartbeat"));
         Self::require_circuit_breaker_clear(&env)?;
+        let curr = env.ledger().sequence();
+        Self::execute_single_heartbeat(&env, &operator, nonce, curr)
+    }
+
+    /// Executes a batch of operator heartbeats in a single call.
+    ///
+    /// # Safety & Boundary Invariants
+    /// - **Circuit Breaker Check**: Rejects execution immediately if the circuit breaker is active.
+    /// - **Operator Authentication**: Each operator in the batch must authenticate their item.
+    /// - **Operator Role Verification**: Each item must correspond to an active operator.
+    /// - **Replay Protection**: Validates and increments each operator's sequential nonce monotonically.
+    /// - **Telemetry & Events**: Emits `TelemetryEvent`, individual `HeartbeatEvent`s for successes,
+    ///   `HeartbeatBatchFailEvent` for any failed item, and a summary `HeartbeatBatchEvent`.
+    pub fn heartbeat_batch(
+        env: Env,
+        items: Vec<HeartbeatItem>,
+    ) -> Result<BatchHeartbeatResult, Error> {
+        Self::emit_telemetry(&env, Symbol::new(&env, "heartbeat_batch"));
+        Self::require_circuit_breaker_clear(&env)?;
+
+        let total_items = items.len();
+        let mut success_count: u32 = 0;
+        let mut failure_count: u32 = 0;
+        let mut first_failed_index: Option<u32> = None;
+        let curr = env.ledger().sequence();
+
+        for (idx, item) in items.iter().enumerate() {
+            let res = Self::execute_single_heartbeat(&env, &item.operator, item.nonce, curr);
+            if res.is_err() {
+                HeartbeatBatchFailEvent {
+                    version: EVENT_VERSION,
+                    index: idx as u32,
+                    total_items,
+                }
+                .publish(&env);
+                failure_count += 1;
+                if first_failed_index.is_none() {
+                    first_failed_index = Some(idx as u32);
+                }
+            } else {
+                success_count += 1;
+            }
+        }
+
+        HeartbeatBatchEvent {
+            version: EVENT_VERSION,
+            total_items,
+            success_count,
+            failure_count,
+            ledger: curr,
+        }
+        .publish(&env);
+
+        Ok(BatchHeartbeatResult {
+            total_items,
+            success_count,
+            failure_count,
+            failed_index: first_failed_index,
+        })
+    }
+
+    fn execute_single_heartbeat(
+        env: &Env,
+        operator: &Address,
+        nonce: u64,
+        curr: u32,
+    ) -> Result<(), Error> {
+        operator.require_auth();
         if !env
             .storage()
             .instance()
@@ -2945,15 +3112,18 @@ impl FiatBridge {
             return Err(Error::NotOperator);
         }
 
-        // Validate and increment nonce for replay protection
-        Self::validate_and_increment_nonce(&env, &operator, nonce)?;
+        Self::validate_and_increment_nonce(env, operator, nonce)?;
 
-        let curr = env.ledger().sequence();
         env.storage()
             .instance()
             .set(&DataKey::OperatorHeartbeat(operator.clone()), &curr);
 
-        HeartbeatEvent { version: EVENT_VERSION, operator: operator.clone(), ledger: curr }.publish(&env);
+        HeartbeatEvent {
+            version: EVENT_VERSION,
+            operator: operator.clone(),
+            ledger: curr,
+        }
+        .publish(env);
 
         Ok(())
     }
@@ -3031,6 +3201,33 @@ impl FiatBridge {
             new_nonce: current_nonce + 1,
         }
         .publish(env);
+
+        Ok(())
+    }
+
+    fn validate_and_increment_set_limit_nonce(
+        env: &Env,
+        admin: &Address,
+        provided_nonce: u64,
+    ) -> Result<(), Error> {
+        let current_nonce: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::SetLimitNonce(admin.clone()))
+            .unwrap_or(0);
+
+        if provided_nonce != current_nonce {
+            if provided_nonce < current_nonce {
+                return Err(Error::StaleNonce);
+            } else {
+                return Err(Error::InvalidNonce);
+            }
+        }
+
+        let next_nonce = current_nonce.checked_add(1).ok_or(Error::Overflow)?;
+        env.storage()
+            .instance()
+            .set(&DataKey::SetLimitNonce(admin.clone()), &next_nonce);
 
         Ok(())
     }
@@ -3334,6 +3531,25 @@ impl FiatBridge {
     }
 
     // ── Fee Vault ─────────────────────────────────────────────────────────
+    /// Records that protocol fees have been received for a token.
+    ///
+    /// # Overflow Prevention & Safety Invariants
+    /// - **Amount Validation**: Ensures `amount > 0` to prevent zero/negative fee accrual.
+    /// - **Bounded Growth**: Fee vault balance is bounded by the contract's actual token holdings,
+    ///   preventing unbounded ledger growth that could overflow.
+    /// - **Unchecked Addition**: Uses unchecked addition since `amount` is validated positive and
+    ///   the vault balance is bounded by contract token balance (reconciliation occurs before withdrawals).
+    /// - **Reconciliation Safety**: Before any withdrawal, `reconcile_fee_vault` corrects the ledger
+    ///   if it exceeds the actual contract balance, preventing overflow in subsequent operations.
+    ///
+    /// # Arguments
+    /// * `env` – The Soroban host environment.
+    /// * `token` – The token address for which fees are being accrued.
+    /// * `amount` – The amount of fees received in stroops (must be $> 0$).
+    ///
+    /// # Errors
+    /// * [`Error::NotInitialized`] – If the contract has not been initialized.
+    /// * [`Error::ZeroAmount`] – If `amount <= 0`.
     pub fn accrue_fee(env: Env, token: Address, amount: i128) -> Result<(), Error> {
         let admin: Address = env
             .storage()
@@ -3379,15 +3595,13 @@ impl FiatBridge {
 
     pub fn get_accrued_fees(env: Env, token: Address) -> i128 {
         // Boundary check: ensure token is whitelisted/registered
-        let _token_config: TokenConfig = env
+        if !env
             .storage()
             .persistent()
-            .get(&DataKey::TokenRegistry(token.clone()))
-            .unwrap_or_else(|| {
-                // Token not whitelisted - return 0 but this path is intentional
-                // for backward compatibility; callers should verify token status
-                return 0;
-            });
+            .has(&DataKey::TokenRegistry(token.clone()))
+        {
+            return 0;
+        }
 
         let amount = env
             .storage()
@@ -3408,10 +3622,14 @@ impl FiatBridge {
     /// Withdraws accrued protocol fees for a specific token to the fee recipient.
     ///
     /// # Overflow Prevention & Safety Invariants
-    /// - **Zero Amount Guard**: Rejects `amount <= 0`.
-    /// - **Vault Balance Guard**: Validates `amount <= current_accrued_fees`, ensuring `current - amount` cannot underflow.
-    /// - **Guarded State Update**: Updates `FeeVault` with exact guarded subtraction `current - amount`.
-    /// - **Sequential Replay Nonce**: Increments the caller's `FeeWithdrawalNonceByCaller` entry with `nonce + 1`.
+    /// - **Zero Amount Guard**: Rejects `amount <= 0` to prevent zero/negative withdrawals.
+    /// - **Vault Balance Guard**: Validates `amount <= current_accrued_fees` before state changes,
+    ///   ensuring `current - amount` cannot underflow.
+    /// - **Reconciliation Safety**: Before transfer, reconciles vault ledger with actual contract balance.
+    ///   If ledger exceeds contract balance, emits `FeeVaultReconciledEvent` and caps withdrawal to available funds.
+    /// - **Guarded Subtraction**: Updates `FeeVault` with guarded subtraction `current - amount` after validation.
+    /// - **Nonce Increment**: Increments caller's `FeeWithdrawalNonceByCaller` with checked arithmetic
+    ///   to prevent nonce overflow (though practically impossible at u64).
     ///
     /// # Arguments
     /// * `env` – The Soroban host environment.
@@ -3421,6 +3639,7 @@ impl FiatBridge {
     /// * `nonce` – Replay protection nonce.
     ///
     /// # Errors
+    /// * [`Error::NotInitialized`] – If the contract has not been initialized.
     /// * [`Error::ZeroAmount`] – If `amount <= 0`.
     /// * [`Error::NoFeesToWithdraw`] – If no fees are accrued in the vault.
     /// * [`Error::FeeWithdrawalExceedsBalance`] – If `amount > current_accrued_fees`.
@@ -4142,47 +4361,34 @@ impl FiatBridge {
     }
 
     // ── Escrow Migration ──────────────────────────────────────────────────
-    /// Returns the current escrow storage version.
-    ///
-    /// This function indicates whether the escrow migration from temporary
-    /// [`Receipt`] storage to persistent [`EscrowRecord`] storage has been
-    /// completed. A return value of `0` indicates that migration is either
-    /// incomplete or has not started, while a non-zero value (specifically
-    /// [`ESCROW_STORAGE_VERSION`]) indicates that migration has finished.
-    ///
-    /// # Returns
-    ///
-    /// - `u32` — The current escrow storage version. Returns `0` if no version
-    ///   has been set (migration not complete), or [`ESCROW_STORAGE_VERSION`]
-    ///   if migration has been successfully completed.
-    ///
-    /// # Notes
-    ///
-    /// - The version is stored in instance storage and persists across contract
-    ///   invocations.
-    /// - This function is safe to call from a simulation context since it requires
-    ///   no authentication and mutates no state.
-    /// - The version is set to [`ESCROW_STORAGE_VERSION`] only when
-    ///   [`FiatBridge::migrate_escrow`] completes the full migration of all
-    ///   receipts to escrow records.
-    /// Returns the current storage schema version used by the escrow records.
+    /// Returns the current escrow storage schema version — the canonical
+    /// way to check migration status.
     ///
     /// This is the version tag that [`FiatBridge::migrate_escrow`] compares
-    /// against the compile-time [`ESCROW_STORAGE_VERSION`] constant to decide
-    /// whether migration is needed.  After a successful full migration the
-    /// stored version is bumped to match the constant, making this function
-    /// the canonical way to check migration status.
+    /// against the compile-time [`ESCROW_STORAGE_VERSION`] constant to
+    /// decide whether the migration from temporary [`Receipt`] storage to
+    /// persistent [`EscrowRecord`] storage is still needed. After a
+    /// successful full migration, the stored version is bumped to match
+    /// the constant.
     ///
     /// # Returns
     ///
-    /// - `0` — migration has never run or was not completed.
-    /// - `1` — fully migrated to the current schema (v1).
+    /// - `0` — migration has never run or has not completed.
+    /// - [`ESCROW_STORAGE_VERSION`] (currently `1`) — fully migrated to the
+    ///   current schema.
     ///
     /// Higher values correspond to future schema versions.
     ///
     /// # Errors
     ///
-    /// None.  An uninitialised contract returns `0`.
+    /// None. An uninitialised contract returns `0`.
+    ///
+    /// # Notes
+    ///
+    /// - The version is stored in instance storage and persists across
+    ///   contract invocations.
+    /// - Safe to call from a read-only/simulation context — it requires no
+    ///   authentication and mutates no state.
     ///
     /// # Example
     ///
@@ -4200,26 +4406,19 @@ impl FiatBridge {
     ///
     /// // After migration, version is set to ESCROW_STORAGE_VERSION.
     /// assert_eq!(bridge.get_escrow_storage_version(), ESCROW_STORAGE_VERSION);
-    /// ```
     ///
-    /// # Cross-references
-    ///
-    /// - [`FiatBridge::migrate_escrow`] — performs the migration and sets this version
-    /// - [`FiatBridge::get_migration_cursor`] — tracks migration progress
-    /// - [`FiatBridge::get_escrow_record`] — reads migrated escrow records
-    /// - [`DataKey::EscrowStorageVersion`] — storage key for this value
-    /// - [`ESCROW_STORAGE_VERSION`] — constant value indicating completed migration
-    /// let version = bridge.get_escrow_storage_version();
-    /// if version < ESCROW_STORAGE_VERSION {
+    /// // Callers can gate migration-dependent logic on the version directly:
+    /// if bridge.get_escrow_storage_version() < ESCROW_STORAGE_VERSION {
     ///     // Migration is pending or partial.
     /// }
     /// ```
     ///
-    /// ## See also
-    /// - [`FiatBridge::migrate_escrow`] — advances the migration forward.
-    /// - [`FiatBridge::get_escrow_record`] — reads a single migrated record.
-    /// - [`FiatBridge::get_migration_cursor`] — reports how far migration has
-    ///   progressed.
+    /// # See also
+    ///
+    /// - [`FiatBridge::migrate_escrow`] — performs the migration and sets this version.
+    /// - [`FiatBridge::get_migration_cursor`] — tracks migration progress.
+    /// - [`FiatBridge::get_escrow_record`] — reads migrated escrow records.
+    /// - [`DataKey::EscrowStorageVersion`] — storage key for this value.
     pub fn get_escrow_storage_version(env: Env) -> u32 {
         env.storage()
             .instance()
@@ -5399,12 +5598,22 @@ impl FiatBridge {
         let current_ledger = env.ledger().sequence();
         let executable_after = current_ledger.checked_add(delay).ok_or(Error::Overflow)?;
 
+        let proposed_at = env.ledger().sequence();
         let proposal = UpgradeProposal {
             wasm_hash: new_wasm_hash.clone(),
             executable_after,
         };
 
         env.storage().instance().set(&DataKey::UpgradeProposal, &proposal);
+        env.storage().instance().set(
+            &DataKey::UpgradeProposalTiming,
+            &UpgradeProposalTiming {
+                wasm_hash: new_wasm_hash.clone(),
+                proposed_at,
+                delay,
+                executable_after: proposal.executable_after,
+            },
+        );
         env.events().publish(
             (EVENT_VERSION, Symbol::new(&env, "upg_prop")),
             (new_wasm_hash, proposal.executable_after),
@@ -5420,6 +5629,18 @@ impl FiatBridge {
             .get(&DataKey::UpgradeProposal)
             .ok_or(Error::UpgradeProposalMissing)?;
 
+        if let Some(timing) = env.storage().instance()
+            .get::<_, UpgradeProposalTiming>(&DataKey::UpgradeProposalTiming)
+        {
+            // A timing record accompanies all new proposals. Do not execute a
+            // proposal if its immutable deadline no longer agrees with it.
+            if timing.wasm_hash != proposal.wasm_hash
+                || timing.executable_after != proposal.executable_after
+            {
+                return Err(Error::InternalError);
+            }
+        }
+
         if env.ledger().sequence() < proposal.executable_after {
             return Err(Error::UpgradeNotReady);
         }
@@ -5427,6 +5648,7 @@ impl FiatBridge {
         env.deployer()
             .update_current_contract_wasm(proposal.wasm_hash.clone());
         env.storage().instance().remove(&DataKey::UpgradeProposal);
+        env.storage().instance().remove(&DataKey::UpgradeProposalTiming);
         env.events()
             .publish((EVENT_VERSION, Symbol::new(&env, "upg_exec")), proposal.wasm_hash);
         Ok(())
@@ -5468,6 +5690,7 @@ impl FiatBridge {
             .ok_or(Error::UpgradeProposalMissing)?;
 
         env.storage().instance().remove(&DataKey::UpgradeProposal);
+        env.storage().instance().remove(&DataKey::UpgradeProposalTiming);
         UpgradeCancelledEvent {
             version: EVENT_VERSION,
             admin: admin.clone(),
@@ -5480,6 +5703,38 @@ impl FiatBridge {
 
     pub fn get_upgrade_proposal(env: Env) -> Option<UpgradeProposal> {
         env.storage().instance().get(&DataKey::UpgradeProposal)
+    }
+
+    /// Return the ledger and delay recorded for the pending upgrade.
+    pub fn get_upgrade_proposal_timing(env: Env) -> Option<UpgradeProposalTiming> {
+        env.storage().instance().get(&DataKey::UpgradeProposalTiming)
+    }
+
+    /// Add timing metadata to a proposal made by earlier contract versions.
+    /// Its original execution deadline remains unchanged.
+    pub fn migrate_upgrade_proposal_timing(env: Env) -> Result<(), Error> {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        if env.storage().instance().has(&DataKey::UpgradeProposalTiming) {
+            return Ok(());
+        }
+        if let Some(proposal) = env.storage().instance()
+            .get::<_, UpgradeProposal>(&DataKey::UpgradeProposal)
+        {
+            let delay = env.storage().instance().get(&DataKey::UpgradeDelay)
+                .unwrap_or(MIN_UPGRADE_DELAY);
+            env.storage().instance().set(
+                &DataKey::UpgradeProposalTiming,
+                &UpgradeProposalTiming {
+                    wasm_hash: proposal.wasm_hash,
+                    proposed_at: proposal.executable_after.saturating_sub(delay),
+                    delay,
+                    executable_after: proposal.executable_after,
+                },
+            );
+        }
+        Ok(())
     }
 
     // ── Issue #100: Multi-sig Logic ──────────────────────────────────────────
@@ -5647,6 +5902,11 @@ impl FiatBridge {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+        // A recovery target must be externally controllable. Pointing it at
+        // this contract would make the configured recovery route unusable.
+        if recovery == env.current_contract_address() {
+            return Err(Error::InvalidRecipient);
+        }
         if cap <= 0 {
             return Err(Error::ZeroAmount);
         }
@@ -5860,12 +6120,14 @@ mod test_revoke_multisig_approval_invariants;
 mod test_get_multisig_proposal_invariants;
 
 #[cfg(test)]
+mod test_propose_multisig_action_invariants;
+
+#[cfg(test)]
 mod test_propose_upgrade_invariants;
 #[cfg(test)]
 mod test_reclaim_expired_withdrawal_invariants;
 
 #[cfg(test)]
-#[cfg(test)] mod test_execute_upgrade_invariants;
 mod test_execute_upgrade_invariants;
 
 #[cfg(test)]
@@ -5881,6 +6143,7 @@ mod test_set_circuit_breaker_threshold_invariants;
 mod test_set_circuit_breaker_reset_window_invariants;
 
 #[cfg(test)]
+mod test_withdraw_circuit_breaker;
 mod test_get_next_priority_withdrawal_invariants;
 
 #[cfg(test)]
@@ -5888,8 +6151,24 @@ mod test_set_operator_invariants;
 
 #[cfg(test)]
 mod test_request_withdrawal_invariants;
+#[cfg(test)]
 mod test_execute_withdrawal_invariants;
+#[cfg(test)]
+mod test_heartbeat_batch;
+
 
 #[cfg(test)]
 mod test_is_denied_invariants;
+
+#[cfg(test)]
+mod test_get_withdrawal_request_invariants;
+
+#[cfg(test)]
+mod test_cancel_withdrawal_invariants;
+
+#[cfg(test)]
+mod test_set_fee_recipient_invariants;
+
+#[cfg(test)]
+mod test_set_withdrawal_expiry_invariants;
 

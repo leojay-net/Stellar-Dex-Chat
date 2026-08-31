@@ -82,17 +82,18 @@ fn execute_upgrade_before_timelock_fails_with_not_ready_error() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (bridge, _admin) = setup_bridge(&env);
-    let hash = hash_of(&env, 0xAA);
-    bridge.propose_upgrade(&hash);
+    let (_, bridge, _, _, _, _) = setup_bridge(&env);
+    let wasm_hash = BytesN::from_array(&env, &[0u8; 32]);
+
+    bridge.propose_upgrade(&wasm_hash);
+    let proposal_before = bridge.get_upgrade_proposal().unwrap();
+    let timing_before = bridge.get_upgrade_proposal_timing().unwrap();
 
     // Sequence has not advanced to proposal.executable_after
     let result = bridge.try_execute_upgrade();
     assert_eq!(result, Err(Ok(Error::UpgradeNotReady)));
-
-    // Proposal must still be present
-    let p = bridge.get_upgrade_proposal().expect("proposal must remain");
-    assert_eq!(p.wasm_hash, hash);
+    assert_eq!(bridge.get_upgrade_proposal(), Some(proposal_before));
+    assert_eq!(bridge.get_upgrade_proposal_timing(), Some(timing_before));
 }
 
 #[test]

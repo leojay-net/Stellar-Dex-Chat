@@ -143,8 +143,16 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
   const timestamp = toDate(message.timestamp);
 
   const handleMessageKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (hasError && e.key === 'r' && !e.ctrlKey && !e.metaKey) {
-      retry.retryNow();
+    if (e.key === 'r' && !e.ctrlKey && !e.metaKey) {
+      if (hasError) {
+        retry.retryNow();
+      }
+    } else if (e.key === 'Escape') {
+      (e.currentTarget as HTMLElement).blur();
+    } else if (e.key === 'c' && !e.ctrlKey && !e.metaKey) {
+      if (message.metadata?.transactionData?.txHash) {
+        navigator.clipboard.writeText(message.metadata.transactionData.txHash);
+      }
     }
   };
 
@@ -157,7 +165,7 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
       role="group"
       tabIndex={0}
       aria-label={`${isUser ? 'Your' : 'Assistant'} message`}
-      aria-keyshortcuts={hasError ? 'R' : undefined}
+      aria-keyshortcuts={hasError ? 'R C Escape' : 'C Escape'}
       onKeyDown={handleMessageKeyDown}
       className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-8 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent`}
     >

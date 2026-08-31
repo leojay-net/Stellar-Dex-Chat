@@ -27,6 +27,15 @@ describe('CCIPBridgeModal', () => {
     vi.useRealTimers();
   });
 
+  it('provides labelled dialog controls and relationships for assistive technology', () => {
+    render(<CCIPBridgeModal {...defaultProps} />);
+
+    const dialog = screen.getByRole('dialog', { name: 'CCIP Bridge' });
+    expect(dialog).toHaveAttribute('aria-describedby', 'ccip-bridge-modal-description');
+    expect(screen.getByRole('button', { name: 'Start CCIP transfer' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Close CCIP bridge dialog' })).toBeInTheDocument();
+  });
+
   it('shows a polling spinner and message while waiting for confirmation', async () => {
     const fetchTransferStatus = vi
       .fn()

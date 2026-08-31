@@ -20,11 +20,12 @@ Both systems are designed to:
 ## Table of Contents
 
 1. [Batch Admin Operations](#batch-admin-operations)
-2. [Escrow Migration Batching](#escrow-migration-batching)
-3. [Event System](#event-system)
-4. [Error Handling](#error-handling)
-5. [Best Practices](#best-practices)
-6. [Performance Tuning](#performance-tuning)
+2. [Batch Heartbeat Operations](#batch-heartbeat-operations)
+3. [Escrow Migration Batching](#escrow-migration-batching)
+4. [Event System](#event-system)
+5. [Error Handling](#error-handling)
+6. [Best Practices](#best-practices)
+7. [Performance Tuning](#performance-tuning)
 
 ---
 
@@ -266,6 +267,54 @@ let result = bridge.execute_batch_admin(&ops)?;
 // - Lock period unchanged (op 1 failed)
 // - Anti-sandwich delay set to 3
 ```
+
+---
+
+## Batch Heartbeat Operations
+
+### Purpose
+
+The `heartbeat_batch` function allows operators to submit multiple heartbeat signals in a single transaction. This enables off-chain telemetry relays and multi-operator aggregators to update liveliness tracking safely and efficiently.
+
+### Function Signature
+
+```rust
+pub fn heartbeat_batch(
+    env: Env,
+    items: Vec<HeartbeatItem>,
+) -> Result<BatchHeartbeatResult, Error>
+```
+
+### Data Structures
+
+#### `HeartbeatItem`
+
+```rust
+pub struct HeartbeatItem {
+    pub operator: Address,
+    pub nonce: u64,
+}
+```
+
+#### `BatchHeartbeatResult`
+
+```rust
+pub struct BatchHeartbeatResult {
+    pub total_items: u32,
+    pub success_count: u32,
+    pub failure_count: u32,
+    pub failed_index: Option<u32>,
+}
+```
+
+### Safety and Security Guarantees
+
+- **Circuit Breaker Check**: The entire batch is rejected if the contract's circuit breaker is currently active.
+- **Operator Authentication**: Each operator must sign / authenticate their item (`operator.require_auth()`).
+- **Role Verification**: Non-operator addresses are rejected and counted as failures without affecting valid operators.
+- **Replay Protection**: Validates and increments each operator's per-account monotonic nonce.
+- **Partial Failure Handling**: If an item in the batch fails (e.g. stale nonce), remaining items still execute and the failure is recorded.
+- **Event Auditing**: Emits `TelemetryEvent`, per-operator `HeartbeatEvent`, per-failure `HeartbeatBatchFailEvent`, and a summary `HeartbeatBatchEvent`.
 
 ---
 
