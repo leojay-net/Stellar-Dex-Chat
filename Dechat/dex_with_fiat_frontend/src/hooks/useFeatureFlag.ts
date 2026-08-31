@@ -97,3 +97,45 @@ export function featureFlagSectionDividerBorderClass(
 ): string {
   return isDarkMode ? 'border-gray-700' : 'border-gray-200';
 }
+
+/**
+ * Hook to copy text to clipboard with user feedback.
+ * Provides a simple way to implement clipboard copy buttons with automatic
+ * cleanup of the success state after a short delay.
+ *
+ * @param successDuration - How long (in ms) to show the "copied" state. Defaults to 2000ms.
+ * @returns Object containing:
+ *   - copyToClipboard: Function to copy text to clipboard
+ *   - isCopied: Boolean indicating if text was recently copied
+ *
+ * @example
+ * ```tsx
+ * const { copyToClipboard, isCopied } = useClipboardCopy();
+ * 
+ * <button onClick={() => copyToClipboard('text to copy')}>
+ *   {isCopied ? 'Copied!' : 'Copy'}
+ * </button>
+ * ```
+ */
+export function useClipboardCopy(successDuration: number = 2000) {
+  const [isCopied, setIsCopied] = useState(false);
+
+  const copyToClipboard = async (text: string) => {
+    if (typeof window === 'undefined') return;
+    
+    try {
+      await navigator.clipboard.writeText(text);
+      setIsCopied(true);
+      
+      // Reset the "copied" state after the specified duration
+      setTimeout(() => {
+        setIsCopied(false);
+      }, successDuration);
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+      // Optionally, you could show an error state here
+    }
+  };
+
+  return { copyToClipboard, isCopied };
+}

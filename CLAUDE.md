@@ -17,6 +17,7 @@ pair programming are fine and must not be removed.
 
 The application lives under `Dechat/`:
 
+
 - `Dechat/stellar-contracts` — Soroban smart contracts (Rust)
 - `Dechat/dex_with_fiat_frontend` — Next.js frontend
 

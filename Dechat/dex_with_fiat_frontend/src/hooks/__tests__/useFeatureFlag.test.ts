@@ -1,6 +1,6 @@
 import { renderHook, act } from '@testing-library/react';
-import { vi, describe, it, expect, afterEach } from 'vitest';
-import { useFeatureFlag } from '../useFeatureFlag';
+import { vi, describe, it, expect, afterEach, beforeEach } from 'vitest';
+import { useFeatureFlag, useClipboardCopy } from '../useFeatureFlag';
 import * as featureFlags from '@/lib/featureFlags';
 
 describe('useFeatureFlag', () => {
@@ -83,5 +83,106 @@ describe('useFeatureFlag', () => {
     });
 
     expect(result.current).toBe(true);
+  });
+});
+
+describe('useClipboardCopy', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it('copies text to clipboard and sets isCopied to true', async () => {
+    const writeTextSpy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
+
+    const { result } = renderHook(() => useClipboardCopy());
+
+    expect(result.current.isCopied).toBe(false);
+
+    await act(async () => {
+      await result.current.copyToClipboard('test text');
+    });
+
+    expect(writeTextSpy).toHaveBeenCalledWith('test text');
+    expect(result.current.isCopied).toBe(true);
+  });
+
+  it('resets isCopied after the specified duration', async () => {
+    vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
+
+    const { result } = renderHook(() => useClipboardCopy(1000));
+
+    await act(async () => {
+      await result.current.copyToClipboard('test text');
+    });
+
+    expect(result.current.isCopied).toBe(true);
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(result.current.isCopied).toBe(false);
+  });
+
+  it('uses default duration of 2000ms when not specified', async () => {
+    vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
+
+    const { result } = renderHook(() => useClipboardCopy());
+
+    await act(async () => {
+      await result.current.copyToClipboard('test text');
+    });
+
+    expect(result.current.isCopied).toBe(true);
+
+    act(() => {
+      vi.advanceTimersByTime(1999);
+    });
+
+    expect(result.current.isCopied).toBe(true);
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+
+    expect(result.current.isCopied).toBe(false);
+  });
+
+  it('handles clipboard errors gracefully', async () => {
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('Clipboard error'));
+
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { result } = renderHook(() => useClipboardCopy());
+
+    await act(async () => {
+      await result.current.copyToClipboard('test text');
+    });
+
+    expect(result.current.isCopied).toBe(false);
+    expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to copy to clipboard:', expect.any(Error));
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('does nothing when window is undefined (SSR)', async () => {
+    const originalWindow = global.window;
+    // @ts-expect-error - simulating SSR environment
+    delete global.window;
+
+    const { result } = renderHook(() => useClipboardCopy());
+
+    await act(async () => {
+      await result.current.copyToClipboard('test text');
+    });
+
+    expect(result.current.isCopied).toBe(false);
+
+    global.window = originalWindow;
   });
 });
