@@ -37,7 +37,7 @@ fn setup_bridge(
     let mut signers = Vec::new(env);
     signers.push_back(admin.clone());
 
-    client.init(&admin, &token_address, &1_000_000, &100, &signers, &1);
+    client.init(&admin, &token_address, &1_000_000, &100, &signers, &1, &0);
 
     (
         contract_id,
@@ -59,7 +59,7 @@ fn test_heartbeat_blocked_by_circuit_breaker() {
     let operator = Address::generate(&env);
 
     // Setup operator
-    bridge.set_operator(&operator, &true);
+    bridge.set_operator(&operator, &true, &0);
 
     // Trip the circuit breaker (implementation-specific trigger)
     // Assuming we can set a threshold and exceed it
@@ -89,7 +89,7 @@ fn test_heartbeat_succeeds_when_circuit_breaker_clear() {
     let operator = Address::generate(&env);
 
     // Setup operator
-    bridge.set_operator(&operator, &true);
+    bridge.set_operator(&operator, &true, &0);
 
     // Heartbeat should succeed when circuit breaker is not tripped
     bridge.heartbeat(&operator, &0);
@@ -108,7 +108,7 @@ fn test_heartbeat_circuit_breaker_event() {
     let (contract_id, bridge, _, _, _, _) = setup_bridge(&env);
     let operator = Address::generate(&env);
 
-    bridge.set_operator(&operator, &true);
+    bridge.set_operator(&operator, &true, &0);
 
     // Perform heartbeat
     bridge.heartbeat(&operator, &0);
@@ -127,7 +127,7 @@ fn test_heartbeat_after_circuit_breaker_auto_reset() {
     let (_, bridge, _, _, _, _) = setup_bridge(&env);
     let operator = Address::generate(&env);
 
-    bridge.set_operator(&operator, &true);
+    bridge.set_operator(&operator, &true, &0);
 
     // Perform initial heartbeat
     bridge.heartbeat(&operator, &0);
@@ -153,7 +153,7 @@ fn test_heartbeat_updates_timestamp_with_circuit_breaker_check() {
     let (_, bridge, _, _, _, _) = setup_bridge(&env);
     let operator = Address::generate(&env);
 
-    bridge.set_operator(&operator, &true);
+    bridge.set_operator(&operator, &true, &0);
 
     let initial_ledger = env.ledger().sequence();
     
@@ -185,9 +185,9 @@ fn test_multiple_operators_heartbeat_with_circuit_breaker() {
     let operator3 = Address::generate(&env);
 
     // Setup operators
-    bridge.set_operator(&operator1, &true);
-    bridge.set_operator(&operator2, &true);
-    bridge.set_operator(&operator3, &true);
+    bridge.set_operator(&operator1, &true, &0);
+    bridge.set_operator(&operator2, &true, &0);
+    bridge.set_operator(&operator3, &true, &0);
 
     // All operators should be able to heartbeat
     bridge.heartbeat(&operator1, &0);
@@ -223,7 +223,7 @@ fn test_heartbeat_blocked_when_paused() {
     let (_, bridge, _, _, _, _) = setup_bridge(&env);
     let operator = Address::generate(&env);
 
-    bridge.set_operator(&operator, &true);
+    bridge.set_operator(&operator, &true, &0);
 
     // Pause the contract
     bridge.pause();
@@ -242,7 +242,7 @@ fn test_heartbeat_circuit_breaker_check_order() {
     let (_, bridge, _, _, _, _) = setup_bridge(&env);
     let operator = Address::generate(&env);
 
-    bridge.set_operator(&operator, &true);
+    bridge.set_operator(&operator, &true, &0);
 
     // Circuit breaker check should happen early in the function
     // If circuit breaker is tripped, should fail before nonce check
@@ -265,7 +265,7 @@ fn test_heartbeat_event_emission_with_circuit_breaker() {
     let (contract_id, bridge, _, _, _, _) = setup_bridge(&env);
     let operator = Address::generate(&env);
 
-    bridge.set_operator(&operator, &true);
+    bridge.set_operator(&operator, &true, &0);
 
     bridge.heartbeat(&operator, &0);
 
@@ -285,7 +285,7 @@ fn test_circuit_breaker_state_persistence_during_heartbeats() {
     let (_, bridge, _, _, _, _) = setup_bridge(&env);
     let operator = Address::generate(&env);
 
-    bridge.set_operator(&operator, &true);
+    bridge.set_operator(&operator, &true, &0);
 
     // Multiple heartbeats should maintain circuit breaker state
     bridge.heartbeat(&operator, &0);
@@ -306,7 +306,7 @@ fn test_heartbeat_triggers_circuit_breaker_auto_reset() {
     let (_, bridge, _, _, _, _) = setup_bridge(&env);
     let operator = Address::generate(&env);
 
-    bridge.set_operator(&operator, &true);
+    bridge.set_operator(&operator, &true, &0);
 
     // The heartbeat function calls maybe_auto_reset_circuit_breaker
     // This ensures the circuit breaker can auto-reset during operator activity
@@ -334,7 +334,7 @@ fn test_heartbeat_circuit_breaker_blocked_event() {
     let (contract_id, bridge, _, _, _, _) = setup_bridge(&env);
     let operator = Address::generate(&env);
 
-    bridge.set_operator(&operator, &true);
+    bridge.set_operator(&operator, &true, &0);
 
     // If circuit breaker blocks heartbeat, should emit event
     // (Implementation would need to actually trip the breaker)

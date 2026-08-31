@@ -36,13 +36,21 @@ export const BRIDGE_LIMIT_WARNING_PERCENT = 80;
 export const DUMMY_SOURCE =
   'GBEFLW6RTALNHCL7HW2INWB4ASHZ7E6MF6E2IOIIMBVEAU2B2B4XLRQW';
 
-// FeeEstimate describes estimated fees returned by transaction simulation.
-// `minFee` is represented as a string of stroops (to avoid bigint JSON issues),
-// while `fee`, `baseFee`, and `resourceFee` are numbers in XLM for UI display.
+/**
+ * FeeEstimate describes estimated network and resource fees returned by transaction simulation.
+ *
+ * `minFee` is represented as a string of raw stroops to avoid JavaScript `BigInt` JSON serialization
+ * issues across client-server boundaries, while `fee`, `baseFee`, and `resourceFee` are converted
+ * to fractional XLM numbers strictly for UI display purposes.
+ */
 export interface FeeEstimate {
+  /** Total minimum fee in raw stroops as a string (base fee + Soroban resource fee). */
   minFee: string;
+  /** Total fee in decimal XLM for UI presentation. */
   fee: number;
+  /** Fixed base network inclusion fee in XLM. */
   baseFee: number;
+  /** Dynamic Soroban WASM resource consumption fee in XLM. */
   resourceFee: number;
 }
 
@@ -108,7 +116,16 @@ try {
   // ignore
 }
 
-/** Build, simulate, and assemble a transaction. Returns the assembled XDR. */
+/**
+ * Builds, simulates, and assembles a Soroban transaction XDR.
+ *
+ * Evaluates resource footprint, checks for contract execution errors, and calculates
+ * exact stroop fees using `BigInt` addition (`resourceFeeInStroops + baseFeeInStroops`).
+ *
+ * @param publicKey - The source account's Stellar public key.
+ * @param operation - The contract invocation operation.
+ * @returns Object containing the assembled transaction XDR and fee estimates.
+ */
 async function buildAndSimulate(
   publicKey: string,
   operation: ReturnType<Contract['call']>,
@@ -195,7 +212,12 @@ export interface TransactionResult {
 }
 
 /**
- * Simulate a deposit transaction and return fee estimate without submitting.
+ * Simulates a deposit transaction to estimate gas and resource fees without broadcasting.
+ *
+ * @param publicKey - The depositor's Stellar public key.
+ * @param amount - Deposit amount in stroops as a `bigint` (encoded into Soroban `i128`).
+ * @returns Estimated fees or `null` if simulation details were omitted.
+ * @throws {Error} If `amount` exceeds the configured on-chain bridge limit or simulation reverts.
  */
 export async function simulateDeposit(
   publicKey: string,
@@ -213,7 +235,12 @@ export async function simulateDeposit(
 }
 
 /**
- * Simulate a withdraw transaction and return fee estimate without submitting.
+ * Simulates an administrative withdrawal to estimate transaction fees.
+ *
+ * @param adminPublicKey - Authorized admin public key.
+ * @param recipientPublicKey - Recipient destination public key.
+ * @param amount - Withdrawal amount in stroops as a `bigint`.
+ * @returns Estimated fees or `null`.
  */
 export async function simulateWithdraw(
   adminPublicKey: string,
@@ -231,8 +258,16 @@ export async function simulateWithdraw(
 }
 
 /**
- * Deposit `amount` stroops of the bridged token from `publicKey` into the contract.
- * Returns the transaction hash on success.
+ * Deposits `amount` stroops of the bridged token from `publicKey` into the smart contract.
+ *
+ * The `amount` parameter is passed as a `bigint` directly to `nativeToScVal(..., { type: 'i128' })`,
+ * guaranteeing zero floating-point precision loss and avoiding `Number.MAX_SAFE_INTEGER` overflow.
+ *
+ * @param publicKey - The depositor's public key.
+ * @param amount - Amount to deposit in stroops as a `bigint`.
+ * @param signTx - Callback to request wallet signature on the assembled XDR.
+ * @param onHashKnown - Optional callback invoked once the transaction hash is generated.
+ * @returns The confirmed on-chain transaction hash.
  */
 export async function depositToContract(
   publicKey: string,
@@ -346,6 +381,15 @@ export async function getBridgeLimit(): Promise<bigint> {
   return viewCall<bigint>('get_limit');
 }
 
+/**
+ * Validates that the requested transaction amount in stroops does not exceed the on-chain bridge limit.
+ *
+ * Evaluates `amount > limit` strictly in `BigInt` space to prevent overflow or truncation.
+ *
+ * @param amount - The transaction amount in stroops as a `bigint`.
+ * @returns The active bridge limit in stroops.
+ * @throws {Error} If `amount` exceeds the configured bridge limit.
+ */
 export async function validateBridgeAmountLimit(
   amount: bigint,
 ): Promise<bigint> {

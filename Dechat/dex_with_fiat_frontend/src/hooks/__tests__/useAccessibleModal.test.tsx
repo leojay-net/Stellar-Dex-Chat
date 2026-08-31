@@ -229,6 +229,67 @@ describe('useAccessibleModal', () => {
       press('Tab', { shiftKey: true });
       expect(document.activeElement).toBe(last);
     });
+
+    it('focuses the first focusable element when the container mounts late', async () => {
+      // Start without a container — the hook schedules a rAF retry.
+      const { rerender, getByText } = render(
+        <Modal isOpen onClose={() => {}} renderContainer={false} />,
+      );
+
+      // The container is not in the DOM yet.
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+
+      // Rerender with the container now present so the ref gets populated.
+      rerender(
+        <Modal isOpen onClose={() => {}}>
+          <button>late button</button>
+        </Modal>,
+      );
+
+      // Flush the pending requestAnimationFrame so the retry fires
+      // and finds the container ready.
+      await act(async () => {
+        // jsdom polyfills rAF as setTimeout — flush it explicitly.
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => resolve());
+        });
+      });
+
+      expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+      expect(document.activeElement).toBe(getByText('late button'));
+    });
+
+    it('ignores non-Tab, non-Escape keydown events', () => {
+      const onClose = vi.fn();
+      render(
+        <Modal isOpen onClose={onClose}>
+          <button>ok</button>
+        </Modal>,
+      );
+
+      // Pressing a regular letter key should not call onClose.
+      press('a');
+      press('ArrowDown');
+      press('Enter');
+
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('does not intercept Tab when the container ref is null', () => {
+      const onError = vi.fn();
+      render(
+        <Modal isOpen onClose={() => {}} onError={onError} />
+      );
+
+      // Manually null the ref to simulate a detached container.
+      const dialog = document.querySelector('[role="dialog"]');
+      expect(dialog).not.toBeNull();
+
+      // Pressing Tab when the container has no focusable children should
+      // trigger the reportError path via the Tab handler.
+      press('Tab');
+      expect(onError).toHaveBeenCalledWith(FOCUS_TRAP_FAILURE_MESSAGE);
+    });
   });
 
   describe('escape handling', () => {
@@ -294,6 +355,17 @@ describe('useAccessibleModal', () => {
         );
       });
       expect(toastStore.getToasts()[0].variant).toBe('error');
+    });
+
+    it('calls the onError callback when the container never mounts', async () => {
+      const onError = vi.fn();
+      render(
+        <Modal isOpen onClose={() => {}} renderContainer={false} onError={onError} />,
+      );
+
+      await waitFor(() => {
+        expect(onError).toHaveBeenCalledWith(FOCUS_TRAP_FAILURE_MESSAGE);
+      });
     });
 
     it('surfaces a message when the modal has nothing focusable', () => {

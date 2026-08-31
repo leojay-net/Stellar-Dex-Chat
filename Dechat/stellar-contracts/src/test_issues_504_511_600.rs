@@ -47,7 +47,7 @@ fn setup_bridge(
     let token_owner = Address::generate(env);
     let (token_addr, token, token_sac) = create_token(env, &token_owner);
     let signers = vec![env, admin.clone()];
-    bridge.init(&admin, &token_addr, &limit, &1, &signers, &1);
+    bridge.init(&admin, &token_addr, &limit, &1, &signers, &1, &0);
     (contract_id, bridge, admin, token_addr, token, token_sac)
 }
 
@@ -77,7 +77,7 @@ fn heartbeat_rejected_when_contract_paused() {
 
     // Register an operator and allow one slot
     bridge.set_max_operators(&50);
-    bridge.set_operator(&operator, &true);
+    bridge.set_operator(&operator, &true, &0);
 
     // Pause the contract
     bridge.pause();
@@ -98,7 +98,7 @@ fn heartbeat_rejected_when_circuit_breaker_tripped() {
 
     // Register operator
     bridge.set_max_operators(&50);
-    bridge.set_operator(&operator, &true);
+    bridge.set_operator(&operator, &true, &0);
 
     // Set a low circuit breaker threshold, fund the contract, then trip it
     bridge.set_circuit_breaker_threshold(&100);
@@ -133,7 +133,7 @@ fn heartbeat_succeeds_for_valid_operator() {
     let operator = Address::generate(&env);
 
     bridge.set_max_operators(&50);
-    bridge.set_operator(&operator, &true);
+    bridge.set_operator(&operator, &true, &0);
 
     // Valid heartbeat should succeed
     bridge.heartbeat(&operator, &0);
@@ -151,7 +151,7 @@ fn heartbeat_nonce_replay_rejected() {
     let operator = Address::generate(&env);
 
     bridge.set_max_operators(&50);
-    bridge.set_operator(&operator, &true);
+    bridge.set_operator(&operator, &true, &0);
 
     bridge.heartbeat(&operator, &0);
 
@@ -252,7 +252,7 @@ fn init_requires_admin_auth() {
     let signers = vec![&env, admin.clone()];
 
     // Without auth, init must fail
-    let result = bridge.try_init(&admin, &token_addr, &1_000_000, &1, &signers, &1);
+    let result = bridge.try_init(&admin, &token_addr, &1_000_000, &1, &signers, &1, &0);
     assert!(result.is_err());
 }
 
@@ -268,7 +268,7 @@ fn init_succeeds_with_admin_auth() {
     let (token_addr, _, _) = create_token(&env, &token_owner);
     let signers = vec![&env, admin.clone()];
 
-    bridge.init(&admin, &token_addr, &1_000_000, &1, &signers, &1);
+    bridge.init(&admin, &token_addr, &1_000_000, &1, &signers, &1, &0);
 
     assert_eq!(bridge.get_admin(), admin);
 }
@@ -285,10 +285,10 @@ fn init_rejects_duplicate_initialization() {
     let (token_addr, _, _) = create_token(&env, &token_owner);
     let signers = vec![&env, admin.clone()];
 
-    bridge.init(&admin, &token_addr, &1_000_000, &1, &signers, &1);
+    bridge.init(&admin, &token_addr, &1_000_000, &1, &signers, &1, &0);
 
     // Second call must fail with AlreadyInitialized
-    let result = bridge.try_init(&admin, &token_addr, &1_000_000, &1, &signers, &1);
+    let result = bridge.try_init(&admin, &token_addr, &1_000_000, &1, &signers, &1, &1);
     assert_eq!(result, Err(Ok(Error::AlreadyInitialized)));
 }
 
@@ -304,7 +304,7 @@ fn init_rejects_zero_limit() {
     let (token_addr, _, _) = create_token(&env, &token_owner);
     let signers = vec![&env, admin.clone()];
 
-    let result = bridge.try_init(&admin, &token_addr, &0, &1, &signers, &1);
+    let result = bridge.try_init(&admin, &token_addr, &0, &1, &signers, &1, &0);
     assert_eq!(result, Err(Ok(Error::ZeroAmount)));
 }
 
@@ -321,13 +321,13 @@ fn init_rejects_min_deposit_at_or_above_limit() {
     let signers = vec![&env, admin.clone()];
 
     // min_deposit == limit must be rejected
-    let result = bridge.try_init(&admin, &token_addr, &100, &100, &signers, &1);
+    let result = bridge.try_init(&admin, &token_addr, &100, &100, &signers, &1, &0);
     assert_eq!(result, Err(Ok(Error::BelowMinimum)));
 
     // min_deposit > limit must also be rejected (fresh contract for clean state)
     let contract_id2 = env.register(FiatBridge, ());
     let bridge2 = FiatBridgeClient::new(&env, &contract_id2);
-    let result2 = bridge2.try_init(&admin, &token_addr, &100, &200, &signers, &1);
+    let result2 = bridge2.try_init(&admin, &token_addr, &100, &200, &signers, &1, &0);
     assert_eq!(result2, Err(Ok(Error::BelowMinimum)));
 }
 
@@ -344,13 +344,13 @@ fn init_rejects_invalid_multisig_threshold() {
     let signers = vec![&env, admin.clone()];
 
     // threshold 0 must be rejected
-    let result = bridge.try_init(&admin, &token_addr, &1_000_000, &1, &signers, &0);
+    let result = bridge.try_init(&admin, &token_addr, &1_000_000, &1, &signers, &0, &0);
     assert_eq!(result, Err(Ok(Error::InvalidThreshold)));
 
     // threshold exceeding signer count must be rejected
     let contract_id2 = env.register(FiatBridge, ());
     let bridge2 = FiatBridgeClient::new(&env, &contract_id2);
-    let result2 = bridge2.try_init(&admin, &token_addr, &1_000_000, &1, &signers, &2);
+    let result2 = bridge2.try_init(&admin, &token_addr, &1_000_000, &1, &signers, &2, &0);
     assert_eq!(result2, Err(Ok(Error::InvalidThreshold)));
 }
 
@@ -367,6 +367,6 @@ fn init_rejects_duplicate_signers() {
 
     // Two identical signers must be rejected
     let dup_signers = vec![&env, admin.clone(), admin.clone()];
-    let result = bridge.try_init(&admin, &token_addr, &1_000_000, &1, &dup_signers, &1);
+    let result = bridge.try_init(&admin, &token_addr, &1_000_000, &1, &dup_signers, &1, &0);
     assert_eq!(result, Err(Ok(Error::DuplicateSigner)));
 }

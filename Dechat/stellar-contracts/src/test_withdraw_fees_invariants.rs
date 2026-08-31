@@ -1,6 +1,24 @@
-//! Soroban invariant tests for withdraw_fees operations.
+//! Invariant tests for [`FiatBridge::withdraw_fees`].
 //!
-//! This module tests that the contract maintains its invariants after fee withdrawal operations.
+//! `withdraw_fees` moves *accrued* (untracked-in-`net_deposited`) fees out of
+//! the contract to a fee recipient. Because fee tokens are not part of the
+//! `total_deposited` / `total_withdrawn` accounting, a buggy implementation
+//! could siphon tracked depositor funds instead. The invariants asserted here
+//! are:
+//!
+//! * `total_deposited >= total_withdrawn` after fee withdrawal;
+//! * `net_deposited (total_deposited - total_withdrawn) >= total_liabilities`
+//!   — fees taken out never reduce the net amount below outstanding
+//!   liabilities;
+//! * on-chain token balance `>= net_deposited` — the contract always retains
+//!   enough to honour all net deposits;
+//! * fee withdrawal never disturbs the depositor accounting counters.
+//!
+//! These mirror the runtime checks performed by
+//! [`FiatBridge::check_invariants`] (see `src/lib.rs`).
+//!
+//! See [`docs/INVARIANT_TESTING.md`](docs/INVARIANT_TESTING.md) for the
+//! invariant-testing strategy and contributor checklist.
 
 #![cfg(test)]
 
@@ -41,7 +59,7 @@ fn setup_bridge(
     let mut signers = Vec::new(env);
     signers.push_back(admin.clone());
 
-    client.init(&admin, &token_address, &1_000_000, &100, &signers, &1);
+    client.init(&admin, &token_address, &1_000_000, &100, &signers, &1, &0);
 
     (
         contract_id,

@@ -237,5 +237,56 @@ npm run precommit:eslint
 
 - **[TypeScript SDK Examples](docs/typescript-sdk-examples.md)** - Complete guide for calling new contract functions (`heartbeat`, `deny_address`, `migrate_escrow`, `execute_batch_admin`) from the TypeScript SDK with error handling patterns and code examples.
 
+### Invariant tests (contracts)
+
+Alongside the per-issue regression tests, the `FiatBridge` suite has dedicated
+**invariant** modules. An invariant test does not check the return value of a
+single call — it exercises a state-changing operation and then re-asserts the
+contract's core accounting and access-control properties, so a regression that
+breaks escrow solvency fails loudly no matter which entry point introduced it.
+
+| Module | Operation under test | Properties asserted |
+|--------|---------------------|---------------------|
+| [`test_deposit_invariants.rs`](stellar-contracts/src/test_deposit_invariants.rs) | `deposit` | `total_deposited >= total_withdrawn`, `net_deposited >= total_liabilities`, contract token balance `>= net_deposited` — held across multiple deposits, multiple users, and deposits interleaved with withdrawal requests |
+| [`test_withdraw_fees_invariants.rs`](stellar-contracts/src/test_withdraw_fees_invariants.rs) | `withdraw_fees` (admin) | The same three accounting invariants, plus fee-accrual monotonicity: the fee vault never decreases between accruals, including batched withdrawals and withdrawals with requests still pending |
+| [`test_pause_invariants.rs`](stellar-contracts/src/test_pause_invariants.rs) | `pause` / `unpause` | While paused, every state-changing entry point (`deposit`, `request_withdrawal`, `execute_withdrawal`, finalization) is rejected while read-only views stay callable; `pause`/`unpause` are admin-only, idempotent, event-emitting, and preserve state across a cycle |
+
+Each module opens with a Rustdoc header (`//!`) stating what it guards, and the
+test names spell out the property rather than the scenario — for example
+`test_deposit_maintains_balance_ge_net_deposited`. Keep both conventions when
+adding cases: a new invariant belongs in the module for the operation that could
+violate it, named after the property it protects.
+
+Run them with the rest of the contract suite:
+
+```bash
+cd stellar-contracts
+cargo test                                     # all tests, invariants included
+cargo test invariants                          # invariant modules only
+```
+
+The accounting identities these tests protect are derived in
+[FEE_ACCRUAL_ARCHITECTURE.md](../FEE_ACCRUAL_ARCHITECTURE.md) and
+[OVERFLOW_PREVENTION.md](stellar-contracts/docs/OVERFLOW_PREVENTION.md).
+
 ## Contributing!!
 Contributions and feature reviews are welcome. Please open up an issue to raise bugs or feature requests!
+
+### Repository conventions
+
+This repo takes a high volume of external contributions, so a few conventions
+keep review predictable:
+
+- **Review ownership** — the contracts and the frontend are reviewed by
+  different maintainers. Say in your PR body which of the two areas you touched
+  so the right reviewer picks it up.
+- **PR descriptions** — every PR needs a test plan: the commands you ran
+  (`cargo test`, `cargo clippy`, `pnpm typecheck`, `pnpm lint`, `pnpm test:unit`,
+  `pnpm build`) and their outcome. [`PR_TEMPLATE.md`](../docs/PR_TEMPLATE.md) in
+  `docs/` shows the shape of a fully written-up PR.
+- **Generated files** — build output (`.next/`, `target/`, `*.wasm`,
+  `tsconfig.tsbuildinfo`) is not source and does not belong in a commit. If you
+  notice one already tracked, mention it in your PR rather than deleting it as a
+  drive-by change; it is easier to review as its own fix.
+- **Scope** — one logical change per PR. Unrelated cleanups found along the way
+  are better filed as issues.

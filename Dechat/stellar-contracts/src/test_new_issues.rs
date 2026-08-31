@@ -50,7 +50,7 @@ fn setup_bridge(
     let token_admin = Address::generate(env);
     let (token_addr, token, token_sac) = create_token(env, &token_admin);
     let signers = vec![env, admin.clone()];
-    bridge.init(&admin, &token_addr, &1_000_000, &1, &signers, &1);
+    bridge.init(&admin, &token_addr, &1_000_000, &1, &signers, &1, &0);
     (contract_id, bridge, admin, token_addr, token, token_sac)
 }
 
@@ -197,9 +197,10 @@ fn execute_upgrade_at_exact_boundary_returns_not_ready() {
 fn cancel_upgrade_no_proposal_returns_error() {
     let env = Env::default();
     env.mock_all_auths();
-    let (_, bridge, _, _, _, _) = setup_bridge(&env);
+    let (_, bridge, admin, _, _, _) = setup_bridge(&env);
 
-    let result = bridge.try_cancel_upgrade();
+    let nonce = bridge.get_upgrade_cancellation_nonce(&admin);
+    let result = bridge.try_cancel_upgrade(&nonce);
     assert_eq!(result, Err(Ok(Error::UpgradeProposalMissing)));
 }
 
@@ -208,12 +209,13 @@ fn cancel_upgrade_no_proposal_returns_error() {
 fn cancel_upgrade_removes_proposal() {
     let env = Env::default();
     env.mock_all_auths();
-    let (_, bridge, _, _, _, _) = setup_bridge(&env);
+    let (_, bridge, admin, _, _, _) = setup_bridge(&env);
 
     bridge.propose_upgrade(&dummy_wasm_hash(&env), &MIN_UPGRADE_DELAY, &0u32);
     assert!(bridge.get_upgrade_proposal().is_some());
 
-    bridge.cancel_upgrade();
+    let nonce = bridge.get_upgrade_cancellation_nonce(&admin);
+    bridge.cancel_upgrade(&nonce);
     assert!(bridge.get_upgrade_proposal().is_none());
 }
 
@@ -223,12 +225,14 @@ fn cancel_upgrade_removes_proposal() {
 fn cancel_upgrade_twice_returns_error() {
     let env = Env::default();
     env.mock_all_auths();
-    let (_, bridge, _, _, _, _) = setup_bridge(&env);
+    let (_, bridge, admin, _, _, _) = setup_bridge(&env);
 
     bridge.propose_upgrade(&dummy_wasm_hash(&env), &MIN_UPGRADE_DELAY, &0u32);
-    bridge.cancel_upgrade();
+    let nonce = bridge.get_upgrade_cancellation_nonce(&admin);
+    bridge.cancel_upgrade(&nonce);
 
-    let result = bridge.try_cancel_upgrade();
+    let nonce = bridge.get_upgrade_cancellation_nonce(&admin);
+    let result = bridge.try_cancel_upgrade(&nonce);
     assert_eq!(result, Err(Ok(Error::UpgradeProposalMissing)));
 }
 

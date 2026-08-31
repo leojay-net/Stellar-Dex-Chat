@@ -1,16 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { subscribeToPaymentStatus } from '@/lib/paymentStatusEvents';
+import { applyRateLimit, getClientIp } from '@/lib/rateLimit';
+import { paymentStatusStreamQuerySchema } from '@/lib/apiSchemas';
 
 export const dynamic = 'force-dynamic';
 
+// A single page legitimately opens a few of these long-lived SSE connections
+// per session (one per hook) and the browser's EventSource auto-reconnects on
+// every network blip, so the ceiling is generous — it only exists to stop a
+// single IP from hammering the endpoint.
+const RATE_LIMIT = { maxRequests: 60, windowMs: 60_000 };
+
 export async function GET(request: NextRequest) {
-  const sessionId = request.nextUrl.searchParams.get('sessionId');
-  if (!sessionId) {
+  const ip = getClientIp(request);
+  const limited = applyRateLimit(ip, '/api/payment-status/stream', RATE_LIMIT);
+  if (limited) return limited;
+
+  const parsed = paymentStatusStreamQuerySchema.safeParse({
+    sessionId: request.nextUrl.searchParams.get('sessionId') ?? undefined,
+  });
+
+  if (!parsed.success) {
     return NextResponse.json(
-      { message: 'sessionId is required' },
+      {
+        success: false,
+        message: 'Validation failed',
+        errors: parsed.error.issues,
+      },
       { status: 400 },
     );
   }
+
+  const { sessionId } = parsed.data;
 
   const encoder = new TextEncoder();
   let unsubscribe: (() => void) | null = null;

@@ -26,7 +26,20 @@ export async function POST(request: NextRequest) {
       endpoint: '/api/create-recipient',
     });
 
-    const body = await request.json();
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      telemetry.addLog(span.spanId, 'warn', 'Malformed JSON body');
+      telemetry.finishSpan(span.spanId, {
+        success: false,
+        error: 'Invalid JSON body',
+      });
+      return NextResponse.json(
+        { success: false, message: 'Invalid JSON in request body.' },
+        { status: 400 },
+      );
+    }
 
     // Validate with Zod
     const validationResult = createRecipientSchema.safeParse(body);

@@ -23,7 +23,7 @@ fn setup(env: &Env) -> (Address, FiatBridgeClient<'_>, Address, Address, Stellar
     let contract_id = env.register(FiatBridge, ());
     let bridge = FiatBridgeClient::new(env, &contract_id);
     let signers = vec![env, admin.clone()];
-    bridge.init(&admin, &token_addr, &1_000_000, &1, &signers, &1);
+    bridge.init(&admin, &token_addr, &1_000_000, &1, &signers, &1, &0);
     bridge.set_limit(&token_addr, &1_000_000i128);
     (contract_id, bridge, admin, token_addr, sac)
 }

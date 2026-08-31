@@ -44,7 +44,7 @@ fn setup_bridge(
     let token_admin = Address::generate(env);
     let (token_addr, token, token_sac) = create_token(env, &token_admin);
     let signers = vec![env, admin.clone()];
-    bridge.init(&admin, &token_addr, &1_000_000, &1, &signers, &1);
+    bridge.init(&admin, &token_addr, &1_000_000, &1, &signers, &1, &0);
     (contract_id, bridge, admin, token_addr, token, token_sac)
 }
 
@@ -164,7 +164,7 @@ fn test_get_accrued_fees_invariant_per_token_isolation() {
 }
 
 /// Invariant: calling `get_accrued_fees` must not mutate any storage.
-/// A read-only view function must be side-effect free.
+/// A read-only view function must be side-effect free (except event emission).
 #[test]
 fn test_get_accrued_fees_invariant_purity_no_state_mutation() {
     let env = Env::default();
@@ -183,22 +183,22 @@ fn test_get_accrued_fees_invariant_purity_no_state_mutation() {
         assert_eq!(bridge.get_accrued_fees(&token_addr), vault_before);
     }
 
-    // Verify no events were emitted by the view calls
+    // Verify FeeQueryEvent is emitted with correct version
     let event_count_before: usize = {
         // Events emitted up to the first read: accrue_fee emitted FeeAccruedEvent
-        // We just verify no extra events were added by get_accrued_fees
+        // get_accrued_fees emits FeeQueryEvent
         let initial = env.events().all();
         initial.filter_by_contract(&contract_id).events().len()
     };
 
-    // Read again — no new events should appear
+    // Read again — FeeQueryEvent should be emitted
     bridge.get_accrued_fees(&token_addr);
     let final_events = env.events().all();
     let final_filtered = final_events.filter_by_contract(&contract_id);
     assert_eq!(
         final_filtered.events().len(),
-        event_count_before,
-        "get_accrued_fees must not emit events"
+        event_count_before + 1,
+        "get_accrued_fees must emit exactly one FeeQueryEvent"
     );
 }
 
@@ -278,4 +278,62 @@ fn test_get_accrued_fees_invariant_zero_amount_accrue_rejected() {
     assert_eq!(neg_result, Err(Ok(Error::ZeroAmount)));
 
     assert_eq!(bridge.get_accrued_fees(&token_addr), 0);
+}
+
+/// Invariant: `get_accrued_fees` emits FeeQueryEvent with EVENT_VERSION.
+#[test]
+fn test_get_accrued_fees_emits_query_event_with_version() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env);
+    token_sac.mint(&contract_id, &5_000);
+
+    bridge.accrue_fee(&token_addr, &5_000);
+
+    // Clear previous events
+    let _ = env.events().all();
+
+    // Call get_accrued_fees
+    let amount = bridge.get_accrued_fees(&token_addr);
+    assert_eq!(amount, 5_000);
+
+    // Verify FeeQueryEvent was emitted
+    let events = env.events().all().filter_by_contract(&contract_id);
+    let event_vec: Vec<_> = events.events().iter().collect();
+
+    assert_eq!(event_vec.len(), 1, "Exactly one event should be emitted");
+
+    // Verify the event has the correct structure
+    let event = &event_vec[0];
+    let body = match &event.body {
+        soroban_sdk::xdr::ContractEventBody::V0(v0) => v0,
+        _ => panic!("Expected V0 event body"),
+    };
+
+    // Check that the topic is FeeQueryEvent (struct name becomes topic)
+    let topic = body.topic.iter().next().unwrap();
+    match topic {
+        soroban_sdk::xdr::ScVal::Symbol(sym) => {
+            assert_eq!(sym.to_string(), "fee_query_event", "Event topic should be fee_query_event");
+        }
+        _ => panic!("Expected Symbol topic"),
+    }
+
+    // Check that version field in data is EVENT_VERSION
+    if let soroban_sdk::xdr::ScVal::Map(Some(map)) = &body.data {
+        let version_found = map.iter().any(|entry| {
+            if let soroban_sdk::xdr::ScVal::Symbol(key) = &entry.key {
+                if key.to_string() == "version" {
+                    if let soroban_sdk::xdr::ScVal::U32(val) = entry.val {
+                        return *val == EVENT_VERSION;
+                    }
+                }
+            }
+            false
+        });
+        assert!(version_found, "FeeQueryEvent should contain version = EVENT_VERSION");
+    } else {
+        panic!("Expected Map in event data");
+    }
 }

@@ -15,8 +15,13 @@ permissions:
   contents: read
 
 jobs:
+<<<<<<< HEAD
+  build:
+    name: Build & Type Check
+=======
   lint:
     name: Lint & Type Check
+>>>>>>> emwulrd/main
     runs-on: ubuntu-latest
 
     defaults:
@@ -25,15 +30,26 @@ jobs:
 
     steps:
       - name: Checkout repository
+<<<<<<< HEAD
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+=======
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install pnpm
         uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+>>>>>>> emwulrd/main
         with:
           version: 8
 
       - name: Set up Node.js
+<<<<<<< HEAD
+        uses: actions/setup-node@v4
+=======
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+>>>>>>> emwulrd/main
         with:
           node-version: "24"
           cache: "pnpm"
@@ -48,6 +64,8 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+<<<<<<< HEAD
+=======
   build:
     name: Build & Test
     runs-on: ubuntu-latest
@@ -75,6 +93,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+>>>>>>> emwulrd/main
       - name: Build
         run: pnpm build
         env:
@@ -110,12 +129,62 @@ jobs:
         run: pnpm test:coverage:merge
         env:
           NODE_OPTIONS: --max-old-space-size=4096
+<<<<<<< HEAD
         # Fails the pipeline if coverage thresholds (stmt 70%, branch 65%, fn 70%) are not met
+=======
+        # NOTE: coverage.thresholds are not currently configured in vitest.config.ts,
+        # so this step does not fail the pipeline on low coverage. The target numbers
+        # below (stmt 70%, branch 65%, fn 70%, lines 70%) are informational only until
+        # a threshold gate is deliberately reintroduced.
+
+      - name: Generate coverage report artifact
+        id: coverage_report
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          if [ ! -f coverage/coverage-summary.json ]; then
+            echo "No coverage summary found, skipping report generation."
+            echo "generated=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          node -e "
+            const fs = require('fs');
+            const summary = JSON.parse(fs.readFileSync('coverage/coverage-summary.json', 'utf8'));
+            const total = summary.total;
+            const report = {
+              pr_number: ${{ github.event.pull_request.number }},
+              head_sha: '${{ github.event.pull_request.head.sha }}',
+              statements: total.statements.pct,
+              branches: total.branches.pct,
+              functions: total.functions.pct,
+              lines: total.lines.pct,
+              targets: { statements: 70, branches: 65, functions: 70, lines: 70 },
+            };
+            fs.writeFileSync('frontend-coverage-report.json', JSON.stringify(report));
+          "
+          echo "generated=true" >> "$GITHUB_OUTPUT"
+
+      # PRs from forks get a read-only GITHUB_TOKEN under the `pull_request` event, so
+      # this job can't post a comment directly. The report is handed off as an artifact
+      # to coverage-comment.yml, which runs via `workflow_run` in the base repo's
+      # context (write-capable token) and only ever reads this JSON — it never checks
+      # out or executes any code from the PR.
+      - name: Upload coverage report artifact
+        if: always() && steps.coverage_report.outputs.generated == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: frontend-coverage-report
+          path: Dechat/dex_with_fiat_frontend/frontend-coverage-report.json
+          retention-days: 7
+>>>>>>> emwulrd/main
 
   e2e:
     name: Playwright E2E Tests
     runs-on: ubuntu-latest
+<<<<<<< HEAD
+    needs: build
+=======
     needs: [build, lint]
+>>>>>>> emwulrd/main
 
     defaults:
       run:
@@ -123,15 +192,26 @@ jobs:
 
     steps:
       - name: Checkout repository
+<<<<<<< HEAD
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+=======
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install pnpm
         uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+>>>>>>> emwulrd/main
         with:
           version: 8
 
       - name: Set up Node.js
+<<<<<<< HEAD
+        uses: actions/setup-node@v4
+=======
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+>>>>>>> emwulrd/main
         with:
           node-version: "24"
           cache: "pnpm"
@@ -140,6 +220,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+<<<<<<< HEAD
+      - name: Install Playwright browsers
+        run: pnpm test:e2e:install
+=======
       - name: Cache Playwright browsers
         id: playwright-cache
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -154,6 +238,7 @@ jobs:
       - name: Install Playwright OS dependencies
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: pnpm exec playwright install-deps chromium firefox webkit
+>>>>>>> emwulrd/main
 
       - name: Build for E2E
         run: pnpm build
@@ -175,7 +260,11 @@ jobs:
           NEXT_PUBLIC_STELLAR_NETWORK: ${{ secrets.NEXT_PUBLIC_STELLAR_NETWORK || 'TESTNET' }}
 
       - name: Upload Playwright report
+<<<<<<< HEAD
+        uses: actions/upload-artifact@v4
+=======
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+>>>>>>> emwulrd/main
         if: always()
         with:
           name: playwright-report

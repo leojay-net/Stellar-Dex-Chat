@@ -52,6 +52,27 @@ describe('LandingPage – accessibility', () => {
     expect(screen.getByRole('link', { name: /DexFiat on Twitter/i })).toBeDefined();
     expect(screen.getByRole('link', { name: /DexFiat on GitHub/i })).toBeDefined();
   });
+
+  it('labels each testimonial star rating for screen readers', () => {
+    render(<LandingPage />);
+    const ratings = screen.getAllByLabelText(/Rating: 5 out of 5 stars/i);
+    expect(ratings.length).toBeGreaterThan(0);
+  });
+
+  it('hides decorative icons from assistive technology', () => {
+    const { container } = render(<LandingPage />);
+    const decorativeIcons = container.querySelectorAll('svg[aria-hidden="true"]');
+    expect(decorativeIcons.length).toBeGreaterThan(0);
+  });
+
+  it('announces the early-access success message via a status role', () => {
+    render(<LandingPage />);
+    const emailInput = screen.getByLabelText(/email address for early access/i);
+    fireEvent.change(emailInput, { target: { value: 'user@example.com' } });
+    const submitButton = screen.getByRole('button', { name: /submit email and launch app/i });
+    fireEvent.click(submitButton);
+    expect(screen.getByRole('status')).toBeDefined();
+  });
 });
 
 describe('LandingPage – keyboard shortcuts (#1185)', () => {

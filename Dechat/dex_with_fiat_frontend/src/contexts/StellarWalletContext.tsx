@@ -92,23 +92,9 @@ const defaultConnection: StellarWalletConnection = {
   networkPassphrase: '',
 };
 
-const StellarWalletContext = createContext<StellarWalletContextType>({
-  connection: defaultConnection,
-  accounts: [],
-  selectedAccountIndex: 0,
-  xlmBalance: '',
-  selectAccount: () => {},
-  connect: async () => {},
-  disconnect: () => {},
-  signTx: async () => '',
-  isFreighterInstalled: false,
-  isLoading: false,
-  error: null,
-  sessionExpired: false,
-  clearSessionExpired: () => {},
-  mockConnect: () => {},
-  isNetworkMismatch: false,
-});
+const StellarWalletContext = createContext<
+  StellarWalletContextType | undefined
+>(undefined);
 
 export function StellarWalletProvider({ children }: { children: ReactNode }) {
   const [connection, setConnection] =

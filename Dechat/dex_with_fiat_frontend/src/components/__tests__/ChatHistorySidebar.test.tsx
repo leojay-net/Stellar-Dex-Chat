@@ -252,6 +252,32 @@ describe('ChatHistorySidebar', () => {
     expect(screen.queryByText('History cleared')).toBeNull();
   });
 
+  it('optimistically removes a session from the list on delete and restores it on undo', async () => {
+    const keep = makeSession('keep-1');
+    const target = makeSession('drop-1');
+    mockUnpinnedSessions = [keep, target];
+    mockAllSessions = [keep, target];
+
+    await renderAndLoad();
+
+    expect(screen.getByText('Chat drop-1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByTitle('Delete conversation')[1]);
+    fireEvent.click(screen.getByText('Delete'));
+
+    // Row disappears immediately, before the backing store is touched.
+    expect(screen.queryByText('Chat drop-1')).not.toBeInTheDocument();
+    expect(screen.getByText('Chat keep-1')).toBeInTheDocument();
+    expect(mockDeleteSession).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+
+    // Row is back and the delete never propagated.
+    expect(screen.getByText('Chat drop-1')).toBeInTheDocument();
+    await act(async () => { vi.advanceTimersByTime(5100); });
+    expect(mockDeleteSession).not.toHaveBeenCalled();
+  });
+
   it('announces filtered search result counts', async () => {
     const sessions = [makeSession('search-a'), makeSession('search-b')];
     mockUnpinnedSessions = sessions;
@@ -288,7 +314,10 @@ describe('ChatHistorySidebar error boundary (#633)', () => {
     vi.useRealTimers();
   });
 
-  it('renders the fallback UI when a child throws and not the crash stack', async () => {
+  // #635: PriceTicker now has its own inner error boundary, so a crash
+  // there is contained to the ticker widget and no longer takes down the
+  // rest of the sidebar (search, sessions, "New Conversation", etc.).
+  it('contains a PriceTicker crash to the ticker widget instead of taking down the whole sidebar', async () => {
     vi.doMock('@/components/PriceTicker', () => ({
       default: () => {
         throw new Error('PriceTicker exploded');
@@ -305,31 +334,10 @@ describe('ChatHistorySidebar error boundary (#633)', () => {
       await vi.advanceTimersByTimeAsync(900);
     });
 
-    expect(screen.getByText('Sidebar unavailable')).toBeTruthy();
+    expect(screen.getByText('Prices unavailable')).toBeTruthy();
     expect(screen.queryByText('PriceTicker exploded')).toBeNull();
-
-    vi.doUnmock('@/components/PriceTicker');
-    vi.resetModules();
-  });
-
-  it('displays the custom retry label from the error boundary props', async () => {
-    vi.doMock('@/components/PriceTicker', () => ({
-      default: () => {
-        throw new Error('forced');
-      },
-    }));
-    vi.resetModules();
-
-    const { default: ChatHistorySidebarFresh } = await import('@/components/ChatHistorySidebar');
-
-    await act(async () => {
-      render(
-        <ChatHistorySidebarFresh onLoadSession={vi.fn()} isCollapsed={false} />,
-      );
-      await vi.advanceTimersByTimeAsync(900);
-    });
-
-    expect(screen.getByRole('button', { name: /reload sidebar/i })).toBeTruthy();
+    expect(screen.queryByText('Sidebar unavailable')).toBeNull();
+    expect(screen.getByPlaceholderText('Search conversations...')).toBeTruthy();
 
     vi.doUnmock('@/components/PriceTicker');
     vi.resetModules();

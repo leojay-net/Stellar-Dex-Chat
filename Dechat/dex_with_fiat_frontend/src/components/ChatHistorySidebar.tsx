@@ -876,7 +876,17 @@ export default function ChatHistorySidebar({
         <div
           className={`theme-border border-t p-4 ${isCollapsed ? 'flex flex-col items-center' : ''}`}
         >
-          <PriceTicker symbols={['XLM', 'ETH', 'BTC']} currency="usd" />
+          <ErrorBoundary
+            fallback={
+              <div className="theme-surface-muted rounded-lg border theme-border p-3">
+                <p className="theme-text-secondary text-sm text-center py-2">
+                  Prices unavailable
+                </p>
+              </div>
+            }
+          >
+            <PriceTicker symbols={['XLM', 'ETH', 'BTC']} currency="usd" />
+          </ErrorBoundary>
 
           <div
             className={`theme-border border-t p-4 ${isCollapsed ? 'flex flex-col items-center' : ''}`}

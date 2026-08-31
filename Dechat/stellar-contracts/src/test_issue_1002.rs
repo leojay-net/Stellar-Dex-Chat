@@ -23,7 +23,7 @@ fn setup(env: &Env) -> (FiatBridgeClient<'_>, Address, Address, TokenClient<'_>)
 
     let signers = vec![env, admin.clone()];
     // limit = 10_000_000, min_deposit = 1
-    client.init(&admin, &token_addr, &10_000_000i128, &1i128, &signers, &1);
+    client.init(&admin, &token_addr, &10_000_000i128, &1i128, &signers, &1, &0);
 
     // Mint tokens to the admin so it can act as depositor too
     StellarAssetClient::new(env, &token_addr).mint(&admin, &10_000_000i128);

@@ -18,7 +18,7 @@ fn env_with_sequence(seq: u32) -> Env {
 fn init_client(env: &Env, client: &FiatBridgeClient, admin: &Address, token: &Address) {
     let mut signers = Vec::new(env);
     signers.push_back(admin.clone());
-    client.init(admin, token, &1_000_000, &100, &signers, &1);
+    client.init(admin, token, &1_000_000, &100, &signers, &1, &0);
 }
 
 /// `accept_admin` must fail with AdminTransferTooEarly if called before the delay.
@@ -144,4 +144,65 @@ fn config_snapshot_includes_proposed_at() {
     let snapshot = client.get_config_snapshot();
     assert_eq!(snapshot.pending_admin, Some(new_admin));
     assert_eq!(snapshot.pending_admin_proposed_at, Some(5000u32));
+}
+
+/// `accept_admin` fence-post test: verify exact boundary behavior.
+#[test]
+fn accept_admin_fence_post_boundary() {
+    let env = env_with_sequence(1000);
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    let token = env
+        .register_stellar_asset_contract_v2(Address::generate(&env))
+        .address();
+
+    let contract_id = env.register(FiatBridge, ());
+    let client = FiatBridgeClient::new(&env, &contract_id);
+
+    init_client(&env, &client, &admin, &token);
+    client.transfer_admin(&new_admin);
+
+    // At exactly MIN_TIMELOCK_DELAY - 1, should fail
+    env.ledger().with_mut(|l| {
+        l.sequence_number = 1000 + MIN_TIMELOCK_DELAY - 1;
+    });
+    let result = client.try_accept_admin();
+    assert_eq!(result, Err(Ok(Error::ActionNotReady)));
+
+    // At exactly MIN_TIMELOCK_DELAY, should succeed
+    env.ledger().with_mut(|l| {
+        l.sequence_number = 1000 + MIN_TIMELOCK_DELAY;
+    });
+    client.accept_admin();
+    assert_eq!(client.get_admin(), new_admin);
+}
+
+/// `accept_admin` overflow protection: high proposed_at values should be handled safely.
+#[test]
+fn accept_admin_overflow_protection() {
+    let env = env_with_sequence(u32::MAX - MIN_TIMELOCK_DELAY);
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    let token = env
+        .register_stellar_asset_contract_v2(Address::generate(&env))
+        .address();
+
+    let contract_id = env.register(FiatBridge, ());
+    let client = FiatBridgeClient::new(&env, &contract_id);
+
+    init_client(&env, &client, &admin, &token);
+    client.transfer_admin(&new_admin);
+
+    // Advance to a safe high value that won't overflow
+    env.ledger().with_mut(|l| {
+        l.sequence_number = l.sequence_number + MIN_TIMELOCK_DELAY;
+    });
+
+    // Should succeed without overflow
+    client.accept_admin();
+    assert_eq!(client.get_admin(), new_admin);
 }

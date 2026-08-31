@@ -317,4 +317,106 @@ describe('AuditTable', () => {
       get: () => true,
     });
   });
+
+  // ── ARIA live-region announcements (#1177) ──────────────────────────────
+
+  it('exposes a role-free polite live region that does not collide with role="status"', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(makeSuccessResponse())));
+
+    render(React.createElement(AuditTable));
+
+    const region = screen.getByTestId('audit-table-live-region');
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region).toHaveAttribute('aria-atomic', 'true');
+    expect(region).not.toHaveAttribute('role');
+    expect(region).toHaveClass('sr-only');
+
+    // The only role="status" node stays the retry-queue banner (absent here).
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('announces the loading state and then the result count', async () => {
+    let resolveFetch!: (value: unknown) => void;
+    const fetchPromise = new Promise((resolve) => { resolveFetch = resolve; });
+    vi.stubGlobal('fetch', vi.fn(() => fetchPromise));
+
+    render(React.createElement(AuditTable));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('audit-table-live-region')).toHaveTextContent(
+        /loading audit entries/i,
+      );
+    });
+
+    resolveFetch(makeSuccessResponse([ENTRY_FIXTURE], 1));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('audit-table-live-region')).toHaveTextContent(
+        'Showing audit entries 1 to 1 of 1.',
+      );
+    });
+  });
+
+  it('announces when no audit entries are returned', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(makeSuccessResponse([], 0))),
+    );
+
+    render(React.createElement(AuditTable));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('audit-table-live-region')).toHaveTextContent(
+        /no audit entries found/i,
+      );
+    });
+  });
+
+  it('announces a sort change with column and direction', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(makeSuccessResponse())),
+    );
+
+    render(React.createElement(AuditTable));
+
+    await waitFor(() => {
+      expect(screen.getByText('real-row')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /sort by timestamp/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('audit-table-live-region')).toHaveTextContent(
+        /sorted by timestamp, (ascending|descending)\./i,
+      );
+    });
+  });
+
+  it('announces fetch errors', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve({ ok: false, status: 500, statusText: 'Server Error', json: async () => ({}) })),
+    );
+
+    render(React.createElement(AuditTable));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('audit-table-live-region')).toHaveTextContent(
+        /error loading audit entries/i,
+      );
+    });
+  });
+
+  it('disables the skeleton pulse animation under prefers-reduced-motion', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+
+    render(React.createElement(AuditTable));
+
+    const busyTable = await waitFor(() =>
+      screen.getByRole('table', { name: /loading audit entries/i }),
+    );
+    const skeletonRow = busyTable.querySelector('tbody tr');
+    expect(skeletonRow).toHaveClass('motion-reduce:animate-none');
+  });
 });

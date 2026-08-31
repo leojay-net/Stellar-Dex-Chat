@@ -39,7 +39,7 @@ export const useChatHistory = () => {
     }
   }, [historyState]);
 
-  // Debounced search — avoids triggering a lookup on every keystroke
+  // Debounced search - avoids triggering a lookup on every keystroke
   useEffect(() => {
     if (!searchQuery.trim()) {
       setSearchResults([]);
@@ -87,7 +87,7 @@ export const useChatHistory = () => {
       // `historyState.currentSessionId` from the closure, which could be stale
       // if multiple state updates were in-flight. The early-return guard has
       // been moved inside the functional updater so it always sees the latest
-      // committed state — no stale snapshot can cause a phantom update or a
+      // committed state - no stale snapshot can cause a phantom update or a
       // missed guard.
       setHistoryState((prev) => {
         // Guard inside the functional updater so it always reads fresh state,

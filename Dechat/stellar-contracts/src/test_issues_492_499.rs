@@ -52,7 +52,7 @@ fn setup_bridge(
     let token_admin = Address::generate(env);
     let (token_addr, token, token_sac) = create_token(env, &token_admin);
     let signers = vec![env, admin.clone()];
-    bridge.init(&admin, &token_addr, &1_000_000_000, &1, &signers, &1);
+    bridge.init(&admin, &token_addr, &1_000_000_000, &1, &signers, &1, &0);
     (contract_id, bridge, admin, token_addr, token, token_sac)
 }
 
@@ -72,7 +72,7 @@ fn set_operator_deactivate_non_existent_returns_not_operator() {
     let (_, bridge, _, _, _, _) = setup_bridge(&env);
 
     let stranger = Address::generate(&env);
-    let result = bridge.try_set_operator(&stranger, &false);
+    let result = bridge.try_set_operator(&stranger, &false, &0);
     assert_eq!(result, Err(Ok(Error::NotOperator)));
 }
 
@@ -87,7 +87,7 @@ fn set_operator_blocked_while_paused() {
     bridge.pause();
 
     let operator = Address::generate(&env);
-    let result = bridge.try_set_operator(&operator, &true);
+    let result = bridge.try_set_operator(&operator, &true, &0);
     assert_eq!(result, Err(Ok(Error::ContractPaused)));
 }
 
@@ -99,11 +99,11 @@ fn set_operator_deactivate_blocked_while_paused() {
     let (_, bridge, _, _, _, _) = setup_bridge(&env);
 
     let operator = Address::generate(&env);
-    bridge.set_operator(&operator, &true);
+    bridge.set_operator(&operator, &true, &0);
 
     bridge.pause();
 
-    let result = bridge.try_set_operator(&operator, &false);
+    let result = bridge.try_set_operator(&operator, &false, &1);
     assert_eq!(result, Err(Ok(Error::ContractPaused)));
 }
 
@@ -114,7 +114,7 @@ fn set_operator_rejects_admin_as_operator() {
     env.mock_all_auths();
     let (_, bridge, admin, _, _, _) = setup_bridge(&env);
 
-    let result = bridge.try_set_operator(&admin, &true);
+    let result = bridge.try_set_operator(&admin, &true, &0);
     assert_eq!(result, Err(Ok(Error::NotAllowed)));
 }
 
@@ -125,7 +125,7 @@ fn set_operator_rejects_contract_address() {
     env.mock_all_auths();
     let (contract_id, bridge, _, _, _, _) = setup_bridge(&env);
 
-    let result = bridge.try_set_operator(&contract_id, &true);
+    let result = bridge.try_set_operator(&contract_id, &true, &0);
     assert_eq!(result, Err(Ok(Error::InvalidRecipient)));
 }
 
@@ -137,9 +137,9 @@ fn set_operator_reactivate_already_active_succeeds() {
     let (_, bridge, _, _, _, _) = setup_bridge(&env);
 
     let operator = Address::generate(&env);
-    bridge.set_operator(&operator, &true);
+    bridge.set_operator(&operator, &true, &0);
     // Should not error on re-activation
-    bridge.set_operator(&operator, &true);
+    bridge.set_operator(&operator, &true, &1);
 }
 
 /// Exceeding the operator cap must return OperatorCapReached.
@@ -153,9 +153,9 @@ fn set_operator_cap_reached_returns_error() {
 
     let op1 = Address::generate(&env);
     let op2 = Address::generate(&env);
-    bridge.set_operator(&op1, &true);
+    bridge.set_operator(&op1, &true, &0);
 
-    let result = bridge.try_set_operator(&op2, &true);
+    let result = bridge.try_set_operator(&op2, &true, &0);
     assert_eq!(result, Err(Ok(Error::OperatorCapReached)));
 }
 
@@ -168,11 +168,188 @@ fn set_operator_double_deactivate_returns_not_operator() {
     let (_, bridge, _, _, _, _) = setup_bridge(&env);
 
     let operator = Address::generate(&env);
-    bridge.set_operator(&operator, &true);
-    bridge.set_operator(&operator, &false);
+    bridge.set_operator(&operator, &true, &0);
+    bridge.set_operator(&operator, &false, &1);
 
-    let result = bridge.try_set_operator(&operator, &false);
+    let result = bridge.try_set_operator(&operator, &false, &2);
     assert_eq!(result, Err(Ok(Error::NotOperator)));
+}
+
+// ── set_operator nonce validation tests ─────────────────────────────────────
+
+/// set_operator with valid nonce should succeed and increment nonce.
+#[test]
+fn set_operator_with_valid_nonce_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, bridge, _, _, _, _) = setup_bridge(&env);
+
+    let operator = Address::generate(&env);
+    assert_eq!(bridge.get_operator_nonce(&operator), 0);
+
+    // First activation with nonce 0
+    bridge.set_operator(&operator, &true, &0);
+    assert_eq!(bridge.get_operator_nonce(&operator), 1);
+    assert!(bridge.is_operator(&operator));
+
+    // Deactivation with nonce 1
+    bridge.set_operator(&operator, &false, &1);
+    assert_eq!(bridge.get_operator_nonce(&operator), 2);
+    assert!(!bridge.is_operator(&operator));
+}
+
+/// set_operator with stale nonce should fail with StaleNonce error.
+#[test]
+fn set_operator_with_stale_nonce_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, bridge, _, _, _, _) = setup_bridge(&env);
+
+    let operator = Address::generate(&env);
+    bridge.set_operator(&operator, &true, &0);
+    assert_eq!(bridge.get_operator_nonce(&operator), 1);
+
+    // Try to replay with nonce 0 (stale)
+    let result = bridge.try_set_operator(&operator, &false, &0);
+    assert_eq!(result, Err(Ok(Error::StaleNonce)));
+
+    // Nonce should remain unchanged
+    assert_eq!(bridge.get_operator_nonce(&operator), 1);
+    assert!(bridge.is_operator(&operator));
+}
+
+/// set_operator with future nonce should fail with InvalidNonce error.
+#[test]
+fn set_operator_with_future_nonce_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, bridge, _, _, _, _) = setup_bridge(&env);
+
+    let operator = Address::generate(&env);
+    assert_eq!(bridge.get_operator_nonce(&operator), 0);
+
+    // Try to use nonce 5 (future)
+    let result = bridge.try_set_operator(&operator, &true, &5);
+    assert_eq!(result, Err(Ok(Error::InvalidNonce)));
+
+    // Nonce should remain unchanged
+    assert_eq!(bridge.get_operator_nonce(&operator), 0);
+    assert!(!bridge.is_operator(&operator));
+}
+
+/// set_operator nonce is per-operator, independent across operators.
+#[test]
+fn set_operator_nonce_is_per_operator() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, bridge, _, _, _, _) = setup_bridge(&env);
+
+    let operator_a = Address::generate(&env);
+    let operator_b = Address::generate(&env);
+
+    // Both start at nonce 0
+    assert_eq!(bridge.get_operator_nonce(&operator_a), 0);
+    assert_eq!(bridge.get_operator_nonce(&operator_b), 0);
+
+    // Operator A uses nonce 0
+    bridge.set_operator(&operator_a, &true, &0);
+    assert_eq!(bridge.get_operator_nonce(&operator_a), 1);
+    assert_eq!(bridge.get_operator_nonce(&operator_b), 0);
+
+    // Operator B can still use nonce 0
+    bridge.set_operator(&operator_b, &true, &0);
+    assert_eq!(bridge.get_operator_nonce(&operator_a), 1);
+    assert_eq!(bridge.get_operator_nonce(&operator_b), 1);
+}
+
+/// set_operator nonce increments monotonically with each call.
+#[test]
+fn set_operator_nonce_increments_monotonically() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, bridge, _, _, _, _) = setup_bridge(&env);
+
+    let operator = Address::generate(&env);
+
+    // Execute multiple set_operator calls
+    bridge.set_operator(&operator, &true, &0);
+    assert_eq!(bridge.get_operator_nonce(&operator), 1);
+
+    bridge.set_operator(&operator, &true, &1);
+    assert_eq!(bridge.get_operator_nonce(&operator), 2);
+
+    bridge.set_operator(&operator, &false, &2);
+    assert_eq!(bridge.get_operator_nonce(&operator), 3);
+
+    bridge.set_operator(&operator, &true, &3);
+    assert_eq!(bridge.get_operator_nonce(&operator), 4);
+}
+
+/// set_operator nonce persists across operator deactivation/reactivation.
+#[test]
+fn set_operator_nonce_persists_across_deactivation() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, bridge, _, _, _, _) = setup_bridge(&env);
+
+    let operator = Address::generate(&env);
+
+    // Use nonce 0 and 1
+    bridge.set_operator(&operator, &true, &0);
+    bridge.set_operator(&operator, &true, &1);
+    assert_eq!(bridge.get_operator_nonce(&operator), 2);
+
+    // Deactivate operator
+    bridge.set_operator(&operator, &false, &2);
+
+    // Nonce should still be 3
+    assert_eq!(bridge.get_operator_nonce(&operator), 3);
+
+    // Reactivate operator
+    bridge.set_operator(&operator, &true, &3);
+    assert_eq!(bridge.get_operator_nonce(&operator), 4);
+}
+
+/// set_operator nonce validation occurs before state changes.
+#[test]
+fn set_operator_nonce_validation_before_state_change() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, bridge, _, _, _, _) = setup_bridge(&env);
+
+    let operator = Address::generate(&env);
+    bridge.set_operator(&operator, &true, &0);
+    assert_eq!(bridge.get_operator_nonce(&operator), 1);
+
+    // Try stale nonce - should fail without changing operator status
+    let result = bridge.try_set_operator(&operator, &false, &0);
+    assert_eq!(result, Err(Ok(Error::StaleNonce)));
+
+    // Operator should still be active
+    assert!(bridge.is_operator(&operator));
+    assert_eq!(bridge.get_operator_nonce(&operator), 1);
+}
+
+/// set_operator with nonce error should not affect other operators.
+#[test]
+fn set_operator_nonce_error_isolated_per_operator() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, bridge, _, _, _, _) = setup_bridge(&env);
+
+    let op1 = Address::generate(&env);
+    let op2 = Address::generate(&env);
+
+    bridge.set_operator(&op1, &true, &0);
+    bridge.set_operator(&op2, &true, &0);
+
+    // op1 tries stale nonce
+    let result = bridge.try_set_operator(&op1, &false, &0);
+    assert_eq!(result, Err(Ok(Error::StaleNonce)));
+
+    // op2 should still be able to use nonce 1
+    bridge.set_operator(&op2, &false, &1);
+    assert!(!bridge.is_operator(&op2));
 }
 
 // ── Issue #499: deposit overflow protection ───────────────────────────────────

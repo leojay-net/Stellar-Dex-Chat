@@ -41,6 +41,37 @@ export const banksQuerySchema = z
 
 export type BanksQuery = z.infer<typeof banksQuerySchema>;
 
+// Schema for transfer-status endpoint
+export const transferStatusSchema = z.object({
+  reference: z.string().min(1, 'Reference is required'),
+});
+
+export type TransferStatusInput = z.infer<typeof transferStatusSchema>;
+
+// Schema for the payment-status/stream endpoint query string. The stream is
+// keyed by the client session id minted in `clientSession.ts` (a UUID), so a
+// non-empty, bounded string is all that is required — rejecting a missing or
+// oversized value keeps the SSE endpoint from opening a subscription for
+// garbage input.
+export const paymentStatusStreamQuerySchema = z.object({
+  sessionId: z
+    .string()
+    .min(1, 'sessionId is required')
+    .max(200, 'sessionId is too long'),
+});
+
+export type PaymentStatusStreamQuery = z.infer<
+  typeof paymentStatusStreamQuerySchema
+>;
+
+// Schema for the events endpoint query string
+export const eventsQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(100).default(20),
+  offset: z.coerce.number().int().nonnegative().default(0),
+});
+
+export type EventsQuery = z.infer<typeof eventsQuerySchema>;
+
 /**
  * Error thrown by {@link fetchWithRetry} when the server answers with a
  * non-OK status.

@@ -22,7 +22,7 @@ fn setup(env: &Env) -> (FiatBridgeClient<'_>, Address, Address) {
         .address();
 
     let signers = vec![env, admin.clone()];
-    client.init(&admin, &token_addr, &10_000_000i128, &1i128, &signers, &1);
+    client.init(&admin, &token_addr, &10_000_000i128, &1i128, &signers, &1, &0);
 
     (client, admin, token_addr)
 }
@@ -124,7 +124,8 @@ fn propose_upgrade_rejects_downgrade() {
     // Now try to downgrade to version 3 — should be rejected
     let fake_hash2: BytesN<32> = BytesN::from_array(&env, &[2u8; 32]);
     // First cancel the pending proposal so we can propose a new one
-    client.cancel_upgrade();
+    let nonce = client.get_upgrade_cancellation_nonce(&admin);
+    client.cancel_upgrade(&nonce);
 
     // Proposal with new_version=3 when current=0 should still pass (0→3 is an upgrade)
     // To test actual downgrade, we need the version stored as 5.
@@ -133,7 +134,8 @@ fn propose_upgrade_rejects_downgrade() {
 
     // Directly test: propose version 2 while stored version is 0 → succeeds (upgrade)
     client.propose_upgrade(&fake_hash2, &MIN_UPGRADE_DELAY, &2u32);
-    client.cancel_upgrade();
+    let nonce = client.get_upgrade_cancellation_nonce(&admin);
+    client.cancel_upgrade(&nonce);
 
     // Initial version is 0, so any version ≥ 0 passes at proposal time.
     // The key invariant: version 0 upgrade to 5 passes, version 5 downgrade to 2 fails.

@@ -63,12 +63,6 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
   // made since it mounted.
   const totalRetryAttempts = (message.error?.retryAttempts ?? 0) + retry.attempts;
 
-  const handleMessageKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'r' && hasError && onRetry) {
-      retry.retryNow();
-    }
-  };
-
   // Currency conversion hook for transaction amounts
   const amountForConversion = message.metadata?.transactionData?.amountIn 
     ? parseFloat(String(message.metadata.transactionData.amountIn))
@@ -147,6 +141,12 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
 
   // Safely parse the timestamp — guards against deserialized string values
   const timestamp = toDate(message.timestamp);
+
+  const handleMessageKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (hasError && e.key === 'r' && !e.ctrlKey && !e.metaKey) {
+      retry.retryNow();
+    }
+  };
 
   return (
     <motion.div

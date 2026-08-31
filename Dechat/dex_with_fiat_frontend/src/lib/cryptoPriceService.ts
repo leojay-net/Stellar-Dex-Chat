@@ -48,6 +48,7 @@ export const SUPPORTED_CURRENCIES = [
 
 // Cache for prices to avoid excessive API calls
 const priceCache: Map<string, TokenPriceData> = new Map();
+const inflightRequests: Map<string, Promise<number>> = new Map();
 const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
 
 /**
@@ -185,7 +186,10 @@ function getFallbackPrices(
 }
 
 /**
- * Get cached price or fetch from API
+ * Get cached price or fetch from API.
+ * Deduplicates concurrent requests for the same token+currency so only one
+ * API call is in flight at a time — fixes stale-closure where N concurrent
+ * callers each saw a stale cache and fired their own fetch.
  */
 export async function getTokenPrice(
   tokenSymbol: string,
@@ -199,13 +203,33 @@ export async function getTokenPrice(
     return cached.prices[vsCurrency.toLowerCase()] || 0;
   }
 
+  // If there's already an in-flight request for this key, wait for it
+  const existing = inflightRequests.get(cacheKey);
+  if (existing) {
+    return existing;
+  }
+
+  const promise = doFetchAndCache(tokenSymbol, vsCurrency, cacheKey, cached);
+  inflightRequests.set(cacheKey, promise);
+
   try {
-    // Fetch fresh data
+    return await promise;
+  } finally {
+    inflightRequests.delete(cacheKey);
+  }
+}
+
+async function doFetchAndCache(
+  tokenSymbol: string,
+  vsCurrency: string,
+  cacheKey: string,
+  cached: TokenPriceData | undefined,
+): Promise<number> {
+  try {
     const priceData = await fetchCryptoPrices([tokenSymbol], [vsCurrency]);
     const price =
       priceData[tokenSymbol.toUpperCase()]?.[vsCurrency.toLowerCase()] || 0;
 
-    // Update cache
     priceCache.set(cacheKey, {
       tokenSymbol: tokenSymbol.toUpperCase(),
       prices: { [vsCurrency.toLowerCase()]: price },
@@ -215,8 +239,6 @@ export async function getTokenPrice(
     return price;
   } catch (error) {
     console.error(`Error getting price for ${tokenSymbol}:`, error);
-
-    // Return cached data even if stale, or 0 as last resort
     return cached?.prices[vsCurrency.toLowerCase()] || 0;
   }
 }
@@ -341,8 +363,11 @@ export async function fetchTickerData(
 
     return tickerData;
   } catch (error) {
-    console.error('Error fetching ticker data:', error);
-    return {}; // Return empty object to trigger fallback UI
+    const message =
+      error instanceof Error ? error.message : 'Unknown error fetching prices';
+    console.error('Error fetching ticker data:', message);
+    // Return empty object — callers should treat {} as "no data, show fallback"
+    return {};
   }
 }
 

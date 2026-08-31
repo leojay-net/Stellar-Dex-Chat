@@ -1,6 +1,23 @@
-//! Soroban invariant tests for deposit operations.
+//! Invariant tests for [`FiatBridge::deposit`].
 //!
-//! This module tests that the contract maintains its invariants after deposit operations.
+//! `deposit` moves user tokens into the contract, mints a receipt, and
+//! increments `total_deposited`. The invariants asserted here are:
+//!
+//! * `total_deposited >= total_withdrawn` — the contract never withdraws more
+//!   than has been deposited over its lifetime;
+//! * `net_deposited (total_deposited - total_withdrawn) >= total_liabilities`
+//!   — outstanding withdrawal requests never exceed the net amount held;
+//! * on-chain token balance `>= net_deposited` — real held tokens always
+//!   cover what the contract owes depositors.
+//!
+//! These mirror the three checks performed at runtime by
+//! [`FiatBridge::check_invariants`] after every accounting mutation
+//! (see `src/lib.rs`), and are re-asserted here after each deposit scenario:
+//! single deposit, multiple deposits, deposit-after-withdrawal,
+//! multiple users, and deposit-after-request-withdrawal.
+//!
+//! See [`docs/INVARIANT_TESTING.md`](docs/INVARIANT_TESTING.md) for the
+//! invariant-testing strategy and contributor checklist.
 
 #![cfg(test)]
 
@@ -41,7 +58,7 @@ fn setup_bridge(
     let mut signers = Vec::new(env);
     signers.push_back(admin.clone());
 
-    client.init(&admin, &token_address, &1_000_000, &100, &signers, &1);
+    client.init(&admin, &token_address, &1_000_000, &100, &signers, &1, &0);
 
     (
         contract_id,

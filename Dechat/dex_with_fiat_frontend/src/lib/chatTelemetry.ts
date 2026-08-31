@@ -95,17 +95,8 @@ export interface NetworkStatusTelemetryPayload {
   source: 'initial' | 'browser-event' | 'connectivity-check';
 }
 
-/** Split-view (two-thread comparison panel) interactions. */
-export type SplitViewTelemetryAction =
-  | 'open'
-  | 'close'
-  | 'set_left_session'
-  | 'set_right_session'
-  | 'swap_sessions'
-  | 'select_message';
-
 export interface SplitViewTelemetryPayload {
-  action: SplitViewTelemetryAction;
+  action: 'open' | 'close' | 'set_left_session' | 'set_right_session' | 'swap_sessions' | 'select_message';
   leftSessionId?: string | null;
   rightSessionId?: string | null;
 }
@@ -494,17 +485,6 @@ export const chatTelemetry = {
   },
 
   /**
-   * Emit a `split_view` event recording an interaction with the two-thread
-   * comparison panel (open/close/swap/session-select). Issue #1208: gives
-   * product/analytics visibility into how often split view is used and
-   * which actions are most common, using the same consent-gated, batched
-   * `chatTelemetry` pipeline as every other chat event.
-   */
-  splitView(payload: SplitViewTelemetryPayload): void {
-    emit('split_view', payload);
-  },
-
-  /**
    * Emit an `avatar_color_check` event that records whether the avatar
    * foreground/background colour pair meets WCAG AA contrast (4.5:1).
    *
@@ -517,5 +497,9 @@ export const chatTelemetry = {
    */
   avatarColorCheck(payload: AvatarColorTelemetryPayload): void {
     emit('avatar_color_check', payload);
+  },
+
+  splitView(payload: SplitViewTelemetryPayload): void {
+    emit('split_view', payload);
   },
 };

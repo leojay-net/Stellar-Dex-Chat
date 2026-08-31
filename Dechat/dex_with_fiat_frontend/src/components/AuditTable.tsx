@@ -10,6 +10,13 @@ import { withNetworkReadQueue, subscribeToQueue } from '@/lib/networkQueue';
 type SortKey = 'timestamp' | 'adminAddress' | 'actionType' | 'status';
 type SortOrder = 'asc' | 'desc';
 
+const SORT_KEY_LABELS: Record<SortKey, string> = {
+  timestamp: 'Timestamp',
+  adminAddress: 'Admin',
+  actionType: 'Action',
+  status: 'Status',
+};
+
 interface AuditTableProps {
   onRefresh?: () => void;
 }
@@ -42,8 +49,16 @@ export default function AuditTable({}: AuditTableProps) {
   const [retryQueueCount, setRetryQueueCount] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
 
+  // Message mirrored into a visually-hidden ARIA live region so screen-reader
+  // users hear loading state, result counts, sort changes and errors that are
+  // otherwise only conveyed visually.
+  const [liveAnnouncement, setLiveAnnouncement] = useState('');
+
   const pageSize = 20;
   const fetchAbortRef = useRef<AbortController | null>(null);
+  // Guards the live region against announcing the empty initial state before
+  // the first fetch has even started.
+  const hasLoadedOnceRef = useRef(false);
 
   // Subscribe to the network queue so the UI can show how many
   // fetch requests are waiting to be retried when offline.
@@ -150,6 +165,37 @@ export default function AuditTable({}: AuditTableProps) {
     wasOnlineRef.current = isOnline;
   }, [isOnline, wasOffline, addToast, resetWasOffline, fetchAuditEntries]);
 
+  // Announce the outcome of each fetch (and the loading state that precedes
+  // it) to assistive technology. The sort state is folded into the settled
+  // message so a sort change produces one stable announcement rather than a
+  // transient one that a later data load would clobber.
+  useEffect(() => {
+    if (loading) {
+      hasLoadedOnceRef.current = true;
+      setLiveAnnouncement('Loading audit entries…');
+      return;
+    }
+    if (!hasLoadedOnceRef.current) return;
+    if (error) {
+      setLiveAnnouncement(`Error loading audit entries: ${error}`);
+      return;
+    }
+    const sortSuffix = ` Sorted by ${SORT_KEY_LABELS[sortKey]}, ${
+      sortOrder === 'asc' ? 'ascending' : 'descending'
+    }.`;
+    if (entries.length === 0) {
+      setLiveAnnouncement(
+        `No audit entries found. Try adjusting your filters.${sortSuffix}`,
+      );
+      return;
+    }
+    const start = currentPage * pageSize + 1;
+    const end = Math.min((currentPage + 1) * pageSize, totalEntries);
+    setLiveAnnouncement(
+      `Showing audit entries ${start} to ${end} of ${totalEntries}.${sortSuffix}`,
+    );
+  }, [loading, error, entries, currentPage, totalEntries, sortKey, sortOrder]);
+
   const handleExportCSV = useCallback(async () => {
     setIsExporting(true);
     try {
@@ -241,12 +287,23 @@ export default function AuditTable({}: AuditTableProps) {
   // NOT reset the page — the user may intentionally be reading page 3 and want
   // to flip the sort direction without losing their position.
   const handleSortChange = (key: SortKey) => {
+    const nextOrder: SortOrder =
+      key === sortKey ? (sortOrder === 'asc' ? 'desc' : 'asc') : 'asc';
+
     if (key === sortKey) {
-      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+      setSortOrder(nextOrder);
     } else {
       setSortKey(key);
-      setSortOrder('asc');
+      setSortOrder(nextOrder);
     }
+
+    // Immediate feedback; the post-fetch effect then settles on a message
+    // that also carries the row range for the new ordering.
+    setLiveAnnouncement(
+      `Sorting by ${SORT_KEY_LABELS[key]}, ${
+        nextOrder === 'asc' ? 'ascending' : 'descending'
+      }…`,
+    );
   };
 
   const SortIndicator = ({ column }: { column: SortKey }) => {
@@ -334,6 +391,18 @@ export default function AuditTable({}: AuditTableProps) {
 
   return (
     <div className="w-full">
+      {/* Visually-hidden live region for screen-reader announcements. Kept
+          role-free so it never collides with the retry-queue banner's
+          role="status". */}
+      <div
+        data-testid="audit-table-live-region"
+        className="sr-only"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {liveAnnouncement}
+      </div>
+
       {/* Offline retry queue banner */}
       {retryQueueCount > 0 && (
         <div
@@ -494,7 +563,7 @@ export default function AuditTable({}: AuditTableProps) {
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i} className="animate-pulse">
+                <tr key={i} className="animate-pulse motion-reduce:animate-none">
                   <td className="px-6 py-4"><Skeleton className="h-4 w-36" /></td>
                   <td className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
                   <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>

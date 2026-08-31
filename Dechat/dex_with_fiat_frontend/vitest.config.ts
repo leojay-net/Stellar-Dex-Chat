@@ -22,7 +22,7 @@ export default defineConfig({
     },
     coverage: {
       provider: 'v8',
-      reporter: ['text'],
+      reporter: ['text', 'json-summary'],
       cleanOnRerun: true,
       exclude: [
         '**/*.{test,spec}.{ts,tsx}',

@@ -16,6 +16,20 @@ jobs:
 
     steps:
       - name: Checkout repository
+<<<<<<< HEAD
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate CHANGELOG.md
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --verbose --output CHANGELOG.md
+
+      - name: Commit and push CHANGELOG.md
+        uses: stefanzweifel/git-auto-commit-action@v5
+=======
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
@@ -47,6 +61,7 @@ jobs:
 
       - name: Commit and push CHANGELOG.md
         uses: stefanzweifel/git-auto-commit-action@b863ae1933cb653a53c021fe36dbb774e1fb9403 # v5
+>>>>>>> emwulrd/main
         with:
           file_pattern: CHANGELOG.md
           commit_message: "chore(changelog): update changelog [skip ci]"

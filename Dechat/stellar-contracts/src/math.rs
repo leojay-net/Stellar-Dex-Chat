@@ -1,52 +1,80 @@
-#![allow(dead_code)]
+//! # Fixed-Point Math & Precision-Safe Arithmetic
+//!
+//! This module provides precision-safe mathematical primitives designed for deterministic
+//! smart contract execution on the Soroban VM. It handles fixed-point scaling, decimal
+//! conversion, and intermediate multiplication without precision loss or silent overflow.
+//!
+//! ## Mathematical Envelope & Boundaries
+//!
+//! The protocol uses a standard fixed-point scale factor of [`FIXED_POINT`] = `10_000_000` ($10^7$).
+//! When multiplying an `amount` by a `price` before dividing by a divisor `d`:
+//!
+//! - **Intermediate Product**: `a * b` is evaluated in 128-bit signed integer space (`i128`).
+//! - **Maximum Safe Multiplicand**: For price $\approx 1.0\text{ USD}$ (`10_000_000`), the maximum safe single
+//!   token amount before multiplication overflow is $\lfloor \text{i128::MAX} / 10^7 \rfloor \approx 1.7014 \times 10^{31}$
+//!   stroops, exceeding total circulating supplies by over 13 orders of magnitude.
+//! - **Overflow Protection**: All functions verify intermediate multiplications using `checked_mul`
+//!   and ceiling offsets using `checked_add`, returning [`Error::Overflow`] on boundary violations.
 
 use crate::Error;
 
 /// Fixed-point denominator used throughout the protocol (matches `ORACLE_PRICE_DECIMALS`).
 ///
-/// All price values returned by the oracle are scaled by this factor.
-/// For example, a price of `1.0 USD` is represented as `10_000_000`.
+/// All price values returned by the oracle and internal fiat valuations are scaled by this factor.
+/// For example, a price of `1.0 USD` is represented as `10_000_000` ($10^7$).
 ///
-/// # Overflow Prevention
+/// # Overflow Prevention & Safety Envelope
 /// When multiplying an `amount` by a `price` before dividing by `FIXED_POINT`,
-/// the intermediate product `amount * price` must fit in `i128`.  The maximum
-/// safe `amount` before overflow is approximately `i128::MAX / FIXED_POINT`
-/// ≈ 1.7 × 10²⁵, which is far larger than any realistic token supply.
-/// Callers should still use [`mul_div_floor`] / [`mul_div_ceil`] rather than
-/// performing the multiplication inline, so that the overflow boundary is
-/// documented and tested in one place.
+/// the intermediate product `amount * price` must fit within signed 128-bit bounds (`i128`).
+///
+/// - `i128::MAX` $= 2^{127} - 1 \approx 1.7014118 \times 10^{38}$
+/// - Maximum safe `amount` at unit price: $\approx \text{i128::MAX} / \text{FIXED\_POINT} \approx 1.7014 \times 10^{31}$ stroops.
+///
+/// Callers should always use [`checked_mul_div_floor`] / [`checked_mul_div_ceil`] or their
+/// corresponding wrappers rather than performing inline unchecked multiplication, ensuring
+/// boundary safety is verified consistently.
 pub const FIXED_POINT: i128 = 10_000_000;
 
-/// Multiply `a` by `b`, then floor-divide by `d`.
+/// Multiply `a` by `b`, then floor-divide by `d` with checked intermediate multiplication.
 ///
 /// # Arithmetic
-/// Computes `⌊(a × b) / d⌋` using plain `i128` arithmetic.
+/// Computes the mathematical floor division:
+/// $$\left\lfloor \frac{a \times b}{d} \right\rfloor$$
 ///
 /// # Overflow Prevention
-/// The intermediate product `a * b` is computed in `i128`.  For the values
-/// used in this protocol (prices ≤ `FIXED_POINT` and amounts ≤ typical token
-/// supplies) the product stays well within `i128` range.  If callers ever
-/// pass values outside the expected domain they risk a panic in debug builds
-/// or silent wrapping in release builds (though `overflow-checks = true` in
-/// `Cargo.toml` makes release builds panic too).  Callers are responsible for
-/// ensuring inputs are within safe bounds before calling this function.
+/// 1. **Intermediate Product**: Uses [`i128::checked_mul`] to catch multiplication overflow before division.
+///    If `a * b` exceeds `i128::MAX` or is less than `i128::MIN`, the function returns [`Error::Overflow`]
+///    instead of triggering an unhandled WASM panic.
+/// 2. **Divisor Validation**: Divisor `d` must be non-zero. A zero divisor triggers a runtime division-by-zero panic.
 ///
-/// # Floor Semantics
-/// Rust integer division truncates toward zero, which equals floor for
-/// non-negative products.  For negative products we subtract 1 when there is
-/// a non-zero remainder, giving true mathematical floor semantics.
+/// # Rounding Semantics (True Mathematical Floor)
+/// - **Positive Products**: Standard integer truncation (`product / d`) naturally truncates toward zero,
+///   which is identical to the mathematical floor for non-negative results.
+/// - **Negative Products**: For negative products with a non-zero remainder, standard integer truncation
+///   rounds toward zero (upward). This function subtracts 1 when `product < 0 && product % d != 0` to
+///   guarantee true mathematical floor semantics ($\lfloor -10.5 \rfloor = -11$).
 ///
 /// # Arguments
-/// * `a` – Multiplicand.
-/// * `b` – Multiplier.
-/// * `d` – Divisor (must not be zero; a zero divisor will panic).
+/// * `a` – Multiplicand (e.g. token amount or base value in `i128`).
+/// * `b` – Multiplier (e.g. fixed-point price or scaling factor in `i128`).
+/// * `d` – Divisor (e.g. `FIXED_POINT` or decimal denominator; must be non-zero).
+///
+/// # Returns
+/// * `Ok(i128)` – The floored result $\lfloor (a \times b) / d \rfloor$.
+/// * `Err(Error::Overflow)` – If the intermediate multiplication `a * b` overflows `i128`.
 ///
 /// # Examples
 /// ```
-/// // 7 * 3 / 2 = 10.5 → floor → 10
-/// assert_eq!(mul_div_floor(7, 3, 2), 10);
-/// // Negative: -7 * 3 / 2 = -10.5 → floor → -11
-/// assert_eq!(mul_div_floor(-7, 3, 2), -11);
+/// use crate::math::{checked_mul_div_floor, FIXED_POINT};
+///
+/// // 7 * 3 / 2 = 10.5 -> floor -> 10
+/// assert_eq!(checked_mul_div_floor(7, 3, 2).unwrap(), 10);
+///
+/// // Negative: -7 * 3 / 2 = -10.5 -> floor -> -11
+/// assert_eq!(checked_mul_div_floor(-7, 3, 2).unwrap(), -11);
+///
+/// // Exact division: 6 * 2 / 3 = 4
+/// assert_eq!(checked_mul_div_floor(6, 2, 3).unwrap(), 4);
 /// ```
 pub fn checked_mul_div_floor(a: i128, b: i128, d: i128) -> Result<i128, Error> {
     // Issue #966: use checked_mul to prevent silent overflow on large deposits
@@ -61,40 +89,59 @@ pub fn checked_mul_div_floor(a: i128, b: i128, d: i128) -> Result<i128, Error> {
     })
 }
 
-pub fn mul_div_floor(a: i128, b: i128, d: i128) -> i128 {
-    checked_mul_div_floor(a, b, d).expect("mul_div_floor overflow")
-}
-
-/// Multiply `a` by `b`, then ceiling-divide by `d`.
+/// Multiply `a` by `b`, then floor-divide by `d`, panicking on overflow.
 ///
-/// # Arithmetic
-/// Computes `⌈(a × b) / d⌉` using plain `i128` arithmetic.
+/// This is an ergonomic wrapper around [`checked_mul_div_floor`]. It should only be
+/// used when inputs are strictly validated prior to invocation or where a contract
+/// panic is intended.
 ///
-/// # Overflow Prevention
-/// Same intermediate-product overflow considerations as [`mul_div_floor`]
-/// apply here.  Additionally, the ceiling formula `(product + d - 1) / d`
-/// for positive products adds `d - 1` to the product before dividing.  If
-/// `product` is close to `i128::MAX` this addition could itself overflow.
-/// In practice, protocol values keep `product` far from `i128::MAX`, but
-/// callers should be aware of this secondary overflow risk when using very
-/// large inputs.
-///
-/// # Ceiling Semantics
-/// For positive products: `⌈x / d⌉ = (x + d - 1) / d`.
-/// For negative products: ceiling equals floor (same as [`mul_div_floor`]),
-/// because rounding toward zero is already the ceiling for negative values.
+/// # Panics
+/// Panics with `"mul_div_floor overflow"` if the intermediate product `a * b` overflows `i128`.
 ///
 /// # Arguments
 /// * `a` – Multiplicand.
 /// * `b` – Multiplier.
-/// * `d` – Divisor (must not be zero; a zero divisor will panic).
+/// * `d` – Divisor (must be non-zero).
+#[inline]
+pub fn mul_div_floor(a: i128, b: i128, d: i128) -> i128 {
+    checked_mul_div_floor(a, b, d).expect("mul_div_floor overflow")
+}
+
+/// Multiply `a` by `b`, then ceiling-divide by `d` with checked intermediate arithmetic.
+///
+/// # Arithmetic
+/// Computes the mathematical ceiling division:
+/// $$\left\lceil \frac{a \times b}{d} \right\rceil$$
+///
+/// # Overflow Prevention
+/// 1. **Intermediate Product**: Uses [`i128::checked_mul`] to catch `a * b` overflow.
+/// 2. **Ceiling Offset Addition**: For positive products, the ceiling formula requires adding `d - 1`
+///    to the product before dividing: `(product + d - 1) / d`. This function uses [`i128::checked_add`]
+///    on `product.checked_add(d - 1)` to prevent secondary overflow if `product` is close to `i128::MAX`.
+///
+/// # Rounding Semantics (Mathematical Ceiling)
+/// - **Positive Products**: Computed as `(product + d - 1) / d`.
+/// - **Negative Products**: Truncation toward zero in standard division already performs ceiling rounding
+///   for negative numbers ($\lceil -10.5 \rceil = -10$, computed as `product / d - 1` when remainder exists).
+///
+/// # Arguments
+/// * `a` – Multiplicand.
+/// * `b` – Multiplier.
+/// * `d` – Divisor (must be non-zero).
+///
+/// # Returns
+/// * `Ok(i128)` – The ceiling result $\lceil (a \times b) / d \rceil$.
+/// * `Err(Error::Overflow)` – If intermediate multiplication or ceiling addition overflows `i128`.
 ///
 /// # Examples
 /// ```
-/// // 7 * 3 / 2 = 10.5 → ceil → 11
-/// assert_eq!(mul_div_ceil(7, 3, 2), 11);
-/// // Exact: 6 * 2 / 3 = 4.0 → ceil → 4
-/// assert_eq!(mul_div_ceil(6, 2, 3), 4);
+/// use crate::math::checked_mul_div_ceil;
+///
+/// // 7 * 3 / 2 = 10.5 -> ceil -> 11
+/// assert_eq!(checked_mul_div_ceil(7, 3, 2).unwrap(), 11);
+///
+/// // Exact: 6 * 2 / 3 = 4 -> ceil -> 4
+/// assert_eq!(checked_mul_div_ceil(6, 2, 3).unwrap(), 4);
 /// ```
 pub fn checked_mul_div_ceil(a: i128, b: i128, d: i128) -> Result<i128, Error> {
     // Issue #966: use checked_mul to prevent silent overflow on large deposits
@@ -110,31 +157,49 @@ pub fn checked_mul_div_ceil(a: i128, b: i128, d: i128) -> Result<i128, Error> {
     })
 }
 
+/// Multiply `a` by `b`, then ceiling-divide by `d`, panicking on overflow.
+///
+/// Ergonomic wrapper around [`checked_mul_div_ceil`].
+///
+/// # Panics
+/// Panics with `"mul_div_ceil overflow"` if multiplication or ceiling offset addition overflows `i128`.
+///
+/// # Arguments
+/// * `a` – Multiplicand.
+/// * `b` – Multiplier.
+/// * `d` – Divisor (must be non-zero).
+#[inline]
 pub fn mul_div_ceil(a: i128, b: i128, d: i128) -> i128 {
     checked_mul_div_ceil(a, b, d).expect("mul_div_ceil overflow")
 }
 
 /// Scale `amount` by the fraction `(numerator / denominator)`, rounding down.
 ///
-/// This is a thin wrapper around [`mul_div_floor`] that expresses the common
-/// "apply a fractional rate to an amount" pattern more readably.
+/// This is a convenience wrapper around [`mul_div_floor`] that expresses the standard
+/// "apply fractional fee/rate to an amount" pattern readably.
+///
+/// # Arithmetic
+/// $$\left\lfloor \frac{\text{amount} \times \text{numerator}}{\text{denominator}} \right\rfloor$$
 ///
 /// # Overflow Prevention
-/// Delegates entirely to [`mul_div_floor`]; see that function's documentation
-/// for overflow considerations.
+/// Delegates directly to [`mul_div_floor`], inheriting intermediate product checks.
 ///
 /// # Arguments
-/// * `amount`      – The base value to scale.
-/// * `numerator`   – Numerator of the scaling fraction.
+/// * `amount` – The base amount to scale in `i128`.
+/// * `numerator` – Numerator of the scaling fraction.
 /// * `denominator` – Denominator of the scaling fraction (must not be zero).
 ///
 /// # Examples
 /// ```
-/// // Scale 1000 by 3/4 → 750
+/// use crate::math::scale_floor;
+///
+/// // Scale 1000 by 3/4 -> 750
 /// assert_eq!(scale_floor(1000, 3, 4), 750);
-/// // Scale 1001 by 3/4 → 750 (floor, not 750.75)
+///
+/// // Scale 1001 by 3/4 -> 750.75 -> floor -> 750
 /// assert_eq!(scale_floor(1001, 3, 4), 750);
 /// ```
+#[inline]
 pub fn scale_floor(amount: i128, numerator: i128, denominator: i128) -> i128 {
     mul_div_floor(amount, numerator, denominator)
 }

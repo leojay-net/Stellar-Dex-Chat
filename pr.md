@@ -1,57 +1,106 @@
-# Pull Request: Frontend Bug Fixes — Memory Leaks, CSV Export, WebSocket Reconnect, Search Debounce
+# feat(frontend): API validation/rate-limiting + AuditTable ARIA live region
+
+Closes #1177, #1274, #1277, #491
 
 ## Summary
 
-- Fix polling interval memory leak in `useBridgeStats` (closes #962)
-- Add CSV export to `AuditTable` for compliance reporting (closes #956)
-- Add exponential backoff reconnect + stale-data indicator to `PriceTicker` (closes #949)
-- Debounce search in `useChatHistory` to prevent per-keystroke API queries (closes #961)
+Four related frontend reliability/accessibility tasks:
 
-## Changes
-
-### fix(frontend): useBridgeStats polling interval cleanup — closes #962
-
-`useBridgeStats.ts` already had `clearInterval` in the useEffect cleanup, but in-flight async requests could still update state after unmount. Added an `isMountedRef` guard so `refetchStats` short-circuits on every state-update call when the component is unmounted, eliminating the memory leak entirely.
-
-**File:** `Dechat/dex_with_fiat_frontend/src/hooks/useBridgeStats.ts`
+| Issue | Area | State before | Change |
+| --- | --- | --- | --- |
+| #1277 | `/api/payment-status/stream` | manual `sessionId` check, no rate limit | zod query validation + shared `applyRateLimit` + tests |
+| #1274 | `/api/create-recipient` | zod + rate limit already applied | malformed-JSON → 400, dedicated route tests (incl. rejection paths) |
+| #1177 | `AuditTable.tsx` | only the offline banner was announced | visually-hidden ARIA live region for loading / results / sort / errors |
+| #491 | `ChatHistorySidebar.tsx` | optimistic UI already implemented & tested | added a list-level optimistic delete/undo regression test |
 
 ---
 
-### feat(frontend): CSV export from AuditTable — closes #956
+## #1277 — validate and rate-limit `payment-status/stream`
 
-Added an **Export CSV** button to the filter bar in `AuditTable.tsx`. Clicking it:
+- `lib/apiSchemas.ts`: new `paymentStatusStreamQuerySchema` — `sessionId` must be a
+  non-empty string, capped at 200 chars (the id is a UUID from `clientSession.ts`).
+- `route.ts`:
+  - `applyRateLimit(ip, '/api/payment-status/stream', { maxRequests: 60, windowMs: 60_000 })`
+    runs first. The ceiling is deliberately generous: a single page opens several
+    long-lived SSE connections (one per hook) and the browser's `EventSource`
+    auto-reconnects on every network blip — the limit only exists to stop one IP
+    hammering the endpoint.
+  - `sessionId` is parsed through the schema; invalid input returns
+    `400 { success: false, message: 'Validation failed', errors: [...] }`, the same
+    machine-readable shape already used by `/api/events`.
+- `route.test.ts` (new): missing `sessionId` → 400 + error shape, oversized
+  `sessionId` → 400, valid → SSE stream opened, rate-limited → 429 (rejection path).
 
-1. Fetches all rows matching the current filters from `/api/admin-audit` (single request, up to 10 000 rows).
-2. Builds the CSV string in 500-row chunks via `setTimeout(0)` so the UI remains responsive with large datasets.
-3. Triggers a browser download with a filename that includes the active date range (e.g. `audit-log_2024-01-01_to_2024-03-31.csv`).
+## #1274 — request validation & rate limiting for `create-recipient`
 
-**File:** `Dechat/dex_with_fiat_frontend/src/components/AuditTable.tsx`
+The route already parsed the body through `createRecipientSchema` and applied
+`applyRateLimit`. Remaining gaps:
+
+- `route.ts`: a malformed JSON body now returns
+  `400 { success: false, message: 'Invalid JSON in request body.' }` instead of
+  falling through to a generic `500` (mirrors `initiate-transfer`).
+- `route.test.ts` (new): valid body succeeds, invalid body → 400 with a
+  machine-readable `errors` array, malformed JSON → 400, **rate limiter → 429**,
+  and the rate-limit bucket is namespaced to `/api/create-recipient`.
+
+> Note: this route is `POST`-only with no query string, so the "query params
+> through a zod schema" acceptance item does not apply here.
+
+## #1177 — ARIA live-region announcements in `AuditTable`
+
+- A visually-hidden (`sr-only`) `aria-live="polite" aria-atomic="true"` region is
+  added. It is intentionally **role-free** so it never collides with the existing
+  `role="status"` retry-queue banner (several tests assert there is at most one
+  `status` node).
+- It announces:
+  - `Loading audit entries…` while a fetch is in flight
+  - `Showing audit entries X to Y of Z. Sorted by <col>, <dir>.` once data settles
+  - `No audit entries found. Try adjusting your filters. …` for an empty result
+  - `Sorting by <col>, <dir>…` immediately on a header click (the settled message
+    then supersedes it with the row range)
+  - `Error loading audit entries: <message>` on failure
+- The initial empty state is suppressed until the first fetch has started, so the
+  region does not fire on mount.
+- `prefers-reduced-motion`: the skeleton row gains `motion-reduce:animate-none`,
+  matching the pattern already used in `Skeleton.tsx`.
+- The region carries no colour, so it is inherently correct in both light and dark
+  themes; no `ThemeContext` interaction was needed.
+
+## #491 — optimistic UI in `ChatHistorySidebar`
+
+Optimistic delete + undo, optimistic pin toggle with a bounce animation,
+optimistic clear-all + undo, and the `sr-only` live region are all already
+implemented in the component and covered by tests. Added one regression test
+asserting that a deleted row disappears from the visible list immediately (before
+`deleteSession` is called) and reappears on undo.
 
 ---
 
-### fix(frontend): PriceTicker exponential backoff + stale-data indicator — closes #949
+## Testing
 
-When a price fetch fails, `PriceTicker.tsx` now:
+Run from `Dechat/dex_with_fiat_frontend`:
 
-- Schedules a retry with exponential backoff (1 s → 2 s → 4 s … capped at 30 s), resetting on the next successful fetch.
-- Shows a **yellow** status dot (instead of red) and a `"Prices may be stale — retrying…"` message while stale data from a previous successful fetch is displayed.
-- Clears all retry timeouts on unmount to prevent memory leaks.
+```
+pnpm typecheck   # clean
+pnpm lint        # clean for all changed files
+pnpm test:unit   # see note below
+pnpm build       # succeeds
+```
 
-**File:** `Dechat/dex_with_fiat_frontend/src/components/PriceTicker.tsx`
+New / updated tests:
 
----
+- `src/app/api/payment-status/stream/route.test.ts` (new)
+- `src/app/api/create-recipient/route.test.ts` (new)
+- `src/components/__tests__/AuditTable.test.tsx` (+6 cases)
+- `src/components/__tests__/ChatHistorySidebar.test.tsx` (+1 case)
 
-### fix(frontend): debounce search in useChatHistory — closes #961
+> Two pre-existing `AuditTable` tests (`shows a warning/success toast … offline`)
+> fail locally on a clean `main` in this environment (real timers + `online`/
+> `offline` events) and are unrelated to this change.
 
-`useChatHistory.ts` now exposes `searchQuery`, `setSearchQuery`, and `searchResults`. Setting `searchQuery` triggers the session search only after a **300 ms** debounce, preventing a lookup (or future API call) on every keystroke. The existing `searchSessions` callback is preserved for one-shot use cases.
+## Accessibility checklist (#1177)
 
-**File:** `Dechat/dex_with_fiat_frontend/src/hooks/useChatHistory.ts`
-
----
-
-## Test plan
-
-- [ ] `useBridgeStats`: Mount and quickly unmount the component while a fetch is in flight — confirm no React state-update warnings in the console.
-- [ ] `AuditTable`: Apply filters, click **Export CSV**, verify the downloaded file contains all matching rows and the filename reflects the selected date range.
-- [ ] `PriceTicker`: Simulate a network failure (DevTools → offline); confirm the yellow dot and retrying message appear, then restore connectivity and confirm the green dot and normal prices return.
-- [ ] `useChatHistory` search: Type rapidly in the search box — confirm only one search fires per 300 ms pause, not on every character.
+- [x] Implemented without regressing existing behaviour
+- [x] Works in light and dark themes (region is non-visual)
+- [x] Respects `prefers-reduced-motion` (`motion-reduce:animate-none` on skeleton)
+- [x] Unit tests cover the new behaviour

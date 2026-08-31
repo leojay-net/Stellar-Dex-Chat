@@ -34,6 +34,7 @@ env.events().publish(
 | migration | v1 | (event_name, version) | (cursor, count) |
 | batch_ok | v1 | (event_name, version) | (success_count, total_ops) |
 | batch_fail | v1 | (event_name, version) | (failed_index, total_ops) |
+| prune_inactive_operators | v1 | (event_name, version) | (removed_count, active_count) |
 
 ---
 
@@ -280,6 +281,55 @@ pub struct MigrationEvent {
 - **Gas Costs**: Each record migration consumes gas; monitor during testing
 - **Idempotency**: Safe to call multiple times; will skip already-migrated records
 - **Monitoring**: Use migration events to track progress in production
+
+## Batch Fee Withdrawal Nonce (Issue #1113)
+
+### Overview
+
+`withdraw_fees_batch` now accepts a caller-supplied nonce
+(`withdraw_fees_batch(env, to, tokens, nonce)`) and enforces per-caller
+replay protection, mirroring the per-caller nonce convention already
+established for operator heartbeats.
+
+### Storage Layout Change
+
+A new per-caller instance-storage key is introduced:
+
+```rust
+DataKey::FeeWithdrawalBatchNonce(Address) // u64
+```
+
+The key is scoped per caller address. The value is the next expected nonce for
+that caller, starting at `0` and incrementing by one after each successful
+batch withdrawal.
+
+### Migration Path
+
+The new key is additive and defaults to `0` when absent, so **no data migration
+is required** for existing deployments:
+
+1. After upgrading the contract WASM, the first `withdraw_fees_batch` call for
+   any caller must supply `nonce = 0`.
+2. Each subsequent call supplies the value returned by the new view function
+   `get_fee_withdrawal_batch_nonce(env, caller)`, which reflects the next
+   expected nonce.
+3. The legacy global `FeeWithdrawalNonce` used by the single-token
+   `withdraw_fees` is left unchanged and does not interfere with the new
+   per-caller counter.
+
+Rolling forward is safe: wallets and indexers read the current nonce from
+`get_fee_withdrawal_batch_nonce` before submitting the next transaction.
+
+### Error Handling
+
+| Error | Code | Condition |
+|-------|------|-----------|
+| `StaleNonce` | 902 | Provided nonce is behind the stored nonce (replay) |
+| `InvalidNonce` | 901 | Provided nonce is ahead of the stored nonce (jump) |
+
+See [ERROR_CODES.md](../../../ERROR_CODES.md) for the full error reference.
+
+---
 
 ## Withdrawal Quota System
 

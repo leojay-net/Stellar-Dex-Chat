@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+<<<<<<< HEAD
+### Changed
+- **Event schema versioning (#275):** Every `env.events().publish()` call in the Fiat Bridge contract now includes `EVENT_VERSION` (currently `1`, a `u32`) as the first topic element. Off-chain indexers can use this field to detect breaking schema changes and handle migrations gracefully.
+  - Affected events: `deploy_hash`, `deposit`, `rcpt_issd`, `withdraw`, `req_withdr`, `paused`, `unpaused`, `slippage`, `admin_action_queued`, `admin_action_executed`, `deny_add`, `deny_rem`, `heartbeat`, `nonce_inc`, `fee_accrue`, `fee_wdrw`, `rescue`, `quota_set`, `quota_reset`, `migration`, `batch_fail`, `batch_ok`, `cb_reset`, `cbtripped`.
+  - Updated existing `test_withdrawal_quota_resets_after_window` assertion to match the new topic order.
+  - Added unit tests (`test_event_version_deposit`, `test_event_version_request_withdrawal`, `test_event_version_deny_add_remove`) asserting that `EVENT_VERSION` is the first topic for bridge-emitted events.
+=======
 
 ### Added
 
@@ -204,10 +211,16 @@ All notable changes to this project will be documented in this file.
 - **frontend:** Add skeleton loading state to StellarChatInterface
 - **frontend:** Add ARIA live-region announcements to BankDetailsModal
 - **frontend:** Harden banks API and instrument status telemetry
+- **frontend:** Harden banks API and instrument status telemetry
+- **frontend:** Harden banks API and instrument status telemetry
+- **frontend:** Harden banks API and instrument status telemetry
 - **frontend:** Add optimistic UI loading state to ReceiptQrCode
 - **frontend:** Add accessibility and loading states
 - **frontend:** Add skeleton loading states to TransactionAmountDisplay and StellarFiatModal
 - **frontend:** Add structured telemetry and retry helpers for notifications, pagination, CCIP explorer, and audit log
+- **frontend:** Add accessibility and loading states
+- **frontend:** Add request retry with exponential backoff to analytics.ts
+- Add request validation/rate limiting, error boundary, and ARIA labels
 
 ### Fixed
 
@@ -418,6 +431,7 @@ All notable changes to this project will be documented in this file.
 - All 6 remaining test failures - events, circuit breaker threshold, operator guards
 - **ci:** Repair clippy, changelog, WASM size gate and auto-merge
 - **ci:** Unbreak contract build on current stable and drop git-cliff-action
+- Add request
 - **frontend:** Race conditions in useChatHistory/useChatPerformance and memory leaks in useCurrencyConversion/useEffectiveDarkMode
 - **frontend:** Resolve stale closure in chatSearch.ts debounce
 - **frontend:** Prevent memory leak in useIdempotentAction.ts
@@ -429,10 +443,13 @@ All notable changes to this project will be documented in this file.
 - **frontend:** Correct totalMessages count when no search filters are active
 - Verify-account error handling, webhook error handling, stale closure, EventSource leak
 - Resolve stale closures, memory leak, and add split-view telemetry
+- **hooks:** Remove duplicate setHistoryState call in updateCurrentSession
+- Worked on CLI
 - **ci:** Post WASM size report via workflow_run, not pull_request
 - Remove duplicate setHistoryState call in useChatHistory
 - Resolve CI typecheck, lint, and test parse errors across 5 files
 - **ci:** Bump WASM limit to 98.5KB, add missing toolchain input to contract-tests.yml
+- Stale closure in price service, date validation in admin-audit, JSON error handling in initiate-transfer, health route error handling
 
 ### Changed
 
@@ -558,6 +575,27 @@ All notable changes to this project will be documented in this file.
 - **ci:** Add cargo-deny, cache Playwright, split lint job, report WASM size
 - **changelog:** Update changelog [skip ci]
 - Add doc comments to messageParser, migrate_escrow, markdownSanitizer, featureFlags
+- **changelog:** Update changelog [skip ci]
+- **changelog:** Update changelog [skip ci]
+- Improve inline documentation for get_escrow_storage_version
+- Improve inline documentation for draftUtils
+- Improve inline documentation for messageUtils
+- Improve inline documentation for offlineMessageQueue
+- **changelog:** Update changelog [skip ci]
+- **changelog:** Update changelog [skip ci]
+- **changelog:** Update changelog [skip ci]
+- **readme:** Document invariant test suites and repo conventions
+- **changelog:** Update changelog [skip ci]
+- **frontend:** Add comprehensive unit test coverage for useEffectiveDarkMode.ts
+- **frontend:** Add unit test coverage for useChatPagination.ts
+- **changelog:** Update changelog [skip ci]
+- **frontend:** Add unit test coverage for useChatHistory hook #1165
+- **changelog:** Update changelog [skip ci]
+- **dx:** Add coverage PR comment + unit tests for wallet/theme/preferences contexts
+- **changelog:** Update changelog [skip ci]
+- Add test coverage, CI lockfile check, dependabot config, and docs reorg
+- **changelog:** Update changelog [skip ci]
+- **deps:** Bump actions/download-artifact from 4.3.0 to 8.0.1
 
 ### Deprecated
 
@@ -939,3 +977,4 @@ feat: fix contract validation, deposit safety and admin UI improvements
 - Merge pull request #1076 from designsage8/feature/frontend-security-ux-enhancements
 
 feat: implement frontend security and UX enhancements
+>>>>>>> emwulrd/main

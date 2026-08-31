@@ -9,6 +9,8 @@ import {
   X,
 } from 'lucide-react';
 import { useAccessibleModal } from '@/hooks/useAccessibleModal';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useToast } from '@/hooks/useToast';
 import {
   buildCCIPExplorerTransactionUrl,
   CCIP_POLL_INTERVAL_MS,
@@ -56,6 +58,36 @@ export default function CCIPBridgeModal({
   const [latestStatus, setLatestStatus] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState('');
   const [networkChangedWhileActive, setNetworkChangedWhileActive] = useState(false);
+  const { isOnline, wasOffline, resetWasOffline } = useOnlineStatus();
+  const { addToast } = useToast();
+  const wasOnlineRef = useRef(true);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!isOpen) {
+      wasOnlineRef.current = isOnline;
+      return;
+    }
+
+    const prevOnline = wasOnlineRef.current;
+
+    if (prevOnline && !isOnline) {
+      addToast({
+        message: "You're offline. CCIP transfer status may not update until you reconnect.",
+        severity: 'warning',
+        durationMs: 4500,
+      });
+    } else if (!prevOnline && isOnline && wasOffline) {
+      addToast({
+        message: 'Back online. CCIP transfer status will refresh with the latest data.',
+        severity: 'success',
+        durationMs: 3000,
+      });
+      resetWasOffline();
+    }
+
+    wasOnlineRef.current = isOnline;
+  }, [isOpen, isOnline, wasOffline, addToast, resetWasOffline]);
 
   // #1179: single sr-only live region announcing bridge state transitions.
   // The visible per-state sections below aren't in an aria-live container,

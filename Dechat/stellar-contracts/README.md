@@ -15,6 +15,7 @@ This directory contains the Soroban smart contracts for the Stellar DEX Chat app
 | [FIAT_BRIDGE_README.md](./FIAT_BRIDGE_README.md) | Full API reference and error code documentation |
 | [docs/VERSION_MIGRATION.md](./docs/VERSION_MIGRATION.md) | Event versioning, upgrade mechanism, and migration guides |
 | [docs/OVERFLOW_PREVENTION.md](./docs/OVERFLOW_PREVENTION.md) | Overflow-prevention strategies and contributor checklist |
+| [docs/INVARIANT_TESTING.md](./docs/INVARIANT_TESTING.md) | Invariant-testing architecture and contributor checklist |
 
 ---
 

@@ -127,6 +127,11 @@ class NotificationStore {
       count: clearedCount,
     });
   }
+
+  setNotifications(notifications: AppNotification[]) {
+    this.notifications = notifications;
+    this.emit();
+  }
 }
 
 export const notificationStore = new NotificationStore();
@@ -150,5 +155,6 @@ export function useNotifications() {
     markAllAsRead: notificationStore.markAllAsRead.bind(notificationStore),
     clearNotifications:
       notificationStore.clearNotifications.bind(notificationStore),
+    setNotifications: notificationStore.setNotifications.bind(notificationStore),
   };
 }
