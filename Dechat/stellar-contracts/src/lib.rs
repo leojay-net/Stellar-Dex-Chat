@@ -252,6 +252,22 @@ pub struct BatchResult {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HeartbeatItem {
+    pub operator: Address,
+    pub nonce: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BatchHeartbeatResult {
+    pub total_items: u32,
+    pub success_count: u32,
+    pub failure_count: u32,
+    pub failed_index: Option<u32>,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TokenAllowlistEntry {
     pub token: Address,
     pub address: Address,
@@ -472,6 +488,24 @@ pub struct HeartbeatEvent {
 }
 
 #[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HeartbeatBatchEvent {
+    pub version: u32,
+    pub total_items: u32,
+    pub success_count: u32,
+    pub failure_count: u32,
+    pub ledger: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HeartbeatBatchFailEvent {
+    pub version: u32,
+    pub index: u32,
+    pub total_items: u32,
+}
+
+#[contractevent]
 #[derive(Clone, Debug)]
 pub struct NonceIncrementedEvent {
     pub version: u32,
@@ -490,7 +524,6 @@ pub struct InitNonceIncrementedEvent {
 #[contractevent]
 #[derive(Clone, Debug)]
 pub struct OperatorPrunedEvent {
-    #[topic]
     pub version: u32,
     pub operator: Address,
     pub ledger: u32,
@@ -668,7 +701,6 @@ pub struct ReceiptOobEvent {
 #[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WithdrawalExpiredEvent {
-    #[topic]
     pub version: u32,
     pub request_id: u64,
     pub to: Address,
@@ -679,7 +711,6 @@ pub struct WithdrawalExpiredEvent {
 #[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CircuitBreakerAutoResetEvent {
-    #[topic]
     pub version: u32,
     pub tripped_at: u32,
     pub reset_at: u32,
@@ -2782,7 +2813,7 @@ impl FiatBridge {
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
 
-        let current_slippage_threshold: u32 = Self::get_slippage_threshold(env);
+        let current_slippage_threshold: u32 = Self::get_slippage_threshold(env.clone());
         if current_slippage_threshold > 10000 {
             return Err(Error::SlippageTooHigh);
         }
@@ -2935,9 +2966,76 @@ impl FiatBridge {
     }
 
     pub fn heartbeat(env: Env, operator: Address, nonce: u64) -> Result<(), Error> {
-        operator.require_auth();
-        // Check circuit breaker before processing
+        Self::emit_telemetry(&env, Symbol::new(&env, "heartbeat"));
         Self::require_circuit_breaker_clear(&env)?;
+        let curr = env.ledger().sequence();
+        Self::execute_single_heartbeat(&env, &operator, nonce, curr)
+    }
+
+    /// Executes a batch of operator heartbeats in a single call.
+    ///
+    /// # Safety & Boundary Invariants
+    /// - **Circuit Breaker Check**: Rejects execution immediately if the circuit breaker is active.
+    /// - **Operator Authentication**: Each operator in the batch must authenticate their item.
+    /// - **Operator Role Verification**: Each item must correspond to an active operator.
+    /// - **Replay Protection**: Validates and increments each operator's sequential nonce monotonically.
+    /// - **Telemetry & Events**: Emits `TelemetryEvent`, individual `HeartbeatEvent`s for successes,
+    ///   `HeartbeatBatchFailEvent` for any failed item, and a summary `HeartbeatBatchEvent`.
+    pub fn heartbeat_batch(
+        env: Env,
+        items: Vec<HeartbeatItem>,
+    ) -> Result<BatchHeartbeatResult, Error> {
+        Self::emit_telemetry(&env, Symbol::new(&env, "heartbeat_batch"));
+        Self::require_circuit_breaker_clear(&env)?;
+
+        let total_items = items.len();
+        let mut success_count: u32 = 0;
+        let mut failure_count: u32 = 0;
+        let mut first_failed_index: Option<u32> = None;
+        let curr = env.ledger().sequence();
+
+        for (idx, item) in items.iter().enumerate() {
+            let res = Self::execute_single_heartbeat(&env, &item.operator, item.nonce, curr);
+            if res.is_err() {
+                HeartbeatBatchFailEvent {
+                    version: EVENT_VERSION,
+                    index: idx as u32,
+                    total_items,
+                }
+                .publish(&env);
+                failure_count += 1;
+                if first_failed_index.is_none() {
+                    first_failed_index = Some(idx as u32);
+                }
+            } else {
+                success_count += 1;
+            }
+        }
+
+        HeartbeatBatchEvent {
+            version: EVENT_VERSION,
+            total_items,
+            success_count,
+            failure_count,
+            ledger: curr,
+        }
+        .publish(&env);
+
+        Ok(BatchHeartbeatResult {
+            total_items,
+            success_count,
+            failure_count,
+            failed_index: first_failed_index,
+        })
+    }
+
+    fn execute_single_heartbeat(
+        env: &Env,
+        operator: &Address,
+        nonce: u64,
+        curr: u32,
+    ) -> Result<(), Error> {
+        operator.require_auth();
         if !env
             .storage()
             .instance()
@@ -2947,15 +3045,18 @@ impl FiatBridge {
             return Err(Error::NotOperator);
         }
 
-        // Validate and increment nonce for replay protection
-        Self::validate_and_increment_nonce(&env, &operator, nonce)?;
+        Self::validate_and_increment_nonce(env, operator, nonce)?;
 
-        let curr = env.ledger().sequence();
         env.storage()
             .instance()
             .set(&DataKey::OperatorHeartbeat(operator.clone()), &curr);
 
-        HeartbeatEvent { version: EVENT_VERSION, operator: operator.clone(), ledger: curr }.publish(&env);
+        HeartbeatEvent {
+            version: EVENT_VERSION,
+            operator: operator.clone(),
+            ledger: curr,
+        }
+        .publish(env);
 
         Ok(())
     }
@@ -3360,15 +3461,13 @@ impl FiatBridge {
 
     pub fn get_accrued_fees(env: Env, token: Address) -> i128 {
         // Boundary check: ensure token is whitelisted/registered
-        let _token_config: TokenConfig = env
+        if !env
             .storage()
             .persistent()
-            .get(&DataKey::TokenRegistry(token.clone()))
-            .unwrap_or_else(|| {
-                // Token not whitelisted - return 0 but this path is intentional
-                // for backward compatibility; callers should verify token status
-                return 0;
-            });
+            .has(&DataKey::TokenRegistry(token.clone()))
+        {
+            return 0;
+        }
 
         let amount = env
             .storage()
@@ -3460,10 +3559,8 @@ impl FiatBridge {
         let nonce_key = DataKey::FeeWithdrawalNonceByCaller(admin.clone());
         let nonce: u64 = env.storage().instance().get(&nonce_key).unwrap_or(0);
         env.storage().instance().set(&nonce_key, &(nonce + 1));
-        let nonce: u64 = env.storage().instance().get(&DataKey::FeeWithdrawalNonce).unwrap_or(0);
-        env.storage().instance().set(&DataKey::FeeWithdrawalNonce, &(nonce + 1));
-        let caller_nonce: u64 = env.storage().instance().get(&DataKey::FeeWithdrawalNonceByCaller(admin.clone())).unwrap_or(0);
-        env.storage().instance().set(&DataKey::FeeWithdrawalNonceByCaller(admin), &(caller_nonce + 1));
+        let global_nonce: u64 = env.storage().instance().get(&DataKey::FeeWithdrawalNonce).unwrap_or(0);
+        env.storage().instance().set(&DataKey::FeeWithdrawalNonce, &(global_nonce + 1));
         FeeWithdrawnEvent { version: EVENT_VERSION, to: recipient, amount }.publish(&env);
         Ok(())
     }
@@ -5867,7 +5964,6 @@ mod test_propose_upgrade_invariants;
 mod test_reclaim_expired_withdrawal_invariants;
 
 #[cfg(test)]
-#[cfg(test)] mod test_execute_upgrade_invariants;
 mod test_execute_upgrade_invariants;
 
 #[cfg(test)]
@@ -5891,7 +5987,11 @@ mod test_set_operator_invariants;
 
 #[cfg(test)]
 mod test_request_withdrawal_invariants;
+#[cfg(test)]
 mod test_execute_withdrawal_invariants;
+#[cfg(test)]
+mod test_heartbeat_batch;
+
 
 #[cfg(test)]
 mod test_is_denied_invariants;
