@@ -136,3 +136,29 @@ modifying any storage.
 
 No storage layout change ships with this event: it reads only the existing
 `DataKey::FeeVault(token)` key and writes nothing, so no migration is required.
+
+## Limit management (`set_limit`)
+
+`set_limit` now requires a nonce parameter for replay protection, following
+the same pattern as `heartbeat` and `set_operator`. It reuses existing error codes:
+
+| Code | Name             | Raised when                                                                 |
+| ---- | ---------------- | --------------------------------------------------------------------------- |
+| 901  | `InvalidNonce`   | The provided nonce is greater than the current expected nonce (future nonce). |
+| 902  | `StaleNonce`     | The provided nonce is less than the current expected nonce (replay attempt). |
+
+Every accepted call emits `SetLimitEvent { version, token, limit }`, where
+`version` is `EVENT_VERSION`, `token` is the token address, and `limit` is the
+new limit value. Rejected calls emit nothing and leave storage untouched.
+
+The nonce validation uses the new `DataKey::SetLimitNonce(Address)` storage key
+and the new `validate_and_increment_set_limit_nonce` helper function. The nonce
+is validated before any state changes occur, ensuring that failed nonce validations
+do not modify the token limit.
+
+A new public function `get_set_limit_nonce(env, admin)` is provided to query the
+current nonce for an admin, following the same pattern as `get_init_nonce`.
+
+No storage layout migration is required for this change: the new `SetLimitNonce`
+key is added to the existing `DataKey` enum and defaults to 0 when not present,
+so existing deployments will automatically start from nonce 0.

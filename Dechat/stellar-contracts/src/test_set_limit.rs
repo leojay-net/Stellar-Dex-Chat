@@ -57,28 +57,66 @@ fn fixture_with_limit(limit: i128) -> Fixture<'_> {
     }
 }
 
+/// Bridge initialised with admin address for nonce tracking
+fn fixture_with_admin() -> Fixture<'_> {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_addr = env
+        .register_stellar_asset_contract_v2(token_admin.clone())
+        .address();
+    let token_sac = StellarAssetClient::new(&env, &token_addr);
+
+    let contract_id = env.register(FiatBridge, ());
+    let bridge = FiatBridgeClient::new(&env, &contract_id);
+
+    let signers = vec![&env, admin.clone()];
+    bridge.init(&admin, &token_addr, &1_000_000, &1, &signers, &1, &0);
+
+    Fixture {
+        env,
+        contract_id,
+        bridge,
+        token_addr,
+        token_sac,
+    }
+}
+
+/// Get admin address from fixture for nonce tracking
+fn get_admin(f: &Fixture<'_>) -> Address {
+    f.bridge.get_admin()
+}
+
 // ── Happy paths ────────────────────────────────────────────────────────
 
 #[test]
 fn set_limit_persists_the_new_value() {
     let f = fixture_with_limit(500);
+    let admin = get_admin(&f);
+    let nonce = f.bridge.get_set_limit_nonce(&admin);
 
-    f.bridge.set_limit(&f.token_addr, &1_000);
+    f.bridge.set_limit(&f.token_addr, &1_000, &nonce);
     assert_eq!(f.bridge.get_limit(), 1_000);
 
     // Repeating `set_limit` overwrites the previous value rather than
     // accumulating — important property for admin recoverability.
-    f.bridge.set_limit(&f.token_addr, &2_500);
+    let nonce = f.bridge.get_set_limit_nonce(&admin);
+    f.bridge.set_limit(&f.token_addr, &2_500, &nonce);
     assert_eq!(f.bridge.get_limit(), 2_500);
 
-    f.bridge.set_limit(&f.token_addr, &100);
+    let nonce = f.bridge.get_set_limit_nonce(&admin);
+    f.bridge.set_limit(&f.token_addr, &100, &nonce);
     assert_eq!(f.bridge.get_limit(), 100);
 }
 
 #[test]
 fn set_limit_emits_set_limit_event_with_correct_fields() {
     let f = fixture_with_limit(500);
-    f.bridge.set_limit(&f.token_addr, &1_234);
+    let admin = get_admin(&f);
+    let nonce = f.bridge.get_set_limit_nonce(&admin);
+    f.bridge.set_limit(&f.token_addr, &1_234, &nonce);
 
     let bridge_events = f.env.events().all().filter_by_contract(&f.contract_id);
     let raw = bridge_events.events();
@@ -121,20 +159,24 @@ fn set_limit_emits_set_limit_event_with_correct_fields() {
 #[test]
 fn set_limit_at_max_cap_boundary_succeeds() {
     let f = fixture_with_limit(500);
+    let admin = get_admin(&f);
 
     // Configure max_cap explicitly, then drive limit to exactly that cap.
     f.bridge.set_limit_max_cap(&5_000);
-    f.bridge.set_limit(&f.token_addr, &5_000);
+    let nonce = f.bridge.get_set_limit_nonce(&admin);
+    f.bridge.set_limit(&f.token_addr, &5_000, &nonce);
     assert_eq!(f.bridge.get_limit(), 5_000);
 }
 
 #[test]
 fn set_limit_with_default_max_cap_accepts_i128_max() {
     let f = fixture_with_limit(500);
+    let admin = get_admin(&f);
 
     // Default max_cap is i128::MAX after init; pushing the limit to the
     // type ceiling must succeed and persist.
-    f.bridge.set_limit(&f.token_addr, &i128::MAX);
+    let nonce = f.bridge.get_set_limit_nonce(&admin);
+    f.bridge.set_limit(&f.token_addr, &i128::MAX, &nonce);
     assert_eq!(f.bridge.get_limit(), i128::MAX);
 }
 
@@ -146,7 +188,9 @@ fn set_limit_takes_effect_for_deposits() {
 
     // Tighten the per-token cap and confirm a deposit at or above the new
     // limit is rejected with `ExceedsLimit`.
-    f.bridge.set_limit(&f.token_addr, &500);
+    let admin = get_admin(&f);
+    let nonce = f.bridge.get_set_limit_nonce(&admin);
+    f.bridge.set_limit(&f.token_addr, &500, &nonce);
     let result = f.bridge.try_deposit(
         &user,
         &600,
@@ -175,21 +219,25 @@ fn set_limit_takes_effect_for_deposits() {
 #[test]
 fn set_limit_rejects_unwhitelisted_token() {
     let f = fixture_with_limit(500);
+    let admin = get_admin(&f);
 
     // A token address that was never registered via init / register-token
     // path must surface as `TokenNotWhitelisted` rather than silently
     // creating a registry entry on first set_limit.
     let stranger = Address::generate(&f.env);
-    let result = f.bridge.try_set_limit(&stranger, &1_000);
+    let nonce = f.bridge.get_set_limit_nonce(&admin);
+    let result = f.bridge.try_set_limit(&stranger, &1_000, &nonce);
     assert_eq!(result, Err(Ok(Error::TokenNotWhitelisted)));
 }
 
 #[test]
 fn set_limit_rejects_one_above_configured_max_cap() {
     let f = fixture_with_limit(500);
+    let admin = get_admin(&f);
 
     f.bridge.set_limit_max_cap(&1_000);
-    let result = f.bridge.try_set_limit(&f.token_addr, &1_001);
+    let nonce = f.bridge.get_set_limit_nonce(&admin);
+    let result = f.bridge.try_set_limit(&f.token_addr, &1_001, &nonce);
     assert_eq!(result, Err(Ok(Error::ExceedsLimitMaxCap)));
 
     // The on-chain stored limit must remain whatever it was before the
@@ -200,6 +248,7 @@ fn set_limit_rejects_one_above_configured_max_cap() {
 #[test]
 fn set_limit_blocked_when_circuit_breaker_tripped() {
     let f = fixture_with_limit(1_000);
+    let admin = get_admin(&f);
 
     // Trip the circuit breaker via a direct storage write — keeps this
     // test focused on the gate inside set_limit and avoids depending on
@@ -211,13 +260,15 @@ fn set_limit_blocked_when_circuit_breaker_tripped() {
             .set(&DataKey::CircuitBreakerTripped, &true);
     });
 
-    let result = f.bridge.try_set_limit(&f.token_addr, &2_000);
+    let nonce = f.bridge.get_set_limit_nonce(&admin);
+    let result = f.bridge.try_set_limit(&f.token_addr, &2_000, &nonce);
     assert_eq!(result, Err(Ok(Error::CircuitBreakerActive)));
 }
 
 #[test]
 fn set_limit_recovers_after_circuit_breaker_clears() {
     let f = fixture_with_limit(1_000);
+    let admin = get_admin(&f);
 
     f.env.as_contract(&f.contract_id, || {
         f.env
@@ -226,8 +277,9 @@ fn set_limit_recovers_after_circuit_breaker_clears() {
             .set(&DataKey::CircuitBreakerTripped, &true);
     });
 
+    let nonce = f.bridge.get_set_limit_nonce(&admin);
     assert_eq!(
-        f.bridge.try_set_limit(&f.token_addr, &2_000),
+        f.bridge.try_set_limit(&f.token_addr, &2_000, &nonce),
         Err(Ok(Error::CircuitBreakerActive))
     );
 
@@ -239,7 +291,8 @@ fn set_limit_recovers_after_circuit_breaker_clears() {
             .set(&DataKey::CircuitBreakerTripped, &false);
     });
 
-    f.bridge.set_limit(&f.token_addr, &2_000);
+    let nonce = f.bridge.get_set_limit_nonce(&admin);
+    f.bridge.set_limit(&f.token_addr, &2_000, &nonce);
     assert_eq!(f.bridge.get_limit(), 2_000);
 }
 
@@ -254,7 +307,7 @@ fn set_limit_on_uninitialised_contract_returns_not_initialized() {
     // No init() call — admin lookup must fail with NotInitialized rather
     // than panic or fall through.
     let token = Address::generate(&env);
-    let result = bridge.try_set_limit(&token, &1_000);
+    let result = bridge.try_set_limit(&token, &1_000, &0);
     assert_eq!(result, Err(Ok(Error::NotInitialized)));
 }
 
@@ -267,6 +320,7 @@ fn circuit_breaker_check_runs_before_max_cap_check() {
     // `ExceedsLimitMaxCap`). This pins the documented gate ordering so
     // a future refactor can't silently swap it.
     let f = fixture_with_limit(500);
+    let admin = get_admin(&f);
     f.bridge.set_limit_max_cap(&1_000);
 
     f.env.as_contract(&f.contract_id, || {
@@ -276,7 +330,8 @@ fn circuit_breaker_check_runs_before_max_cap_check() {
             .set(&DataKey::CircuitBreakerTripped, &true);
     });
 
-    let result = f.bridge.try_set_limit(&f.token_addr, &10_000);
+    let nonce = f.bridge.get_set_limit_nonce(&admin);
+    let result = f.bridge.try_set_limit(&f.token_addr, &10_000, &nonce);
     assert_eq!(result, Err(Ok(Error::CircuitBreakerActive)));
 }
 
@@ -287,10 +342,12 @@ fn max_cap_check_runs_before_token_whitelist_check() {
     // the cap-violation signal visible to admins regardless of which
     // token they aimed at.
     let f = fixture_with_limit(500);
+    let admin = get_admin(&f);
     f.bridge.set_limit_max_cap(&1_000);
 
     let stranger = Address::generate(&f.env);
-    let result = f.bridge.try_set_limit(&stranger, &10_000);
+    let nonce = f.bridge.get_set_limit_nonce(&admin);
+    let result = f.bridge.try_set_limit(&stranger, &10_000, &nonce);
     assert_eq!(result, Err(Ok(Error::ExceedsLimitMaxCap)));
 }
 
@@ -299,8 +356,10 @@ fn max_cap_check_runs_before_token_whitelist_check() {
 #[test]
 fn set_limit_rejects_zero_limit() {
     let f = fixture_with_limit(500);
+    let admin = get_admin(&f);
 
-    let result = f.bridge.try_set_limit(&f.token_addr, &0);
+    let nonce = f.bridge.get_set_limit_nonce(&admin);
+    let result = f.bridge.try_set_limit(&f.token_addr, &0, &nonce);
     assert_eq!(result, Err(Ok(Error::ZeroAmount)));
 
     // The stored limit must remain unchanged
@@ -310,8 +369,10 @@ fn set_limit_rejects_zero_limit() {
 #[test]
 fn set_limit_rejects_negative_limit() {
     let f = fixture_with_limit(500);
+    let admin = get_admin(&f);
 
-    let result = f.bridge.try_set_limit(&f.token_addr, &-1);
+    let nonce = f.bridge.get_set_limit_nonce(&admin);
+    let result = f.bridge.try_set_limit(&f.token_addr, &-1, &nonce);
     assert_eq!(result, Err(Ok(Error::ZeroAmount)));
 
     assert_eq!(f.bridge.get_limit(), 500);
@@ -320,8 +381,10 @@ fn set_limit_rejects_negative_limit() {
 #[test]
 fn set_limit_rejects_large_negative_limit() {
     let f = fixture_with_limit(500);
+    let admin = get_admin(&f);
 
-    let result = f.bridge.try_set_limit(&f.token_addr, &-100_000);
+    let nonce = f.bridge.get_set_limit_nonce(&admin);
+    let result = f.bridge.try_set_limit(&f.token_addr, &-100_000, &nonce);
     assert_eq!(result, Err(Ok(Error::ZeroAmount)));
 
     assert_eq!(f.bridge.get_limit(), 500);
@@ -334,7 +397,104 @@ fn set_limit_positive_limit_succeeds_with_zero_max_cap_set_after() {
     let f = fixture_with_limit(500);
 
     // Set max_cap to a high value, then set limit below it.
+    let admin = get_admin(&f);
     f.bridge.set_limit_max_cap(&5_000);
-    f.bridge.set_limit(&f.token_addr, &3_000);
+    let nonce = f.bridge.get_set_limit_nonce(&admin);
+    f.bridge.set_limit(&f.token_addr, &3_000, &nonce);
     assert_eq!(f.bridge.get_limit(), 3_000);
+}
+
+// ── Nonce replay protection tests ────────────────────────────────────────
+
+#[test]
+fn set_limit_nonce_starts_at_zero() {
+    let f = fixture_with_limit(500);
+    let admin = get_admin(&f);
+    
+    let nonce = f.bridge.get_set_limit_nonce(&admin);
+    assert_eq!(nonce, 0);
+}
+
+#[test]
+fn set_limit_with_valid_nonce_succeeds() {
+    let f = fixture_with_limit(500);
+    let admin = get_admin(&f);
+    
+    let nonce = f.bridge.get_set_limit_nonce(&admin);
+    f.bridge.set_limit(&f.token_addr, &1_000, &nonce);
+    
+    // Nonce should increment to 1
+    let new_nonce = f.bridge.get_set_limit_nonce(&admin);
+    assert_eq!(new_nonce, 1);
+}
+
+#[test]
+fn set_limit_with_stale_nonce_fails() {
+    let f = fixture_with_limit(500);
+    let admin = get_admin(&f);
+    
+    let nonce = f.bridge.get_set_limit_nonce(&admin);
+    f.bridge.set_limit(&f.token_addr, &1_000, &nonce);
+    
+    // Try to reuse the same nonce - should fail with StaleNonce
+    let result = f.bridge.try_set_limit(&f.token_addr, &2_000, &nonce);
+    assert_eq!(result, Err(Ok(Error::StaleNonce)));
+    
+    // Limit should remain at the first set value
+    assert_eq!(f.bridge.get_limit(), 1_000);
+}
+
+#[test]
+fn set_limit_with_future_nonce_fails() {
+    let f = fixture_with_limit(500);
+    let admin = get_admin(&f);
+    
+    // Try to use nonce 5 when current is 0 - should fail with InvalidNonce
+    let result = f.bridge.try_set_limit(&f.token_addr, &1_000, &5);
+    assert_eq!(result, Err(Ok(Error::InvalidNonce)));
+    
+    // Nonce should remain at 0
+    assert_eq!(f.bridge.get_set_limit_nonce(&admin), 0);
+}
+
+#[test]
+fn set_limit_nonce_increments_monotonically() {
+    let f = fixture_with_limit(500);
+    let admin = get_admin(&f);
+    
+    // First call with nonce 0
+    let nonce = f.bridge.get_set_limit_nonce(&admin);
+    assert_eq!(nonce, 0);
+    f.bridge.set_limit(&f.token_addr, &1_000, &nonce);
+    
+    // Second call with nonce 1
+    let nonce = f.bridge.get_set_limit_nonce(&admin);
+    assert_eq!(nonce, 1);
+    f.bridge.set_limit(&f.token_addr, &2_000, &nonce);
+    
+    // Third call with nonce 2
+    let nonce = f.bridge.get_set_limit_nonce(&admin);
+    assert_eq!(nonce, 2);
+    f.bridge.set_limit(&f.token_addr, &3_000, &nonce);
+    
+    // Final nonce should be 3
+    assert_eq!(f.bridge.get_set_limit_nonce(&admin), 3);
+    assert_eq!(f.bridge.get_limit(), 3_000);
+}
+
+#[test]
+fn set_limit_nonce_validation_before_state_change() {
+    let f = fixture_with_limit(500);
+    let admin = get_admin(&f);
+    
+    let original_limit = f.bridge.get_limit();
+    let original_nonce = f.bridge.get_set_limit_nonce(&admin);
+    
+    // Try with invalid nonce
+    let result = f.bridge.try_set_limit(&f.token_addr, &10_000, &100);
+    assert_eq!(result, Err(Ok(Error::InvalidNonce)));
+    
+    // State should remain unchanged
+    assert_eq!(f.bridge.get_limit(), original_limit);
+    assert_eq!(f.bridge.get_set_limit_nonce(&admin), original_nonce);
 }

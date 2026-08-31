@@ -120,6 +120,34 @@ describe('OfflineStatusBanner - Optimistic UI Updates', () => {
     expect(screen.getByText(/1 message waiting to send/i)).toBeInTheDocument();
   });
 
+  it('should keep banner visible while queued messages remain after reconnect', () => {
+    let isOnline = false;
+    let queuedCount = 0;
+    const resetWasOffline = stubOnlineStatus(() => isOnline, true);
+
+    const listenerRef: { current?: (count: number) => void } = {};
+    mockedSubscribe.mockImplementation((listener) => {
+      listenerRef.current = listener;
+      listener(queuedCount);
+      return () => {};
+    });
+
+    const { rerender } = render(<OfflineStatusBanner />);
+    settleLoadingGate();
+    expect(screen.getByText(/You are offline/i)).toBeInTheDocument();
+
+    isOnline = true;
+    queuedCount = 2;
+    act(() => {
+      listenerRef.current?.(queuedCount);
+    });
+    rerender(<OfflineStatusBanner />);
+
+    expect(screen.getByText(/Reconnecting/i)).toBeInTheDocument();
+    expect(screen.getByText(/2 messages waiting to send/i)).toBeInTheDocument();
+    expect(resetWasOffline).toHaveBeenCalled();
+  });
+
   it('should hide banner after reconnection delay', () => {
     let isOnline = false;
     const resetWasOffline = stubOnlineStatus(() => isOnline, true);

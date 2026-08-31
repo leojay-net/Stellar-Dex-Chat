@@ -21,6 +21,7 @@ export default function OfflineStatusBanner() {
   const [optimisticPendingCount, setOptimisticPendingCount] = useState(0);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const previousOnlineState = useRef<boolean>(true);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -44,7 +45,8 @@ export default function OfflineStatusBanner() {
     // banner mounts only once the connection is already back. Without the
     // `wasOffline` arm the toast is skipped and the latch is never reset, so
     // the hook keeps reporting a reconnect that was never announced.
-    const cameBackOnline = isOnline && (!previousOnlineState.current || wasOffline);
+    const cameBackOnline =
+      isOnline && (!previousOnlineState.current || wasOffline);
 
     // Optimistic UI: Show banner immediately when going offline
     if (!isOnline && previousOnlineState.current) {
@@ -80,16 +82,38 @@ export default function OfflineStatusBanner() {
       // Consume the latch straight away, so the reconnect is announced exactly
       // once rather than on every subsequent render.
       resetWasOffline();
-
-      // Optimistically hide banner after short delay
-      setTimeout(() => {
-        setShowBanner(false);
-        setIsReconnecting(false);
-      }, 500);
     }
 
     previousOnlineState.current = isOnline;
   }, [isOnline, wasOffline, addToast, resetWasOffline]);
+
+  useEffect(() => {
+    if (!isReconnecting) {
+      return;
+    }
+
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+
+    if (optimisticPendingCount > 0) {
+      setShowBanner(true);
+      return;
+    }
+
+    reconnectTimerRef.current = setTimeout(() => {
+      setShowBanner(false);
+      setIsReconnecting(false);
+    }, 500);
+
+    return () => {
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+    };
+  }, [isReconnecting, optimisticPendingCount]);
 
   if (isLoading && isOnline) {
     return (
@@ -113,10 +137,10 @@ export default function OfflineStatusBanner() {
       role="status"
       aria-live="polite"
       aria-atomic="true"
-      aria-label={isReconnecting ? "Reconnecting" : "Offline status"}
+      aria-label={isReconnecting ? 'Reconnecting' : 'Offline status'}
       className={`fixed top-0 left-0 right-0 z-50 border-b-2 shadow-md transition-all duration-300 ${
-        isReconnecting 
-          ? 'bg-[var(--color-success)] border-[color-mix(in_srgb,var(--color-success)_80%,black)]' 
+        isReconnecting
+          ? 'bg-[var(--color-success)] border-[color-mix(in_srgb,var(--color-success)_80%,black)]'
           : 'bg-[var(--color-danger)] border-[color-mix(in_srgb,var(--color-danger)_80%,black)]'
       }`}
     >
@@ -130,14 +154,14 @@ export default function OfflineStatusBanner() {
         </div>
         <div className="flex-1">
           <p className="text-sm font-semibold text-white">
-            {isReconnecting 
-              ? 'Reconnecting...' 
+            {isReconnecting
+              ? 'Reconnecting...'
               : 'You are offline. Messages will be sent when you reconnect.'}
           </p>
           {optimisticPendingCount > 0 && (
             <p className="text-xs text-white/90 mt-0.5">
-              {optimisticPendingCount} message{optimisticPendingCount === 1 ? '' : 's'} waiting to
-              send
+              {optimisticPendingCount} message
+              {optimisticPendingCount === 1 ? '' : 's'} waiting to send
             </p>
           )}
         </div>
