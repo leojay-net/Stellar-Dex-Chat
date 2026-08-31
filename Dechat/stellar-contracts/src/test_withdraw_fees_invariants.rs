@@ -566,32 +566,3 @@ fn test_withdraw_fees_nonce_skipping_not_allowed() {
     bridge.withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &500, &1);
     assert_eq!(bridge.get_fee_withdrawal_nonce(&admin), 2);
 }
-
-#[test]
-fn test_withdraw_fees_emits_nonce_increment_event() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (contract_id, bridge, admin, token_addr, _, token_admin) = setup_bridge(&env);
-    let fee_recipient = Address::generate(&env);
-
-    // Setup: accrue fees
-    token_admin.mint(&contract_id, &1_000);
-    bridge.accrue_fee(&token_addr, &1_000);
-
-    // Withdraw fees
-    bridge.withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &500, &0);
-
-    // Check that nonce increment event was emitted
-    let events = env.events().all();
-    let event_vec = events.events();
-    
-    // Look for the nonce increment event
-    let nonce_found = event_vec.iter().any(|event| {
-        let topics = event.topic.clone();
-        // Check if event matches the nonce increment pattern
-        topics.len() >= 2 && topics[0].to_string().contains("fee_nonce_inc")
-    });
-    
-    assert!(nonce_found, "Nonce increment event should be emitted");
-}

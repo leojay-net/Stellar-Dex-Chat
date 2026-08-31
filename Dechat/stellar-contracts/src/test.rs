@@ -3528,7 +3528,7 @@ fn test_event_snapshot_fees_withdrawn() {
     });
 
     assert_bridge_events_have_version(&env, &contract_id, || {
-        bridge.withdraw_fees(&recipient, &token_addr, &150);
+        bridge.withdraw_fees(&recipient, &token_addr, &150, &0);
     });
 }
 
@@ -4559,7 +4559,7 @@ fn test_execute_upgrade_before_delay_fails_with_upgrade_not_ready() {
     let (_, bridge, _, _, _, _) = setup_bridge(&env, 500);
 
     let proposed_wasm_hash = BytesN::from_array(&env, &[7u8; 32]);
-    bridge.propose_upgrade(&proposed_wasm_hash);
+    bridge.propose_upgrade(&proposed_wasm_hash, &1_000, &1);
 
     let result = bridge.try_execute_upgrade();
     assert_eq!(result, Err(Ok(Error::UpgradeNotReady)));
@@ -4573,7 +4573,7 @@ fn test_cancel_upgrade_removes_pending_proposal() {
     let (_, bridge, _, _, _, _) = setup_bridge(&env, 500);
 
     let proposed_wasm_hash = BytesN::from_array(&env, &[9u8; 32]);
-    bridge.propose_upgrade(&proposed_wasm_hash);
+    bridge.propose_upgrade(&proposed_wasm_hash, &1_000, &1);
     assert!(bridge.get_upgrade_proposal().is_some());
 
     bridge.cancel_upgrade();
@@ -4612,7 +4612,7 @@ fn test_execute_upgrade_after_delay_succeeds() {
     let wasm_hash = env
         .deployer()
         .upload_contract_wasm(Bytes::from_slice(&env, fixture_wasm.as_slice()));
-    bridge.propose_upgrade(&wasm_hash);
+    bridge.propose_upgrade(&wasm_hash, &1000, &1);
 
     let start = env.ledger().sequence();
     env.ledger().with_mut(|li| {
@@ -5038,7 +5038,7 @@ fn test_withdraw_fees_edge_case_emits_event() {
     bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
     bridge.accrue_fee(&token_addr, &100);
 
-    bridge.withdraw_fees(&recipient, &token_addr, &50);
+    bridge.withdraw_fees(&recipient, &token_addr, &50, &0);
 
     let events = env.events().all().filter_by_contract(&contract_id);
     let raw = events.events();
@@ -5071,7 +5071,7 @@ fn test_withdraw_fees_event_schema_fields_are_correct() {
 
     // Withdraw 150 of 400 accrued; remaining_fees should become 250.
     assert_bridge_events_have_version(&env, &contract_id, || {
-        bridge.withdraw_fees(&recipient, &token_addr, &150);
+        bridge.withdraw_fees(&recipient, &token_addr, &150, &0);
     });
 
     // ── Post-condition checks ─────────────────────────────────────────────
