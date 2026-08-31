@@ -233,8 +233,6 @@ export default function SplitViewComparison({
     setRightSession,
     swapSessions,
     selectMessage,
-    leftSession,
-    rightSession,
   } = splitView;
 
   const { isOnline, wasOffline, resetWasOffline } = useOnlineStatus();
