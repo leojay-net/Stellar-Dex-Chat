@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(deprecated)]
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, token, Address, Bytes, Env, Symbol, Vec,
 };
@@ -121,16 +122,16 @@ pub enum DataKey {
     /// Legacy key — superseded by `TokenRegistry`; kept for compatibility.
     TotalDeposited,
     /// Cumulative withdrawn amount across all successful withdrawal operations.
-    /// 
+    ///
     /// This counter enables off-chain reconciliation without replaying events:
     /// `expected_balance = total_deposited - total_withdrawn`
-    /// 
+    ///
     /// Incremented after every successful token transfer in:
     /// - `withdraw` (direct admin withdrawals)
     /// - `execute_withdrawal` (queued withdrawal execution)
     /// - `refund_deposit` (deposit refunds)
     /// - `emergency_drain` (emergency fund recovery)
-    /// 
+    ///
     /// Uses checked arithmetic to prevent overflow on extreme values.
     TotalWithdrawn,
     /// Cumulative amount deposited by a specific user address.
@@ -167,10 +168,12 @@ pub enum DataKey {
     QueuedAdminAction(u64),
     /// Emergency recovery address
     EmergencyRecoveryAddress,
+    /// Cumulative fees accrued from withdrawals and operations.
+    ///
+    /// Tracks total fees collected by the contract. Fees can be withdrawn
+    /// via `withdraw_fees_batch` by the admin.
+    AccruedFees,
 }
-
-/// Approximate number of ledgers in a 24-hour window (5-second close time).
-const WINDOW_LEDGERS: u32 = 17_280;
 
 /// Minimum timelock delay for admin actions (48 hours in ledgers).
 const MIN_TIMELOCK_DELAY: u32 = 34_560;
@@ -349,7 +352,9 @@ impl FiatBridge {
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Token, &token);
-        env.storage().instance().set(&DataKey::TotalWithdrawn, &0_i128);
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalWithdrawn, &0_i128);
         let config = TokenConfig {
             limit,
             total_deposited: 0,
@@ -534,8 +539,10 @@ impl FiatBridge {
         token_client.transfer(&contract_addr, &to, &amount);
         let total_withdrawn = Self::increment_total_withdrawn(&env, amount)?;
 
-        env.events()
-            .publish((Symbol::new(&env, "withdraw"), to), (amount, total_withdrawn));
+        env.events().publish(
+            (Symbol::new(&env, "withdraw"), to),
+            (amount, total_withdrawn),
+        );
 
         Ok(())
     }
@@ -1386,7 +1393,127 @@ impl FiatBridge {
             .instance()
             .set(&DataKey::LastAdminActionLedger, &env.ledger().sequence());
     }
+
+    /// Get the current accrued fees balance.
+    ///
+    /// Returns the total accumulated fees from contract operations.
+    /// Only the admin can withdraw fees via `withdraw_fees_batch`.
+    pub fn get_accrued_fees(env: Env) -> Result<i128, Error> {
+        let _admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+
+        Ok(env
+            .storage()
+            .instance()
+            .get(&DataKey::AccruedFees)
+            .unwrap_or(0))
+    }
+
+    /// Withdraw accrued fees to a batch of recipients. Admin only.
+    ///
+    /// Distributes accrued fees to the specified recipients. All recipients receive
+    /// the same amount. Uses the default (init) token for all transfers.
+    ///
+    /// # Arguments
+    /// * `recipients` - Vector of addresses to receive fee distributions
+    /// * `amount_per_recipient` - Amount each recipient will receive
+    ///
+    /// # Errors
+    /// - [`Error::NotInitialized`] if `init` has not been called
+    /// - [`Error::Unauthorized`] if caller is not the admin
+    /// - [`Error::ZeroAmount`] if `amount_per_recipient` is zero or negative
+    /// - [`Error::InsufficientFunds`] if accrued fees < (recipients.len() * amount_per_recipient)
+    /// - [`Error::InvalidRecipient`] if any recipient is the contract itself
+    /// - [`Error::ArithmeticOverflow`] if total withdrawal amount overflows
+    pub fn withdraw_fees_batch(
+        env: Env,
+        recipients: Vec<Address>,
+        amount_per_recipient: i128,
+    ) -> Result<(), Error> {
+        env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
+
+        // ── Admin authorization ──────────────────────────────────
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+
+        // ── Input validation ──────────────────────────────────────
+        if amount_per_recipient <= 0 {
+            return Err(Error::ZeroAmount);
+        }
+
+        let contract_addr = env.current_contract_address();
+        for recipient in recipients.iter() {
+            if recipient == contract_addr {
+                return Err(Error::InvalidRecipient);
+            }
+        }
+
+        // ── Calculate total withdrawal ────────────────────────────
+        let num_recipients = recipients.len() as i128;
+        let total_withdrawal = num_recipients
+            .checked_mul(amount_per_recipient)
+            .ok_or(Error::ArithmeticOverflow)?;
+
+        // ── Check accrued fees ────────────────────────────────────
+        let accrued_fees: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::AccruedFees)
+            .unwrap_or(0);
+
+        if total_withdrawal > accrued_fees {
+            return Err(Error::InsufficientFunds);
+        }
+
+        // ── Get token and verify balance ──────────────────────────
+        let token_addr: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Token)
+            .ok_or(Error::NotInitialized)?;
+
+        let token_client = token::Client::new(&env, &token_addr);
+        let contract_balance = token_client.balance(&contract_addr);
+
+        if total_withdrawal > contract_balance {
+            return Err(Error::InsufficientFunds);
+        }
+
+        // ── Distribute fees ───────────────────────────────────────
+        for recipient in recipients.iter() {
+            token_client.transfer(&contract_addr, recipient, &amount_per_recipient);
+        }
+
+        // ── Update storage ────────────────────────────────────────
+        let new_accrued_fees = accrued_fees
+            .checked_sub(total_withdrawal)
+            .ok_or(Error::ArithmeticOverflow)?;
+        env.storage()
+            .instance()
+            .set(&DataKey::AccruedFees, &new_accrued_fees);
+
+        // ── Events ────────────────────────────────────────────────
+        env.events().publish(
+            (Symbol::new(&env, "fees_withdrawn"),),
+            (recipients.len(), amount_per_recipient, new_accrued_fees),
+        );
+
+        Ok(())
+    }
 }
 
 #[cfg(any(test, feature = "testutils"))]
 mod test;
+
+#[cfg(any(test, feature = "testutils"))]
+mod test_get_accrued_fees_invariants;
+
+#[cfg(any(test, feature = "testutils"))]
+mod test_withdraw_fees_batch_invariants;
