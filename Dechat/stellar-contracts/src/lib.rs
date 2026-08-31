@@ -195,6 +195,17 @@ pub struct UpgradeProposal {
     pub executable_after: u32,
 }
 
+/// Auditable timing metadata for an upgrade proposal.
+/// Stored separately so pre-existing `UpgradeProposal` values remain decodable.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UpgradeProposalTiming {
+    pub wasm_hash: BytesN<32>,
+    pub proposed_at: u32,
+    pub delay: u32,
+    pub executable_after: u32,
+}
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UserDailyWithdrawal {
@@ -766,6 +777,7 @@ pub enum DataKey {
     // ── Issue #107: governed upgrade mechanism ───────────────────────────
     UpgradeProposal,
     UpgradeDelay,
+    UpgradeProposalTiming,
     // ── Issue #100: M-of-N multi-signature admin control ─────────────────
     Signers,
     Threshold,
@@ -1035,6 +1047,9 @@ impl FiatBridge {
         Self::validate_memo_hash(&env, &memo_hash)?;
         from.require_auth();
         Self::require_not_paused(&env)?;
+        // Reject a tripped breaker before any quota accounting or token call.
+        // The rolling-volume helper below still handles lazy auto-reset.
+        Self::require_circuit_breaker_clear(&env)?;
 
         if amount <= 0 {
             return Err(Error::ZeroAmount);
@@ -5342,12 +5357,22 @@ impl FiatBridge {
             .get(&DataKey::UpgradeDelay)
             .unwrap_or(MIN_UPGRADE_DELAY);
 
+        let proposed_at = env.ledger().sequence();
         let proposal = UpgradeProposal {
             wasm_hash: new_wasm_hash.clone(),
-            executable_after: env.ledger().sequence().saturating_add(delay),
+            executable_after: proposed_at.saturating_add(delay),
         };
 
         env.storage().instance().set(&DataKey::UpgradeProposal, &proposal);
+        env.storage().instance().set(
+            &DataKey::UpgradeProposalTiming,
+            &UpgradeProposalTiming {
+                wasm_hash: new_wasm_hash.clone(),
+                proposed_at,
+                delay,
+                executable_after: proposal.executable_after,
+            },
+        );
         env.events().publish(
             (EVENT_VERSION, Symbol::new(&env, "upg_prop")),
             (new_wasm_hash, proposal.executable_after),
@@ -5363,6 +5388,18 @@ impl FiatBridge {
             .get(&DataKey::UpgradeProposal)
             .ok_or(Error::UpgradeProposalMissing)?;
 
+        if let Some(timing) = env.storage().instance()
+            .get::<_, UpgradeProposalTiming>(&DataKey::UpgradeProposalTiming)
+        {
+            // A timing record accompanies all new proposals. Do not execute a
+            // proposal if its immutable deadline no longer agrees with it.
+            if timing.wasm_hash != proposal.wasm_hash
+                || timing.executable_after != proposal.executable_after
+            {
+                return Err(Error::InternalError);
+            }
+        }
+
         if env.ledger().sequence() < proposal.executable_after {
             return Err(Error::UpgradeNotReady);
         }
@@ -5370,6 +5407,7 @@ impl FiatBridge {
         env.deployer()
             .update_current_contract_wasm(proposal.wasm_hash.clone());
         env.storage().instance().remove(&DataKey::UpgradeProposal);
+        env.storage().instance().remove(&DataKey::UpgradeProposalTiming);
         env.events()
             .publish((EVENT_VERSION, Symbol::new(&env, "upg_exec")), proposal.wasm_hash);
         Ok(())
@@ -5411,6 +5449,7 @@ impl FiatBridge {
             .ok_or(Error::UpgradeProposalMissing)?;
 
         env.storage().instance().remove(&DataKey::UpgradeProposal);
+        env.storage().instance().remove(&DataKey::UpgradeProposalTiming);
         UpgradeCancelledEvent {
             version: EVENT_VERSION,
             admin: admin.clone(),
@@ -5423,6 +5462,38 @@ impl FiatBridge {
 
     pub fn get_upgrade_proposal(env: Env) -> Option<UpgradeProposal> {
         env.storage().instance().get(&DataKey::UpgradeProposal)
+    }
+
+    /// Return the ledger and delay recorded for the pending upgrade.
+    pub fn get_upgrade_proposal_timing(env: Env) -> Option<UpgradeProposalTiming> {
+        env.storage().instance().get(&DataKey::UpgradeProposalTiming)
+    }
+
+    /// Add timing metadata to a proposal made by earlier contract versions.
+    /// Its original execution deadline remains unchanged.
+    pub fn migrate_upgrade_proposal_timing(env: Env) -> Result<(), Error> {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        if env.storage().instance().has(&DataKey::UpgradeProposalTiming) {
+            return Ok(());
+        }
+        if let Some(proposal) = env.storage().instance()
+            .get::<_, UpgradeProposal>(&DataKey::UpgradeProposal)
+        {
+            let delay = env.storage().instance().get(&DataKey::UpgradeDelay)
+                .unwrap_or(MIN_UPGRADE_DELAY);
+            env.storage().instance().set(
+                &DataKey::UpgradeProposalTiming,
+                &UpgradeProposalTiming {
+                    wasm_hash: proposal.wasm_hash,
+                    proposed_at: proposal.executable_after.saturating_sub(delay),
+                    delay,
+                    executable_after: proposal.executable_after,
+                },
+            );
+        }
+        Ok(())
     }
 
     // ── Issue #100: Multi-sig Logic ──────────────────────────────────────────
@@ -5803,6 +5874,9 @@ mod test_revoke_multisig_approval_invariants;
 mod test_get_multisig_proposal_invariants;
 
 #[cfg(test)]
+mod test_propose_multisig_action_invariants;
+
+#[cfg(test)]
 mod test_propose_upgrade_invariants;
 #[cfg(test)]
 mod test_reclaim_expired_withdrawal_invariants;
@@ -5824,6 +5898,7 @@ mod test_set_circuit_breaker_threshold_invariants;
 mod test_set_circuit_breaker_reset_window_invariants;
 
 #[cfg(test)]
+mod test_withdraw_circuit_breaker;
 mod test_get_next_priority_withdrawal_invariants;
 
 #[cfg(test)]

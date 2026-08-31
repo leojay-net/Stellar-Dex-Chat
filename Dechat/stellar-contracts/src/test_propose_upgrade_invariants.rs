@@ -97,6 +97,9 @@ fn proposal_records_hash_verbatim_and_default_delay() {
     let p = bridge
         .get_upgrade_proposal()
         .expect("a proposal must be stored");
+    let timing = bridge
+        .get_upgrade_proposal_timing()
+        .expect("timing metadata must be stored");
 
     assert_eq!(p.wasm_hash, hash, "the WASM hash must round-trip verbatim");
     assert_eq!(
@@ -109,6 +112,10 @@ fn proposal_records_hash_verbatim_and_default_delay() {
         MIN_UPGRADE_DELAY,
         "proposing must not alter the configured delay"
     );
+    assert_eq!(timing.wasm_hash, hash);
+    assert_eq!(timing.proposed_at, seq_before);
+    assert_eq!(timing.delay, MIN_UPGRADE_DELAY);
+    assert_eq!(timing.executable_after, p.executable_after);
 }
 
 #[test]
