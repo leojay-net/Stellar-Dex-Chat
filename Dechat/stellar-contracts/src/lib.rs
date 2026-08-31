@@ -16,6 +16,19 @@ const WINDOW_LEDGERS: u32 = 17_280; // ~24 hours
 const CIRCUIT_BREAKER_RESET_LEDGERS: u32 = 34_560; // ~48 hours (2 × WINDOW_LEDGERS)
 const WITHDRAWAL_EXPIRY_WINDOW_LEDGERS: u32 = 17_280; // ~24 hours — reserved for future withdrawal expiry feature
 const MIN_TIMELOCK_DELAY: u32 = 34_560; // 48 hours
+/// Default inactivity threshold for operators in ledger units.
+/// 
+/// Operators must send a heartbeat within this window to remain active.
+/// If an operator fails to heartbeat within this threshold, they may be
+/// automatically removed from the operator list to ensure operational security.
+/// 
+/// Value: 1,555,200 ledgers ≈ 3 months (assuming ~5 second ledger close time)
+/// 
+/// # Security Implications
+/// - Prevents stale operators from maintaining control
+/// - Ensures active participation from authorized operators
+/// - Allows automatic recovery from compromised operator keys
+/// - Threshold should be balanced between security and operational flexibility
 const DEFAULT_INACTIVITY_THRESHOLD: u32 = 1_555_200; // ~3 months
 const MIN_UPGRADE_DELAY: u32 = 1_000;
 pub const EVENT_VERSION: u32 = 1;
@@ -2420,6 +2433,27 @@ impl FiatBridge {
         Ok(())
     }
 
+    /// Prunes operators who have exceeded the inactivity threshold.
+    /// 
+    /// This function iterates through all operators and deactivates any that
+    /// have not sent a heartbeat within the configured inactivity threshold.
+    /// This is a critical security mechanism to ensure that compromised or
+    /// abandoned operator keys cannot maintain control over the contract.
+    /// 
+    /// # Inactivity Threshold Logic
+    /// - Each operator must periodically call `heartbeat()` to prove liveness
+    /// - The threshold is configurable via `InactivityThreshold` storage key
+    /// - Defaults to `DEFAULT_INACTIVITY_THRESHOLD` (~3 months)
+    /// - Operators without any heartbeat record are considered inactive
+    /// 
+    /// # Security Properties
+    /// - Prevents long-term operator key compromise from affecting operations
+    /// - Ensures operators remain actively engaged with protocol operations
+    /// - Allows automatic recovery without manual intervention
+    /// - Emits `OperatorPrunedEvent` for audit trail
+    /// 
+    /// # Parameters
+    /// - `env`: The contract environment
     fn prune_inactive_operators_internal(env: &Env) {
         let threshold: u32 = env
             .storage()
@@ -2647,7 +2681,7 @@ impl FiatBridge {
             .unwrap_or(0)
     }
 
-    pub fn withdraw_fees(env: Env, to: Address, token: Address, amount: i128) -> Result<(), Error> {
+    pub fn withdraw_fees(env: Env, to: Address, token: Address, amount: i128, nonce: u64) -> Result<(), Error> {
         // ── Issue #1041: emit telemetry event
         Self::emit_telemetry(&env, Symbol::new(&env, "withdraw_fees"));
         
@@ -2660,6 +2694,22 @@ impl FiatBridge {
 
         if amount <= 0 {
             return Err(Error::ZeroAmount);
+        }
+
+        // ── Issue #829: Validate nonce for replay protection
+        let current_nonce: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::FeeWithdrawalNonce)
+            .unwrap_or(0);
+        
+        // Nonce must be exactly current_nonce (monotonically increasing)
+        if nonce != current_nonce {
+            if nonce < current_nonce {
+                return Err(Error::StaleNonce);
+            } else {
+                return Err(Error::InvalidNonce);
+            }
         }
 
         let key = DataKey::FeeVault(token.clone());
@@ -2700,8 +2750,14 @@ impl FiatBridge {
 
         env.storage().persistent().set(&key, &(current - amount));
         // Increment fee withdrawal nonce for replay protection tracking
-        let nonce: u64 = env.storage().instance().get(&DataKey::FeeWithdrawalNonce).unwrap_or(0);
-        env.storage().instance().set(&DataKey::FeeWithdrawalNonce, &(nonce + 1));
+        env.storage().instance().set(&DataKey::FeeWithdrawalNonce, &(current_nonce + 1));
+        
+        // ── Issue #829: Emit nonce increment event for replay protection
+        env.events().publish(
+            (Symbol::new(&env, "fee_nonce_inc"), admin.clone()),
+            current_nonce + 1,
+        );
+        
         FeeWithdrawnEvent { version: EVENT_VERSION, to: recipient, amount }.publish(&env);
         Ok(())
     }
@@ -4335,7 +4391,7 @@ impl FiatBridge {
     }
 
     #[allow(deprecated)]
-    pub fn propose_upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
+    pub fn propose_upgrade(env: Env, new_wasm_hash: BytesN<32>, delay: u32, _new_version: u32) -> Result<(), Error> {
         let admin: Address = env
             .storage()
             .instance()
@@ -4343,15 +4399,23 @@ impl FiatBridge {
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
 
-        let delay: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::UpgradeDelay)
-            .unwrap_or(MIN_UPGRADE_DELAY);
+        // Validate delay is not zero to prevent immediate upgrade
+        if delay == 0 {
+            return Err(Error::UpgradeDelayTooShort);
+        }
+
+        // Validate delay meets minimum threshold to enforce timelock
+        if delay < MIN_UPGRADE_DELAY {
+            return Err(Error::UpgradeDelayTooShort);
+        }
+
+        // Prevent overflow when calculating executable_after
+        let current_ledger = env.ledger().sequence();
+        let executable_after = current_ledger.checked_add(delay).ok_or(Error::Overflow)?;
 
         let proposal = UpgradeProposal {
             wasm_hash: new_wasm_hash.clone(),
-            executable_after: env.ledger().sequence().saturating_add(delay),
+            executable_after,
         };
 
         env.storage().instance().set(&DataKey::UpgradeProposal, &proposal);
