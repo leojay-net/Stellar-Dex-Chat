@@ -45,9 +45,15 @@ function ThreadPane({
   const [copiedMessageId, setCopiedMessageId] = React.useState<string | null>(
     null,
   );
+  const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   React.useEffect(() => {
     setMounted(true);
+    return () => {
+      if (copyResetTimerRef.current !== null) {
+        clearTimeout(copyResetTimerRef.current);
+      }
+    };
   }, []);
 
   const scrollToMessage = (id: string) => {
@@ -74,13 +80,15 @@ function ThreadPane({
     e.stopPropagation();
     // Optimistic UI update: immediately show checkmark
     setCopiedMessageId(messageId);
-    try {
-      await onCopyMessage(content);
-      setTimeout(() => setCopiedMessageId(null), 2000);
-    } catch {
-      // Rollback optimistic copy indicator on failure
-      setCopiedMessageId(null);
+    // A previous copy's timeout must not clear feedback for a newer copy.
+    if (copyResetTimerRef.current !== null) {
+      clearTimeout(copyResetTimerRef.current);
     }
+    await onCopyMessage(content);
+    copyResetTimerRef.current = setTimeout(() => {
+      setCopiedMessageId(null);
+      copyResetTimerRef.current = null;
+    }, 2000);
   };
 
   const formatTimestamp = (timestamp: number | Date) => {
