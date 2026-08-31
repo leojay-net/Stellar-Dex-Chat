@@ -406,6 +406,14 @@ pub struct SetMinDepositEvent {
 
 #[contractevent]
 #[derive(Clone, Debug)]
+pub struct SetLimitEvent {
+    pub version: u32,
+    pub token: Address,
+    pub limit: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
 pub struct SlippageEvent {
     pub version: u32,
     pub slippage_bps: u32,
@@ -830,6 +838,8 @@ pub enum DataKey {
     WithdrawalExecutionNonce(Address),
     InitNonce(Address),
     UpgradeCancellationNonce(Address),
+    /// Per-admin replay-protection nonce for `set_limit`.
+    SetLimitNonce(Address),
 }
 
 const ORACLE_PRICE_DECIMALS: i128 = 10_000_000;
@@ -1018,6 +1028,13 @@ impl FiatBridge {
         env.storage()
             .instance()
             .get(&DataKey::InitNonce(admin))
+            .unwrap_or(0)
+    }
+
+    pub fn get_set_limit_nonce(env: Env, admin: Address) -> u64 {
+        env.storage()
+            .instance()
+            .get(&DataKey::SetLimitNonce(admin))
             .unwrap_or(0)
     }
 
@@ -2035,13 +2052,42 @@ impl FiatBridge {
             .set(&DataKey::WithdrawQueueHead, &Option::<u64>::None);
     }
 
-    pub fn set_limit(env: Env, token: Address, limit: i128) -> Result<(), Error> {
+    /// Sets the per-transaction limit for a specific token with replay protection.
+    ///
+    /// # Overflow Prevention & Safety Invariants
+    /// - **Nonce Validation**: Validates and increments the admin's `SetLimitNonce` using checked arithmetic
+    ///   to prevent nonce overflow (though practically impossible at u64).
+    /// - **Max Cap Guard**: Validates `limit <= max_cap` where `max_cap` defaults to `i128::MAX` but can be
+    ///   configured to prevent unbounded limit values.
+    /// - **State Validation Order**: Nonce validation occurs before any state changes, ensuring failed
+    ///   nonce checks do not modify the token limit.
+    /// - **Zero Amount Guard**: Rejects `limit <= 0` via `ZeroAmount` error to prevent zero/negative limits.
+    ///
+    /// # Arguments
+    /// * `env` – The Soroban host environment.
+    /// * `token` – The token address for which the limit is being set.
+    /// * `limit` – The new per-transaction limit in stroops (must be $> 0$).
+    /// * `nonce` – Monotonic replay protection nonce for the admin (from `get_set_limit_nonce`).
+    ///
+    /// # Errors
+    /// * [`Error::NotInitialized`] – If the contract has not been initialized.
+    /// * [`Error::StaleNonce`] – If the provided nonce is less than the expected nonce.
+    /// * [`Error::InvalidNonce`] – If the provided nonce is greater than the expected nonce.
+    /// * [`Error::ExceedsLimitMaxCap`] – If `limit > configured_max_cap`.
+    /// * [`Error::CircuitBreakerActive`] – If the circuit breaker is currently tripped.
+    /// * [`Error::TokenNotWhitelisted`] – If the token is not registered in the token registry.
+    /// * [`Error::ZeroAmount`] – If `limit <= 0`.
+    pub fn set_limit(env: Env, token: Address, limit: i128, nonce: u64) -> Result<(), Error> {
         let admin: Address = env
             .storage()
             .instance()
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+        
+        // Validate and increment nonce for replay protection
+        Self::validate_and_increment_set_limit_nonce(&env, &admin, nonce)?;
+        
         // Check against configured max cap
         let max_cap: i128 = env
             .storage()
@@ -2061,7 +2107,15 @@ impl FiatBridge {
         config.limit = limit;
         env.storage()
             .persistent()
-            .set(&DataKey::TokenRegistry(token), &config);
+            .set(&DataKey::TokenRegistry(token.clone()), &config);
+        
+        SetLimitEvent {
+            version: EVENT_VERSION,
+            token: token.clone(),
+            limit,
+        }
+        .publish(&env);
+        
         Ok(())
     }
 
@@ -3138,6 +3192,33 @@ impl FiatBridge {
         Ok(())
     }
 
+    fn validate_and_increment_set_limit_nonce(
+        env: &Env,
+        admin: &Address,
+        provided_nonce: u64,
+    ) -> Result<(), Error> {
+        let current_nonce: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::SetLimitNonce(admin.clone()))
+            .unwrap_or(0);
+
+        if provided_nonce != current_nonce {
+            if provided_nonce < current_nonce {
+                return Err(Error::StaleNonce);
+            } else {
+                return Err(Error::InvalidNonce);
+            }
+        }
+
+        let next_nonce = current_nonce.checked_add(1).ok_or(Error::Overflow)?;
+        env.storage()
+            .instance()
+            .set(&DataKey::SetLimitNonce(admin.clone()), &next_nonce);
+
+        Ok(())
+    }
+
     fn validate_and_increment_init_nonce(
         env: &Env,
         admin: &Address,
@@ -3416,6 +3497,25 @@ impl FiatBridge {
     }
 
     // ── Fee Vault ─────────────────────────────────────────────────────────
+    /// Records that protocol fees have been received for a token.
+    ///
+    /// # Overflow Prevention & Safety Invariants
+    /// - **Amount Validation**: Ensures `amount > 0` to prevent zero/negative fee accrual.
+    /// - **Bounded Growth**: Fee vault balance is bounded by the contract's actual token holdings,
+    ///   preventing unbounded ledger growth that could overflow.
+    /// - **Unchecked Addition**: Uses unchecked addition since `amount` is validated positive and
+    ///   the vault balance is bounded by contract token balance (reconciliation occurs before withdrawals).
+    /// - **Reconciliation Safety**: Before any withdrawal, `reconcile_fee_vault` corrects the ledger
+    ///   if it exceeds the actual contract balance, preventing overflow in subsequent operations.
+    ///
+    /// # Arguments
+    /// * `env` – The Soroban host environment.
+    /// * `token` – The token address for which fees are being accrued.
+    /// * `amount` – The amount of fees received in stroops (must be $> 0$).
+    ///
+    /// # Errors
+    /// * [`Error::NotInitialized`] – If the contract has not been initialized.
+    /// * [`Error::ZeroAmount`] – If `amount <= 0`.
     pub fn accrue_fee(env: Env, token: Address, amount: i128) -> Result<(), Error> {
         let admin: Address = env
             .storage()
@@ -3488,10 +3588,14 @@ impl FiatBridge {
     /// Withdraws accrued protocol fees for a specific token to the fee recipient.
     ///
     /// # Overflow Prevention & Safety Invariants
-    /// - **Zero Amount Guard**: Rejects `amount <= 0`.
-    /// - **Vault Balance Guard**: Validates `amount <= current_accrued_fees`, ensuring `current - amount` cannot underflow.
-    /// - **Guarded State Update**: Updates `FeeVault` with exact guarded subtraction `current - amount`.
-    /// - **Sequential Replay Nonce**: Increments the caller's `FeeWithdrawalNonceByCaller` entry with `nonce + 1`.
+    /// - **Zero Amount Guard**: Rejects `amount <= 0` to prevent zero/negative withdrawals.
+    /// - **Vault Balance Guard**: Validates `amount <= current_accrued_fees` before state changes,
+    ///   ensuring `current - amount` cannot underflow.
+    /// - **Reconciliation Safety**: Before transfer, reconciles vault ledger with actual contract balance.
+    ///   If ledger exceeds contract balance, emits `FeeVaultReconciledEvent` and caps withdrawal to available funds.
+    /// - **Guarded Subtraction**: Updates `FeeVault` with guarded subtraction `current - amount` after validation.
+    /// - **Nonce Increment**: Increments caller's `FeeWithdrawalNonceByCaller` with checked arithmetic
+    ///   to prevent nonce overflow (though practically impossible at u64).
     ///
     /// # Arguments
     /// * `env` – The Soroban host environment.
@@ -3500,9 +3604,11 @@ impl FiatBridge {
     /// * `amount` – Fee amount in stroops to withdraw.
     ///
     /// # Errors
+    /// * [`Error::NotInitialized`] – If the contract has not been initialized.
     /// * [`Error::ZeroAmount`] – If `amount <= 0`.
     /// * [`Error::NoFeesToWithdraw`] – If no fees are accrued in the vault.
     /// * [`Error::FeeWithdrawalExceedsBalance`] – If `amount > current_accrued_fees`.
+    /// * [`Error::InsufficientFunds`] – If contract holds fewer tokens than `amount` (after reconciliation).
     pub fn withdraw_fees(env: Env, to: Address, token: Address, amount: i128) -> Result<(), Error> {
         // ── Issue #1041: emit telemetry event
         Self::emit_telemetry(&env, Symbol::new(&env, "withdraw_fees"));
