@@ -172,7 +172,7 @@ describe('useClipboardCopy', () => {
 
   it('does nothing when window is undefined (SSR)', async () => {
     const originalWindow = global.window;
-    // @ts-ignore - simulating SSR environment
+    // @ts-expect-error - simulating SSR environment
     delete global.window;
 
     const { result } = renderHook(() => useClipboardCopy());
