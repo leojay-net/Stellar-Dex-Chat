@@ -28,7 +28,9 @@ vi.mock('@/components/AdminGuard', () => ({
 }));
 
 const auditTableMock = vi.hoisted(() =>
-  vi.fn(() => <div data-testid="audit-table">Audit Table</div>),
+  vi.fn<(...args: unknown[]) => React.ReactElement>(() => (
+    <div data-testid="audit-table">Audit Table</div>
+  )),
 );
 
 vi.mock('@/components/AuditTable', () => ({

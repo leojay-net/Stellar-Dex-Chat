@@ -1,8 +1,9 @@
+import type { ReactNode } from 'react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
-function ThrowingChatMessages() {
+function ThrowingChatMessages(): ReactNode {
   throw new Error('ChatMessages crashed');
 }
 

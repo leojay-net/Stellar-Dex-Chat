@@ -1,8 +1,9 @@
+import type { ReactNode } from 'react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
-function ThrowingPriceTicker() {
+function ThrowingPriceTicker(): ReactNode {
   throw new Error('PriceTicker crashed');
 }
 

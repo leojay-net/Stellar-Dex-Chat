@@ -295,7 +295,7 @@ describe('useIdempotentAction', () => {
     const { result } = renderHook(() =>
       useIdempotentAction({ cooldownMs: 500 }),
     );
-    const mockAction = vi.fn().mockResolvedValue('success');
+    const mockAction = vi.fn<(idempotencyKey: string) => Promise<string>>().mockResolvedValue('success');
 
     let results!: Array<string | null>;
     await act(async () => {

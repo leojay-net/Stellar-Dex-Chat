@@ -89,7 +89,9 @@ describe('BankDetailsModal - Zod Schema (unit)', () => {
 describe('BankDetailsModal - Zod Validation (integration)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(global, 'fetch').mockImplementation(async (url: string) => {
+    vi.spyOn(global, 'fetch').mockImplementation(async (input: string | URL | Request) => {
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       if (url.includes('/api/banks')) {
         return { ok: true, json: async () => ({ success: true, data: [{ id: 1, name: 'Test Bank', code: '001', active: true }] }) } as Response;
       }
@@ -122,7 +124,9 @@ describe('BankDetailsModal - Zod Validation (integration)', () => {
   });
 
   it('clears error when a valid 10-digit number is entered', async () => {
-    vi.spyOn(global, 'fetch').mockImplementation(async (url: string) => {
+    vi.spyOn(global, 'fetch').mockImplementation(async (input: string | URL | Request) => {
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       if (url.includes('/api/banks')) {
         return { ok: true, json: async () => ({ success: true, data: [{ id: 1, name: 'Test Bank', code: '001', active: true }] }) } as Response;
       }
@@ -157,7 +161,9 @@ describe('BankDetailsModal - Zod Validation (integration)', () => {
 describe('BankDetailsModal - Zod saveCustomName inline error', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(global, 'fetch').mockImplementation(async (url: string) => {
+    vi.spyOn(global, 'fetch').mockImplementation(async (input: string | URL | Request) => {
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       if (url.includes('/api/banks')) {
         return { ok: true, json: async () => ({ success: true, data: [{ id: 1, name: 'Test Bank', code: '001', active: true }] }) } as Response;
       }

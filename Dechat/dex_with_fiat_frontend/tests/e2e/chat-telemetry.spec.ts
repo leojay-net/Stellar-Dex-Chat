@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import type { TargetAndTransition } from 'framer-motion';
 
 /**
  * E2E tests for chatTelemetry.ts
@@ -310,7 +311,12 @@ test.describe('chatTelemetry E2E Coverage', () => {
     test('returns reduced motion variants when requested', async ({ page }) => {
       const variants = await page.evaluate(async () => {
         const { getTelemetryMotionVariants } = await import('@/lib/chatTelemetry');
-        return getTelemetryMotionVariants({ reducedMotion: true });
+        // `Variants` is an index signature of the `Variant` union, which hides the
+        // concrete animation props; narrow to the concrete variant object type.
+        return getTelemetryMotionVariants({ reducedMotion: true }) as Record<
+          string,
+          TargetAndTransition
+        >;
       });
 
       expect(variants.hidden.opacity).toBe(0);

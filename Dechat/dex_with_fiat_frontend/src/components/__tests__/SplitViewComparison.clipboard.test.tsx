@@ -51,7 +51,7 @@ describe('SplitViewComparison - Clipboard Copy', () => {
         },
       ],
       createdAt: new Date('2024-01-01'),
-      updatedAt: new Date('2024-01-01'),
+      lastUpdated: new Date('2024-01-01'),
     },
   ];
 

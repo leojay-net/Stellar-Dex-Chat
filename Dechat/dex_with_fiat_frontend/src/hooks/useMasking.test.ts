@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useMasking } from './useMasking';
+import { useMasking, type UseMaskingOptions } from './useMasking';
 import { SensitiveTermsManager } from '@/lib/sensitiveTerms';
 import * as textMaskingLib from '@/lib/textMasking';
 
@@ -97,7 +97,7 @@ describe('useMasking', () => {
       renderHook(() =>
         useMasking(text, {
           enabled: true,
-          customTerms: customManager,
+          customTerms: customManager as unknown as typeof SensitiveTermsManager,
         }),
       );
 
@@ -182,8 +182,11 @@ describe('useMasking', () => {
     });
 
     it('should remask when style changes', () => {
-      const { rerender } = renderHook(
-        ({ text, options }) =>
+      const { rerender } = renderHook<
+        string,
+        { text: string; options: UseMaskingOptions }
+      >(
+        ({ text, options }: { text: string; options: UseMaskingOptions }) =>
           useMasking(text, options),
         {
           initialProps: {
@@ -223,7 +226,7 @@ describe('useMasking', () => {
         {
           initialProps: {
             text: 'Hello',
-            options: { enabled: true, customTerms: manager1 },
+            options: { enabled: true, customTerms: manager1 as unknown as typeof SensitiveTermsManager },
           },
         },
       );
@@ -234,7 +237,7 @@ describe('useMasking', () => {
       // Change manager
       rerender({
         text: 'Hello',
-        options: { enabled: true, customTerms: manager2 },
+        options: { enabled: true, customTerms: manager2 as unknown as typeof SensitiveTermsManager },
       });
 
       const secondCall = vi.mocked(textMaskingLib.maskText).mock.calls[1];
@@ -295,14 +298,14 @@ describe('useMasking', () => {
         {
           initialProps: {
             text: 'Hello',
-            options: { enabled: true, customTerms: manager1 },
+            options: { enabled: true, customTerms: manager1 as unknown as typeof SensitiveTermsManager },
           },
         },
       );
 
       rerender({
         text: 'World',
-        options: { enabled: true, customTerms: manager2 },
+        options: { enabled: true, customTerms: manager2 as unknown as typeof SensitiveTermsManager },
       });
 
       // Should not raise any errors on cleanup
@@ -361,7 +364,7 @@ describe('useMasking', () => {
       renderHook(() =>
         useMasking('test', {
           enabled: true,
-          customTerms: customManager,
+          customTerms: customManager as unknown as typeof SensitiveTermsManager,
         }),
       );
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { vi, describe, beforeEach, afterEach, it, expect } from 'vitest';
+import { vi, describe, beforeEach, afterEach, it, expect, type Mock } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import ChatInput from '../ChatInput';
 import * as draftUtils from '@/lib/draftUtils';
@@ -45,7 +45,7 @@ describe('ChatInput - Draft Persistence', () => {
   });
 
   it('should restore draft from draftUtils on mount', () => {
-    (draftUtils.getDraft as vi.Mock).mockReturnValue('Restored draft content');
+    (draftUtils.getDraft as Mock).mockReturnValue('Restored draft content');
     
     render(<ChatInput {...defaultProps} />);
     
@@ -75,7 +75,7 @@ describe('ChatInput - Draft Persistence', () => {
   });
 
   it('should clear draft on successful send', async () => {
-    (draftUtils.getDraft as vi.Mock).mockReturnValue('Message to send');
+    (draftUtils.getDraft as Mock).mockReturnValue('Message to send');
     render(<ChatInput {...defaultProps} />);
 
     const textarea = screen.getByPlaceholderText('Type a message...');
@@ -106,7 +106,7 @@ describe('ChatInput - Draft Persistence', () => {
     unmount();
 
     // Mock getDraft to return the saved value for the next mount
-    (draftUtils.getDraft as vi.Mock).mockReturnValue('Persistent message');
+    (draftUtils.getDraft as Mock).mockReturnValue('Persistent message');
 
     // Remount
     render(<ChatInput {...defaultProps} />);

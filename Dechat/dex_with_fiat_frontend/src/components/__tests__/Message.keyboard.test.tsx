@@ -15,7 +15,7 @@ vi.mock('@/contexts/UserPreferencesContext', () => ({
 }));
 
 vi.mock('@/contexts/TranslationContext', async () => {
-  const en = (await import('@/locales/en.json')).default as Record<
+  const en = (await import('@/locales/en.json')).default as unknown as Record<
     string,
     Record<string, string>
   >;

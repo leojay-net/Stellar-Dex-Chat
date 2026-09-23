@@ -28,8 +28,12 @@ describe('useFeatureFlag', () => {
       .spyOn(featureFlags, 'getFeatureFlag')
       .mockImplementation((flag) => flag === 'enableConversionReminders');
 
-    const { result, rerender } = renderHook(
-      ({ flag }) => useFeatureFlag(flag),
+    const { result, rerender } = renderHook<
+      boolean,
+      { flag: 'enableAdminReconciliation' | 'enableConversionReminders' }
+    >(
+      ({ flag }: { flag: 'enableAdminReconciliation' | 'enableConversionReminders' }) =>
+        useFeatureFlag(flag),
       {
         initialProps: {
           flag: 'enableAdminReconciliation' as const,

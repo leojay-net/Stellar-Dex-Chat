@@ -14,8 +14,8 @@ vi.mock('./toastStore', () => ({
   },
 }));
 
-import { AIAssistant, ASSISTANT_ANIMATION_VARIANTS, REDUCED_MOTION_VARIANTS, AnimationVariants, AIAnalysisResult } from './aiAssistant';
-import type { ChatMessage } from '@/types';
+import { AIAssistant, ASSISTANT_ANIMATION_VARIANTS, REDUCED_MOTION_VARIANTS, AnimationVariants } from './aiAssistant';
+import type { ChatMessage, AIAnalysisResult } from '@/types';
 
 // ---------- Helpers ----------
 

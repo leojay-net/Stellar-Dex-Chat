@@ -12,4 +12,10 @@ export const transactionAmountSchema = z.object({
   fiatCurrency: z.string().optional(),
 });
 
-export type TransactionAmountProps = z.infer<typeof transactionAmountSchema>;
+/**
+ * Props type is the schema's *input* type: `asset` carries a zod default
+ * (`'XLM'`), so callers may omit it — the component's `parsed?.asset || 'XLM'`
+ * fallback documents the same behaviour. Using `z.infer` (the output type)
+ * wrongly required `asset`, which type-checking the tests exposed.
+ */
+export type TransactionAmountProps = z.input<typeof transactionAmountSchema>;

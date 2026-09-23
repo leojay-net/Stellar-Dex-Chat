@@ -7,25 +7,29 @@ test.describe('Complete Fiat Transfer Flow', () => {
       const mockAddress = 'GD5DJQD7KGYRY4TSK4K2V5J2D2J2XQK2T2D2J2XQK2T2D2J2XQK2T2D2J2XQK2T2D2J2XQK2';
       const mockTxXdr = 'AAAAAgAAAABzZXJ2aWNlX3BvaW50X2hvc3QAAAAAAAAAAAAA';
 
-      window.freighter = {
-        isConnected: async () => ({ isConnected: true }),
-        getAddress: async () => ({
-          address: mockAddress,
-        }),
-        getNetwork: async () => ({ network: 'TESTNET' }),
-        setAllowed: async () => ({ error: null }),
-        signTransaction: async () => ({
-          signedTxXdr: mockTxXdr,
-          error: null,
-        }),
-        signAuthEntry: async () => ({
-          signedAuthEntry: mockTxXdr,
-          error: null,
-        }),
-        requestAccess: async () => ({
-          address: mockAddress,
-        }),
-      };
+      // `window.freighter` is declared by the app with only the two legacy hooks it
+      // reads, so assign via Object.assign to attach the full wallet surface.
+      Object.assign(window, {
+        freighter: {
+          isConnected: async () => ({ isConnected: true }),
+          getAddress: async () => ({
+            address: mockAddress,
+          }),
+          getNetwork: async () => ({ network: 'TESTNET' }),
+          setAllowed: async () => ({ error: null }),
+          signTransaction: async () => ({
+            signedTxXdr: mockTxXdr,
+            error: null,
+          }),
+          signAuthEntry: async () => ({
+            signedAuthEntry: mockTxXdr,
+            error: null,
+          }),
+          requestAccess: async () => ({
+            address: mockAddress,
+          }),
+        },
+      });
     });
 
     await page.waitForTimeout(800);

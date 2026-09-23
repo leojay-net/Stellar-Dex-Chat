@@ -111,6 +111,7 @@ describe('TransactionAmountDisplay', () => {
       fiatCurrency: 'USD',
       isLoading: false,
       hasError: false,
+      forceRefresh: async () => {},
     });
 
     const { rerender } = render(<TransactionAmountDisplay amount={100} asset="XLM" />);
@@ -124,6 +125,7 @@ describe('TransactionAmountDisplay', () => {
       fiatCurrency: 'USD',
       isLoading: false,
       hasError: false,
+      forceRefresh: async () => {},
     });
 
     await act(async () => {
@@ -314,6 +316,7 @@ describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
       fiatCurrency: 'USD',
       originalAmount: 100,
       originalCurrency: 'XLM',
+      forceRefresh: async () => {},
     });
 
     render(<TransactionAmountDisplay amount={100} asset="XLM" />);
@@ -335,6 +338,7 @@ describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
       fiatCurrency: 'USD',
       originalAmount: 100,
       originalCurrency: 'XLM',
+      forceRefresh: async () => {},
     });
 
     const { rerender } = render(<TransactionAmountDisplay amount={100} asset="XLM" />);
@@ -347,6 +351,7 @@ describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
       fiatCurrency: 'USD',
       originalAmount: 200,
       originalCurrency: 'XLM',
+      forceRefresh: async () => {},
     });
 
     await act(async () => {
@@ -371,6 +376,7 @@ describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
       fiatCurrency: 'USD',
       originalAmount: 50,
       originalCurrency: 'XLM',
+      forceRefresh: async () => {},
     });
 
     render(<TransactionAmountDisplay amount={50} asset="XLM" />);
@@ -394,6 +400,7 @@ describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
       fiatCurrency: 'USD',
       originalAmount: 100,
       originalCurrency: 'XLM',
+      forceRefresh: async () => {},
     });
 
     render(<TransactionAmountDisplay amount={100} asset="XLM" />);

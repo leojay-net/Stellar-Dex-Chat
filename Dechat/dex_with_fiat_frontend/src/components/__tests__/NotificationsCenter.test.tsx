@@ -8,12 +8,16 @@ import NotificationsCenter from '../NotificationsCenter';
 const mockMarkAllAsRead = vi.fn();
 const mockClearNotifications = vi.fn();
 const mockMarkAsRead = vi.fn();
+const mockAddNotification = vi.fn();
+const mockSetNotifications = vi.fn();
 const emptyNotifications: ReturnType<typeof useNotifications>['notifications'] = [];
 
 function resetNotificationsMock() {
   vi.mocked(useNotifications).mockImplementation(() => ({
     notifications: emptyNotifications,
     unreadCount: 0,
+    addNotification: mockAddNotification,
+    setNotifications: mockSetNotifications,
     markAsRead: mockMarkAsRead,
     markAllAsRead: mockMarkAllAsRead,
     clearNotifications: mockClearNotifications,
@@ -24,6 +28,8 @@ vi.mock('@/hooks/useNotifications', () => ({
   useNotifications: vi.fn(() => ({
     notifications: emptyNotifications,
     unreadCount: 0,
+    addNotification: mockAddNotification,
+    setNotifications: mockSetNotifications,
     markAsRead: mockMarkAsRead,
     markAllAsRead: mockMarkAllAsRead,
     clearNotifications: mockClearNotifications,
@@ -90,6 +96,8 @@ describe('NotificationsCenter – rendering', () => {
     vi.mocked(useNotifications).mockReturnValue({
       notifications,
       unreadCount: 1,
+      addNotification: mockAddNotification,
+      setNotifications: mockSetNotifications,
       markAsRead: mockMarkAsRead,
       markAllAsRead: mockMarkAllAsRead,
       clearNotifications: mockClearNotifications,
@@ -146,6 +154,8 @@ describe('NotificationsCenter – keyboard shortcuts', () => {
     vi.mocked(useNotifications).mockReturnValue({
       notifications: [makeNotification()],
       unreadCount: 1,
+      addNotification: mockAddNotification,
+      setNotifications: mockSetNotifications,
       markAsRead: mockMarkAsRead,
       markAllAsRead: mockMarkAllAsRead,
       clearNotifications: mockClearNotifications,
@@ -162,6 +172,8 @@ describe('NotificationsCenter – keyboard shortcuts', () => {
     vi.mocked(useNotifications).mockReturnValue({
       notifications: [makeNotification()],
       unreadCount: 1,
+      addNotification: mockAddNotification,
+      setNotifications: mockSetNotifications,
       markAsRead: mockMarkAsRead,
       markAllAsRead: mockMarkAllAsRead,
       clearNotifications: mockClearNotifications,
@@ -178,6 +190,8 @@ describe('NotificationsCenter – keyboard shortcuts', () => {
     vi.mocked(useNotifications).mockReturnValue({
       notifications: [makeNotification()],
       unreadCount: 1,
+      addNotification: mockAddNotification,
+      setNotifications: mockSetNotifications,
       markAsRead: mockMarkAsRead,
       markAllAsRead: mockMarkAllAsRead,
       clearNotifications: mockClearNotifications,
@@ -194,6 +208,8 @@ describe('NotificationsCenter – keyboard shortcuts', () => {
     vi.mocked(useNotifications).mockReturnValue({
       notifications: [makeNotification()],
       unreadCount: 1,
+      addNotification: mockAddNotification,
+      setNotifications: mockSetNotifications,
       markAsRead: mockMarkAsRead,
       markAllAsRead: mockMarkAllAsRead,
       clearNotifications: mockClearNotifications,

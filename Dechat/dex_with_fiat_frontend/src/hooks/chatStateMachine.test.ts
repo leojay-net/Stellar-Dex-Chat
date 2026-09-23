@@ -124,8 +124,9 @@ describe('ChatStateMachine', () => {
 
     it('should transition to READY_FOR_TRANSACTION with sufficient data', () => {
       const transactionData: TransactionData = {
+        type: 'fiat_conversion',
         tokenIn: 'XLM',
-        amountIn: 100,
+        amountIn: '100',
       };
       machine.updateContext({ pendingTransactionData: transactionData });
       machine.transition(ChatEvent.SEND_MESSAGE);
@@ -137,8 +138,9 @@ describe('ChatStateMachine', () => {
 
     it('should fail to trigger transaction when user has cancelled', () => {
       const transactionData: TransactionData = {
+        type: 'fiat_conversion',
         tokenIn: 'XLM',
-        amountIn: 100,
+        amountIn: '100',
       };
       machine.updateContext({
         pendingTransactionData: transactionData,
@@ -152,8 +154,9 @@ describe('ChatStateMachine', () => {
 
     it('should transition from READY_FOR_TRANSACTION to TRANSACTION_TRIGGERED on TRANSACTION_INITIATED', () => {
       const transactionData: TransactionData = {
+        type: 'fiat_conversion',
         tokenIn: 'XLM',
-        amountIn: 100,
+        amountIn: '100',
       };
       machine.updateContext({ pendingTransactionData: transactionData });
       machine.transition(ChatEvent.SEND_MESSAGE);
@@ -166,8 +169,9 @@ describe('ChatStateMachine', () => {
 
     it('should transition from TRANSACTION_TRIGGERED back to AWAITING_USER_INPUT on TRANSACTION_COMPLETED', () => {
       const transactionData: TransactionData = {
+        type: 'fiat_conversion',
         tokenIn: 'XLM',
-        amountIn: 100,
+        amountIn: '100',
       };
       machine.updateContext({ pendingTransactionData: transactionData });
       machine.transition(ChatEvent.SEND_MESSAGE);
@@ -181,8 +185,9 @@ describe('ChatStateMachine', () => {
 
     it('should allow sending new message from READY_FOR_TRANSACTION', () => {
       const transactionData: TransactionData = {
+        type: 'fiat_conversion',
         tokenIn: 'XLM',
-        amountIn: 100,
+        amountIn: '100',
       };
       machine.updateContext({ pendingTransactionData: transactionData });
       machine.transition(ChatEvent.SEND_MESSAGE);
@@ -232,8 +237,9 @@ describe('ChatStateMachine', () => {
 
     it('should clear transaction data when cancelling', () => {
       const transactionData: TransactionData = {
+        type: 'fiat_conversion',
         tokenIn: 'XLM',
-        amountIn: 100,
+        amountIn: '100',
       };
       machine.updateContext({ pendingTransactionData: transactionData });
       machine.transition(ChatEvent.SEND_MESSAGE);
@@ -245,8 +251,9 @@ describe('ChatStateMachine', () => {
 
     it('should clear transactions on CLEAR_CHAT from AWAITING_USER_INPUT', () => {
       const transactionData: TransactionData = {
+        type: 'fiat_conversion',
         tokenIn: 'XLM',
-        amountIn: 100,
+        amountIn: '100',
       };
       machine.updateContext({ pendingTransactionData: transactionData });
       machine.transition(ChatEvent.SEND_MESSAGE);
@@ -373,7 +380,7 @@ describe('ChatStateMachine', () => {
         const context: ChatMachineContext = {
           messageCount: 0,
           hasUserCancelled: false,
-          pendingTransactionData: { tokenIn: 'XLM' },
+          pendingTransactionData: { type: 'fiat_conversion', tokenIn: 'XLM' },
           needsClarification: false,
           clarificationQuestion: null,
           errorMessage: null,
@@ -387,7 +394,7 @@ describe('ChatStateMachine', () => {
         const context: ChatMachineContext = {
           messageCount: 0,
           hasUserCancelled: false,
-          pendingTransactionData: { amountIn: 100 },
+          pendingTransactionData: { type: 'fiat_conversion', amountIn: '100' },
           needsClarification: false,
           clarificationQuestion: null,
           errorMessage: null,
@@ -401,7 +408,7 @@ describe('ChatStateMachine', () => {
         const context: ChatMachineContext = {
           messageCount: 0,
           hasUserCancelled: false,
-          pendingTransactionData: { fiatAmount: 50 },
+          pendingTransactionData: { type: 'fiat_conversion', fiatAmount: '50' },
           needsClarification: false,
           clarificationQuestion: null,
           errorMessage: null,
@@ -491,7 +498,7 @@ describe('ChatStateMachine', () => {
         const context: ChatMachineContext = {
           messageCount: 0,
           hasUserCancelled: true,
-          pendingTransactionData: { tokenIn: 'XLM' },
+          pendingTransactionData: { type: 'fiat_conversion', tokenIn: 'XLM' },
           needsClarification: false,
           clarificationQuestion: null,
           errorMessage: null,
@@ -505,7 +512,7 @@ describe('ChatStateMachine', () => {
         const context: ChatMachineContext = {
           messageCount: 0,
           hasUserCancelled: false,
-          pendingTransactionData: { tokenIn: 'XLM', amountIn: 100 },
+          pendingTransactionData: { type: 'fiat_conversion', tokenIn: 'XLM', amountIn: '100' },
           needsClarification: false,
           clarificationQuestion: null,
           errorMessage: null,
@@ -597,7 +604,7 @@ describe('ChatStateMachine', () => {
 
     it('should support partial context updates', () => {
       machine.transition(ChatEvent.INITIALIZE_SESSION);
-      const transactionData: TransactionData = { tokenIn: 'XLM' };
+      const transactionData: TransactionData = { type: 'fiat_conversion', tokenIn: 'XLM' };
       machine.updateContext({
         messageCount: 3,
         pendingTransactionData: transactionData,
@@ -630,7 +637,7 @@ describe('ChatStateMachine', () => {
       expect(machine.transition(ChatEvent.SEND_MESSAGE)).toBe(true);
       machine.updateContext({
         messageCount: 2,
-        pendingTransactionData: { tokenIn: 'XLM', amountIn: 100 },
+        pendingTransactionData: { type: 'fiat_conversion', tokenIn: 'XLM', amountIn: '100' },
       });
       expect(machine.transition(ChatEvent.ANALYSIS_COMPLETE)).toBe(true);
 
@@ -652,7 +659,7 @@ describe('ChatStateMachine', () => {
       machine.transition(ChatEvent.SEND_MESSAGE);
       machine.transition(ChatEvent.ANALYSIS_COMPLETE);
       machine.updateContext({
-        pendingTransactionData: { tokenIn: 'XLM', amountIn: 100 },
+        pendingTransactionData: { type: 'fiat_conversion', tokenIn: 'XLM', amountIn: '100' },
       });
       machine.transition(ChatEvent.TRIGGER_TRANSACTION);
 
@@ -716,7 +723,7 @@ describe('chatStateMachine clipboard snapshot helpers', () => {
     const context: ChatMachineContext = {
       messageCount: 2,
       hasUserCancelled: false,
-      pendingTransactionData: { tokenIn: 'XLM' },
+      pendingTransactionData: { type: 'fiat_conversion', tokenIn: 'XLM' },
       needsClarification: false,
       clarificationQuestion: null,
       errorMessage: null,

@@ -153,7 +153,10 @@ describe('useFeatureFlag – flag argument changes', () => {
       (flag: string) => flag === 'enableConversionReminders'
     );
 
-    const { result, rerender } = renderHook(
+    const { result, rerender } = renderHook<
+      boolean,
+      { flag: 'enableAdminReconciliation' | 'enableConversionReminders' }
+    >(
       ({ flag }: { flag: 'enableAdminReconciliation' | 'enableConversionReminders' }) =>
         useFeatureFlag(flag),
       { initialProps: { flag: 'enableAdminReconciliation' as const } }
@@ -169,7 +172,10 @@ describe('useFeatureFlag – flag argument changes', () => {
   it('re-queries getFeatureFlag each time the flag argument changes', () => {
     vi.mocked(getFeatureFlag).mockReturnValue(false);
 
-    const { rerender } = renderHook(
+    const { rerender } = renderHook<
+      boolean,
+      { flag: 'enableAdminReconciliation' | 'enableConversionReminders' }
+    >(
       ({ flag }: { flag: 'enableAdminReconciliation' | 'enableConversionReminders' }) =>
         useFeatureFlag(flag),
       { initialProps: { flag: 'enableAdminReconciliation' as const } }

@@ -19,7 +19,7 @@ describe('ReceiptQrCode', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     const qrcode = await import('qrcode');
-    mockToDataURL = qrcode.default.toDataURL;
+    mockToDataURL = qrcode.default.toDataURL as unknown as ReturnType<typeof vi.fn>;
     mockToDataURL.mockResolvedValue('data:image/png;base64,qr');
   });
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { vi } from 'vitest';
+import { vi, type Mock } from 'vitest';
 import StellarFiatModal from '../StellarFiatModal';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { BRIDGE_LIMIT_WARNING_PERCENT } from '@/lib/stellarContract';
@@ -53,10 +53,16 @@ const onClose = vi.fn();
 const onDepositSuccess = vi.fn();
 
 describe('StellarFiatModal', () => {
-  let mockedContract: Awaited<ReturnType<typeof import('@/lib/stellarContract')>>;
+  let mockedContract: {
+    depositToContract: Mock;
+    withdrawFromContract: Mock;
+  };
 
   beforeEach(async () => {
-    mockedContract = await import('@/lib/stellarContract');
+    mockedContract = (await import('@/lib/stellarContract')) as unknown as {
+      depositToContract: Mock;
+      withdrawFromContract: Mock;
+    };
     mockedContract.depositToContract.mockReset();
     mockedContract.withdrawFromContract.mockReset();
     onClose.mockReset();
@@ -128,7 +134,10 @@ describe('StellarFiatModal fiat estimate cancellation pattern (Issue #709)', () 
     let cancelled = false;
     let stateUpdated = false;
 
-    const setState = () => {
+    // The value is deliberately unused: this stub only records that a state
+    // update was attempted, which is what the cancellation test asserts on.
+    const setState = (value: string) => {
+      void value;
       if (!cancelled) {
         stateUpdated = true;
       }
