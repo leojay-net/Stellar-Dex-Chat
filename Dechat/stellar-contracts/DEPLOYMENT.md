@@ -12,10 +12,23 @@ The FiatBridge contract deployment process includes:
 ## Prerequisites
 
 ### Required Tools
-- **Rust** (1.70+): Install from [rustup.rs](https://rustup.rs/)
-- **Soroban CLI**: Install using the provided script in the workflow or via:
+- **Rust** (1.70+): Install from [rustup.rs](https://rustup.rs/), then add the WASM
+  target used by the current Soroban SDK:
   ```bash
-  curl -s https://raw.githubusercontent.com/stellar/rs-soroban-sdk/master/soroban-env/install-soroban.sh | bash
+  rustup target add wasm32v1-none
+  ```
+- **Stellar CLI** (`stellar`), pinned to a known release — no `curl | bash` of a
+  moving `master` branch:
+  ```bash
+  # Pinned prebuilt binary (Linux x86_64; change version/triple for other platforms)
+  curl -sSL -o stellar-cli.tar.gz \
+    https://github.com/stellar/stellar-cli/releases/download/v28.0.0/stellar-cli-28.0.0-x86_64-unknown-linux-gnu.tar.gz
+  tar xzf stellar-cli.tar.gz -C /usr/local/bin stellar
+  stellar --version   # stellar 28.0.0
+  ```
+  Or build the same pin from source:
+  ```bash
+  cargo install --locked stellar-cli@28.0.0 --features opt
   ```
 
 ### Futurenet Setup
@@ -87,9 +100,9 @@ Configure the following secret in GitHub repository settings:
 
 **Steps:**
 1. Checkout code
-2. Set up Rust toolchain with wasm32 target
-3. Install Soroban CLI
-4. Build WASM contract
+2. Set up Rust toolchain with the `wasm32v1-none` target
+3. Install Stellar CLI (pinned version)
+4. Build WASM contract (`stellar contract build`)
 5. Deploy to Futurenet
 6. Upload contract ID artifact
 7. Create deployment status
@@ -113,16 +126,21 @@ Configure the following secret in GitHub repository settings:
 After deployment, verify the contract on Futurenet:
 
 ```bash
-# Check contract info
-soroban contract info \
-  --contract "CABC1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF123456" \
+# Check the deployed contract's interface (the old `soroban contract info` command)
+stellar contract info interface \
+  --contract-id "CABC1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF123456" \
   --network "futurenet" \
+  --network-passphrase "Test SDF Future Network ; April 2020" \
   --rpc-url "https://rpc-futurenet.stellar.org"
 
-# View contract instance
-soroban contract instance \
-  --contract "CABC1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF123456" \
-  --network "futurenet"
+# Inspect the contract's metadata (SDK / compiler versions, custom entries).
+# Note: the old `soroban contract instance` subcommand no longer exists; the
+# instance's WASM can be fetched with `stellar contract fetch --id <CONTRACT_ID>`.
+stellar contract info meta \
+  --contract-id "CABC1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF123456" \
+  --network "futurenet" \
+  --network-passphrase "Test SDF Future Network ; April 2020" \
+  --rpc-url "https://rpc-futurenet.stellar.org"
 ```
 
 ## Troubleshooting
@@ -140,11 +158,13 @@ export FUTURENET_ADMIN_SECRET_KEY="your-secret-key"
 - Secret key is valid
 - Network passphrase matches Futurenet
 
-### Issue: Soroban CLI not found
-**Solution:** Install Soroban CLI:
+### Issue: `stellar: command not found`
+**Solution:** Install the pinned Stellar CLI release (see [Required Tools](#required-tools)):
 ```bash
-curl -s https://raw.githubusercontent.com/stellar/rs-soroban-sdk/master/soroban-env/install-soroban.sh | bash
-export PATH="$HOME/.soroban/bin:$PATH"
+curl -sSL -o stellar-cli.tar.gz \
+  https://github.com/stellar/stellar-cli/releases/download/v28.0.0/stellar-cli-28.0.0-x86_64-unknown-linux-gnu.tar.gz
+tar xzf stellar-cli.tar.gz -C /usr/local/bin stellar
+stellar --version
 ```
 
 ## Security Considerations
@@ -158,7 +178,7 @@ export PATH="$HOME/.soroban/bin:$PATH"
 
 ## Additional Resources
 
-- [Stellar Soroban Documentation](https://developers.stellar.org/learn/fundamentals/stellar-data-structures)
-- [Soroban CLI Reference](https://github.com/stellar/rs-soroban-sdk)
+- [Stellar smart contracts documentation](https://developers.stellar.org/docs/build/smart-contracts/overview)
+- [Stellar CLI repository and reference](https://github.com/stellar/stellar-cli)
 - [Futurenet Information](https://developers.stellar.org/networks/future-net)
 - [Contract Deployment Guide](https://developers.stellar.org/learn/smart-contracts/deploy)
