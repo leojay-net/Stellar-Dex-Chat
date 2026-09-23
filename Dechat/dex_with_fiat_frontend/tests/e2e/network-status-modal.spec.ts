@@ -1,5 +1,4 @@
 import { test, expect, Page } from '@playwright/test';
-import { mockSorobanRpc } from './helpers';
 
 /**
  * E2E tests for NetworkStatusModal component
@@ -7,204 +6,151 @@ import { mockSorobanRpc } from './helpers';
  * - Verifies dark/light mode rendering
  * - Tests keyboard navigation and accessibility
  * - Verifies closing behavior
+ *
+ * Uses the /test-network-status-modal harness page. The wallet state is chosen
+ * with the `state` query param (the harness drives the real
+ * StellarWalletProvider through its mockConnect test hook) and the theme with
+ * the `theme` localStorage key read by the real ThemeProvider.
  */
+
+const TEST_URL = '/test-network-status-modal';
 
 // Mock wallet context values
 const CONNECTED_ADDRESS = 'GBEFLW6RT4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA7NQ';
-const EXPECTED_NETWORK = 'testnet';
+/** Mirrors EXPECTED_NETWORK in StellarWalletContext. */
+const EXPECTED_NETWORK = 'TESTNET';
+/** Network the harness connects with for the mismatch state. */
+const MISMATCH_NETWORK = 'PUBLIC';
+
+type NetworkState = 'connected' | 'mismatch' | 'disconnected';
+
+async function gotoModal(
+  page: Page,
+  {
+    state = 'connected',
+    address = CONNECTED_ADDRESS,
+    theme = 'light',
+  }: { state?: NetworkState; address?: string; theme?: 'light' | 'dark' } = {},
+): Promise<void> {
+  await page.addInitScript((savedTheme) => {
+    localStorage.setItem('theme', savedTheme);
+  }, theme);
+  const params = new URLSearchParams({ state, address });
+  await page.goto(`${TEST_URL}?${params.toString()}`);
+}
+
+function networkModal(page: Page) {
+  return page.getByRole('dialog', { name: /network status/i });
+}
+
+/** The <dd> value for a given <dt> label in the modal's wallet details list. */
+function detailValue(page: Page, label: string) {
+  return networkModal(page)
+    .locator('dl > div')
+    .filter({ has: page.getByText(label, { exact: true }) })
+    .locator('dd');
+}
+
+/** The backdrop rendered immediately before the dialog. */
+function backdrop(page: Page) {
+  return page
+    .locator('[role="dialog"]')
+    .locator('xpath=preceding-sibling::div[@aria-hidden="true"][1]');
+}
 
 test.describe('NetworkStatusModal E2E Coverage', () => {
-  // Helper to setup and mount the test page
-  async function setupTestPage(page: Page) {
-    // Add a test fixture endpoint that mounts the modal
-    await page.route('**/api/**', async (route) => {
-      await route.abort();
-    });
-  }
-
   test.describe('Connected State', () => {
-    test('should display connected status in Chromium with correct elements', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
+    test('should display connected status in Chromium with correct elements', async ({ page }) => {
+      await gotoModal(page, { state: 'connected' });
 
-      // Mock the context to return connected state
-      await page.addInitScript(() => {
-        (window as any).__NETWORK_STATE = {
-          connection: { isConnected: true, address: CONNECTED_ADDRESS, network: 'testnet' },
-          isNetworkMismatch: false,
-          isDarkMode: false,
-        };
-      });
-
-      // Navigate to test page
-      await page.goto('/test-network-modal-connected');
-      
       // Verify modal is visible
-      const modal = page.getByRole('dialog', { name: /network status/i });
+      const modal = networkModal(page);
       await expect(modal).toBeVisible();
 
       // Verify elements for connected state
-      await expect(page.getByText('Connected')).toBeVisible();
-      await expect(page.getByText(/Wallet is connected to the Stellar testnet network/i)).toBeVisible();
+      await expect(modal.getByText('Connected', { exact: true })).toBeVisible();
+      await expect(modal.getByText(/Wallet is connected to the Stellar testnet network/i)).toBeVisible();
 
       // Verify green dot indicator
       const statusIndicator = modal.locator('span[class*="bg-green"]').first();
       await expect(statusIndicator).toBeVisible();
 
       // Verify wallet details section
-      await expect(page.getByText('Address')).toBeVisible();
-      await expect(page.getByText('Network')).toBeVisible();
-      await expect(page.getByText('Expected')).toBeVisible();
-      await expect(page.getByText(EXPECTED_NETWORK)).toBeVisible();
-
-      await context.close();
+      await expect(modal.getByText('Address', { exact: true })).toBeVisible();
+      await expect(modal.getByText('Network', { exact: true })).toBeVisible();
+      await expect(modal.getByText('Expected', { exact: true })).toBeVisible();
+      await expect(detailValue(page, 'Expected')).toHaveText(EXPECTED_NETWORK);
     });
 
-    test('should display connected status in Firefox with correct rendering', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
+    test('should display connected status in Firefox with correct rendering', async ({ page }) => {
+      await gotoModal(page, { state: 'connected' });
 
-      await page.addInitScript(() => {
-        (window as any).__NETWORK_STATE = {
-          connection: { isConnected: true, address: CONNECTED_ADDRESS, network: 'testnet' },
-          isNetworkMismatch: false,
-          isDarkMode: false,
-        };
-      });
-
-      await page.goto('/test-network-modal-connected');
-      
-      const modal = page.getByRole('dialog', { name: /network status/i });
+      const modal = networkModal(page);
       await expect(modal).toBeVisible({ timeout: 10000 });
-      await expect(page.getByText('Connected')).toBeVisible();
-
-      await context.close();
+      await expect(modal.getByText('Connected', { exact: true })).toBeVisible();
     });
 
-    test('should display connected status in WebKit with correct styling', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
+    test('should display connected status in WebKit with correct styling', async ({ page }) => {
+      await gotoModal(page, { state: 'connected' });
 
-      await page.addInitScript(() => {
-        (window as any).__NETWORK_STATE = {
-          connection: { isConnected: true, address: CONNECTED_ADDRESS, network: 'testnet' },
-          isNetworkMismatch: false,
-          isDarkMode: false,
-        };
-      });
-
-      await page.goto('/test-network-modal-connected');
-      
-      const modal = page.getByRole('dialog', { name: /network status/i });
+      const modal = networkModal(page);
       await expect(modal).toBeVisible({ timeout: 10000 });
 
       // Verify styling is applied
-      const dialogElement = page.locator('[role="dialog"]');
-      const classAttr = await dialogElement.getAttribute('class');
+      const classAttr = await modal.getAttribute('class');
       expect(classAttr).toContain('fixed');
       expect(classAttr).toContain('rounded-xl');
-
-      await context.close();
     });
 
-    test('should show address truncation in connected state', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should show address truncation in connected state', async ({ page }) => {
       const testAddress = 'GABCDEFGHIJKLMNOPQRSTUVWXYZ123456';
-      await page.addInitScript((addr) => {
-        (window as any).__NETWORK_STATE = {
-          connection: { isConnected: true, address: addr, network: 'testnet' },
-          isNetworkMismatch: false,
-          isDarkMode: false,
-        };
-      }, testAddress);
+      await gotoModal(page, { state: 'connected', address: testAddress });
 
-      await page.goto('/test-network-modal-connected');
-      
-      // Address should be formatted as GABCDE...Z123
-      const addressDisplay = page.locator('dd').filter({ hasText: /GAB.*123/ });
+      // Address is formatted as the first 6 and last 4 characters: GABCDE…3456
+      const addressDisplay = detailValue(page, 'Address');
       await expect(addressDisplay).toBeVisible();
-
-      await context.close();
+      await expect(addressDisplay).toHaveText('GABCDE…3456');
     });
   });
 
   test.describe('Mismatch State', () => {
-    test('should display network mismatch status with warning styling', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
+    test('should display network mismatch status with warning styling', async ({ page }) => {
+      await gotoModal(page, { state: 'mismatch' });
 
-      await page.addInitScript(() => {
-        (window as any).__NETWORK_STATE = {
-          connection: { isConnected: true, address: CONNECTED_ADDRESS, network: 'public' },
-          isNetworkMismatch: true,
-          isDarkMode: false,
-        };
-      });
-
-      await page.goto('/test-network-modal-mismatch');
-      
-      const modal = page.getByRole('dialog', { name: /network status/i });
+      const modal = networkModal(page);
       await expect(modal).toBeVisible();
 
       // Verify mismatch-specific content
-      await expect(page.getByText('Network Mismatch')).toBeVisible();
-      await expect(page.getByText(/Wallet is connected to public but the app expects/i)).toBeVisible();
-      await expect(page.getByText(/Transactions are disabled/i)).toBeVisible();
+      await expect(modal.getByText('Network Mismatch', { exact: true })).toBeVisible();
+      await expect(modal.getByText(/Wallet is connected to public but the app expects/i)).toBeVisible();
+      await expect(modal.getByText(/Transactions are disabled/i)).toBeVisible();
 
       // Verify amber/warning indicator
       const statusIndicator = modal.locator('span[class*="bg-amber"]').first();
       await expect(statusIndicator).toBeVisible();
-
-      await context.close();
     });
 
-    test('should show full wallet details in mismatch state', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
+    test('should show full wallet details in mismatch state', async ({ page }) => {
+      await gotoModal(page, { state: 'mismatch' });
 
-      await page.addInitScript(() => {
-        (window as any).__NETWORK_STATE = {
-          connection: { isConnected: true, address: CONNECTED_ADDRESS, network: 'public' },
-          isNetworkMismatch: true,
-          isDarkMode: false,
-        };
-      });
-
-      await page.goto('/test-network-modal-mismatch');
-      
       // Verify details section is visible
-      await expect(page.getByText('Address')).toBeVisible();
-      await expect(page.getByText('public')).toBeVisible();
-      await expect(page.getByText(EXPECTED_NETWORK)).toBeVisible();
-
-      await context.close();
+      await expect(networkModal(page).getByText('Address', { exact: true })).toBeVisible();
+      await expect(detailValue(page, 'Network')).toHaveText(MISMATCH_NETWORK);
+      await expect(detailValue(page, 'Expected')).toHaveText(EXPECTED_NETWORK);
     });
   });
 
   test.describe('Disconnected State', () => {
-    test('should display disconnected status with error styling', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
+    test('should display disconnected status with error styling', async ({ page }) => {
+      await gotoModal(page, { state: 'disconnected' });
 
-      await page.addInitScript(() => {
-        (window as any).__NETWORK_STATE = {
-          connection: { isConnected: false, address: '', network: null },
-          isNetworkMismatch: false,
-          isDarkMode: false,
-        };
-      });
-
-      await page.goto('/test-network-modal-disconnected');
-      
-      const modal = page.getByRole('dialog', { name: /network status/i });
+      const modal = networkModal(page);
       await expect(modal).toBeVisible();
 
       // Verify disconnected-specific content
-      await expect(page.getByText('Disconnected')).toBeVisible();
-      await expect(page.getByText(/No Stellar wallet is connected/i)).toBeVisible();
-      await expect(page.getByText(/Connect Freighter/i)).toBeVisible();
+      await expect(modal.getByText('Disconnected', { exact: true })).toBeVisible();
+      await expect(modal.getByText(/No Stellar wallet is connected/i)).toBeVisible();
+      await expect(modal.getByText(/Connect Freighter/i)).toBeVisible();
 
       // Verify red error indicator
       const statusIndicator = modal.locator('span[class*="bg-red"]').first();
@@ -213,224 +159,121 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
       // Verify details section is NOT visible
       const detailsSection = modal.locator('dl');
       await expect(detailsSection).not.toBeVisible();
-
-      await context.close();
     });
   });
 
   test.describe('Dark Mode Styling', () => {
-    test('should apply dark mode styling when enabled (Chromium)', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
+    test('should apply dark mode styling when enabled (Chromium)', async ({ page }) => {
+      await gotoModal(page, { state: 'connected', theme: 'dark' });
 
-      await page.addInitScript(() => {
-        (window as any).__NETWORK_STATE = {
-          connection: { isConnected: true, address: CONNECTED_ADDRESS, network: 'testnet' },
-          isNetworkMismatch: false,
-          isDarkMode: true,
-        };
-      });
-
-      await page.goto('/test-network-modal-dark');
-      
-      const modal = page.getByRole('dialog', { name: /network status/i });
+      const modal = networkModal(page);
       await expect(modal).toBeVisible();
 
       // Verify dark mode classes are applied
+      await expect(modal).toHaveClass(/\bbg-gray-900\b/);
       const classAttr = await modal.getAttribute('class');
       expect(classAttr).toContain('bg-gray-900');
       expect(classAttr).toContain('border-gray-700');
       expect(classAttr).toContain('text-gray-100');
-
-      await context.close();
     });
 
-    test('should apply light mode styling when disabled (Chromium)', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
+    test('should apply light mode styling when disabled (Chromium)', async ({ page }) => {
+      await gotoModal(page, { state: 'connected', theme: 'light' });
 
-      await page.addInitScript(() => {
-        (window as any).__NETWORK_STATE = {
-          connection: { isConnected: true, address: CONNECTED_ADDRESS, network: 'testnet' },
-          isNetworkMismatch: false,
-          isDarkMode: false,
-        };
-      });
-
-      await page.goto('/test-network-modal-light');
-      
-      const modal = page.getByRole('dialog', { name: /network status/i });
+      const modal = networkModal(page);
       await expect(modal).toBeVisible();
 
       // Verify light mode classes are applied
+      await expect(modal).toHaveClass(/\bbg-white\b/);
       const classAttr = await modal.getAttribute('class');
       expect(classAttr).toContain('bg-white');
       expect(classAttr).toContain('border-gray-200');
       expect(classAttr).toContain('text-gray-900');
-
-      await context.close();
     });
   });
 
   test.describe('Closing Behavior', () => {
-    test('should close modal when close button is clicked', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
+    test('should close modal when close button is clicked', async ({ page }) => {
+      await gotoModal(page, { state: 'connected' });
 
-      await page.addInitScript(() => {
-        (window as any).__NETWORK_STATE = {
-          connection: { isConnected: true, address: CONNECTED_ADDRESS, network: 'testnet' },
-          isNetworkMismatch: false,
-          isDarkMode: false,
-        };
-      });
-
-      await page.goto('/test-network-modal-connected');
-      
-      let modal = page.getByRole('dialog', { name: /network status/i });
+      const modal = networkModal(page);
       await expect(modal).toBeVisible();
 
       // Click close button
-      const closeBtn = page.getByRole('button', { name: /close/i });
+      const closeBtn = modal.getByRole('button', { name: 'Close' });
       await closeBtn.click();
 
       // Modal should be hidden
       await expect(modal).not.toBeVisible();
-
-      await context.close();
     });
 
-    test('should close modal when backdrop is clicked', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
+    test('should close modal when backdrop is clicked', async ({ page }) => {
+      await gotoModal(page, { state: 'connected' });
 
-      await page.addInitScript(() => {
-        (window as any).__NETWORK_STATE = {
-          connection: { isConnected: true, address: CONNECTED_ADDRESS, network: 'testnet' },
-          isNetworkMismatch: false,
-          isDarkMode: false,
-        };
-      });
-
-      await page.goto('/test-network-modal-connected');
-      
-      const modal = page.getByRole('dialog', { name: /network status/i });
+      const modal = networkModal(page);
       await expect(modal).toBeVisible();
 
-      // Click backdrop
-      const backdrop = page.locator('[aria-hidden="true"]').first();
-      await backdrop.click();
+      // Click the backdrop away from the centred dialog
+      await backdrop(page).click({ position: { x: 10, y: 10 } });
 
       // Modal should be hidden
       await expect(modal).not.toBeVisible();
-
-      await context.close();
     });
   });
 
   test.describe('Keyboard Navigation', () => {
-    test('should allow focus on close button via keyboard', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
+    test('should allow focus on close button via keyboard', async ({ page }) => {
+      await gotoModal(page, { state: 'connected' });
 
-      await page.addInitScript(() => {
-        (window as any).__NETWORK_STATE = {
-          connection: { isConnected: true, address: CONNECTED_ADDRESS, network: 'testnet' },
-          isNetworkMismatch: false,
-          isDarkMode: false,
-        };
-      });
-
-      await page.goto('/test-network-modal-connected');
-      
-      const modal = page.getByRole('dialog', { name: /network status/i });
+      const modal = networkModal(page);
       await expect(modal).toBeVisible();
 
       // Tab to close button
       await page.keyboard.press('Tab');
-      const closeBtn = page.getByRole('button', { name: /close/i });
-      
+      const closeBtn = modal.getByRole('button', { name: 'Close' });
+
       // Press Enter to close
       await closeBtn.focus();
+      await expect(closeBtn).toBeFocused();
       await page.keyboard.press('Enter');
 
       // Modal should be hidden
       await expect(modal).not.toBeVisible();
-
-      await context.close();
     });
 
-    test('should allow keyboard-only navigation through interactive elements', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
+    test('should allow keyboard-only navigation through interactive elements', async ({ page }) => {
+      await gotoModal(page, { state: 'connected' });
 
-      await page.addInitScript(() => {
-        (window as any).__NETWORK_STATE = {
-          connection: { isConnected: true, address: CONNECTED_ADDRESS, network: 'testnet' },
-          isNetworkMismatch: false,
-          isDarkMode: false,
-        };
-      });
-
-      await page.goto('/test-network-modal-connected');
-      
-      const modal = page.getByRole('dialog', { name: /network status/i });
+      const modal = networkModal(page);
       await expect(modal).toBeVisible();
 
       // Focus should be managed properly
-      const closeBtn = page.getByRole('button', { name: /close/i });
+      const closeBtn = modal.getByRole('button', { name: 'Close' });
       await closeBtn.focus();
-      
-      // Verify button is focused
-      const focused = await page.evaluate(() => document.activeElement?.className);
-      expect(focused).toBeDefined();
 
-      await context.close();
+      // Verify button is focused
+      await expect(closeBtn).toBeFocused();
     });
 
-    test('should allow tabbing to all interactive elements', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
+    test('should allow tabbing to all interactive elements', async ({ page }) => {
+      await gotoModal(page, { state: 'connected' });
 
-      await page.addInitScript(() => {
-        (window as any).__NETWORK_STATE = {
-          connection: { isConnected: true, address: CONNECTED_ADDRESS, network: 'testnet' },
-          isNetworkMismatch: false,
-          isDarkMode: false,
-        };
-      });
-
-      await page.goto('/test-network-modal-connected');
-      
-      const modal = page.getByRole('dialog', { name: /network status/i });
+      const modal = networkModal(page);
       await expect(modal).toBeVisible();
 
       // Click modal to ensure focus is inside
       await modal.click();
 
       // Find all focusable elements
-      const focusableElements = await page.locator('button').count();
+      const focusableElements = await modal.locator('button').count();
       expect(focusableElements).toBeGreaterThan(0);
-
-      await context.close();
     });
   });
 
   test.describe('Accessibility', () => {
-    test('should have proper ARIA attributes for dialog', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
+    test('should have proper ARIA attributes for dialog', async ({ page }) => {
+      await gotoModal(page, { state: 'connected' });
 
-      await page.addInitScript(() => {
-        (window as any).__NETWORK_STATE = {
-          connection: { isConnected: true, address: CONNECTED_ADDRESS, network: 'testnet' },
-          isNetworkMismatch: false,
-          isDarkMode: false,
-        };
-      });
-
-      await page.goto('/test-network-modal-connected');
-      
       const modal = page.locator('[role="dialog"]');
       await expect(modal).toBeVisible();
 
@@ -443,39 +286,21 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
 
       const ariaLabel = await modal.getAttribute('aria-label');
       expect(ariaLabel).toContain('Network status');
-
-      await context.close();
     });
 
-    test('should have proper backdrop with aria-hidden', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
+    test('should have proper backdrop with aria-hidden', async ({ page }) => {
+      await gotoModal(page, { state: 'connected' });
 
-      await page.addInitScript(() => {
-        (window as any).__NETWORK_STATE = {
-          connection: { isConnected: true, address: CONNECTED_ADDRESS, network: 'testnet' },
-          isNetworkMismatch: false,
-          isDarkMode: false,
-        };
-      });
+      const modalBackdrop = backdrop(page);
+      await expect(modalBackdrop).toBeVisible();
 
-      await page.goto('/test-network-modal-connected');
-      
-      const backdrop = page.locator('[aria-hidden="true"]').first();
-      await expect(backdrop).toBeVisible();
-
-      const ariaHidden = await backdrop.getAttribute('aria-hidden');
+      const ariaHidden = await modalBackdrop.getAttribute('aria-hidden');
       expect(ariaHidden).toBe('true');
-
-      await context.close();
     });
   });
 
   test.describe('No Real Network Calls', () => {
-    test('should not make real API calls when rendering modal', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should not make real API calls when rendering modal', async ({ page }) => {
       const networkRequests: string[] = [];
       page.on('request', (request) => {
         if (request.url().includes('stellar') || request.url().includes('api')) {
@@ -483,27 +308,17 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
         }
       });
 
-      await page.addInitScript(() => {
-        (window as any).__NETWORK_STATE = {
-          connection: { isConnected: true, address: CONNECTED_ADDRESS, network: 'testnet' },
-          isNetworkMismatch: false,
-          isDarkMode: false,
-        };
-      });
+      await gotoModal(page, { state: 'connected' });
 
-      await page.goto('/test-network-modal-connected');
-
-      await expect(page.getByRole('dialog', { name: /network status/i })).toBeVisible();
+      await expect(networkModal(page)).toBeVisible();
 
       // Verify no API calls were made for the modal itself
-      const stellarApiCalls = networkRequests.filter(url => 
+      const stellarApiCalls = networkRequests.filter(url =>
         url.includes('stellar') || url.includes('/api/')
       );
-      
+
       // Should be no real network calls (or only from page setup)
       expect(stellarApiCalls.length).toBeLessThanOrEqual(1);
-
-      await context.close();
     });
   });
 });

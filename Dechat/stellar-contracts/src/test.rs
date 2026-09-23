@@ -452,7 +452,7 @@ fn test_set_limit() {
     env.mock_all_auths();
 
     let (_, bridge, admin, token_addr, _, _) = setup_bridge(&env, 500);
-    bridge.set_limit(&token_addr, &1000);
+    bridge.set_limit(&token_addr, &1000, &0);
     assert_eq!(bridge.get_limit(), 1000);
 }
 
@@ -463,7 +463,7 @@ fn test_set_limit_rejects_above_configured_max_cap() {
 
     let (_, bridge, _admin, token_addr, _, _) = setup_bridge(&env, 500);
     bridge.set_limit_max_cap(&1000);
-    let result = bridge.try_set_limit(&token_addr, &1001);
+    let result = bridge.try_set_limit(&token_addr, &1001, &0);
     assert_eq!(result, Err(Ok(Error::ExceedsLimitMaxCap)));
 }
 
@@ -474,7 +474,7 @@ fn test_set_limit_succeeds_at_max_cap_boundary() {
 
     let (_, bridge, _admin, token_addr, _, _) = setup_bridge(&env, 500);
     bridge.set_limit_max_cap(&1000);
-    bridge.set_limit(&token_addr, &1000);
+    bridge.set_limit(&token_addr, &1000, &0);
     assert_eq!(bridge.get_limit(), 1000);
 }
 
@@ -578,7 +578,7 @@ fn test_zero_amount_deposit() {
     bridge.withdraw(&admin, &admin, &600, &token_addr); // This should trip the circuit breaker
 
     // Now set_limit should be blocked
-    let set_limit_result = bridge.try_set_limit(&token_addr, &2000);
+    let set_limit_result = bridge.try_set_limit(&token_addr, &2000, &0);
     assert_eq!(set_limit_result, Err(Ok(Error::CircuitBreakerActive)));
 }
 
@@ -4764,7 +4764,7 @@ fn test_execute_upgrade_before_delay_fails_with_upgrade_not_ready() {
     let (_, bridge, _, _, _, _) = setup_bridge(&env, 500);
 
     let proposed_wasm_hash = BytesN::from_array(&env, &[7u8; 32]);
-    bridge.propose_upgrade(&proposed_wasm_hash, &1_000, &1);
+    bridge.propose_upgrade(&proposed_wasm_hash);
 
     let result = bridge.try_execute_upgrade();
     assert_eq!(result, Err(Ok(Error::UpgradeNotReady)));
@@ -4778,7 +4778,7 @@ fn test_cancel_upgrade_removes_pending_proposal() {
     let (_, bridge, admin, _, _, _) = setup_bridge(&env, 500);
 
     let proposed_wasm_hash = BytesN::from_array(&env, &[9u8; 32]);
-    bridge.propose_upgrade(&proposed_wasm_hash, &1_000, &1);
+    bridge.propose_upgrade(&proposed_wasm_hash);
     assert!(bridge.get_upgrade_proposal().is_some());
 
     let nonce = bridge.get_upgrade_cancellation_nonce(&admin);
@@ -4979,7 +4979,7 @@ fn test_execute_upgrade_after_delay_succeeds() {
     let wasm_hash = env
         .deployer()
         .upload_contract_wasm(Bytes::from_slice(&env, fixture_wasm.as_slice()));
-    bridge.propose_upgrade(&wasm_hash, &1000, &1);
+    bridge.propose_upgrade(&wasm_hash);
 
     let start = env.ledger().sequence();
     env.ledger().with_mut(|li| {

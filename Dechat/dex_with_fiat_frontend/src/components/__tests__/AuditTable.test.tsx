@@ -149,6 +149,8 @@ describe('AuditTable', () => {
           severity: 'warning',
           message: expect.stringMatching(/offline/i),
         }),
+        // useToast forwards (options, variant); variant is undefined for the options form.
+        undefined,
       );
     });
   });
@@ -169,6 +171,7 @@ describe('AuditTable', () => {
           severity: 'success',
           message: expect.stringMatching(/online|refresh/i),
         }),
+        undefined,
       );
     });
   });

@@ -396,14 +396,17 @@ describe('useMasking', () => {
       );
 
       const callCount1 = vi.mocked(textMaskingLib.maskText).mock.calls.length;
+      expect(callCount1).toBe(1);
 
-      // Rerender with same object reference (new object with same values)
+      // Rerender with a new options object that has the same values
       rerender({
         options: { enabled: true, style: 'asterisk' as const },
       });
 
-      // Should have called maskText again because options is a new object
-      expect(vi.mocked(textMaskingLib.maskText).mock.calls.length).toBeGreaterThan(callCount1);
+      // The hook memoizes on the destructured option values (enabled, style,
+      // customTerms), not the options object identity, so a new-but-equal
+      // options object must not trigger another maskText call.
+      expect(vi.mocked(textMaskingLib.maskText).mock.calls.length).toBe(callCount1);
     });
   });
 

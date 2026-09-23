@@ -119,7 +119,7 @@ fn propose_upgrade_rejects_downgrade() {
 
     // Version 5 upgrade proposal should pass (current=0, 5>=0)
     let fake_hash: BytesN<32> = BytesN::from_array(&env, &[1u8; 32]);
-    client.propose_upgrade(&fake_hash, &MIN_UPGRADE_DELAY, &5u32);
+    client.propose_upgrade(&fake_hash);
 
     // Now try to downgrade to version 3 — should be rejected
     let fake_hash2: BytesN<32> = BytesN::from_array(&env, &[2u8; 32]);
@@ -133,7 +133,7 @@ fn propose_upgrade_rejects_downgrade() {
     // propose_upgrade with new_version < stored version is blocked.
 
     // Directly test: propose version 2 while stored version is 0 → succeeds (upgrade)
-    client.propose_upgrade(&fake_hash2, &MIN_UPGRADE_DELAY, &2u32);
+    client.propose_upgrade(&fake_hash2);
     let nonce = client.get_upgrade_cancellation_nonce(&admin);
     client.cancel_upgrade(&nonce);
 
@@ -154,7 +154,7 @@ fn propose_upgrade_allows_same_version() {
 
     let fake_hash: BytesN<32> = BytesN::from_array(&env, &[3u8; 32]);
     // Propose with new_version == 0 (same as current default) — must succeed.
-    client.propose_upgrade(&fake_hash, &MIN_UPGRADE_DELAY, &0u32);
+    client.propose_upgrade(&fake_hash);
 }
 
 /// get_contract_version returns 0 before any upgrade has been executed.

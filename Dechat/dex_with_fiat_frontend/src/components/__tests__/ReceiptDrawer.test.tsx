@@ -35,6 +35,7 @@ vi.mock('../components/ui/skeleton/SkeletonReceipt', () => ({
 
 vi.mock('../ReceiptQrCode', () => ({
   default: ({ value }: { value: string }) => (
+    // eslint-disable-next-line @next/next/no-img-element
     <img data-testid="receipt-qr-code" alt="QR" src={`qr:${value}`} />
   ),
 }));

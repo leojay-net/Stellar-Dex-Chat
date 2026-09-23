@@ -53,6 +53,8 @@ export default function ReceiptQrCode({ value, label }: ReceiptQrCodeProps) {
           {prefersReducedMotion ? 'Generating QR code…' : 'Generating QR code…'}
         </div>
       ) : dataUrl ? (
+        // A generated data: URL gains nothing from next/image optimisation.
+        // eslint-disable-next-line @next/next/no-img-element
         <img
           src={dataUrl}
           alt={label ?? 'Transaction verification QR code'}

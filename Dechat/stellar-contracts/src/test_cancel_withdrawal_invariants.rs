@@ -23,7 +23,7 @@
 
 use crate::{Error, FiatBridge, FiatBridgeClient};
 use proptest::prelude::*;
-use soroban_sdk::{testutils::Address as _, token, Address, Bytes, Env, Vec};
+use soroban_sdk::{testutils::{Address as _, Events as _}, token, Address, Bytes, Env, Vec};
 
 fn create_token_contract<'a>(
     env: &Env,
@@ -186,7 +186,7 @@ fn cancel_emits_event() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (contract_id, bridge, admin, token_addr, _, token_admin) = {
+    let (contract_id, bridge, _admin, token_addr, _, token_admin) = {
         let fx = setup_bridge(&env);
         (
             fx.contract_id,

@@ -15,6 +15,18 @@ async function gotoHarness(page: Page) {
   await page.waitForLoadState('domcontentloaded');
 }
 
+/**
+ * First search result (role="option") belonging to the session with the given
+ * title. A session can contribute several matching messages, so scope to the
+ * result list and pick the first match instead of relying on bare text.
+ */
+function resultForSession(page: Page, title: string) {
+  return page
+    .getByRole('option')
+    .filter({ has: page.getByText(title, { exact: true }) })
+    .first();
+}
+
 /** The keyword input rendered inside the panel header. */
 function searchInput(page: Page) {
   return page.getByLabel('Search keyword');
@@ -136,7 +148,7 @@ test.describe('ChatSearchPanel', () => {
 
       // Type a keyword first to get results
       await searchInput(page).fill('swap');
-      await expect(page.getByText('Alpha XLM swap')).toBeVisible({ timeout: 5_000 });
+      await expect(resultForSession(page, 'Alpha XLM swap')).toBeVisible({ timeout: 5_000 });
 
       // Open advanced filters and enter the wallet address from fixture
       await page.getByRole('button', { name: /advanced filters/i }).click();
@@ -145,7 +157,7 @@ test.describe('ChatSearchPanel', () => {
       );
 
       // Alpha session should still appear (it has this wallet address)
-      await expect(page.getByText('Alpha XLM swap')).toBeVisible({ timeout: 5_000 });
+      await expect(resultForSession(page, 'Alpha XLM swap')).toBeVisible({ timeout: 5_000 });
     });
 
     test('date-from filter is reachable', async ({ page }) => {
@@ -172,7 +184,7 @@ test.describe('ChatSearchPanel', () => {
       await gotoHarness(page);
 
       await searchInput(page).fill('swap');
-      await expect(page.getByText('Alpha XLM swap')).toBeVisible({ timeout: 5_000 });
+      await expect(resultForSession(page, 'Alpha XLM swap')).toBeVisible({ timeout: 5_000 });
 
       // Clear button appears when any filter is set
       const clearBtn = page.getByTitle('Clear filters');
@@ -313,7 +325,7 @@ test.describe('ChatSearchPanel', () => {
       await gotoHarness(page);
 
       await searchInput(page).fill('bridge');
-      await expect(page.getByText('Bridge deposit status')).toBeVisible({
+      await expect(resultForSession(page, 'Bridge deposit status')).toBeVisible({
         timeout: 5_000,
       });
 

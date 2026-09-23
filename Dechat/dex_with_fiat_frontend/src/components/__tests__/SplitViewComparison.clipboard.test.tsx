@@ -140,7 +140,19 @@ describe('SplitViewComparison - Clipboard Copy', () => {
       vi.advanceTimersByTime(1000);
     });
 
-    expect(secondCopyButton.querySelector('[data-lucide="check"]')).toBeInTheDocument();
+    // lucide-react renders `<svg class="lucide lucide-check">` (it has no
+    // `data-lucide` attribute), so query by class.
+    // 2000ms after the first click: its stale timer must not clear the newer feedback.
+    expect(secondCopyButton.querySelector('svg.lucide-check')).toBeInTheDocument();
+    expect(firstCopyButton.querySelector('svg.lucide-check')).not.toBeInTheDocument();
+    expect(firstCopyButton.querySelector('svg.lucide-copy')).toBeInTheDocument();
+
+    // The newer copy's own timeout (2000ms after the second click) still clears it.
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(secondCopyButton.querySelector('svg.lucide-check')).not.toBeInTheDocument();
+    expect(secondCopyButton.querySelector('svg.lucide-copy')).toBeInTheDocument();
   });
 
   it('does not trigger message selection when copy button is clicked', async () => {

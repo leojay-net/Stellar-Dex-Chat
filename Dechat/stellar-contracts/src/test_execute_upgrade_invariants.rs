@@ -82,7 +82,7 @@ fn execute_upgrade_before_timelock_fails_with_not_ready_error() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_, bridge, _, _, _, _) = setup_bridge(&env);
+    let (bridge, _) = setup_bridge(&env);
     let wasm_hash = BytesN::from_array(&env, &[0u8; 32]);
 
     bridge.propose_upgrade(&wasm_hash);

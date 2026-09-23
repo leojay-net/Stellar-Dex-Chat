@@ -1030,9 +1030,6 @@ impl FiatBridge {
         }
         .publish(&env);
 
-        env.storage()
-            .instance()
-            .set(&DataKey::InitNonce(admin.clone()), &0u64);
         env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
         Ok(())
     }
@@ -3660,21 +3657,9 @@ impl FiatBridge {
             return Err(Error::ZeroAmount);
         }
 
-        // ── Issue #829: Validate nonce for replay protection
-        let current_nonce: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::FeeWithdrawalNonce)
-            .unwrap_or(0);
-        
-        // Nonce must be exactly current_nonce (monotonically increasing)
-        if nonce != current_nonce {
-            if nonce < current_nonce {
-                return Err(Error::StaleNonce);
-            } else {
-                return Err(Error::InvalidNonce);
-            }
-        }
+        // ── Issue #829 / #1113: per-caller replay protection, shared with
+        // `withdraw_fees_batch`. Any later error reverts the increment.
+        Self::validate_and_increment_fee_withdrawal_nonce(&env, &admin, nonce)?;
 
         let key = DataKey::FeeVault(token.clone());
         let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
@@ -3713,10 +3698,6 @@ impl FiatBridge {
         token_client.transfer(&env.current_contract_address(), &recipient, &amount);
 
         env.storage().persistent().set(&key, &(current - amount));
-        // Increment fee withdrawal nonce for replay protection tracking
-        let nonce_key = DataKey::FeeWithdrawalNonceByCaller(admin.clone());
-        let caller_nonce: u64 = env.storage().instance().get(&nonce_key).unwrap_or(0);
-        env.storage().instance().set(&nonce_key, &(caller_nonce + 1));
         FeeWithdrawnEvent { version: EVENT_VERSION, to: recipient, amount }.publish(&env);
         Ok(())
     }
@@ -4201,9 +4182,17 @@ impl FiatBridge {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
-        env.storage()
-            .instance()
-            .set(&DataKey::WithdrawalExpiryWindow, &ledgers);
+        // Zero would let queued withdrawals be reclaimed immediately; treat it
+        // as "reset to the compile-time default" instead.
+        if ledgers == 0 {
+            env.storage()
+                .instance()
+                .remove(&DataKey::WithdrawalExpiryWindow);
+        } else {
+            env.storage()
+                .instance()
+                .set(&DataKey::WithdrawalExpiryWindow, &ledgers);
+        }
         Ok(())
     }
 
@@ -5578,7 +5567,8 @@ impl FiatBridge {
     /// Proposes a contract WASM upgrade subject to a timelock delay.
     ///
     /// # Overflow Prevention & Safety Invariants
-    /// - **Delay Bounds**: Validates `delay >= MIN_UPGRADE_DELAY`.
+    /// - **Delay Bounds**: Uses the delay configured via `set_upgrade_delay`,
+    ///   which enforces `delay >= MIN_UPGRADE_DELAY` (default `MIN_UPGRADE_DELAY`).
     /// - **Saturating Timelock Sequence**: Calculates `executable_after = env.ledger().sequence().saturating_add(delay)`,
     ///   ensuring that sequence number calculations cannot overflow or bypass the timelock.
     ///
@@ -5587,31 +5577,28 @@ impl FiatBridge {
     /// * `new_wasm_hash` – 32-byte hash of the newly uploaded WASM binary.
     ///
     /// # Errors
+    /// * [`Error::NotInitialized`] – If the contract has not been initialised.
     /// * [`Error::Unauthorized`] – If caller is not admin.
+    /// * [`Error::ContractPaused`] – If the contract is paused.
     #[allow(deprecated)]
-    pub fn propose_upgrade(env: Env, new_wasm_hash: BytesN<32>, delay: u32, _new_version: u32) -> Result<(), Error> {
+    pub fn propose_upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
         let admin: Address = env
             .storage()
             .instance()
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+        Self::require_not_paused(&env)?;
 
-        // Validate delay is not zero to prevent immediate upgrade
-        if delay == 0 {
-            return Err(Error::UpgradeDelayTooShort);
-        }
-
-        // Validate delay meets minimum threshold to enforce timelock
-        if delay < MIN_UPGRADE_DELAY {
-            return Err(Error::UpgradeDelayTooShort);
-        }
-
-        // Prevent overflow when calculating executable_after
-        let current_ledger = env.ledger().sequence();
-        let executable_after = current_ledger.checked_add(delay).ok_or(Error::Overflow)?;
+        let delay: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::UpgradeDelay)
+            .unwrap_or(MIN_UPGRADE_DELAY);
 
         let proposed_at = env.ledger().sequence();
+        let executable_after = proposed_at.saturating_add(delay);
+
         let proposal = UpgradeProposal {
             wasm_hash: new_wasm_hash.clone(),
             executable_after,
@@ -5915,11 +5902,6 @@ impl FiatBridge {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
-        // A recovery target must be externally controllable. Pointing it at
-        // this contract would make the configured recovery route unusable.
-        if recovery == env.current_contract_address() {
-            return Err(Error::InvalidRecipient);
-        }
         if cap <= 0 {
             return Err(Error::ZeroAmount);
         }
@@ -5970,6 +5952,11 @@ impl FiatBridge {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+        // A recovery target must be externally controllable. Pointing it at
+        // this contract would make the configured recovery route unusable.
+        if recovery == env.current_contract_address() {
+            return Err(Error::InvalidRecipient);
+        }
         if cap <= 0 {
             return Err(Error::ZeroAmount);
         }
@@ -6157,6 +6144,8 @@ mod test_set_circuit_breaker_reset_window_invariants;
 
 #[cfg(test)]
 mod test_withdraw_circuit_breaker;
+
+#[cfg(test)]
 mod test_get_next_priority_withdrawal_invariants;
 
 #[cfg(test)]

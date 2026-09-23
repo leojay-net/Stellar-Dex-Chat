@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import jsPDF from 'jspdf';
 import { useChatHistory } from '@/hooks/useChatHistory';
 import { useTxHistory } from '@/hooks/useTxHistory';
@@ -261,7 +261,10 @@ export default function ChatHistorySidebar({
     };
   }, []);
 
-  const allSessions = [...pinnedSessions, ...unpinnedSessions];
+  const allSessions = useMemo(
+    () => [...pinnedSessions, ...unpinnedSessions],
+    [pinnedSessions, unpinnedSessions],
+  );
   // Filter out the session that is pending deletion so it disappears immediately
   const visibleSessions = pendingDeleteId
     ? allSessions.filter((s) => s.id !== pendingDeleteId)

@@ -24,11 +24,12 @@ export function useIdempotentAction(options: IdempotentActionOptions = {}) {
 
   useEffect(() => {
     isMountedRef.current = true;
+    const actions = inFlightActions.current;
     return () => {
       isMountedRef.current = false;
       // Clear in-flight promises on unmount so their closures (which hold
       // references to state setters and other hook internals) can be GC'd.
-      inFlightActions.current.clear();
+      actions.clear();
     };
   }, []);
 

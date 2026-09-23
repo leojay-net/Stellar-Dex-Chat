@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, cleanup, waitFor } from '@testing-library/react';
+import { createElement } from 'react';
+import { renderToString } from 'react-dom/server';
 import { useMediaQuery } from '../useMediaQuery';
 
 describe('useMediaQuery', () => {
@@ -28,6 +30,7 @@ describe('useMediaQuery', () => {
   afterEach(() => {
     cleanup();
     listeners = [];
+    vi.unstubAllGlobals();
     vi.clearAllMocks();
   });
 
@@ -58,14 +61,33 @@ describe('useMediaQuery', () => {
   });
 
   it('returns false during SSR (window is undefined)', () => {
-    const originalWindow = global.window;
-    // @ts-expect-error Testing SSR scenario
-    delete global.window;
+    // Even if the query would match on the client, the server render must
+    // report `false` and must never touch `window.matchMedia`.
+    matchMediaMock.mockReturnValue({
+      matches: true,
+      media: '(min-width: 768px)',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
 
-    const { result } = renderHook(() => useMediaQuery('(min-width: 768px)'));
-    expect(result.current).toBe(false);
+    function Probe() {
+      return createElement('span', null, String(useMediaQuery('(min-width: 768px)')));
+    }
 
-    global.window = originalWindow;
+    // testing-library/react-dom cannot mount with `window` deleted, so render
+    // through the server renderer with `window` stubbed out instead.
+    let html: string;
+    vi.stubGlobal('window', undefined);
+    try {
+      expect(typeof window).toBe('undefined');
+      html = renderToString(createElement(Probe));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(typeof window).not.toBe('undefined');
+    expect(html).toBe('<span>false</span>');
+    expect(matchMediaMock).not.toHaveBeenCalled();
   });
 
   // ── Updates ────────────────────────────────────────────────────────────

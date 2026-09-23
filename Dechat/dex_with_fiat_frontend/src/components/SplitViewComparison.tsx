@@ -81,14 +81,17 @@ function ThreadPane({
     // Optimistic UI update: immediately show checkmark
     setCopiedMessageId(messageId);
     // A previous copy's timeout must not clear feedback for a newer copy.
+    // Schedule the reset synchronously (before awaiting the clipboard write) so
+    // that overlapping copies always cancel the previous timer instead of
+    // overwriting the ref after their awaits resolve and leaking a stale timer.
     if (copyResetTimerRef.current !== null) {
       clearTimeout(copyResetTimerRef.current);
     }
-    await onCopyMessage(content);
     copyResetTimerRef.current = setTimeout(() => {
       setCopiedMessageId(null);
       copyResetTimerRef.current = null;
     }, 2000);
+    await onCopyMessage(content);
   };
 
   const formatTimestamp = (timestamp: number | Date) => {
