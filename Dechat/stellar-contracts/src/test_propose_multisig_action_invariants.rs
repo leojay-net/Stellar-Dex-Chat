@@ -6,7 +6,7 @@
 
 use crate::{BatchAdminOp, Error, FiatBridge, FiatBridgeClient};
 use proptest::prelude::*;
-use soroban_sdk::{testutils::Address as _, token, Address, Bytes, Env, Symbol, Vec};
+use soroban_sdk::{testutils::Address as _, Address, Bytes, Env, Symbol, Vec};
 
 fn setup(env: &Env, signer_count: u32) -> (FiatBridgeClient<'_>, Vec<Address>) {
     let admin = Address::generate(env);

@@ -34,6 +34,7 @@ fn create_token_contract<'a>(
 struct Fixture<'a> {
     contract_id: Address,
     bridge: FiatBridgeClient<'a>,
+    #[allow(dead_code)]
     admin: Address,
     token_addr: Address,
     token_client: token::Client<'a>,

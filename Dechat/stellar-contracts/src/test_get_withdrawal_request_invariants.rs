@@ -16,7 +16,7 @@
 //! See [`docs/INVARIANT_TESTING.md`](docs/INVARIANT_TESTING.md) for the
 //! invariant-testing strategy and contributor checklist.
 
-use crate::{Error, FiatBridge, FiatBridgeClient};
+use crate::{FiatBridge, FiatBridgeClient};
 use proptest::prelude::*;
 use soroban_sdk::{testutils::Address as _, token, Address, Bytes, BytesN, Env, Vec};
 
@@ -34,6 +34,7 @@ fn create_token_contract<'a>(
 struct Fixture<'a> {
     contract_id: Address,
     bridge: FiatBridgeClient<'a>,
+    #[allow(dead_code)]
     admin: Address,
     token_addr: Address,
     token_client: token::Client<'a>,
@@ -167,7 +168,7 @@ fn multiple_requests_all_reachable() {
 
     let ids: Vec<u64> = Vec::from_array(
         &env,
-        &[
+        [
             fx.bridge
                 .request_withdrawal(&user, &100, &fx.token_addr, &None, &0),
             fx.bridge
@@ -178,7 +179,7 @@ fn multiple_requests_all_reachable() {
     );
 
     for id in ids.iter() {
-        assert!(fx.bridge.get_withdrawal_request(id).is_some());
+        assert!(fx.bridge.get_withdrawal_request(&id).is_some());
     }
     assert_core_accounting_invariants(&fx);
 }
@@ -231,7 +232,7 @@ proptest! {
         prop_assert_eq!(s.amount, amount);
         prop_assert_eq!(s.risk_tier, tier);
         prop_assert_eq!(s.to, user);
-        prop_assert_eq!(s.token, fx.token_addr);
+        prop_assert_eq!(s.token, fx.token_addr.clone());
         assert_core_accounting_invariants(&fx);
     }
 }

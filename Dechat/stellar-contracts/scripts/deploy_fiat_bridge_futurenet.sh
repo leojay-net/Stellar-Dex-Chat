@@ -28,9 +28,9 @@ echo "   Output file: $OUTPUT_FILE"
 
 # Build the contract
 echo "📦 Building WASM contract..."
-cargo build --target wasm32-unknown-unknown --release
+cargo build --target wasm32v1-none --release --lib
 
-WASM_FILE="./target/wasm32-unknown-unknown/release/stellar_contracts.wasm"
+WASM_FILE="./target/wasm32v1-none/release/stellar_contracts.wasm"
 
 if [ ! -f "$WASM_FILE" ]; then
     echo "❌ Error: WASM file not found at $WASM_FILE"

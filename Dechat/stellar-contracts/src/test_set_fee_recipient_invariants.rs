@@ -18,7 +18,7 @@
 
 use crate::{Error, FiatBridge, FiatBridgeClient};
 use proptest::prelude::*;
-use soroban_sdk::{testutils::Address as _, token, Address, Bytes, Env, Vec};
+use soroban_sdk::{testutils::{Address as _, Events as _}, token, Address, Bytes, Env, Vec};
 
 fn create_token_contract<'a>(
     env: &Env,
@@ -248,7 +248,7 @@ proptest! {
         let env = Env::default();
         env.mock_all_auths();
         let fx = setup_bridge(&env);
-        let user = funded_user(&env, &fx, deposit);
+        let _user = funded_user(&env, &fx, deposit);
 
         let dep = fx.bridge.get_total_deposited();
         let with = fx.bridge.get_total_withdrawn();
