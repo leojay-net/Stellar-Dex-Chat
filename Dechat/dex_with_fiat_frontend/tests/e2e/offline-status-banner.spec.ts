@@ -34,6 +34,16 @@ async function stubConnectivityCheck(page: Page, reachable = true) {
   });
 }
 
+/**
+ * The OfflineStatusBanner live region. The global ToastProvider also renders
+ * an (empty) role="status" container, so match the banner by its accessible
+ * name, which is "Offline status" while offline and "Reconnecting" briefly
+ * after the connection returns.
+ */
+function offlineBanner(page: Page) {
+  return page.getByRole('status', { name: /^(Offline status|Reconnecting)$/ });
+}
+
 /** Dispatch a synthetic "offline" event so the banner goes into offline mode. */
 async function goOffline(page: Page) {
   await page.evaluate(() => {
@@ -69,7 +79,7 @@ test.describe('OfflineStatusBanner', () => {
       });
 
       // No offline banner present
-      const banner = page.getByRole('status');
+      const banner = offlineBanner(page);
       await expect(banner).toBeHidden({ timeout: 5_000 });
     });
 
@@ -93,7 +103,7 @@ test.describe('OfflineStatusBanner', () => {
 
       await goOffline(page);
 
-      const banner = page.getByRole('status');
+      const banner = offlineBanner(page);
       await expect(banner).toBeVisible({ timeout: 5_000 });
       await expect(
         page.getByText('You are offline. Messages will be sent when you reconnect.'),
@@ -107,7 +117,7 @@ test.describe('OfflineStatusBanner', () => {
 
       await goOffline(page);
 
-      const banner = page.getByRole('status');
+      const banner = offlineBanner(page);
       await expect(banner).toBeVisible({ timeout: 5_000 });
 
       await expect(banner).toHaveAttribute('aria-live', 'polite');
@@ -130,7 +140,7 @@ test.describe('OfflineStatusBanner', () => {
       });
 
       // Banner should be visible regardless of count display
-      const banner = page.getByRole('status');
+      const banner = offlineBanner(page);
       await expect(banner).toBeVisible({ timeout: 5_000 });
     });
   });
@@ -145,7 +155,7 @@ test.describe('OfflineStatusBanner', () => {
 
       // First go offline so wasOffline flag is set
       await goOffline(page);
-      const banner = page.getByRole('status');
+      const banner = offlineBanner(page);
       await expect(banner).toBeVisible({ timeout: 5_000 });
 
       // Then come back online
@@ -164,7 +174,7 @@ test.describe('OfflineStatusBanner', () => {
       await page.waitForLoadState('domcontentloaded');
 
       await goOffline(page);
-      const banner = page.getByRole('status');
+      const banner = offlineBanner(page);
       await expect(banner).toBeVisible({ timeout: 5_000 });
 
       await goOnline(page);
@@ -200,7 +210,7 @@ test.describe('OfflineStatusBanner', () => {
 
       // The stub must have intercepted the check — no real request escaped
       // (We just verify the test ran without errors and the banner behaved)
-      const banner = page.getByRole('status');
+      const banner = offlineBanner(page);
       // After reconnect the banner should eventually hide
       await expect(banner).toBeHidden({ timeout: 5_000 });
     });
@@ -215,7 +225,7 @@ test.describe('OfflineStatusBanner', () => {
       await page.waitForLoadState('domcontentloaded');
 
       await goOffline(page);
-      const banner = page.getByRole('status');
+      const banner = offlineBanner(page);
       await expect(banner).toBeVisible({ timeout: 5_000 });
 
       // Tab through focusable elements — the banner itself has no interactive
@@ -231,7 +241,7 @@ test.describe('OfflineStatusBanner', () => {
       await page.waitForLoadState('domcontentloaded');
 
       await goOffline(page);
-      await expect(page.getByRole('status')).toBeVisible({ timeout: 5_000 });
+      await expect(offlineBanner(page)).toBeVisible({ timeout: 5_000 });
 
       // Tab several times to confirm focus moves freely past the banner
       for (let i = 0; i < 5; i++) {

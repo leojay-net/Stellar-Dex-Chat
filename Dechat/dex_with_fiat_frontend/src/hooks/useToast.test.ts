@@ -5,19 +5,21 @@ import { toastStore } from '@/lib/toastStore';
 
 describe('useToast telemetry', () => {
   let dispatchedEvents: CustomEvent[] = [];
+  // Keep a stable reference so afterEach removes the same listener it added;
+  // otherwise listeners accumulate across tests and every event is recorded
+  // once per previously-run test.
+  const recordTelemetry = (e: Event) => {
+    dispatchedEvents.push(e as CustomEvent);
+  };
 
   beforeEach(() => {
-    dispatchedEvents = [];
     toastStore.clearToasts();
-    window.addEventListener('toast_telemetry', (e) => {
-      dispatchedEvents.push(e as CustomEvent);
-    });
+    dispatchedEvents = [];
+    window.addEventListener('toast_telemetry', recordTelemetry);
   });
 
   afterEach(() => {
-    window.removeEventListener('toast_telemetry', (e) => {
-      dispatchedEvents.push(e as CustomEvent);
-    });
+    window.removeEventListener('toast_telemetry', recordTelemetry);
     toastStore.clearToasts();
   });
 

@@ -1,5 +1,35 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { mockSorobanRpc, installMockWalletBridge, connectMockWallet, MOCK_ADMIN_ADDRESS } from './helpers';
+
+/*
+ * These tests exercise the "Admin Audit Log" section of /admin, which is backed
+ * by /api/admin/audit-log (mocked below). The page also renders a second,
+ * separate <AuditTable /> ("Audit Log", backed by /api/admin-audit), so every
+ * locator is scoped to the admin audit log's own controls / table to avoid
+ * matching both.
+ */
+
+/** Rows of the admin audit log table. */
+function auditLogTable(page: Page) {
+  return page.getByRole('table', { name: 'Admin audit log entries' });
+}
+
+/** The admin audit log "Action Type" filter (labelled via htmlFor). */
+function actionFilter(page: Page) {
+  return page.getByRole('combobox', { name: 'Action Type' });
+}
+
+async function gotoAdmin(page: Page) {
+  await installMockWalletBridge(page);
+  await page.goto('/admin');
+  await connectMockWallet(page, MOCK_ADMIN_ADDRESS);
+  await expect(page.getByRole('heading', { name: 'Admin Dashboard' })).toBeVisible();
+}
+
+/** Wait until the admin audit log has finished its initial fetch. */
+async function waitForAuditLogLoaded(page: Page) {
+  await expect(page.getByText('Loading audit entries...')).toBeHidden();
+}
 
 test.describe('AuditTable E2E', () => {
   test.beforeEach(async ({ page }) => {
@@ -11,32 +41,6 @@ test.describe('AuditTable E2E', () => {
       const url = new URL(route.request().url());
       const action = url.searchParams.get('action');
       
-      // Return different responses based on query params for testing different states
-      if (url.searchParams.get('error') === 'true') {
-        await route.fulfill({
-          status: 500,
-          contentType: 'application/json',
-          body: JSON.stringify({ error: 'Internal server error' }),
-        });
-        return;
-      }
-
-      if (url.searchParams.get('empty') === 'true') {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({ 
-            entries: [], 
-            page: 1, 
-            pageSize: 20, 
-            total: 0, 
-            totalPages: 0,
-            actions: [] 
-          }),
-        });
-        return;
-      }
-
       // Default happy path response
       const entries = [
         {
@@ -95,135 +99,146 @@ test.describe('AuditTable E2E', () => {
   });
 
   test('should display loading state', async ({ page }) => {
-    // Mock a delayed response to show loading state
+    // Hold the audit-log response until the loading state has been asserted.
+    // The fetch starts on mount, before the admin guard finishes connecting
+    // the wallet, so a short fixed delay is not enough to observe it.
+    let releaseResponse: () => void = () => {};
+    const responseGate = new Promise<void>((resolve) => {
+      releaseResponse = resolve;
+    });
     await page.route('**/api/admin/audit-log*', async (route) => {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      await route.continue();
+      await responseGate;
+      await route.fallback();
     });
 
-    await installMockWalletBridge(page);
-    await page.goto('/admin');
-    await connectMockWallet(page, MOCK_ADMIN_ADDRESS);
-    
-    // Check for loading skeleton
-    await expect(page.getByText('Loading...')).toBeVisible();
+    await gotoAdmin(page);
+
+    // Check for the loading indicator
+    await expect(page.getByText('Loading audit entries...')).toBeVisible();
+    await expect(actionFilter(page)).toBeDisabled();
+
+    releaseResponse();
+    await waitForAuditLogLoaded(page);
+    await expect(auditLogTable(page).getByRole('cell', { name: 'Withdrawal Approved' })).toBeVisible();
   });
 
   test('should display empty state', async ({ page }) => {
-    await installMockWalletBridge(page);
-    await page.goto('/admin?empty=true');
-    await connectMockWallet(page, MOCK_ADMIN_ADDRESS);
-    
-    // Wait for admin dashboard to load
-    await expect(page.getByText('Admin Dashboard')).toBeVisible();
-    
+    await page.route('**/api/admin/audit-log*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          entries: [],
+          page: 1,
+          pageSize: 20,
+          total: 0,
+          totalPages: 0,
+          actions: [],
+        }),
+      });
+    });
+
+    await gotoAdmin(page);
+    await waitForAuditLogLoaded(page);
+
     // The audit section should show empty state
-    await expect(page.getByText(/no audit entries/i)).toBeVisible();
+    await expect(
+      page.getByText('No audit entries found for the selected action type.'),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Export audit log to CSV file' })).toBeDisabled();
   });
 
   test('should display error state', async ({ page }) => {
-    await installMockWalletBridge(page);
-    await page.goto('/admin?error=true');
-    await connectMockWallet(page, MOCK_ADMIN_ADDRESS);
-    
-    // Wait for admin dashboard to load
-    await expect(page.getByText('Admin Dashboard')).toBeVisible();
-    
+    await page.route('**/api/admin/audit-log*', async (route) => {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'Internal server error' }),
+      });
+    });
+
+    await gotoAdmin(page);
+
     // Check for error message in audit section
-    await expect(page.getByText(/error/i)).toBeVisible();
+    await expect(page.getByText('Failed to fetch admin audit logs (500)')).toBeVisible();
   });
 
   test('should display audit entries in happy path', async ({ page }) => {
-    await installMockWalletBridge(page);
-    await page.goto('/admin');
-    await connectMockWallet(page, MOCK_ADMIN_ADDRESS);
-    
-    // Wait for admin dashboard to load
-    await expect(page.getByText('Admin Dashboard')).toBeVisible();
-    await expect(page.getByText('Loading...')).toBeHidden();
-    
+    await gotoAdmin(page);
+    await waitForAuditLogLoaded(page);
+
     // Check that audit entries are displayed
-    await expect(page.getByText('Withdrawal Approved')).toBeVisible();
-    await expect(page.getByText('Withdrawal Rejected')).toBeVisible();
-    await expect(page.getByText('Reconciliation Adjustment')).toBeVisible();
+    const table = auditLogTable(page);
+    await expect(table.getByRole('cell', { name: 'Withdrawal Approved' })).toBeVisible();
+    await expect(table.getByRole('cell', { name: 'Withdrawal Rejected' })).toBeVisible();
+    await expect(table.getByRole('cell', { name: 'Reconciliation Adjustment' })).toBeVisible();
   });
 
   test('should filter by action type', async ({ page }) => {
-    await installMockWalletBridge(page);
-    await page.goto('/admin');
-    await connectMockWallet(page, MOCK_ADMIN_ADDRESS);
-    
-    // Wait for admin dashboard to load
-    await expect(page.getByText('Admin Dashboard')).toBeVisible();
-    await expect(page.getByText('Loading...')).toBeHidden();
-    
+    await gotoAdmin(page);
+    await waitForAuditLogLoaded(page);
+
     // Select withdrawal_approved filter
-    const actionFilter = page.getByRole('combobox').first();
-    await actionFilter.selectOption('withdrawal_approved');
-    
+    await actionFilter(page).selectOption('withdrawal_approved');
+
     // Wait for filtered results
-    await expect(page.getByText('Withdrawal Approved')).toBeVisible();
+    const table = auditLogTable(page);
+    await expect(table.getByRole('cell', { name: 'Withdrawal Approved' })).toBeVisible();
+    await expect(table.getByRole('cell', { name: 'Withdrawal Rejected' })).toBeHidden();
   });
 
   test('should reset filters', async ({ page }) => {
-    await installMockWalletBridge(page);
-    await page.goto('/admin');
-    await connectMockWallet(page, MOCK_ADMIN_ADDRESS);
-    
-    // Wait for admin dashboard to load
-    await expect(page.getByText('Admin Dashboard')).toBeVisible();
-    await expect(page.getByText('Loading...')).toBeHidden();
-    
+    await gotoAdmin(page);
+    await waitForAuditLogLoaded(page);
+
     // Apply filter
-    const actionFilter = page.getByRole('combobox').first();
-    await actionFilter.selectOption('withdrawal_approved');
-    
+    const filter = actionFilter(page);
+    await filter.selectOption('withdrawal_approved');
+    const table = auditLogTable(page);
+    await expect(table.getByRole('cell', { name: 'Withdrawal Rejected' })).toBeHidden();
+
     // Reset filter by selecting 'all'
-    await actionFilter.selectOption('all');
-    
+    await filter.selectOption('all');
+
     // Verify filter is reset - all entries should be visible
-    await expect(page.getByText('Withdrawal Approved')).toBeVisible();
-    await expect(page.getByText('Withdrawal Rejected')).toBeVisible();
+    await expect(table.getByRole('cell', { name: 'Withdrawal Approved' })).toBeVisible();
+    await expect(table.getByRole('cell', { name: 'Withdrawal Rejected' })).toBeVisible();
   });
 
   test('should export CSV', async ({ page }) => {
-    await installMockWalletBridge(page);
-    await page.goto('/admin');
-    await connectMockWallet(page, MOCK_ADMIN_ADDRESS);
-    
-    // Wait for admin dashboard to load
-    await expect(page.getByText('Admin Dashboard')).toBeVisible();
-    await expect(page.getByText('Loading...')).toBeHidden();
-    
+    await gotoAdmin(page);
+    await waitForAuditLogLoaded(page);
+
     // Click export button
     const downloadPromise = page.waitForEvent('download');
-    await page.getByRole('button', { name: /export/i }).click();
+    await page.getByRole('button', { name: 'Export audit log to CSV file' }).click();
     const download = await downloadPromise;
-    
+
     // Verify download
     expect(download.suggestedFilename()).toMatch(/admin_audit_log_.*\.csv/);
   });
 
   test('should navigate keyboard-only through all interactive elements', async ({ page }) => {
-    await installMockWalletBridge(page);
-    await page.goto('/admin');
-    await connectMockWallet(page, MOCK_ADMIN_ADDRESS);
-    
-    // Wait for admin dashboard to load
-    await expect(page.getByText('Admin Dashboard')).toBeVisible();
-    await expect(page.getByText('Loading...')).toBeHidden();
-    
-    // Tab through interactive elements in the audit section
+    await gotoAdmin(page);
+    await waitForAuditLogLoaded(page);
+    await expect(auditLogTable(page).getByRole('cell', { name: 'Withdrawal Approved' })).toBeVisible();
+
+    // Start keyboard navigation at the audit section's first control (the
+    // action filter); the page header/nav precede it in tab order.
+    const filter = actionFilter(page);
+    await filter.focus();
+    await expect(filter).toBeFocused();
+
+    // Tab moves through the section's toolbar in DOM order
     await page.keyboard.press('Tab');
-    
-    // Focus should be on first interactive element (action filter)
-    let focused = await page.evaluate(() => document.activeElement?.tagName);
-    expect(['SELECT', 'BUTTON']).toContain(focused);
-    
+    await expect(page.getByRole('button', { name: 'Export audit log to CSV file' })).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('button', { name: 'Clear all audit log entries' })).toBeFocused();
+
     // Continue tabbing through other elements
     for (let i = 0; i < 5; i++) {
       await page.keyboard.press('Tab');
-      focused = await page.evaluate(() => document.activeElement?.tagName);
+      const focused = await page.evaluate(() => document.activeElement?.tagName);
       expect(['SELECT', 'BUTTON', 'INPUT', 'A']).toContain(focused);
     }
   });
@@ -254,28 +269,19 @@ test.describe('AuditTable E2E', () => {
       });
     });
 
-    await installMockWalletBridge(page);
-    await page.goto('/admin');
-    await connectMockWallet(page, MOCK_ADMIN_ADDRESS);
-    
-    // Wait for admin dashboard to load
-    await expect(page.getByText('Admin Dashboard')).toBeVisible();
-    await expect(page.getByText('Loading...')).toBeHidden();
-    
+    await gotoAdmin(page);
+    await waitForAuditLogLoaded(page);
+
     // Check pagination controls are visible
-    await expect(page.getByRole('button', { name: /next/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /go to next page/i })).toBeVisible();
+    await expect(page.getByText('Page 1 of 2')).toBeVisible();
   });
 
   test('should display total entries count', async ({ page }) => {
-    await installMockWalletBridge(page);
-    await page.goto('/admin');
-    await connectMockWallet(page, MOCK_ADMIN_ADDRESS);
-    
-    // Wait for admin dashboard to load
-    await expect(page.getByText('Admin Dashboard')).toBeVisible();
-    await expect(page.getByText('Loading...')).toBeHidden();
-    
-    // Check total entries display
-    await expect(page.getByText(/total/i)).toBeVisible();
+    await gotoAdmin(page);
+    await waitForAuditLogLoaded(page);
+
+    // Check total entries display (3 mocked entries)
+    await expect(page.getByText('Showing 1-3 of 3')).toBeVisible();
   });
 });

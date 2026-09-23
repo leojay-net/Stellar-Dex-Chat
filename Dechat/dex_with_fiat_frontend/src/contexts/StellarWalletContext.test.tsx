@@ -201,6 +201,18 @@ describe('StellarWalletContext', () => {
     expect(result.current.connection.network).toBe('TESTNET');
   });
 
+  it('mockConnect accepts a non-TESTNET network and reports a mismatch', () => {
+    const { result } = renderHook(() => useStellarWallet(), { wrapper });
+
+    act(() => {
+      result.current.mockConnect(ADDRESS, 'PUBLIC');
+    });
+
+    expect(result.current.connection.isConnected).toBe(true);
+    expect(result.current.connection.network).toBe('PUBLIC');
+    expect(result.current.isNetworkMismatch).toBe(true);
+  });
+
   it('clearSessionExpired resets the sessionExpired flag after an expired session is detected', async () => {
     localStorage.setItem('stellar_address', ADDRESS);
     localStorage.setItem(

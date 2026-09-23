@@ -1,5 +1,5 @@
 import React from 'react';
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
 import { renderToString } from 'react-dom/server';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import useBridgeStats from './useBridgeStats';
@@ -20,6 +20,12 @@ import {
 const mockGetContractBalance = vi.mocked(getContractBalance);
 const mockGetBridgeLimit = vi.mocked(getBridgeLimit);
 const mockGetTotalDeposited = vi.mocked(getTotalDeposited);
+
+// Every test here runs under vi.useFakeTimers(). Testing Library's `waitFor`
+// polls with setInterval/setTimeout and only auto-advances *Jest* fake timers,
+// so under Vitest it never re-checks and hangs until the test timeout. Use
+// `vi.waitFor`, which advances Vitest's fake timers between checks.
+const waitFor = vi.waitFor;
 
 describe('useBridgeStats', () => {
   beforeEach(() => {
@@ -107,9 +113,26 @@ describe('useBridgeStats', () => {
       expect(result.current.loading).toBe(false);
     });
 
-    // Now resolve the first (stale) fetch — its result should be discarded
-    resolveFirst(111n);
-    await vi.runAllTimersAsync();
+    // Now resolve the first (stale) fetch — its result should be discarded.
+    // (vi.runAllTimersAsync() cannot be used here: the hook's 30s poll is a
+    // setInterval, so "run all timers" never terminates.) Wait until the hook
+    // has actually processed and dropped the stale result instead.
+    const discarded: string[] = [];
+    const onTelemetry = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.event === 'bridge_stats_fetch_discarded') discarded.push(detail.reason);
+    };
+    window.addEventListener('bridge_stats_telemetry', onTelemetry);
+    try {
+      await act(async () => {
+        resolveFirst(111n);
+      });
+      await waitFor(() => {
+        expect(discarded).toEqual(['superseded']);
+      });
+    } finally {
+      window.removeEventListener('bridge_stats_telemetry', onTelemetry);
+    }
 
     // The newer fetch result (999n) should be preserved
     expect(result.current.balance).toBe(999n);
@@ -130,9 +153,10 @@ describe('useBridgeStats', () => {
 
   it('dispatches bridge_stats_telemetry events', async () => {
     const events: CustomEvent[] = [];
-    window.addEventListener('bridge_stats_telemetry', (e) => {
+    const handler = (e: Event) => {
       events.push(e as CustomEvent);
-    });
+    };
+    window.addEventListener('bridge_stats_telemetry', handler);
 
     const { unmount } = renderHook(() => useBridgeStats());
 
@@ -145,8 +169,8 @@ describe('useBridgeStats', () => {
     });
 
     unmount();
-    window.removeEventListener('bridge_stats_telemetry', (e) => {
-      events.push(e as CustomEvent);
-    });
+    window.removeEventListener('bridge_stats_telemetry', handler);
+
+    expect(events.some((e) => e.detail?.event === 'bridge_stats_unmounted')).toBe(true);
   });
 });

@@ -32,7 +32,7 @@ declare global {
       getAccounts?: () => Promise<{ accounts: string[]; error?: string }>;
       setAllowedBack?: (address: string) => Promise<void>;
     };
-    mockStellarConnect?: (address: string) => void;
+    mockStellarConnect?: (address: string, network?: string) => void;
   }
 }
 
@@ -80,7 +80,12 @@ interface StellarWalletContextType {
   error: string | null;
   sessionExpired: boolean;
   clearSessionExpired: () => void;
-  mockConnect: (address: string) => void;
+  /**
+   * Test hook: set a connection directly without Freighter. `network`
+   * defaults to TESTNET; pass another network (e.g. 'PUBLIC') to exercise the
+   * network-mismatch state.
+   */
+  mockConnect: (address: string, network?: string) => void;
   isNetworkMismatch: boolean;
 }
 
@@ -285,13 +290,14 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
     setSessionExpired(false);
   }, []);
 
-  const mockConnect = useCallback((addr: string) => {
+  const mockConnect = useCallback((addr: string, network = 'TESTNET') => {
+    const isTestnet = network.toUpperCase() === 'TESTNET';
     const connectionData = {
       address: addr,
       publicKey: addr,
       isConnected: true,
-      network: 'TESTNET',
-      networkPassphrase: 'Test SDF Network ; September 2015',
+      network,
+      networkPassphrase: isTestnet ? Networks.TESTNET : Networks.PUBLIC,
     };
     setConnection(connectionData);
     localStorage.setItem(STORAGE_KEY_ADDRESS, addr);

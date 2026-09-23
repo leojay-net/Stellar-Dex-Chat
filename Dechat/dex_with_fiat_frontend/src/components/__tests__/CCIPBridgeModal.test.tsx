@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CCIPBridgeModal from '../CCIPBridgeModal';
 import { toastStore } from '@/lib/toastStore';
@@ -7,6 +7,15 @@ import { toastStore } from '@/lib/toastStore';
 vi.mock('@/hooks/useAccessibleModal', () => ({
   useAccessibleModal: () => undefined,
 }));
+
+/**
+ * The transaction line renders a screen-reader-only "Transaction hash: " prefix,
+ * an aria-hidden visual "Transaction: " label, then the hash itself.
+ */
+function expectTransactionHashLine(line: HTMLElement, hash: string) {
+  expect(line).toHaveTextContent(`Transaction: ${hash}`);
+  expect(within(line).getByText('Transaction hash:')).toHaveClass('sr-only');
+}
 
 describe('CCIPBridgeModal', () => {
   const defaultProps = {
@@ -525,7 +534,7 @@ describe('CCIPBridgeModal', () => {
         />,
       );
 
-      const closeButton = screen.getByLabelText('Close');
+      const closeButton = screen.getByLabelText('Close CCIP bridge dialog');
       fireEvent.click(closeButton);
 
       expect(onClose).toHaveBeenCalledTimes(1);
@@ -540,7 +549,8 @@ describe('CCIPBridgeModal', () => {
 
       const dialog = screen.getByRole('dialog');
       expect(dialog).toHaveAttribute('aria-modal', 'true');
-      expect(dialog).toHaveAttribute('aria-label', 'CCIP bridge transfer');
+      expect(dialog).toHaveAttribute('aria-labelledby', 'ccip-bridge-modal-title');
+      expect(dialog).toHaveAccessibleName('CCIP Bridge');
       expect(dialog).toHaveAttribute('tabIndex', '-1');
     });
   });
@@ -752,9 +762,10 @@ describe('CCIPBridgeModal', () => {
 
       fireEvent.click(screen.getByText('Start CCIP Transfer'));
 
-      expect(
-        await screen.findByText('Transaction: 0xabc123def456'),
-      ).toBeInTheDocument();
+      expectTransactionHashLine(
+        await screen.findByText('0xabc123def456'),
+        '0xabc123def456',
+      );
     });
 
     it('displays transaction hash in success state', async () => {
@@ -773,9 +784,7 @@ describe('CCIPBridgeModal', () => {
       fireEvent.click(screen.getByText('Start CCIP Transfer'));
 
       await screen.findByText('CCIP transfer confirmed');
-      expect(
-        screen.getByText('Transaction: 0xxyz789'),
-      ).toBeInTheDocument();
+      expectTransactionHashLine(screen.getByText('0xxyz789'), '0xxyz789');
     });
 
     it('displays transaction hash in error state when available', async () => {
@@ -799,9 +808,7 @@ describe('CCIPBridgeModal', () => {
       fireEvent.click(screen.getByText('Start CCIP Transfer'));
 
       await screen.findByText('CCIP transfer error');
-      expect(
-        screen.getByText('Transaction: 0xerror123'),
-      ).toBeInTheDocument();
+      expectTransactionHashLine(screen.getByText('0xerror123'), '0xerror123');
     });
   });
 

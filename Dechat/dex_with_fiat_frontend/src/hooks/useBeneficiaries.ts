@@ -275,6 +275,7 @@ export function useBeneficiaries(options?: { fetchFromApi?: boolean; userId?: st
     getBeneficiary,
     selectBeneficiary,
     clearSelection,
+    handleKeyboardShortcut,
     keyboardShortcuts: KEYBOARD_SHORTCUTS,
   };
 }

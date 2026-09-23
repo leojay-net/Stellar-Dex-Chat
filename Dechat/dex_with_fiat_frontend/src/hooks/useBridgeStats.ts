@@ -148,6 +148,10 @@ export default function useBridgeStats(): BridgeStats {
       // Invalidate any request which was started by this mounted instance.
       // This also covers Strict Mode's mount/cleanup/remount cycle.
       fetchIdRef.current += 1;
+      dispatchTelemetry('bridge_stats_unmounted', {
+        fetchCount: fetchCountRef.current,
+        lifetimeMs: Date.now() - mountedAtRef.current,
+      });
     };
   }, []);
 

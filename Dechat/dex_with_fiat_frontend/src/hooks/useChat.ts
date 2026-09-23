@@ -230,7 +230,6 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
       stopPolling();
     };
   // Re-run only when the session changes so the connection tracks the right session.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSessionId]);
 
   const appendCancelledMessage = useCallback((content: string) => {

@@ -1,4 +1,6 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
+import { createElement } from 'react';
+import { renderToString } from 'react-dom/server';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { useBeneficiaries } from './useBeneficiaries';
 
@@ -27,10 +29,23 @@ describe('useBeneficiaries', () => {
   // Test 1: Initial state tests
   describe('initial state', () => {
     it('returns empty beneficiaries array initially', () => {
-      const { result } = renderHook(() => useBeneficiaries());
+      // renderHook flushes mount effects (which load localStorage and flip
+      // isLoaded), so capture the very first render to check initial state.
+      const renders: ReturnType<typeof useBeneficiaries>[] = [];
+      const { result } = renderHook(() => {
+        const value = useBeneficiaries();
+        renders.push(value);
+        return value;
+      });
 
+      const initial = renders[0];
+      expect(initial.beneficiaries).toEqual([]);
+      expect(initial.isLoaded).toBe(false);
+      expect(initial.selectedIndex).toBe(-1);
+
+      // After mount effects, still empty (nothing stored) but now loaded.
       expect(result.current.beneficiaries).toEqual([]);
-      expect(result.current.isLoaded).toBe(false);
+      expect(result.current.isLoaded).toBe(true);
       expect(result.current.selectedIndex).toBe(-1);
     });
 
@@ -296,18 +311,27 @@ describe('useBeneficiaries', () => {
     });
 
     it('does not add event listener when window is undefined', () => {
-      // Simulate SSR environment
-      const originalWindow = global.window;
-      Object.defineProperty(global, 'window', { value: undefined });
+      // Simulate SSR: render on the server renderer with `window` removed.
+      // (The client renderer from renderHook itself needs `window`, so
+      // stubbing it out there crashes react-dom and poisons later tests.)
+      const addEventListenerSpy = vi.spyOn(window, 'addEventListener');
+      let snapshot: ReturnType<typeof useBeneficiaries> | undefined;
+      function Probe() {
+        snapshot = useBeneficiaries();
+        return null;
+      }
 
-      const addEventListenerSpy = vi.spyOn(global, 'addEventListener');
-
-      renderHook(() => useBeneficiaries());
+      vi.stubGlobal('window', undefined);
+      try {
+        renderToString(createElement(Probe));
+      } finally {
+        vi.unstubAllGlobals();
+      }
 
       expect(addEventListenerSpy).not.toHaveBeenCalled();
-
-      // Restore window
-      Object.defineProperty(global, 'window', { value: originalWindow });
+      expect(localStorageMock.getItem).not.toHaveBeenCalled();
+      expect(snapshot?.beneficiaries).toEqual([]);
+      expect(snapshot?.isLoaded).toBe(false);
     });
   });
 
@@ -504,8 +528,10 @@ describe('useBeneficiaries', () => {
         preventDefault: vi.fn(),
       } as unknown as KeyboardEvent;
 
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      let resultAction: string | null = null;
+      act(() => {
+        resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      });
 
       expect(mockEvent.preventDefault).toHaveBeenCalled();
       expect(resultAction).toBe('add');
@@ -520,8 +546,10 @@ describe('useBeneficiaries', () => {
         preventDefault: vi.fn(),
       } as unknown as KeyboardEvent;
 
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      let resultAction: string | null = null;
+      act(() => {
+        resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      });
 
       expect(mockEvent.preventDefault).toHaveBeenCalled();
       expect(resultAction).toBe('focus');
@@ -541,8 +569,10 @@ describe('useBeneficiaries', () => {
         preventDefault: vi.fn(),
       } as unknown as KeyboardEvent;
 
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      let resultAction: string | null = null;
+      act(() => {
+        resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      });
 
       expect(mockEvent.preventDefault).toHaveBeenCalled();
       expect(resultAction).toBe('navigate-up');
@@ -562,8 +592,10 @@ describe('useBeneficiaries', () => {
         preventDefault: vi.fn(),
       } as unknown as KeyboardEvent;
 
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      let resultAction: string | null = null;
+      act(() => {
+        resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      });
 
       expect(resultAction).toBeNull();
       expect(result.current.selectedIndex).toBe(0);
@@ -583,8 +615,10 @@ describe('useBeneficiaries', () => {
         preventDefault: vi.fn(),
       } as unknown as KeyboardEvent;
 
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      let resultAction: string | null = null;
+      act(() => {
+        resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      });
 
       expect(mockEvent.preventDefault).toHaveBeenCalled();
       expect(resultAction).toBe('navigate-down');
@@ -604,8 +638,10 @@ describe('useBeneficiaries', () => {
         preventDefault: vi.fn(),
       } as unknown as KeyboardEvent;
 
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      let resultAction: string | null = null;
+      act(() => {
+        resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      });
 
       expect(resultAction).toBeNull();
       expect(result.current.selectedIndex).toBe(0);
@@ -624,8 +660,10 @@ describe('useBeneficiaries', () => {
         preventDefault: vi.fn(),
       } as unknown as KeyboardEvent;
 
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      let resultAction: string | null = null;
+      act(() => {
+        resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      });
 
       expect(mockEvent.preventDefault).toHaveBeenCalled();
       expect(resultAction).toBe('select');
@@ -646,8 +684,10 @@ describe('useBeneficiaries', () => {
         preventDefault: vi.fn(),
       } as unknown as KeyboardEvent;
 
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      let resultAction: string | null = null;
+      act(() => {
+        resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      });
 
       expect(mockEvent.preventDefault).toHaveBeenCalled();
       expect(resultAction).toBe('delete');
@@ -666,8 +706,10 @@ describe('useBeneficiaries', () => {
         preventDefault: vi.fn(),
       } as unknown as KeyboardEvent;
 
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      let resultAction: string | null = null;
+      act(() => {
+        resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      });
 
       expect(resultAction).toBeNull();
       expect(result.current.beneficiaries).toHaveLength(1);
@@ -683,8 +725,10 @@ describe('useBeneficiaries', () => {
         preventDefault: vi.fn(),
       } as unknown as KeyboardEvent;
 
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      let resultAction: string | null = null;
+      act(() => {
+        resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      });
 
       expect(resultAction).toBeNull();
     });

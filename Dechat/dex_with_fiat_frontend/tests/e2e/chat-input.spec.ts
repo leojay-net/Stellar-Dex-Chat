@@ -30,6 +30,17 @@ async function stubChatApi(page: Page) {
   });
 }
 
+/**
+ * The visible inline wallet warning. ChatInput also mirrors the same text into
+ * a visually-hidden role="status" live region, so match the warning's own
+ * <span> instead of bare text.
+ */
+function walletWarning(page: Page) {
+  return page
+    .locator('span')
+    .filter({ hasText: /^Wallet disconnected\. Reconnect to continue\.$/ });
+}
+
 /** Navigate to harness with a connected wallet. */
 async function gotoHarness(page: Page) {
   await stubChatApi(page);
@@ -197,9 +208,11 @@ test.describe('ChatInput', () => {
       await textarea.fill('Hello');
       await page.getByTestId('chat-input-send').click();
 
-      await expect(
-        page.getByText('Wallet disconnected. Reconnect to continue.'),
-      ).toBeVisible({ timeout: 5_000 });
+      await expect(walletWarning(page)).toBeVisible({ timeout: 5_000 });
+      // ...and it is announced to assistive technology via the live region.
+      await expect(page.locator('#chat-input-status')).toHaveText(
+        'Wallet disconnected. Reconnect to continue.',
+      );
     });
 
     test('wallet warning disappears after wallet reconnects', async ({ page }) => {
@@ -211,17 +224,13 @@ test.describe('ChatInput', () => {
       const textarea = page.getByTestId('chat-input-textarea');
       await textarea.fill('Hi');
       await page.getByTestId('chat-input-send').click();
-      await expect(
-        page.getByText('Wallet disconnected. Reconnect to continue.'),
-      ).toBeVisible({ timeout: 5_000 });
+      await expect(walletWarning(page)).toBeVisible({ timeout: 5_000 });
 
       // Now connect the wallet
       await connectMockWallet(page, MOCK_WALLET_ADDRESS);
 
       // Warning should clear
-      await expect(
-        page.getByText('Wallet disconnected. Reconnect to continue.'),
-      ).toBeHidden({ timeout: 5_000 });
+      await expect(walletWarning(page)).toBeHidden({ timeout: 5_000 });
     });
   });
 
@@ -297,7 +306,11 @@ test.describe('ChatInput', () => {
     test('Tab reaches the send button', async ({ page }) => {
       await gotoHarness(page);
 
+      // The send button is disabled (and therefore not focusable) while the
+      // textarea is empty, so enter a message first.
+      await page.getByTestId('chat-input-textarea').fill('Hello');
       const sendBtn = page.getByTestId('chat-input-send');
+      await expect(sendBtn).toBeEnabled();
       await sendBtn.focus();
       await expect(sendBtn).toBeFocused();
     });

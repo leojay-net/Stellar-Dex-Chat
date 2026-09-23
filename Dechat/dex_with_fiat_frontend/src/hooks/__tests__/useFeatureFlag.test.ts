@@ -87,13 +87,28 @@ describe('useFeatureFlag', () => {
 });
 
 describe('useClipboardCopy', () => {
+  // jsdom does not implement the async Clipboard API, so `navigator.clipboard`
+  // is undefined by default. Provide a minimal stub that the tests can spy on.
+  let originalClipboard: PropertyDescriptor | undefined;
+
   beforeEach(() => {
     vi.useFakeTimers();
+    originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     vi.useRealTimers();
+    if (originalClipboard) {
+      Object.defineProperty(navigator, 'clipboard', originalClipboard);
+    } else {
+      delete (navigator as { clipboard?: Clipboard }).clipboard;
+    }
   });
 
   it('copies text to clipboard and sets isCopied to true', async () => {
@@ -171,18 +186,29 @@ describe('useClipboardCopy', () => {
   });
 
   it('does nothing when window is undefined (SSR)', async () => {
-    const originalWindow = global.window;
-    // @ts-expect-error - simulating SSR environment
-    delete global.window;
+    const writeTextSpy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
 
+    // react-dom cannot render while `window` is missing, so mount the hook
+    // normally and only remove `window` around the guarded call itself.
     const { result } = renderHook(() => useClipboardCopy());
+    const { copyToClipboard } = result.current;
 
-    await act(async () => {
-      await result.current.copyToClipboard('test text');
-    });
+    vi.stubGlobal('window', undefined);
+    try {
+      expect(typeof window).toBe('undefined');
+      await copyToClipboard('test text');
+    } finally {
+      vi.unstubAllGlobals();
+    }
 
+    expect(typeof window).not.toBe('undefined');
+    expect(writeTextSpy).not.toHaveBeenCalled();
     expect(result.current.isCopied).toBe(false);
 
-    global.window = originalWindow;
+    // No reset timer should have been scheduled either.
+    act(() => {
+      vi.runAllTimers();
+    });
+    expect(result.current.isCopied).toBe(false);
   });
 });

@@ -11,6 +11,16 @@ import { test, expect, Page } from '@playwright/test';
  * - No real API calls, mocked at route level
  */
 
+/** The landing hero heading (<h1 id="landing-hero-heading">). */
+function heroHeading(page: Page) {
+  return page.getByRole('heading', { level: 1, name: 'XLM-to-Fiat Bridge' });
+}
+
+/** The primary "Start Bridging" call to action, which opens /chat. */
+function getStartedButton(page: Page) {
+  return page.getByRole('button', { name: 'Start bridging: open the chat app' });
+}
+
 test.describe('LandingPage E2E Coverage', () => {
   test.beforeEach(async ({ page }) => {
     // Mock crypto price API calls
@@ -23,63 +33,44 @@ test.describe('LandingPage E2E Coverage', () => {
       await route.abort('aborted');
     });
 
-    // Mock coingecko or other price sources
+    // Mock coingecko or other price sources (cryptoPriceService calls
+    // https://api.coingecko.com/api/v3/simple/price?...)
     await page.route('**/coingecko/**', async (route) => {
+      await route.abort('aborted');
+    });
+    await page.route('**/api.coingecko.com/**', async (route) => {
       await route.abort('aborted');
     });
   });
 
   test.describe('Happy Path - Chromium', () => {
-    test('should load and display landing page sections', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should load and display landing page sections', async ({ page }) => {
       await page.goto('/', { waitUntil: 'load' });
 
       // Wait for hero section to be visible
-      const heroHeading = page.getByRole('heading', {
-        name: /Welcome to your Personal USDT-to-Fiat/i,
-      });
-      await expect(heroHeading).toBeVisible({ timeout: 5000 });
+      await expect(heroHeading(page)).toBeVisible({ timeout: 5000 });
 
       // Verify main sections exist
       await expect(page.getByRole('main')).toBeVisible();
-
-      await context.close();
     });
 
-    test('should navigate to chat on Get Started button click', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should navigate to chat on Get Started button click', async ({ page }) => {
       await page.goto('/', { waitUntil: 'load' });
 
       // Wait for hero to be visible
-      await expect(
-        page.getByRole('heading', {
-          name: /Welcome to your Personal USDT-to-Fiat/i,
-        }),
-      ).toBeVisible({ timeout: 5000 });
+      await expect(heroHeading(page)).toBeVisible({ timeout: 5000 });
 
       // Find and click Get Started button
-      const getStartedBtn = page.getByRole('button', {
-        name: /Get Started|Get started|get started/i,
-      });
-      if (await getStartedBtn.isVisible()) {
-        await getStartedBtn.click();
+      const getStartedBtn = getStartedButton(page);
+      await expect(getStartedBtn).toBeVisible();
+      await getStartedBtn.click();
 
-        // Should navigate to /chat
-        await page.waitForURL(/\/chat/, { timeout: 5000 });
-        expect(page.url()).toContain('/chat');
-      }
-
-      await context.close();
+      // Should navigate to /chat
+      await page.waitForURL(/\/chat/, { timeout: 5000 });
+      expect(page.url()).toContain('/chat');
     });
 
-    test('should display price loading state', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should display price loading state', async ({ page }) => {
       await page.goto('/', { waitUntil: 'domcontentloaded' });
 
       // Price loading should happen in background
@@ -89,14 +80,9 @@ test.describe('LandingPage E2E Coverage', () => {
       // Hero section should be visible even while price loads
       const main = page.getByRole('main');
       await expect(main).toBeVisible();
-
-      await context.close();
     });
 
-    test('should handle price fetch error gracefully', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should handle price fetch error gracefully', async ({ page }) => {
       // Ensure price calls fail
       await page.route('**/ticker/**', async (route) => {
         await route.abort('failed');
@@ -109,40 +95,34 @@ test.describe('LandingPage E2E Coverage', () => {
       await expect(main).toBeVisible();
 
       // Get Started button should still work
-      const getStartedBtn = page.getByRole('button', {
-        name: /Get Started|get started/i,
-      });
+      const getStartedBtn = getStartedButton(page);
       await expect(getStartedBtn).toBeVisible();
-
-      await context.close();
     });
 
-    test('should display all feature cards', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should display all feature cards', async ({ page }) => {
       await page.goto('/', { waitUntil: 'load' });
 
-      // Scroll down to features section
-      await page.locator('text=Soroban Smart Contracts').scrollIntoViewIfNeeded();
+      // Scroll down to features section. "Soroban Smart Contracts" also
+      // appears in the platform section, so scope to the features region.
+      const featuresSection = page.getByRole('region', {
+        name: 'Why Choose DexFiat on Stellar',
+      });
+      const featureTitle = featuresSection.getByRole('heading', {
+        name: 'Soroban Smart Contracts',
+      });
+      await featureTitle.scrollIntoViewIfNeeded();
 
       // Features should be visible
-      const featuresSection = page.locator('text=Soroban Smart Contracts');
-      await expect(featuresSection).toBeVisible();
+      await expect(featureTitle).toBeVisible();
 
       // Verify at least one feature description
-      const featureDesc = page.locator(
-        'text=FiatBridge contract built on Stellar Soroban',
+      const featureDesc = featuresSection.getByText(
+        'FiatBridge contract built on Stellar Soroban',
       );
       await expect(featureDesc).toBeVisible();
-
-      await context.close();
     });
 
-    test('should display getting started steps', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should display getting started steps', async ({ page }) => {
       await page.goto('/', { waitUntil: 'load' });
 
       // Scroll to steps section
@@ -151,94 +131,49 @@ test.describe('LandingPage E2E Coverage', () => {
       // Steps should be visible
       const step1 = page.locator('text=Install & Connect Freighter');
       await expect(step1).toBeVisible({ timeout: 10000 });
-
-      await context.close();
     });
   });
 
   test.describe('Happy Path - Firefox', () => {
-    test('should load and display landing page in Firefox', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should load and display landing page in Firefox', async ({ page }) => {
       await page.goto('/', { waitUntil: 'load' });
 
-      const heroHeading = page.getByRole('heading', {
-        name: /Welcome to your Personal USDT-to-Fiat/i,
-      });
-      await expect(heroHeading).toBeVisible({ timeout: 10000 });
-
-      await context.close();
+      await expect(heroHeading(page)).toBeVisible({ timeout: 10000 });
     });
 
-    test('should navigate on Get Started in Firefox', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should navigate on Get Started in Firefox', async ({ page }) => {
       await page.goto('/', { waitUntil: 'load' });
 
-      await expect(
-        page.getByRole('heading', {
-          name: /Welcome to your Personal USDT-to-Fiat/i,
-        }),
-      ).toBeVisible({ timeout: 10000 });
+      await expect(heroHeading(page)).toBeVisible({ timeout: 10000 });
 
-      const getStartedBtn = page.getByRole('button', {
-        name: /Get Started|get started/i,
-      });
-      if (await getStartedBtn.isVisible()) {
-        await getStartedBtn.click();
-        await page.waitForURL(/\/chat/, { timeout: 5000 });
-      }
-
-      await context.close();
+      const getStartedBtn = getStartedButton(page);
+      await expect(getStartedBtn).toBeVisible();
+      await getStartedBtn.click();
+      await page.waitForURL(/\/chat/, { timeout: 5000 });
     });
   });
 
   test.describe('Happy Path - WebKit', () => {
-    test('should load and display landing page in WebKit', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should load and display landing page in WebKit', async ({ page }) => {
       await page.goto('/', { waitUntil: 'load' });
 
-      const heroHeading = page.getByRole('heading', {
-        name: /Welcome to your Personal USDT-to-Fiat/i,
-      });
-      await expect(heroHeading).toBeVisible({ timeout: 10000 });
-
-      await context.close();
+      await expect(heroHeading(page)).toBeVisible({ timeout: 10000 });
     });
 
-    test('should navigate on Get Started in WebKit', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should navigate on Get Started in WebKit', async ({ page }) => {
       await page.goto('/', { waitUntil: 'load' });
 
-      await expect(
-        page.getByRole('heading', {
-          name: /Welcome to your Personal USDT-to-Fiat/i,
-        }),
-      ).toBeVisible({ timeout: 10000 });
+      await expect(heroHeading(page)).toBeVisible({ timeout: 10000 });
 
-      const getStartedBtn = page.getByRole('button', {
-        name: /Get Started|get started/i,
-      });
-      if (await getStartedBtn.isVisible()) {
-        await getStartedBtn.click();
-        await page.waitForURL(/\/chat/, { timeout: 5000 });
-      }
-
-      await context.close();
+      const getStartedBtn = getStartedButton(page);
+      await expect(getStartedBtn).toBeVisible();
+      await getStartedBtn.click();
+      await page.waitForURL(/\/chat/, { timeout: 5000 });
     });
   });
 
   test.describe('Theme Toggling', () => {
-    test('should toggle dark mode via button click', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should toggle dark mode via button click', async ({ page }) => {
       await page.goto('/', { waitUntil: 'load' });
 
       // Find theme toggle button
@@ -253,14 +188,9 @@ test.describe('LandingPage E2E Coverage', () => {
       // Background should change (verify via computed style)
       const main = page.locator('main').first();
       await expect(main).toBeVisible();
-
-      await context.close();
     });
 
-    test('should toggle theme via d keyboard shortcut', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should toggle theme via d keyboard shortcut', async ({ page }) => {
       await page.goto('/', { waitUntil: 'load' });
 
       // Ensure page is focused
@@ -272,14 +202,9 @@ test.describe('LandingPage E2E Coverage', () => {
       // Page should still be functional
       const main = page.locator('main').first();
       await expect(main).toBeVisible();
-
-      await context.close();
     });
 
-    test('should preserve theme across navigation', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should preserve theme across navigation', async ({ page }) => {
       await page.goto('/', { waitUntil: 'load' });
 
       // Toggle theme
@@ -294,23 +219,15 @@ test.describe('LandingPage E2E Coverage', () => {
       const classAfterClick = await bodyAfterClick.getAttribute('class');
 
       // Click Get Started (navigation)
-      const getStartedBtn = page.getByRole('button', {
-        name: /Get Started|get started/i,
-      });
-      if (await getStartedBtn.isVisible()) {
-        await getStartedBtn.click();
-        // Theme should persist (or be set by context)
-      }
-
-      await context.close();
+      const getStartedBtn = getStartedButton(page);
+      await expect(getStartedBtn).toBeVisible();
+      await getStartedBtn.click();
+      // Theme should persist (or be set by context)
     });
   });
 
   test.describe('Keyboard Navigation', () => {
-    test('should launch app via g keyboard shortcut', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should launch app via g keyboard shortcut', async ({ page }) => {
       await page.goto('/', { waitUntil: 'load' });
 
       // Ensure main is focused
@@ -322,33 +239,23 @@ test.describe('LandingPage E2E Coverage', () => {
       // Should navigate to chat
       await page.waitForURL(/\/chat/, { timeout: 5000 });
       expect(page.url()).toContain('/chat');
-
-      await context.close();
     });
 
-    test('should launch app via G (capital) keyboard shortcut', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should launch app via G (capital) keyboard shortcut', async ({ page }) => {
       await page.goto('/', { waitUntil: 'load' });
 
       // Ensure main is focused
       await page.locator('main').first().click();
 
       // Press 'G' to launch
-      await page.keyboard.press('shift+g');
+      await page.keyboard.press('Shift+G');
 
       // Should navigate to chat
       await page.waitForURL(/\/chat/, { timeout: 5000 });
       expect(page.url()).toContain('/chat');
-
-      await context.close();
     });
 
-    test('should not trigger shortcuts while typing in input', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should not trigger shortcuts while typing in input', async ({ page }) => {
       await page.goto('/', { waitUntil: 'load' });
 
       // Find email input if it exists
@@ -365,14 +272,9 @@ test.describe('LandingPage E2E Coverage', () => {
         // Should NOT navigate porque should be in input
         expect(page.url()).toContain('/');
       }
-
-      await context.close();
     });
 
-    test('should allow tab navigation through interactive elements', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should allow tab navigation through interactive elements', async ({ page }) => {
       await page.goto('/', { waitUntil: 'load' });
 
       // Get initial focused element
@@ -391,14 +293,9 @@ test.describe('LandingPage E2E Coverage', () => {
       // Both can be valid focus points
       expect(focusedElement).toBeDefined();
       expect(newFocusedElement).toBeDefined();
-
-      await context.close();
     });
 
-    test('should reach theme button via keyboard navigation', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should reach theme button via keyboard navigation', async ({ page }) => {
       await page.goto('/', { waitUntil: 'load' });
 
       // Tab through elements
@@ -416,40 +313,27 @@ test.describe('LandingPage E2E Coverage', () => {
         name: /Switch to |mode/i,
       });
       await expect(themeBtn).toBeVisible();
-
-      await context.close();
     });
 
-    test('should reach Get Started button via keyboard', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should reach Get Started button via keyboard', async ({ page }) => {
       await page.goto('/', { waitUntil: 'load' });
 
       // Focus Get Started button
-      const getStartedBtn = page.getByRole('button', {
-        name: /Get Started|get started/i,
-      });
+      const getStartedBtn = getStartedButton(page);
 
-      if (await getStartedBtn.isVisible()) {
-        await getStartedBtn.focus();
+      await expect(getStartedBtn).toBeVisible();
+      await getStartedBtn.focus();
 
-        // Press Enter to activate
-        await page.keyboard.press('Enter');
+      // Press Enter to activate
+      await page.keyboard.press('Enter');
 
-        // Should navigate
-        await page.waitForURL(/\/chat/, { timeout: 5000 });
-      }
-
-      await context.close();
+      // Should navigate
+      await page.waitForURL(/\/chat/, { timeout: 5000 });
     });
   });
 
   test.describe('Email Submission', () => {
-    test('should handle email submission form', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should handle email submission form', async ({ page }) => {
       await page.goto('/', { waitUntil: 'load' });
 
       // Find email input
@@ -479,16 +363,11 @@ test.describe('LandingPage E2E Coverage', () => {
           expect(navigated).toBeTruthy();
         }
       }
-
-      await context.close();
     });
   });
 
   test.describe('Accessibility', () => {
-    test('should have proper heading hierarchy', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should have proper heading hierarchy', async ({ page }) => {
       await page.goto('/', { waitUntil: 'load' });
 
       // Verify main heading exists
@@ -498,14 +377,9 @@ test.describe('LandingPage E2E Coverage', () => {
       // Verify navigation structure
       const main = page.getByRole('main');
       await expect(main).toBeVisible();
-
-      await context.close();
     });
 
-    test('should have proper main landmark', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should have proper main landmark', async ({ page }) => {
       await page.goto('/', { waitUntil: 'load' });
 
       const main = page.getByRole('main');
@@ -513,14 +387,9 @@ test.describe('LandingPage E2E Coverage', () => {
 
       const mainLabel = await main.getAttribute('aria-label');
       expect(mainLabel).toBeDefined();
-
-      await context.close();
     });
 
-    test('should have descriptive button labels', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should have descriptive button labels', async ({ page }) => {
       await page.goto('/', { waitUntil: 'load' });
 
       // All buttons should have accessible labels
@@ -535,16 +404,11 @@ test.describe('LandingPage E2E Coverage', () => {
         // Either should have text or aria-label
         expect(text?.trim() || ariaLabel).toBeTruthy();
       }
-
-      await context.close();
     });
   });
 
   test.describe('No Real Network Calls', () => {
-    test('should not make real API calls to external services', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should not make real API calls to external services', async ({ page }) => {
       const networkRequests: string[] = [];
       page.on('request', (request) => {
         const url = request.url();
@@ -576,16 +440,11 @@ test.describe('LandingPage E2E Coverage', () => {
 
       // All external calls should be handled (not completed to real APIs)
       // This is ensured by route.abort() in beforeEach
-
-      await context.close();
     });
   });
 
   test.describe('Error States', () => {
-    test('should handle missing hero text gracefully', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should handle missing hero text gracefully', async ({ page }) => {
       await page.goto('/', { waitUntil: 'load' });
 
       // Page should still render even if some heading is missing
@@ -593,22 +452,12 @@ test.describe('LandingPage E2E Coverage', () => {
       await expect(main).toBeVisible();
 
       // At least Get Started button should be functional
-      const getStartedBtn = page.getByRole('button', {
-        name: /Get Started|get started/i,
-      });
-      if (await getStartedBtn.isVisible()) {
-        await expect(getStartedBtn).toBeEnabled();
-      }
-
-      await context.close();
+      const getStartedBtn = getStartedButton(page);
+      await expect(getStartedBtn).toBeVisible();
+      await expect(getStartedBtn).toBeEnabled();
     });
 
-    test('should render with theme toggle working despite section errors', async ({
-      browser,
-    }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should render with theme toggle working despite section errors', async ({ page }) => {
       await page.goto('/', { waitUntil: 'load' });
 
       // Theme toggle should always work
@@ -621,8 +470,6 @@ test.describe('LandingPage E2E Coverage', () => {
       // Click should succeed
       await themeBtn.click();
       await expect(themeBtn).toBeVisible();
-
-      await context.close();
     });
   });
 });
