@@ -29,7 +29,23 @@ import PriceTicker from '@/components/PriceTicker';
 
 import { ChatSession } from '@/types';
 import { ContractEvent } from '@/types/events';
+import { stroopsToXlmOrNull } from '@/lib/stroops';
 import { useSessionPagination } from '@/hooks/useSessionPagination';
+
+/**
+ * Renders a contract-event amount for the activity feed.
+ *
+ * The feed receives raw stroop strings from `/api/events`. Formatting them
+ * through the stroops helper keeps large values exact, and a value that cannot
+ * be parsed degrades to a dash instead of taking the sidebar down.
+ */
+function formatActivityAmount(stroops: string): string {
+  const xlm = stroopsToXlmOrNull(stroops);
+
+  return xlm === null
+    ? '—'
+    : Number(xlm).toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
 
 interface SessionRowProps {
   session: ChatSession;
@@ -721,11 +737,7 @@ export default function ChatHistorySidebar({
                             className={`font-bold ${event.type === 'deposit' ? 'text-[var(--color-success)]' : 'text-[var(--color-warning)]'}`}
                           >
                             {event.type === 'deposit' ? '+' : '-'}
-                            {(
-                              parseFloat(event.amount) / 10000000
-                            ).toLocaleString(undefined, {
-                              maximumFractionDigits: 2,
-                            })}
+                            {formatActivityAmount(event.amount)}
                           </span>
                         </div>
                       ))}

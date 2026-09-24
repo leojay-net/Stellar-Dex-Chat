@@ -14,6 +14,44 @@ const DECIMALS = 7;
 const DIVISOR = BigInt(10 ** DECIMALS);
 
 /**
+ * Raised when a value cannot be read as a stroop count.
+ *
+ * `BigInt` rejects fractional and exponent strings with a bare `SyntaxError`,
+ * which a caller cannot tell apart from an unrelated parse failure, while an
+ * empty string is silently read as `0n`. Neither is a usable stroop count, so
+ * both are reported as this type instead.
+ */
+export class StroopsFormatError extends Error {
+  readonly value: unknown;
+
+  constructor(value: unknown) {
+    super(`Expected a base-10 integer stroop count, received ${String(value)}`);
+    this.name = 'StroopsFormatError';
+    this.value = value;
+  }
+}
+
+/**
+ * Reads a raw stroop count from a `bigint` or from a base-10 integer string
+ * (optionally signed) as returned by RPC/JSON payloads.
+ *
+ * @returns The parsed count, or `null` when the input is not a base-10 integer.
+ */
+function parseStroops(stroops: bigint | string): bigint | null {
+  if (typeof stroops === 'bigint') {
+    return stroops;
+  }
+
+  const normalized = stroops.trim();
+
+  if (!/^[+-]?\d+$/.test(normalized)) {
+    return null;
+  }
+
+  return BigInt(normalized);
+}
+
+/**
  * Converts a human-readable decimal XLM amount string or number to raw stroops (1 XLM = 10,000,000 stroops).
  *
  * ### Overflow & Precision Prevention Architecture
@@ -63,26 +101,62 @@ export function xlmToStroops(xlm: string | number): bigint | null {
  * Formats a raw stroop value as a human-readable decimal XLM string with zero float truncation.
  *
  * ### Mathematical Mechanics
- * - Computes the whole integer portion via `value / 10_000_000n` (integer division).
- * - Computes the fractional remainder via `value % 10_000_000n` (modulo division).
+ * - Splits the magnitude into a whole part and a fractional remainder.
+ * - Computes the whole integer portion via `magnitude / 10_000_000n` (integer division).
+ * - Computes the fractional remainder via `magnitude % 10_000_000n` (modulo division).
  * - Formats the fractional remainder as a 7-character zero-padded string and trims redundant trailing zeros.
+ * - Preprends `-` once, after formatting, so negatives keep the sign in front of the whole part.
  *
  * @param stroops - The stroop value to format, provided as a `bigint` or string integer (e.g. `50000000n` or `"50000000"`).
  * @returns Formatted XLM string (e.g. `"5"` for `50_000_000n`, `"0.5"` for `5_000_000n`).
+ * @throws {StroopsFormatError} If `stroops` is a string that is not a base-10 integer.
  *
  * @example
  * ```typescript
  * stroopsToXlm(10000000n); // "1"
  * stroopsToXlm(1005000000n); // "100.5"
  * stroopsToXlm("1"); // "0.0000001"
+ * stroopsToXlm(-5000000n); // "-0.5"
  * ```
  */
 export function stroopsToXlm(stroops: bigint | string): string {
-  const value = typeof stroops === 'string' ? BigInt(stroops) : stroops;
-  const whole = value / DIVISOR;
-  const frac = value % DIVISOR;
+  const value = parseStroops(stroops);
+
+  if (value === null) {
+    throw new StroopsFormatError(stroops);
+  }
+
+  // The magnitude is formatted first and the sign is attached afterwards.
+  // Formatting the signed value directly is what produced "0.00000-5" for -5n:
+  // `-5n / 10_000_000n` truncates to `0n` while `-5n % 10_000_000n` keeps the
+  // sign, and that remainder is then left-padded into the fractional slot.
+  const isNegative = value < 0n;
+  const magnitude = isNegative ? -value : value;
+  const whole = magnitude / DIVISOR;
+  const frac = magnitude % DIVISOR;
   const fracStr = frac.toString().padStart(DECIMALS, '0').replace(/0+$/, '');
-  return fracStr ? `${whole}.${fracStr}` : `${whole}`;
+  const formatted = fracStr ? `${whole}.${fracStr}` : `${whole}`;
+
+  return isNegative ? `-${formatted}` : formatted;
+}
+
+/**
+ * Formats a raw stroop value for display without throwing.
+ *
+ * Display paths render values straight from API payloads, where a malformed
+ * amount should degrade to a placeholder rather than take the view down.
+ * Arithmetic and validation paths should call {@link stroopsToXlm} instead so
+ * that bad input fails loudly.
+ *
+ * @param stroops - The stroop value to format.
+ * @returns The formatted XLM string, or `null` when the input cannot be parsed.
+ */
+export function stroopsToXlmOrNull(stroops: bigint | string): string | null {
+  try {
+    return stroopsToXlm(stroops);
+  } catch {
+    return null;
+  }
 }
 
 /**
