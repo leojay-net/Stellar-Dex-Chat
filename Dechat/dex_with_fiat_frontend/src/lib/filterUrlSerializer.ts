@@ -50,6 +50,11 @@ export function deserializeFilters(searchParams: URLSearchParams): FilterState {
 /**
  * Parses a comma-separated filter parameter value.
  *
+ * `URLSearchParams.get` has already percent-decoded the value, so the entries
+ * are only trimmed and length-checked here. Decoding again is what made a
+ * shared link such as `?asset=100%25` throw `URIError: URI malformed` on the
+ * second pass and crash the transaction filter view.
+ *
  * @param param - Raw parameter value from URL
  * @param validValues - Optional array of valid values for validation
  * @returns Array of parsed and validated filter values
@@ -62,7 +67,7 @@ function parseFilterParam(
 
   const values = param
     .split(',')
-    .map((v) => decodeURIComponent(v.trim()))
+    .map((v) => v.trim())
     .filter((v) => v.length > 0);
 
   if (validValues) {
