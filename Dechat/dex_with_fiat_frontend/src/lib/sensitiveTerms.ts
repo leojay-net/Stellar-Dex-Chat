@@ -121,7 +121,15 @@ export class SensitiveTermsManager {
     const searchTerm = config.caseSensitive ? config.term : termKey;
 
     if (config.wholeWordOnly) {
-      const regex = new RegExp(`\\b${this.escapeRegex(searchTerm)}\\b`, 'i');
+      // The flag has to follow `config.caseSensitive` the same way
+      // `findMatches` does. Hard-coding 'i' here made a case-sensitive,
+      // whole-word term report a hit in `isSensitive()` for text that
+      // `findSensitiveTerms()` then found nothing in, so masking behaved
+      // inconsistently with the check that decides whether to mask.
+      const regex = new RegExp(
+        `\\b${this.escapeRegex(searchTerm)}\\b`,
+        config.caseSensitive ? '' : 'i',
+      );
       return regex.test(searchText);
     } else {
       return searchText.includes(searchTerm);
