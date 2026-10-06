@@ -5,33 +5,46 @@ This document describes how to deploy the FiatBridge smart contract to Stellar's
 ## Overview
 
 The FiatBridge contract deployment process includes:
-- **Atomic Deployment & Initialization**: Deploy and initialize in a single transaction to prevent front-running
+- **Atomic Deployment**: Deploy and initialize in one transaction to prevent front-running
 - **Automated CI/CD**: GitHub Actions workflow for release branch deployments
 - **Manual Deployment**: Local scripts for development and testing
 - **Contract ID Management**: Automatic output of contract IDs for downstream integration
-- **Post-Deployment Verification**: Automated checks to ensure correct initialization
 
 ## ⚠️ Security: Front-Running Risk
 
-**CRITICAL**: The FiatBridge contract's `init()` method only validates that the caller is authorized by the provided admin address (`admin.require_auth()`), but it does **not** verify that the admin address is the expected one. This means:
+**CRITICAL**: The FiatBridge contract's `init()` function accepts the admin address as a parameter and only checks `admin.require_auth()`. This means **anyone watching the ledger can call `init()` first with their own address as admin**.
 
-1. **The Problem**: If you deploy the contract and then call `init()` in a separate transaction, anyone watching the blockchain can call `init()` first with **their own address** as the admin.
-2. **The Attack**: A malicious actor front-runs your `init()` call, gains admin control, and you cannot re-initialize (the contract checks `AlreadyInitialized`).
-3. **The Solution**: Use atomic deployment — the `stellar contract deploy` command with constructor arguments deploys and initializes in a single transaction, making front-running impossible.
+Once initialized, the contract **cannot be re-initialized** (returns `AlreadyInitialized` error).
 
-**This deployment script uses atomic deployment by default.** Do not split deploy and init into separate steps.
-- **Atomic Initialization**: Deploy and init in one transaction to prevent front-running
+### The Attack Scenario
 
-## Security: Front-Running Risk
+1. Attacker watches Futurenet ledger for new FiatBridge deployments
+2. Legitimate deployer submits: `deploy CONTRACT`
+3. Attacker immediately submits: `invoke CONTRACT init --admin ATTACKER_ADDRESS`
+4. If attacker's transaction gets confirmed first, they become the admin
+5. Legitimate deployer's `init()` call fails with `AlreadyInitialized`
+6. Contract is permanently controlled by the attacker
 
-**⚠️ CRITICAL**: The FiatBridge `init()` function only checks `admin.require_auth()` for the admin address provided by the **caller**. This means:
+### The Solution: Atomic Deployment
 
-1. Anyone watching the Futurenet ledger can see when a contract is deployed
-2. They can immediately call `init()` with **their own address** as admin
-3. Once initialized, the contract **cannot be re-initialized** (returns `AlreadyInitialized` error)
-4. The attacker now controls admin functions (withdrawals, config changes, etc.)
+We prevent this by using `stellar contract deploy` with constructor arguments, which deploys and initializes **in a single transaction**:
 
-**Solution**: This repo uses **atomic deployment** via `stellar contract deploy ... -- init ...`, which deploys the WASM and calls the constructor in a single transaction. No one else can call `init()` because the contract is already initialized when it hits the ledger.
+```bash
+stellar contract deploy \
+    --wasm contract.wasm \
+    --source deployer \
+    --network futurenet \
+    -- \
+    --admin "$ADMIN_ADDRESS" \
+    --token "$TOKEN_ADDRESS" \
+    # ... other init params
+```
+
+This atomic operation ensures:
+- ✅ Deploy and init happen in one transaction
+- ✅ No window for front-running between deploy and init
+- ✅ Admin is guaranteed to be the intended address
+- ✅ Contract is production-ready immediately after deployment
 
 ## Prerequisites
 
@@ -54,76 +67,73 @@ The FiatBridge contract deployment process includes:
 
 ## Local Deployment
 
-Before deploying, ensure you have completed all [Prerequisites](#prerequisites).
-
-### Environment Variables
-
-| Variable | Description | Required | Default |
-|----------|-------------|----------|---------|
-| `FUTURENET_ADMIN_SECRET_KEY` | Admin Stellar secret key (S...) | **Yes** | None |
-| `FUTURENET_ADMIN_ADDRESS` | Admin Stellar public key (G...) | **Yes** | None |
-| `FUTURENET_TOKEN_ADDRESS` | Token contract ID (C...) | **Yes** | None |
-| `FUTURENET_MULTISIG_SIGNERS` | Comma-separated multisig public keys | **Yes** | None |
-| `FUTURENET_MULTISIG_THRESHOLD` | Minimum signatures required | No | `2` |
-| `FUTURENET_RPC_URL` | Futurenet RPC endpoint | No | `https://rpc-futurenet.stellar.org` |
-| `FUTURENET_NETWORK_PASSPHRASE` | Futurenet network identifier | No | `Test SDF Future Network ; April 2020` |
-| `OUTPUT_FILE` | Path to save contract ID | No | `./contract_id_futurenet.txt` |
-
-### Example Deployment
+### Bash Script (Atomic Deploy + Init)
 
 ```bash
-# Set all required variables
+# Set REQUIRED environment variables
 export FUTURENET_ADMIN_SECRET_KEY="SXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
 export FUTURENET_ADMIN_ADDRESS="GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
 export FUTURENET_TOKEN_ADDRESS="CXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-export FUTURENET_MULTISIG_SIGNERS="GXXXX...,GXXXX...,GXXXX..."
+export FUTURENET_MULTISIG_SIGNERS="GAAAA...,GBBBB...,GCCCC..."  # Comma-separated
 export FUTURENET_MULTISIG_THRESHOLD="2"
 
-# Deploy and initialize atomically
-cd Dechat/stellar-contracts
+# Set OPTIONAL environment variables
+export FUTURENET_RPC_URL="https://rpc-futurenet.stellar.org"
+export OUTPUT_FILE="./contract_id_futurenet.txt"
+
+# Run atomic deployment script
 bash scripts/deploy_fiat_bridge_futurenet.sh
 ```
 
 The script will:
-1. ✅ Add the secret key to stellar CLI keyring (never echoed)
-2. ✅ Build the optimized WASM contract
-3. ✅ Deploy and initialize in a single atomic transaction
-4. ✅ Verify the admin address matches expected value
-5. ✅ Save contract ID to output file
+1. ✅ Build the optimized WASM contract
+2. ✅ Deploy and initialize **atomically** (prevents front-running)
+3. ✅ Verify the admin address matches what you specified
+4. ✅ Save the contract ID to file
+
+### Environment Variables
+
+| Variable | Required | Description | Default |
+|----------|----------|-------------|---------|
+| `FUTURENET_ADMIN_SECRET_KEY` | ✅ **Yes** | Admin Stellar secret key (S...) | None |
+| `FUTURENET_ADMIN_ADDRESS` | ✅ **Yes** | Admin Stellar public key (G...) | None |
+| `FUTURENET_TOKEN_ADDRESS` | ✅ **Yes** | Token contract address (C...) | None |
+| `FUTURENET_MULTISIG_SIGNERS` | ✅ **Yes** | Comma-separated multisig public keys | None |
+| `FUTURENET_MULTISIG_THRESHOLD` | ❌ No | Minimum signatures required | `2` |
+| `FUTURENET_RPC_URL` | ❌ No | Futurenet RPC endpoint | `https://rpc-futurenet.stellar.org` |
+| `FUTURENET_NETWORK_PASSPHRASE` | ❌ No | Futurenet network identifier | `Test SDF Future Network ; April 2020` |
+| `OUTPUT_FILE` | ❌ No | Path to save contract ID | `./contract_id_futurenet.txt` |
 
 ### Dry Run Against Testnet
 
-To test the deployment process without using Futurenet, you can deploy to Testnet first:
+Before deploying to Futurenet, test the script against Testnet:
 
 ```bash
-# Get testnet credentials
-stellar keys generate testadmin --network testnet
+# Get Testnet credentials from https://lab.stellar.org/
+export FUTURENET_ADMIN_SECRET_KEY="S..."  # Your testnet secret
+export FUTURENET_ADMIN_ADDRESS="G..."     # Your testnet address
+export FUTURENET_TOKEN_ADDRESS="C..."     # Testnet token contract
+export FUTURENET_MULTISIG_SIGNERS="G...,G...,G..."
+export FUTURENET_MULTISIG_THRESHOLD="2"
 
-# Fund the account
-curl "https://friendbot.stellar.org?addr=$(stellar keys address testadmin)"
-
-# Create a test token (or use an existing one)
-export TEST_TOKEN="CXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-
-# Set testnet environment variables
-export FUTURENET_ADMIN_SECRET_KEY="$(stellar keys show testadmin --secret-key)"
-export FUTURENET_ADMIN_ADDRESS="$(stellar keys address testadmin)"
-export FUTURENET_TOKEN_ADDRESS="$TEST_TOKEN"
-export FUTURENET_MULTISIG_SIGNERS="$(stellar keys address testadmin)"
-export FUTURENET_MULTISIG_THRESHOLD="1"
+# Override to use Testnet
 export FUTURENET_RPC_URL="https://soroban-testnet.stellar.org"
 export FUTURENET_NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
 
-# Run deployment
+# Deploy to testnet
 bash scripts/deploy_fiat_bridge_futurenet.sh
 ```
 
-This allows you to verify the deployment script works correctly before deploying to Futurenet or Mainnet.
-
 ## Output
 
-The deployment script produces:
+The deployment script will:
+1. ✅ Build the optimized contract WASM
+2. ✅ Deploy and initialize atomically (prevents front-running)
+3. ✅ Verify the admin address matches expected value
+4. ✅ Extract the contract ID
+5. ✅ Save contract ID to the specified output file
 
+**Example output:**
 ```
 🚀 Deploying and initializing FiatBridge to Futurenet...
    RPC URL: https://rpc-futurenet.stellar.org
@@ -134,7 +144,7 @@ The deployment script produces:
 
 🔑 Configuring identity...
 📦 Building optimized WASM contract...
-   WASM size: 98432 bytes
+   WASM size: 98234 bytes
 
 ⚙️  Deploying and initializing contract atomically...
    (This prevents front-running of the init call)
@@ -155,7 +165,7 @@ The deployment script produces:
    No one else can call init() on this contract instance.
 ```
 
-**Output file (`contract_id_futurenet.txt`):**
+**Contract ID file (`contract_id_futurenet.txt`):**
 ```
 CABC1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF123456
 ```
@@ -164,45 +174,48 @@ CABC1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF123456
 
 ### GitHub Actions Workflow
 
-The deployment is automatically triggered on push to `release/*` branches.
+The deployment is automatically triggered on push to `release/*` branches or manually via `workflow_dispatch`.
 
 **Workflow File:** `.github/workflows/deploy-futurenet.yml`
 
 **Trigger Conditions:**
 - Push to branches matching `release/**` pattern
 - Only when `stellar-contracts/**` files change
+- Manual trigger with `workflow_dispatch` (requires admin address input)
 
-**Required Secrets:**
-Configure the following secrets in GitHub repository settings (Settings → Secrets and variables → Actions → Environments → futurenet):
-- `FUTURENET_ADMIN_SECRET_KEY`: Admin secret key (S...)
-- `FUTURENET_ADMIN_ADDRESS`: Admin public key (G...)
-- `FUTURENET_TOKEN_ADDRESS`: Token contract ID (C...)
-- `FUTURENET_MULTISIG_SIGNERS`: Comma-separated multisig public keys
-- `FUTURENET_MULTISIG_THRESHOLD`: Minimum signatures (optional, defaults to 2)
+### Required Secrets
 
-**Manual Trigger:**
-The workflow can be manually triggered via `workflow_dispatch` with custom parameters:
-1. Go to **Actions** → **Deploy FiatBridge to Futurenet**
-2. Click **Run workflow**
-3. Enter admin address, token address, and threshold
-4. Click **Run workflow**
+Configure the following secrets in GitHub repository settings (Settings → Secrets and variables → Actions):
+
+| Secret Name | Description |
+|-------------|-------------|
+| `FUTURENET_ADMIN_SECRET_KEY` | Admin Stellar secret key (S...) |
+| `FUTURENET_ADMIN_ADDRESS` | Admin Stellar public key (G...) |
+| `FUTURENET_TOKEN_ADDRESS` | Token contract address (C...) |
+| `FUTURENET_MULTISIG_SIGNERS` | Comma-separated multisig public keys |
+| `FUTURENET_MULTISIG_THRESHOLD` | Minimum signatures required (default: 2) |
 
 **Steps:**
 1. Checkout code
 2. Set up Rust toolchain with the `wasm32v1-none` target
-3. Install Stellar CLI (pinned version, cached)
+3. Install Stellar CLI v28.0.0 (pinned, cached)
 4. Build optimized WASM contract (`stellar contract build`)
-5. Deploy and initialize atomically (single transaction)
-6. Verify admin address matches expected value
+5. Deploy and initialize atomically (prevents front-running)
+6. Verify initialization (check admin address)
 7. Upload contract ID artifact
-8. Create deployment status with success/failure
+8. Create deployment status with Stellar Expert link
 
 ### Setting Up GitHub Secrets
 
 1. Go to **Repository Settings** → **Secrets and variables** → **Actions**
 2. Click **New repository secret**
-3. Add `FUTURENET_ADMIN_SECRET_KEY` with your Stellar secret key
-4. Click **Add secret**
+3. Add each required secret:
+   - `FUTURENET_ADMIN_SECRET_KEY`: Your Stellar secret key (S...)
+   - `FUTURENET_ADMIN_ADDRESS`: Your Stellar public key (G...)
+   - `FUTURENET_TOKEN_ADDRESS`: Token contract ID (C...)
+   - `FUTURENET_MULTISIG_SIGNERS`: Comma-separated addresses (G...,G...,G...)
+   - `FUTURENET_MULTISIG_THRESHOLD`: Number (e.g., `2`)
+4. Click **Add secret** for each
 
 ### Monitoring Deployments
 
@@ -210,24 +223,30 @@ The workflow can be manually triggered via `workflow_dispatch` with custom param
 2. Find the "Deploy FiatBridge to Futurenet" workflow
 3. Click the deployment run to see logs and details
 4. Artifacts are available for 90 days
+5. Deployment status shows in the **Environments** page with Stellar Expert link
 
 ## Verifying Deployment
 
 After deployment, verify the contract on Futurenet:
 
 ```bash
-# Check the deployed contract's interface.
+# Check the deployed contract's admin
+stellar contract invoke \
+  --id "CABC1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF123456" \
+  --network "futurenet" \
+  --rpc-url "https://rpc-futurenet.stellar.org" \
+  -- get_admin
+
+# Check the contract's interface
 stellar contract info interface \
   --contract-id "CABC1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF123456" \
   --network "futurenet" \
-  --network-passphrase "Test SDF Future Network ; April 2020" \
   --rpc-url "https://rpc-futurenet.stellar.org"
 
-# Inspect the contract's metadata (SDK / compiler versions, custom entries).
+# Inspect the contract's metadata (SDK / compiler versions)
 stellar contract info meta \
   --contract-id "CABC1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF123456" \
   --network "futurenet" \
-  --network-passphrase "Test SDF Future Network ; April 2020" \
   --rpc-url "https://rpc-futurenet.stellar.org"
 ```
 
@@ -253,54 +272,55 @@ cargo install --locked stellar-cli --version 28.0.0
 stellar --version
 ```
 
-### Issue: "Admin verification failed" after deployment
-**Possible causes:**
-1. **Front-running attack**: Someone else called `init()` before you (should be impossible with atomic deployment)
-2. **Wrong admin address**: Check that `FUTURENET_ADMIN_ADDRESS` matches `FUTURENET_ADMIN_SECRET_KEY`
-3. **Race condition**: Multiple deployments running simultaneously
+### Issue: "Contract initialized with wrong admin"
+**Cause:** This indicates a potential front-running attack where someone else called `init()` before you.
 
-**Solution:** This is a critical security issue. Do not use the deployed contract. Deploy a new instance with correct parameters.
+**Solution:** 
+- The atomic deployment script should prevent this
+- If using manual deployment, always use `stellar contract deploy -- --admin ...` with constructor args
+- Never deploy and initialize in separate steps
 
-### Issue: Cannot call init() - "AlreadyInitialized" error
-**Cause:** The contract was already initialized by someone else (possibly a front-running attack).
+### Issue: "AlreadyInitialized error"
+**Cause:** Someone already called `init()` on this contract instance (possibly front-running).
 
-**Solution:** This contract instance is compromised. You must deploy a new contract instance. The old instance cannot be re-initialized.
+**Solution:**
+- Deploy a fresh contract instance (atomic deployment prevents this)
+- Check who the current admin is: `stellar contract invoke --id CONTRACT_ID -- get_admin`
+- If the admin is unexpected, you were front-run
 
 ## Security Considerations
 
-### Secret Management
-⚠️ **Never commit secret keys to the repository.**
+### Secret Key Management
 
-- Use GitHub Secrets for CI/CD deployments (environment-level for sensitive production keys)
-- Store local secret keys in secure, encrypted storage (e.g., password manager, hardware wallet)
-- Never echo or log secret keys in deployment scripts
+⚠️ **Important:** Never commit secret keys to the repository.
+
+- Use GitHub Secrets for CI/CD deployments
+- Store local secret keys in secure, encrypted storage
 - Rotate keys periodically
-- Use different keys for different environments (Futurenet, Testnet, Mainnet)
+- Use different keys for different environments (Futurenet, Testnet, Public)
+- Never echo or log secret keys (the deployment script uses `stellar keys add` to avoid this)
 
-### Atomic Deployment (Front-Running Prevention)
-⚠️ **Always use atomic deployment with constructor initialization.**
+### Front-Running Prevention
 
-The FiatBridge contract is vulnerable to initialization front-running. The `init()` method does not verify that the admin address provided matches an expected value—it only checks that the caller is authorized by that admin (`admin.require_auth()`).
+⚠️ **Critical:** Always use atomic deployment to prevent initialization front-running.
 
-**Attack scenario:**
-1. You deploy the contract (no initialization)
-2. You prepare to call `init()` with your admin address
-3. Attacker watches the blockchain and sees your deployment
-4. Attacker calls `init()` first with **their** address as admin
-5. Your `init()` call fails with `AlreadyInitialized`
-6. Attacker now controls the contract
+**Why this matters:**
+- FiatBridge's `init()` function accepts admin address as a parameter
+- Anyone can call `init()` if the contract is deployed but not initialized
+- Once initialized, the contract cannot be re-initialized
+- An attacker could become the admin and control the entire bridge
 
-**Prevention:**
-- Use `stellar contract deploy --wasm <file> -- <constructor-args>` to deploy and initialize atomically
-- The deployment script implements this by default
-- Verify the admin address immediately after deployment
-- Never split deploy and init into separate transactions
+**How we prevent it:**
+- ✅ Deploy with constructor args: `stellar contract deploy -- --admin ...`
+- ✅ Verify admin after deployment: check `get_admin()` matches expected
+- ✅ Deploy script fails if admin verification fails
+- ❌ Never deploy and initialize in separate transactions
 
-**If you suspect front-running:**
-1. Check the contract's admin: `stellar contract invoke --id <contract-id> --network futurenet -- get_admin`
-2. If the admin is not your address, the contract is compromised
-3. Deploy a new instance (the compromised one cannot be re-initialized)
-4. Investigate how the attacker obtained deployment information
+**What to do if you suspect front-running:**
+1. Check the admin: `stellar contract invoke --id CONTRACT_ID -- get_admin`
+2. If the admin is not your address, you were front-run
+3. Deploy a new contract instance using atomic deployment
+4. Report the incident (contract address, transaction ID, timeline)
 
 ## Additional Resources
 
@@ -308,3 +328,4 @@ The FiatBridge contract is vulnerable to initialization front-running. The `init
 - [Stellar CLI repository and reference](https://github.com/stellar/stellar-cli)
 - [Futurenet Information](https://developers.stellar.org/networks/future-net)
 - [Contract Deployment Guide](https://developers.stellar.org/learn/smart-contracts/deploy)
+- [Stellar Expert (Contract Explorer)](https://stellar.expert/explorer/futurenet)
