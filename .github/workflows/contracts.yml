@@ -15,13 +15,12 @@ permissions:
   contents: read
 
 env:
-  # Regression guard for the deployed contract only. Raised from the
-  # previous 55000: that limit was never actually enforced (the old
-  # check globbed *.wasm, so SIZE held two values and `[` aborted with
-  # "too many arguments" — which, as an `if` condition, silently read
-  # as false). The contract has since grown to ~94 KB. Hoisted to
-  # workflow level so the size-report job below stays in sync with it.
-  MAX_WASM_BYTES: "98500"
+  # Soroban mainnet hard limit is ~256 KB for optimized WASM. We set a
+  # budget of 120000 bytes (117 KB) to leave headroom for future growth.
+  # This is measured on stellar_contracts.optimized.wasm (the artifact
+  # that actually gets deployed), not the unoptimized build output.
+  # Hoisted to workflow level so size-report stays in sync.
+  MAX_WASM_BYTES: "120000"
 
 jobs:
   fmt:

@@ -7,6 +7,21 @@ on:
     paths:
       - 'Dechat/stellar-contracts/**'
       - '.github/workflows/deploy-futurenet.yml'
+  workflow_dispatch:
+    inputs:
+      admin_address:
+        description: 'Admin Stellar address (for init verification)'
+        required: true
+        type: string
+      token_address:
+        description: 'Token contract address'
+        required: true
+        type: string
+      multisig_threshold:
+        description: 'Multisig threshold'
+        required: true
+        type: number
+        default: 2
 
 permissions:
   contents: read
@@ -32,7 +47,15 @@ jobs:
           toolchain: stable
           targets: wasm32v1-none
 
+      - name: Cache Cargo binaries
+        id: cache-stellar-cli
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cargo/bin/stellar
+          key: stellar-cli-28.0.0
+
       - name: Install Stellar CLI
+        if: steps.cache-stellar-cli.outputs.cache-hit != 'true'
         run: cargo install --locked stellar-cli --version 28.0.0
 
       - name: Cache Cargo registry
@@ -49,10 +72,14 @@ jobs:
       - name: Build contract
         run: stellar contract build
 
-      - name: Deploy to Futurenet
+      - name: Deploy and initialize contract
         id: deploy
         env:
           FUTURENET_ADMIN_SECRET_KEY: ${{ secrets.FUTURENET_ADMIN_SECRET_KEY }}
+          FUTURENET_ADMIN_ADDRESS: ${{ secrets.FUTURENET_ADMIN_ADDRESS || inputs.admin_address }}
+          FUTURENET_TOKEN_ADDRESS: ${{ secrets.FUTURENET_TOKEN_ADDRESS || inputs.token_address }}
+          FUTURENET_MULTISIG_SIGNERS: ${{ secrets.FUTURENET_MULTISIG_SIGNERS }}
+          FUTURENET_MULTISIG_THRESHOLD: ${{ secrets.FUTURENET_MULTISIG_THRESHOLD || inputs.multisig_threshold }}
           FUTURENET_RPC_URL: https://rpc-futurenet.stellar.org
           FUTURENET_NETWORK_PASSPHRASE: 'Test SDF Future Network ; April 2020'
           OUTPUT_FILE: ./contract_id_futurenet.txt
@@ -63,6 +90,32 @@ jobs:
           # Pass outputs to GitHub Actions context
           CONTRACT_ID=$(cat "$OUTPUT_FILE")
           echo "contract_id=$CONTRACT_ID" >> $GITHUB_OUTPUT
+      
+      - name: Verify initialization
+        env:
+          CONTRACT_ID: ${{ steps.deploy.outputs.contract_id }}
+          EXPECTED_ADMIN: ${{ secrets.FUTURENET_ADMIN_ADDRESS || inputs.admin_address }}
+          FUTURENET_RPC_URL: https://rpc-futurenet.stellar.org
+        run: |
+          set -euo pipefail
+          echo "Verifying contract initialization..."
+          
+          ACTUAL_ADMIN=$(stellar contract invoke \
+            --id "$CONTRACT_ID" \
+            --network futurenet \
+            --rpc-url "$FUTURENET_RPC_URL" \
+            -- get_admin 2>&1 | tr -d '"')
+          
+          echo "Expected admin: $EXPECTED_ADMIN"
+          echo "Actual admin: $ACTUAL_ADMIN"
+          
+          if [ "$ACTUAL_ADMIN" != "$EXPECTED_ADMIN" ]; then
+            echo "❌ ERROR: Contract initialized with wrong admin!"
+            echo "This could indicate a front-running attack."
+            exit 1
+          fi
+          
+          echo "✅ Admin verification successful"
 
       - name: Upload contract ID artifact
         if: success()
@@ -73,14 +126,11 @@ jobs:
           retention-days: 90
 
       - name: Create deployment status
-        if: always()
+        if: success()
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
-            const status = '${{ job.status }}' === 'success' ? 'success' : 'failure';
-            const conclusion = status === 'success' ? '✅ Deployment successful' : '❌ Deployment failed';
-            
-            github.rest.repos.createDeployment({
+            const deployment = await github.rest.repos.createDeployment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               ref: context.ref,
@@ -88,7 +138,43 @@ jobs:
               required_contexts: [],
               auto_merge: false,
               description: 'FiatBridge Smart Contract Deployment'
-            })
+            });
+            
+            if (deployment.status === 201) {
+              await github.rest.repos.createDeploymentStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                deployment_id: deployment.data.id,
+                state: 'success',
+                environment_url: `https://stellar.expert/explorer/futurenet/contract/${{ steps.deploy.outputs.contract_id }}`,
+                description: 'Contract deployed and initialized successfully'
+              });
+            }
+      
+      - name: Create failed deployment status
+        if: failure()
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const deployment = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.ref,
+              environment: 'futurenet',
+              required_contexts: [],
+              auto_merge: false,
+              description: 'FiatBridge Smart Contract Deployment'
+            });
+            
+            if (deployment.status === 201) {
+              await github.rest.repos.createDeploymentStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                deployment_id: deployment.data.id,
+                state: 'failure',
+                description: 'Deployment or initialization failed'
+              });
+            }
 
       - name: Post deployment summary
         if: success()
