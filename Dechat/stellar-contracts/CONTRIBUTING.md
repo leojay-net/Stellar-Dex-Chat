@@ -15,7 +15,7 @@ Before you begin, ensure you have the following installed:
 1. Fork and clone the repository:
    ```bash
    git clone https://github.com/<your-username>/Stellar-Dex-Chat.git
-   cd Stellar-Dex-Chat/stellar-contracts
+   cd Stellar-Dex-Chat/Dechat/stellar-contracts
    ```
 
 2. Add the `wasm32v1-none` target for compiling contracts:
@@ -26,6 +26,13 @@ Before you begin, ensure you have the following installed:
 3. Build the smart contracts to ensure your environment is set up correctly:
    ```bash
    stellar contract build
+   ```
+
+4. Verify the optimized WASM size is within budget:
+   ```bash
+   ls -lh target/wasm32v1-none/release/stellar_contracts.optimized.wasm
+   # Should be under 120 KB (120000 bytes). The Soroban mainnet limit is ~256 KB,
+   # so we maintain a 120 KB budget to allow for future growth.
    ```
 
 For more details on the architecture of our fiat bridge logic, please refer to [FIAT_BRIDGE_README.md](FIAT_BRIDGE_README.md) (if available).
@@ -45,27 +52,6 @@ cargo fmt
 cargo clippy --all-targets --all-features -- -D warnings
 ```
 Ensure that all tests pass before opening a Pull Request. We run automated checks in our CI/CD pipeline, and PRs with failing tests will not be merged.
-
-## Test Snapshots
-
-Running `cargo test` writes a JSON snapshot to `test_snapshots/` for every
-test (invariant, proptest, and regular unit test alike). These are debugging
-artifacts, not fixtures the suite reads back — the entire `test_snapshots/`
-directory is listed in `.gitignore` and none of it should be committed.
-
-If `git status` shows files under `test_snapshots/` as modified or new,
-they were tracked before the `.gitignore` rule was added and were never
-untracked. Remove them rather than committing the changes:
-
-```bash
-git rm --cached test_snapshots/<path-to-stray-file>
-```
-
-Do not `git add -f` anything under `test_snapshots/`. If you find a
-recurring need to keep a specific snapshot around for review (e.g. to pin
-down a regression), commit it under a different, explicitly-tracked path
-instead (for example alongside the test that generated it), not inside the
-gitignored `test_snapshots/` tree.
 
 ## Writing New Functions
 
