@@ -77,16 +77,20 @@ function useChartColors() {
   useEffect(() => {
     const updateColors = () => {
       const computedStyle = getComputedStyle(document.documentElement);
+      const readToken = (token: string, fallback: string) =>
+        computedStyle.getPropertyValue(token).trim() || fallback;
       setColors({
-        primary: computedStyle.getPropertyValue('--color-chart-primary').trim(),
-        textMuted: computedStyle.getPropertyValue('--color-chart-text').trim(),
-        border: computedStyle.getPropertyValue('--color-chart-grid').trim(),
-        surface: computedStyle
-          .getPropertyValue('--color-chart-background')
-          .trim(),
-        surfaceBorder: computedStyle
-          .getPropertyValue('--color-chart-grid')
-          .trim(),
+        primary: readToken('--color-chart-primary', 'var(--color-chart-primary)'),
+        textMuted: readToken('--color-chart-text', 'var(--color-chart-text)'),
+        border: readToken('--color-chart-grid', 'var(--color-chart-grid)'),
+        surface: readToken(
+          '--color-chart-background',
+          'var(--color-chart-background)',
+        ),
+        surfaceBorder: readToken(
+          '--color-chart-grid',
+          'var(--color-chart-grid)',
+        ),
       });
     };
 
@@ -534,7 +538,7 @@ export default function AdminDashboard() {
                       </AreaChart>
                     </ResponsiveContainer>
                   ) : (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center border-2 border-dashed theme-border rounded-lg theme-surface-muted">
+                    <div className="absolute inset-0 flex flex-col items-center justify-center border-2 border-dashed theme-border border-[var(--color-border)] rounded-lg theme-surface-muted">
                       <div className="theme-text-muted text-center">
                         <svg
                           className="mx-auto h-12 w-12 mb-3"
@@ -581,8 +585,8 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            <div className="theme-surface rounded-lg shadow mt-8 overflow-hidden">
-              <div className="p-6 theme-border border-b">
+            <div className="theme-surface rounded-lg shadow mt-8 overflow-hidden border theme-border border-[var(--color-border)]">
+              <div className="p-6 theme-border border-[var(--color-border)] border-b">
                 <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                   <div>
                     <h2 className="text-xl font-semibold theme-text-primary">
@@ -607,7 +611,12 @@ export default function AdminDashboard() {
                         onChange={(event) => {
                           handleFilterChange(event.target.value);
                         }}
-                        className="w-full sm:w-64 px-3 py-2 rounded-md text-sm theme-input theme-border border"
+                        className={`w-full sm:w-64 px-3 py-2 rounded-md text-sm theme-input theme-border border ${
+                          auditError
+                            ? 'theme-input-border-invalid'
+                            : 'theme-input-border border-[var(--color-border)]'
+                        }`}
+                        aria-invalid={Boolean(auditError)}
                         disabled={auditLoading}
                       >
                         <option value="all">All Actions</option>

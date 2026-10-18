@@ -575,3 +575,67 @@ describe('AdminDashboard - ErrorBoundary protection', () => {
     ));
   });
 });
+
+describe('AdminDashboard - Border colour tokens (#799)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetAuditTableMock();
+    mockAdminDashboardFetch();
+  });
+
+  it('applies deterministic theme-token border classes on the action filter and KPI cards', async () => {
+    render(<ThemeProvider><AdminDashboard /></ThemeProvider>);
+
+    await waitFor(() => {
+      expect(screen.getByText('Admin Dashboard')).toBeInTheDocument();
+    });
+
+    const filterSelect = screen.getByLabelText(/action type/i);
+    expect(filterSelect).toHaveClass('theme-input-border');
+    expect(filterSelect).not.toHaveClass('theme-input-border-invalid');
+    expect(filterSelect).toHaveAttribute('aria-invalid', 'false');
+
+    const bridgeBalanceCard = screen.getByText('Bridge Balance').closest('div');
+    expect(bridgeBalanceCard).toHaveStyle({
+      borderTopColor: 'var(--color-primary)',
+    });
+
+    const pendingPayoutsCard = screen.getByText('Pending Payouts').closest('div');
+    expect(pendingPayoutsCard).toHaveStyle({
+      borderTopColor: 'var(--color-warning)',
+    });
+
+    const failedPayoutsCard = screen.getByText('Failed Payouts').closest('div');
+    expect(failedPayoutsCard).toHaveStyle({
+      borderTopColor: 'var(--color-danger)',
+    });
+  });
+
+  it('switches the action filter border class to theme-input-border-invalid when audit fetch fails', async () => {
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation((url) => {
+      if (typeof url === 'string' && url.includes('/api/admin/audit-log')) {
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => [],
+      } as Response);
+    });
+
+    render(<ThemeProvider><AdminDashboard /></ThemeProvider>);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Failed to fetch admin audit logs/i),
+      ).toBeInTheDocument();
+    });
+
+    const filterSelect = screen.getByLabelText(/action type/i);
+    expect(filterSelect).toHaveClass('theme-input-border-invalid');
+    expect(filterSelect).toHaveAttribute('aria-invalid', 'true');
+  });
+});
+
