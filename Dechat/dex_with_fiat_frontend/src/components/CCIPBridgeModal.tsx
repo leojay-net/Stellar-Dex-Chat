@@ -50,6 +50,9 @@ export default function CCIPBridgeModal({
   const dialogDescriptionId = 'ccip-bridge-modal-description';
   const modalRef = useRef<HTMLDivElement>(null);
   const pollingStartedAtRef = useRef<number | null>(null);
+  const transferAttemptIdRef = useRef(0);
+  const isOpenRef = useRef(isOpen);
+  isOpenRef.current = isOpen;
   // Fix #520: keep a ref in sync with transactionHash state so the polling
   // callback always reads the latest value without being re-created on every
   // hash change (avoids stale-closure race condition).
@@ -123,6 +126,7 @@ export default function CCIPBridgeModal({
   useAccessibleModal(isOpen, modalRef, onClose);
 
   const resetState = useCallback(() => {
+    transferAttemptIdRef.current += 1;
     pollingStartedAtRef.current = null;
     transactionHashRef.current = '';
     setBridgeState('idle');
@@ -153,6 +157,7 @@ export default function CCIPBridgeModal({
     if (bridgeState !== 'idle' && bridgeState !== 'success') {
       // Reset fee/status display immediately; keep bridgeState readable so
       // we can show the "network changed" notice.
+      transferAttemptIdRef.current += 1;
       setLatestStatus('');
       setExplorerUrl('');
       setNetworkChangedWhileActive(true);
@@ -166,6 +171,7 @@ export default function CCIPBridgeModal({
   }, [network, bridgeState]);
 
   const handleStartTransfer = useCallback(async () => {
+    const attemptId = ++transferAttemptIdRef.current;
     // Immediately show optimistic UI
     setBridgeState('optimistic');
     setErrorMessage('');
@@ -175,6 +181,9 @@ export default function CCIPBridgeModal({
 
     try {
       const result = await onStartTransfer();
+      if (attemptId !== transferAttemptIdRef.current || !isOpenRef.current) {
+        return;
+      }
       const nextHash = result.transactionHash.trim();
 
       if (!nextHash) {
@@ -192,6 +201,9 @@ export default function CCIPBridgeModal({
       // Transition to polling state now that we have a hash
       setBridgeState('polling');
     } catch (error) {
+      if (attemptId !== transferAttemptIdRef.current || !isOpenRef.current) {
+        return;
+      }
       // Rollback optimistic updates on error
       setLatestStatus('');
       setBridgeState('error');

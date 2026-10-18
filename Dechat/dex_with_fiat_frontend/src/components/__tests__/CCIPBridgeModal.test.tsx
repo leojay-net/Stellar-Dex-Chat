@@ -195,6 +195,91 @@ describe('CCIPBridgeModal', () => {
       expect(screen.getByText('CCIP transfer confirmed')).toBeInTheDocument();
       expect(screen.queryByText('CCIP transfer error')).not.toBeInTheDocument();
     });
+
+    it('ignores in-flight onStartTransfer completion after modal is closed and reopened (#797)', async () => {
+      let resolveStart!: (v: { transactionHash: string }) => void;
+      const onStartTransfer = vi.fn().mockImplementationOnce(
+        () => new Promise((resolve) => { resolveStart = resolve; }),
+      );
+      const fetchTransferStatus = vi.fn().mockResolvedValue({ status: 'PENDING' });
+
+      const { rerender } = render(
+        <CCIPBridgeModal
+          {...defaultProps}
+          onStartTransfer={onStartTransfer}
+          fetchTransferStatus={fetchTransferStatus}
+        />,
+      );
+
+      fireEvent.click(screen.getByText('Start CCIP Transfer'));
+      expect(await screen.findByText('Transfer Initiated!')).toBeInTheDocument();
+
+      // Close and reopen while onStartTransfer is still in-flight
+      rerender(
+        <CCIPBridgeModal
+          {...defaultProps}
+          isOpen={false}
+          onStartTransfer={onStartTransfer}
+          fetchTransferStatus={fetchTransferStatus}
+        />,
+      );
+      rerender(
+        <CCIPBridgeModal
+          {...defaultProps}
+          isOpen={true}
+          onStartTransfer={onStartTransfer}
+          fetchTransferStatus={fetchTransferStatus}
+        />,
+      );
+
+      // Resolve stale initiation from previous open session
+      await act(async () => {
+        resolveStart({ transactionHash: '0xstale999' });
+      });
+
+      expect(screen.getByText('Start CCIP Transfer')).toBeInTheDocument();
+      expect(screen.queryByText(/0xstale999/)).not.toBeInTheDocument();
+      expect(fetchTransferStatus).not.toHaveBeenCalled();
+    });
+
+    it('ignores in-flight onStartTransfer completion when network changes mid-initiation (#797)', async () => {
+      let resolveStart!: (v: { transactionHash: string }) => void;
+      const onStartTransfer = vi.fn().mockImplementationOnce(
+        () => new Promise((resolve) => { resolveStart = resolve; }),
+      );
+      const fetchTransferStatus = vi.fn().mockResolvedValue({ status: 'PENDING' });
+
+      const { rerender } = render(
+        <CCIPBridgeModal
+          {...defaultProps}
+          network="testnet"
+          onStartTransfer={onStartTransfer}
+          fetchTransferStatus={fetchTransferStatus}
+        />,
+      );
+
+      fireEvent.click(screen.getByText('Start CCIP Transfer'));
+      expect(await screen.findByText('Transfer Initiated!')).toBeInTheDocument();
+
+      // Switch network while onStartTransfer is still in-flight
+      rerender(
+        <CCIPBridgeModal
+          {...defaultProps}
+          network="mainnet"
+          onStartTransfer={onStartTransfer}
+          fetchTransferStatus={fetchTransferStatus}
+        />,
+      );
+
+      await act(async () => {
+        resolveStart({ transactionHash: '0xstale-network' });
+      });
+
+      expect(screen.getByRole('alert')).toHaveTextContent(/network changed/i);
+      expect(screen.getByText('Start CCIP Transfer')).toBeInTheDocument();
+      expect(screen.queryByText(/0xstale-network/)).not.toBeInTheDocument();
+      expect(fetchTransferStatus).not.toHaveBeenCalled();
+    });
   });
 
   // ── Optimistic UI tests for issue #536 ────────────────────────────────
