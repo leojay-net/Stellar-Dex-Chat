@@ -35,6 +35,19 @@ const MIN_UPGRADE_DELAY: u32 = 1_000;
 pub const EVENT_VERSION: u32 = 1;
 pub const ESCROW_STORAGE_VERSION: u32 = 1;
 
+/// Maximum allowed withdrawal risk tier (`0..=MAX_RISK_TIER`).
+///
+/// Risk tiers order queued withdrawal requests from highest priority (`0`) to
+/// lowest priority (`MAX_RISK_TIER`):
+/// - Tier `0`: Expedited / low-risk verified withdrawals (highest scheduler priority).
+/// - Tier `1`: Standard priority retail withdrawals.
+/// - Tier `2`: Elevated review withdrawals (medium risk / larger value).
+/// - Tier `3` (`MAX_RISK_TIER`): High-risk / compliance-review withdrawals (lowest scheduler priority).
+///
+/// Requests with `risk_tier > MAX_RISK_TIER` are rejected with [`Error::InvalidAmount`],
+/// and [`FiatBridge::get_next_priority_withdrawal`] scans `0..=MAX_RISK_TIER` independent of `NextRequestID`.
+pub const MAX_RISK_TIER: u32 = 3;
+
 // ── Error codes ───────────────────────────────────────────────────────────
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -1504,13 +1517,16 @@ impl FiatBridge {
     /// * `amount` – Amount requested for withdrawal in stroops ($> 0$).
     /// * `token` – Token contract address.
     /// * `memo_hash` – Optional 32-byte memo hash.
-    /// * `risk_tier` – Security risk tier modifying lock duration.
+    /// * `risk_tier` – Security risk tier (`0..=MAX_RISK_TIER`, where `0` is highest
+    ///   priority expedited, `1` is standard, `2` is elevated review, and `3` is
+    ///   high-risk compliance review).
     ///
     /// # Returns
     /// * `Ok(u64)` – Unique withdrawal request identifier.
     ///
     /// # Errors
     /// * [`Error::ZeroAmount`] – If `amount <= 0`.
+    /// * [`Error::InvalidAmount`] – If `risk_tier > MAX_RISK_TIER`.
     /// * [`Error::AddressDenied`] – If recipient is on the denylist.
     /// * [`Error::CooldownActive`] – If large deposit cooldown is active.
     /// * [`Error::Overflow`] – If liability accumulator overflows `i128`.
@@ -1530,6 +1546,9 @@ impl FiatBridge {
 
         if amount <= 0 {
             return Err(Error::ZeroAmount);
+        }
+        if risk_tier > MAX_RISK_TIER {
+            return Err(Error::InvalidAmount);
         }
 
         // Denylist
@@ -4792,20 +4811,17 @@ impl FiatBridge {
     // ── Issue #226: withdrawal queue risk-tier prioritization ─────────────
 
     /// Return the `request_id` that should be processed next according to
-    /// risk-tier priority.  Tier 0 is the highest priority; within each tier
-    /// FIFO order is preserved.  Returns `None` when the queue is empty.
+    /// risk-tier priority (`0..=MAX_RISK_TIER`).
+    ///
+    /// - Tier `0`: Expedited / low-risk verified withdrawals (highest priority).
+    /// - Tier `1`: Standard priority withdrawals.
+    /// - Tier `2`: Elevated review withdrawals.
+    /// - Tier `3` ([`MAX_RISK_TIER`]): High-risk / manual compliance withdrawals (lowest priority).
+    ///
+    /// Within each tier FIFO order is preserved. Scans `0..=MAX_RISK_TIER`
+    /// independent of `NextRequestID`. Returns `None` when the queue is empty.
     pub fn get_next_priority_withdrawal(env: Env) -> Option<u64> {
-        // Scan tier 0, 1, 2, … and return the head of the first non-empty tier.
-        // We scan up to `next_id` distinct tier values as an upper bound.
-        let next_id: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::NextRequestID)
-            .unwrap_or(0);
-        // Tier indices are u32; in practice only a handful of tiers are used.
-        // We cap the scan at 256 to stay within compute budget.
-        let max_tier: u32 = (next_id.min(256)) as u32;
-        for t in 0..=max_tier {
+        for t in 0..=MAX_RISK_TIER {
             let tier_len: u64 = env
                 .storage()
                 .instance()

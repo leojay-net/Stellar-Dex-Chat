@@ -298,7 +298,7 @@ fn rw_risk_tier_stored_in_request() {
     let (_, bridge, _, token, sac) = setup(&env);
     let user = Address::generate(&env);
     fund_and_deposit(&bridge, &sac, &user, &token, 5_000);
-    for tier in [0u32, 1, 2, 5] {
+    for tier in [0u32, 1, 2, 3] {
         let id = bridge.request_withdrawal(&user, &100, &token, &None, &tier);
         assert_eq!(
             bridge.get_withdrawal_request(&id).unwrap().risk_tier,
@@ -306,6 +306,10 @@ fn rw_risk_tier_stored_in_request() {
             "wrong tier for request {id}"
         );
     }
+    assert_eq!(
+        bridge.try_request_withdrawal(&user, &100, &token, &None, &4),
+        Err(Ok(Error::InvalidAmount))
+    );
 }
 
 #[test]

@@ -48,12 +48,12 @@
 //! See [`docs/INVARIANT_TESTING.md`](docs/INVARIANT_TESTING.md) for the
 //! invariant-testing strategy and contributor checklist.
 
-use crate::{Error, FiatBridge, FiatBridgeClient};
+use crate::{Error, FiatBridge, FiatBridgeClient, MAX_RISK_TIER};
 use proptest::prelude::*;
 use soroban_sdk::{testutils::Address as _, token, Address, Bytes, Env, Vec};
 
-/// Mirrors the contract-private scan cap in `get_next_priority_withdrawal`.
-const TIER_SCAN_CAP: u64 = 256;
+/// Mirrors `MAX_RISK_TIER` scanned by `get_next_priority_withdrawal`.
+const TIER_SCAN_CAP: u32 = MAX_RISK_TIER;
 
 fn create_token_contract<'a>(
     env: &Env,
@@ -353,10 +353,10 @@ fn cancelled_request_is_never_returned_again() {
     assert!(bridge.get_withdrawal_request(&head).is_none());
 }
 
-/// The scheduler only scans `min(next_request_id, 256)` tiers, so a lone
-/// request filed above that window is not yet visible. This documents a
-/// deliberate compute-budget bound rather than an accident: the same request
-/// surfaces once the window widens.
+/// The scheduler scans `0..=MAX_RISK_TIER` independent of `NextRequestID`, so a
+/// lone request filed at `MAX_RISK_TIER` is immediately visible even when
+/// `NextRequestID == 1`, and any `risk_tier > MAX_RISK_TIER` is rejected with
+/// `Error::InvalidAmount`.
 #[test]
 fn priority_scan_window_is_bounded_by_next_request_id() {
     let env = Env::default();
@@ -365,21 +365,27 @@ fn priority_scan_window_is_bounded_by_next_request_id() {
     let (bridge, _admin, token_addr, token_admin) = setup_bridge(&env);
     let user = funded_user(&env, &bridge, &token_addr, &token_admin, 10_000);
 
-    // One request in tier 4 while `next_request_id` is only 1: the scan covers
-    // tiers 0..=1 and cannot see it.
-    let high = bridge.request_withdrawal(&user, &50, &token_addr, &None, &4);
-    assert_eq!(bridge.get_wq_depth(), 1);
+    // Reject risk_tier > MAX_RISK_TIER without mutating queue state.
+    assert_eq!(
+        bridge.try_request_withdrawal(&user, &50, &token_addr, &None, &(MAX_RISK_TIER + 1)),
+        Err(Ok(Error::InvalidAmount))
+    );
+    assert_eq!(
+        bridge.try_request_withdrawal(&user, &50, &token_addr, &None, &1000),
+        Err(Ok(Error::InvalidAmount))
+    );
+    assert_eq!(bridge.get_wq_depth(), 0);
     assert_eq!(bridge.get_next_priority_withdrawal(), None);
-    assert!(bridge.get_withdrawal_request(&high).is_some());
 
-    // Widen the window past tier 4 and the same request becomes visible.
-    for _ in 0..4 {
-        bridge.request_withdrawal(&user, &50, &token_addr, &None, &9);
-    }
-    assert_eq!(bridge.get_next_priority_withdrawal(), Some(high));
+    // A single request at MAX_RISK_TIER (while NextRequestID == 1 < MAX_RISK_TIER)
+    // is immediately returned by get_next_priority_withdrawal.
+    let highest_allowed =
+        bridge.request_withdrawal(&user, &50, &token_addr, &None, &MAX_RISK_TIER);
+    assert_eq!(bridge.get_wq_depth(), 1);
+    assert_eq!(bridge.get_next_priority_withdrawal(), Some(highest_allowed));
+    assert!(bridge.get_withdrawal_request(&highest_allowed).is_some());
 
-    // The bound itself is a constant of the implementation.
-    assert_eq!(TIER_SCAN_CAP, 256);
+    assert_eq!(TIER_SCAN_CAP, MAX_RISK_TIER);
 }
 
 // ── Authorisation and failure paths ──────────────────────────────────────
@@ -597,7 +603,7 @@ proptest! {
     /// Whatever the queue looks like, the view never mutates it.
     #[test]
     fn view_is_pure_for_any_queue_shape(
-        tiers in prop::collection::vec(0u32..6, 0..7),
+        tiers in prop::collection::vec(0u32..=MAX_RISK_TIER, 0..7),
         calls in 1usize..5,
     ) {
         let env = Env::default();
