@@ -783,7 +783,30 @@ pub enum DataKey {
     WithdrawCooldownThreshold,
     WithdrawalExpiryWindow,
     LastLargeDeposit(Address),
+    /// Lifetime cumulative amount deposited by `Address` across all deposits.
+    ///
+    /// This value is monotonically non-decreasing and is exposed via
+    /// [`FiatBridge::get_user_deposited`] as a historical lifetime total.
+    ///
+    /// # Storage Migration Note (Issue #1385)
+    /// Prior to Issue #1385, `UserDeposited(Address)` was also read by
+    /// `request_withdrawal` as the per-user withdrawal cap without being
+    /// scoped by token or decremented on withdrawal reservation/execution.
+    /// Per-user, per-token withdrawable balances are now tracked in
+    /// [`DataKey::UserTokenBalance`]. When upgrading an existing deployment
+    /// with live balances, migrate each user's unreserved per-token balance
+    /// (sum of `Receipt` deposits for `(user, token)` minus settled
+    /// withdrawals and currently queued `WithdrawRequest` amounts) into
+    /// `DataKey::UserTokenBalance(user, token)` while retaining
+    /// `DataKey::UserDeposited(user)` as the lifetime deposit counter.
     UserDeposited(Address),
+    /// Available (unreserved) per-user, per-token balance (`(user, token)`).
+    ///
+    /// Incremented on [`FiatBridge::deposit`], reserved (decremented) on
+    /// [`FiatBridge::request_withdrawal`], released (incremented) on
+    /// [`FiatBridge::cancel_withdrawal`] and [`FiatBridge::reclaim_expired_withdrawal`],
+    /// and remained consumed when [`FiatBridge::execute_withdrawal`] settles.
+    UserTokenBalance(Address, Address),
     NextActionID,
     QueuedAdminAction(u64),
     LastAdminActionLedger,
@@ -1273,6 +1296,15 @@ impl FiatBridge {
         let new_user_total = user_total.checked_add(amount).ok_or(Error::InternalError)?;
         env.storage().instance().set(&user_key, &new_user_total);
 
+        let user_token_key = DataKey::UserTokenBalance(from.clone(), token.clone());
+        let user_token_bal: i128 = env.storage().instance().get(&user_token_key).unwrap_or(0);
+        let new_user_token_bal = user_token_bal
+            .checked_add(amount)
+            .ok_or(Error::InternalError)?;
+        env.storage()
+            .instance()
+            .set(&user_token_key, &new_user_token_bal);
+
         // Track large deposits for withdrawal cooldown
         let withdraw_threshold: i128 = env
             .storage()
@@ -1472,6 +1504,12 @@ impl FiatBridge {
             .persistent()
             .set(&DataKey::TokenRegistry(token.clone()), &config);
 
+        let user_token_key = DataKey::UserTokenBalance(to.clone(), token.clone());
+        let user_token_bal: i128 = env.storage().instance().get(&user_token_key).unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&user_token_key, &user_token_bal.saturating_sub(amount));
+
         Self::check_invariants(&env, &token)?;
         WithdrawEvent {
             version: EVENT_VERSION,
@@ -1620,11 +1658,13 @@ impl FiatBridge {
             .get(&DataKey::TokenRegistry(token.clone()))
             .ok_or(Error::TokenNotWhitelisted)?;
 
-        // Verify the new liabilities don't exceed net deposited
-        let user_deposited: i128 = env
+        // Verify the new liabilities don't exceed net deposited and the user
+        // has sufficient unreserved balance for this specific token.
+        let user_token_key = DataKey::UserTokenBalance(to.clone(), token.clone());
+        let user_available: i128 = env
             .storage()
             .instance()
-            .get(&DataKey::UserDeposited(to.clone()))
+            .get(&user_token_key)
             .unwrap_or(0);
         let new_liabilities = config
             .total_liabilities
@@ -1633,10 +1673,13 @@ impl FiatBridge {
         let net_deposited = config
             .total_deposited
             .saturating_sub(config.total_withdrawn);
-        if new_liabilities > net_deposited || amount > user_deposited {
+        if new_liabilities > net_deposited || amount > user_available {
             return Err(Error::InsufficientFunds);
         }
 
+        env.storage()
+            .instance()
+            .set(&user_token_key, &(user_available - amount));
         config.total_liabilities = new_liabilities;
         env.storage()
             .persistent()
@@ -1853,6 +1896,7 @@ impl FiatBridge {
             .ok_or(Error::RequestNotFound)?;
 
         Self::release_liability(&env, &request.token, request.amount)?;
+        Self::release_user_token_balance(&env, &request.to, &request.token, request.amount)?;
         Self::remove_from_withdraw_queue(&env, request_id, &request);
 
         Self::check_invariants(&env, &request.token)?;
@@ -1898,6 +1942,7 @@ impl FiatBridge {
         }
 
         Self::release_liability(&env, &request.token, request.amount)?;
+        Self::release_user_token_balance(&env, &request.to, &request.token, request.amount)?;
         Self::remove_from_withdraw_queue(&env, request_id, &request);
 
         Self::check_invariants(&env, &request.token)?;
@@ -3621,10 +3666,29 @@ impl FiatBridge {
             .limit)
     }
 
+    /// Returns the cumulative lifetime total deposited by `user` across all
+    /// deposits.
+    ///
+    /// This counter is monotonically non-decreasing and is never decremented
+    /// when withdrawals are requested, cancelled, reclaimed, or executed. To
+    /// query a user's currently unreserved, withdrawable balance for a
+    /// specific token, use [`FiatBridge::get_user_token_balance`].
     pub fn get_user_deposited(env: Env, user: Address) -> i128 {
         env.storage()
             .instance()
             .get(&DataKey::UserDeposited(user))
+            .unwrap_or(0)
+    }
+
+    /// Returns the currently available (unreserved) balance for `(user, token)`
+    /// that may be queued via [`FiatBridge::request_withdrawal`].
+    ///
+    /// Incremented by `deposit`, decremented (reserved) by `request_withdrawal`,
+    /// and restored by `cancel_withdrawal` or `reclaim_expired_withdrawal`.
+    pub fn get_user_token_balance(env: Env, user: Address, token: Address) -> i128 {
+        env.storage()
+            .instance()
+            .get(&DataKey::UserTokenBalance(user, token))
             .unwrap_or(0)
     }
 
@@ -4217,6 +4281,21 @@ impl FiatBridge {
         env.storage()
             .persistent()
             .set(&DataKey::TokenRegistry(token.clone()), &config);
+        Ok(())
+    }
+
+    /// Restores `amount` of previously-reserved per-user per-token balance
+    /// when a queued withdrawal request is cancelled or reclaimed after expiry.
+    fn release_user_token_balance(
+        env: &Env,
+        user: &Address,
+        token: &Address,
+        amount: i128,
+    ) -> Result<(), Error> {
+        let key = DataKey::UserTokenBalance(user.clone(), token.clone());
+        let current: i128 = env.storage().instance().get(&key).unwrap_or(0);
+        let updated = current.checked_add(amount).ok_or(Error::Overflow)?;
+        env.storage().instance().set(&key, &updated);
         Ok(())
     }
 

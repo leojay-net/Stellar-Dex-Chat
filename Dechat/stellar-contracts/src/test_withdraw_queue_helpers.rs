@@ -201,3 +201,89 @@ fn per_tier_bookkeeping_is_independent_across_entrypoints() {
     client.execute_withdrawal(&id_tier1, &None, &0i128, &0u32, &0u64);
     assert_eq!(tier_len(&env, &contract_id, 1), 0);
 }
+
+/// Issue #1385: Two withdrawal requests whose sum exceeds the user's deposit
+/// must be rejected even when the pool holds extra liquidity from other users.
+#[test]
+fn two_requests_exceeding_user_deposit_are_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_contract_id, client, _admin, token_addr, _token) = setup(&env);
+    let user = Address::generate(&env);
+    StellarAssetClient::new(&env, &token_addr).mint(&user, &5_000i128);
+    client.deposit(&user, &1_000i128, &token_addr, &Bytes::new(&env), &0, &0, &None);
+
+    assert_eq!(client.get_user_deposited(&user), 1_000);
+    assert_eq!(client.get_user_token_balance(&user, &token_addr), 1_000);
+
+    let first_id = client.request_withdrawal(&user, &600i128, &token_addr, &None, &0);
+    assert_eq!(client.get_user_deposited(&user), 1_000);
+    assert_eq!(client.get_user_token_balance(&user, &token_addr), 400);
+
+    // Second request of 500 brings user's reserved total to 1_100 > 1_000 deposit.
+    let second = client.try_request_withdrawal(&user, &500i128, &token_addr, &None, &0);
+    assert_eq!(second, Err(Ok(Error::InsufficientFunds)));
+    assert_eq!(client.get_user_token_balance(&user, &token_addr), 400);
+
+    // Cancelling the first request releases the 600 reservation back to the user.
+    client.cancel_withdrawal(&first_id);
+    assert_eq!(client.get_user_token_balance(&user, &token_addr), 1_000);
+
+    // Reclaiming an expired request also releases the reservation back to the user.
+    let exp_id = client.request_withdrawal(&user, &700i128, &token_addr, &None, &0);
+    assert_eq!(client.get_user_token_balance(&user, &token_addr), 300);
+    let expiry_window = client.get_withdrawal_expiry();
+    env.ledger().with_mut(|l| {
+        l.sequence_number = l
+            .sequence_number
+            .saturating_add(expiry_window)
+            .saturating_add(1)
+    });
+    client.reclaim_expired_withdrawal(&exp_id);
+    assert_eq!(client.get_user_token_balance(&user, &token_addr), 1_000);
+
+    // Executing a request permanently consumes the reserved balance.
+    let exec_id = client.request_withdrawal(&user, &600i128, &token_addr, &None, &0);
+    client.execute_withdrawal(&exec_id, &None, &0i128, &0u32, &0u64);
+    assert_eq!(client.get_user_token_balance(&user, &token_addr), 400);
+    assert_eq!(client.get_user_deposited(&user), 1_000);
+    assert_eq!(
+        client.try_request_withdrawal(&user, &401i128, &token_addr, &None, &0),
+        Err(Ok(Error::InsufficientFunds))
+    );
+}
+
+/// Issue #1385: Per-user withdrawable balances are scoped per token, so
+/// depositing Token A never allows queuing a withdrawal for Token B.
+#[test]
+fn user_token_balance_is_scoped_per_token() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_contract_id, client, admin, token_a, _token) = setup(&env);
+    let token_b_admin = Address::generate(&env);
+    let token_b = env
+        .register_stellar_asset_contract_v2(token_b_admin)
+        .address();
+    client.register_token(&token_b, &10_000_000i128);
+
+    // Admin funds the pool with Token B liquidity.
+    StellarAssetClient::new(&env, &token_b).mint(&admin, &1_000_000i128);
+    client.deposit(&admin, &1_000_000i128, &token_b, &Bytes::new(&env), &0, &0, &None);
+
+    // User only deposits Token A.
+    let user = Address::generate(&env);
+    StellarAssetClient::new(&env, &token_a).mint(&user, &5_000i128);
+    client.deposit(&user, &1_000i128, &token_a, &Bytes::new(&env), &0, &0, &None);
+
+    assert_eq!(client.get_user_token_balance(&user, &token_a), 1_000);
+    assert_eq!(client.get_user_token_balance(&user, &token_b), 0);
+
+    // Attempting to request a withdrawal in Token B must fail with InsufficientFunds.
+    assert_eq!(
+        client.try_request_withdrawal(&user, &100i128, &token_b, &None, &0),
+        Err(Ok(Error::InsufficientFunds))
+    );
+}
+
