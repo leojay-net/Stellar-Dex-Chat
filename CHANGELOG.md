@@ -1268,6 +1268,8 @@ Repo Avatar
 - **changelog:** Update changelog [skip ci]
 - **contract:** Cover issues #1400-#1403
 - **changelog:** Update changelog [skip ci]
+- **changelog:** Update changelog [skip ci]
+- **frontend:** Add Playwright E2E coverage for CCIPBridgeModal.tsx and fix frontend CI checks
 
 ### Deprecated
 
