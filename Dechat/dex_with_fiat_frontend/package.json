@@ -11,7 +11,6 @@
     "format": "prettier --write \"src\" \"tests/e2e\" \"*.{ts,mjs,json}\"",
     "check": "prettier --check \"src\" \"tests/e2e\" \"*.{ts,mjs,json}\"",
     "test:unit": "vitest run",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
     "typecheck": "pnpm typecheck:src && pnpm typecheck:tests",
     "typecheck:src": "tsc --noEmit",
     "typecheck:tests": "tsc --noEmit -p tsconfig.test.json",

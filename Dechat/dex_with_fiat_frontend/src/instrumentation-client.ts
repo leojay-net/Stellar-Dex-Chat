@@ -16,6 +16,7 @@ async function loadReplayIntegration() {
   replayIntegrationLoaded = true;
 
   try {
+    // @ts-expect-error @sentry/replay is an optional dynamic peer dependency
     const { replayIntegration } = await import('@sentry/replay');
     Sentry.addIntegration(replayIntegration(REPLAY_OPTIONS));
   } catch (error) {
@@ -41,7 +42,10 @@ Sentry.init({
   environment: process.env.NODE_ENV || 'development',
 });
 
-if (typeof window !== 'undefined' && Math.random() < REPLAY_SESSION_SAMPLE_RATE) {
+if (
+  typeof window !== 'undefined' &&
+  Math.random() < REPLAY_SESSION_SAMPLE_RATE
+) {
   void loadReplayIntegration();
 }
 

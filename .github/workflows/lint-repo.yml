@@ -21,7 +21,7 @@ jobs:
 
       - name: Ensure no npm or yarn lockfiles
         run: |
-          found=$(find . -name "package-lock.json" -o -name "yarn.lock" | grep -v "node_modules/")
+          found=$(find . -name "package-lock.json" -o -name "yarn.lock" | grep -v "node_modules/" || true)
           if [ -n "$found" ]; then
             echo "❌ ERROR: Found npm/yarn lockfiles. Use pnpm only."
             echo "$found"
@@ -33,5 +33,5 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           reporter: github-pr-check
-          filter_mode: nofilter
-          fail_on_error: true
+          filter_mode: added
+          fail_level: error

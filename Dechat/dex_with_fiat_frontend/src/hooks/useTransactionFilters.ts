@@ -10,7 +10,10 @@ import type {
   FilterChipTone,
   TransactionStatus,
 } from '@/types';
-import { filterTransactions, computeFilterStats } from '@/lib/transactionFilters';
+import {
+  filterTransactions,
+  computeFilterStats,
+} from '@/lib/transactionFilters';
 import {
   deserializeFilters,
   mergeFilterParams,
@@ -32,10 +35,26 @@ function areFilterStatesEqual(a: FilterState, b: FilterState): boolean {
  * Keyboard shortcut definitions exposed by the hook.
  */
 export const KEYBOARD_SHORTCUTS = {
-  clearAll: { key: 'x', modifiers: 'Ctrl+Shift', description: 'Clear all filters' },
-  cycleStatus: { key: '1', modifiers: 'Ctrl+Shift', description: 'Cycle status filter' },
-  cycleAsset: { key: '2', modifiers: 'Ctrl+Shift', description: 'Cycle asset filter' },
-  cycleNetwork: { key: '3', modifiers: 'Ctrl+Shift', description: 'Cycle network filter' },
+  clearAll: {
+    key: 'x',
+    modifiers: 'Ctrl+Shift',
+    description: 'Clear all filters',
+  },
+  cycleStatus: {
+    key: '1',
+    modifiers: 'Ctrl+Shift',
+    description: 'Cycle status filter',
+  },
+  cycleAsset: {
+    key: '2',
+    modifiers: 'Ctrl+Shift',
+    description: 'Cycle asset filter',
+  },
+  cycleNetwork: {
+    key: '3',
+    modifiers: 'Ctrl+Shift',
+    description: 'Cycle network filter',
+  },
 } as const;
 
 export interface UseTransactionFiltersReturn {
@@ -185,7 +204,10 @@ const FILTER_TONE_PALETTES = {
   },
 } as const satisfies Record<string, FilterTonePair>;
 
-const STATUS_TONE_KEYS: Record<TransactionStatus, keyof typeof FILTER_TONE_PALETTES> = {
+const STATUS_TONE_KEYS: Record<
+  TransactionStatus,
+  keyof typeof FILTER_TONE_PALETTES
+> = {
   pending: 'amber',
   completed: 'emerald',
   warning: 'blue',
@@ -311,9 +333,8 @@ export function useTransactionFilters(
   const pendingFilterStateRef = useRef<FilterState | null>(null);
   // True once the pending state has been pushed to the router (debounce flushed).
   const pendingFlushedRef = useRef(false);
-  const [optimisticFilterState, setOptimisticFilterState] = useState<FilterState | null>(
-    null,
-  );
+  const [optimisticFilterState, setOptimisticFilterState] =
+    useState<FilterState | null>(null);
   const [filterSyncError, setFilterSyncError] = useState<Error | null>(null);
   const shortcutActionsRef = useRef<{
     clearAllFilters: () => void;
@@ -384,7 +405,12 @@ export function useTransactionFilters(
     } else if (searchChanged && pendingFlushedRef.current) {
       rollbackOptimisticState();
     }
-  }, [searchString, urlFilterState, optimisticFilterState, rollbackOptimisticState]);
+  }, [
+    searchString,
+    urlFilterState,
+    optimisticFilterState,
+    rollbackOptimisticState,
+  ]);
 
   // Compute filtered transactions
   const filteredTransactions = useMemo(() => {
@@ -402,7 +428,13 @@ export function useTransactionFilters(
       return computeFilterStats(transactions, filterState);
     } catch (err) {
       setFilterSyncError(err instanceof Error ? err : new Error(String(err)));
-      return { statusOptions: [], assetOptions: [], networkOptions: [] };
+      return {
+        statusOptions: [],
+        assetOptions: [],
+        networkOptions: [],
+        totalCount: transactions.length,
+        filteredCount: 0,
+      };
     }
   }, [transactions, filterState]);
 
@@ -442,7 +474,10 @@ export function useTransactionFilters(
       // uses the latest params (including non-filter params like `tab`).
       debounceTimerRef.current = setTimeout(() => {
         debounceTimerRef.current = null;
-        const newParams = mergeFilterParams(searchParamsRef.current, newFilterState);
+        const newParams = mergeFilterParams(
+          searchParamsRef.current,
+          newFilterState,
+        );
         const queryString = newParams.toString();
         const newUrl = queryString ? `${pathname}?${queryString}` : pathname;
         pendingFlushedRef.current = true;
