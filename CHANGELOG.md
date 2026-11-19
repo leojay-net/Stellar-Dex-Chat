@@ -934,6 +934,9 @@ Repo Avatar
 - **contract:** Enforce set_operator_daily_limit on withdraw
 - **contract:** Token allowlist index logs grow on every call and get_token_allowlist_enabled returns stale history
 - **contract:** The circuit breaker adds withdrawal volume across tokens with different decimals
+- **contract:** Gate test_issues_1400_1403 behind cfg(test) and ignore RUSTSEC-2026-0387
+- **frontend:** Repair merge damage, sync lockfile and clear lint/type errors
+- **frontend:** Allow the Soroban RPC, price API and connectivity probe in CSP connect-src
 
 ### Changed
 
@@ -1270,6 +1273,10 @@ Repo Avatar
 - **changelog:** Update changelog [skip ci]
 - **changelog:** Update changelog [skip ci]
 - **frontend:** Add Playwright E2E coverage for CCIPBridgeModal.tsx and fix frontend CI checks
+- **changelog:** Update changelog [skip ci]
+- **frontend:** Pin pnpm 9.15.9 to match the v9 lockfile
+- **frontend:** Mock server-only globally so server-module suites can load
+- Remove committed vim swap files and ignore *.swp
 
 ### Deprecated
 
