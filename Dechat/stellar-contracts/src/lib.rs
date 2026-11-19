@@ -1232,9 +1232,6 @@ impl FiatBridge {
         }
         .publish(&env);
 
-        env.storage()
-            .instance()
-            .set(&DataKey::InitNonce(admin.clone()), &0u64);
         env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
         Ok(())
     }
