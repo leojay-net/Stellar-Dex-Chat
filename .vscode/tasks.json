@@ -33,7 +33,7 @@
 			"command": "sh",
 			"args": [
 				"-c",
-				"corepack pnpm@8.15.9 --dir Dechat/dex_with_fiat_frontend update next@15.3.6 eslint-config-next@15.3.6 --lockfile-only"
+				"corepack pnpm@9.15.9 --dir Dechat/dex_with_fiat_frontend update next@15.3.6 eslint-config-next@15.3.6 --lockfile-only"
 			],
 			"isBackground": false,
 			"problemMatcher": []
@@ -44,7 +44,7 @@
 			"command": "sh",
 			"args": [
 				"-c",
-				"corepack pnpm@8.15.9 view next version"
+				"corepack pnpm@9.15.9 view next version"
 			],
 			"isBackground": false,
 			"problemMatcher": []
