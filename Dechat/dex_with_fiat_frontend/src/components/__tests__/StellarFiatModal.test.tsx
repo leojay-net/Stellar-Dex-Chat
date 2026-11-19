@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { vi, type Mock } from 'vitest';
 import StellarFiatModal from '../StellarFiatModal';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -14,6 +14,8 @@ vi.mock('@/contexts/StellarWalletContext', () => ({
       network: 'TESTNET',
     },
     signTx: vi.fn(),
+    xlmBalance: '100',
+    refreshXlmBalance: vi.fn().mockResolvedValue(undefined),
   }),
 }));
 
@@ -310,8 +312,11 @@ describe('StellarFiatModal fee simulation debounce', () => {
       }),
     );
 
-    // Wait for initial render
-    await vi.runAllTimersAsync();
+    // Wait out the 500ms loading skeleton and the initial fee simulation.
+    await vi.advanceTimersByTimeAsync(1000);
+    // The default amount triggers its own initial simulation; only count the
+    // calls caused by typing.
+    vi.mocked(mockedContract.simulateDeposit).mockClear();
 
     // Simulate typing "1000.5" character by character
     const input = getByRole('spinbutton') as HTMLInputElement;
@@ -354,7 +359,8 @@ describe('StellarFiatModal fee simulation debounce', () => {
       }),
     );
 
-    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(1000);
+    vi.mocked(mockedContract.simulateDeposit).mockClear();
 
     const input = getByRole('spinbutton') as HTMLInputElement;
 
@@ -379,7 +385,7 @@ describe('StellarFiatModal fee simulation debounce', () => {
   // Regression: #779 — inputs must not carry hardcoded border-gray-600;
   // they should use theme-input / theme-input-border so the colour follows
   // the design-system token and is never left on the browser default.
-  it('amount input uses theme border classes and not hard-coded gray border', () => {
+  it('amount input uses theme border classes and not hard-coded gray border', async () => {
     const { getByRole } = render(
       React.createElement(StellarFiatModal, {
         isOpen: true,
@@ -387,6 +393,10 @@ describe('StellarFiatModal fee simulation debounce', () => {
       }),
     );
 
+    // The form is replaced by a skeleton for the first 500ms.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
     const input = getByRole('spinbutton') as HTMLInputElement;
     expect(input.className).not.toMatch(/border-gray-\d+/);
     expect(input.className).toMatch(/theme-input/);

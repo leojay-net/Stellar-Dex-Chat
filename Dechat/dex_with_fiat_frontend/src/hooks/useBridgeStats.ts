@@ -168,6 +168,10 @@ export default function useBridgeStats(): BridgeStats {
     dispatchTelemetry('bridge_stats_mounted');
     return () => {
       isMountedRef.current = false;
+      dispatchTelemetry('bridge_stats_unmounted', {
+        fetchCount: fetchCountRef.current,
+        lifetimeMs: Date.now() - mountedAtRef.current,
+      });
       // Invalidate any request which was started by this mounted instance.
       // This also covers Strict Mode's mount/cleanup/remount cycle.
       fetchIdRef.current += 1;

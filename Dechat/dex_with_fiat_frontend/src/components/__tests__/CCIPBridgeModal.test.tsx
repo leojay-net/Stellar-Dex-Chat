@@ -540,7 +540,7 @@ describe('CCIPBridgeModal', () => {
 
       render(<CCIPBridgeModal {...defaultProps} onClose={onClose} />);
 
-      const closeButton = screen.getByLabelText('Close');
+      const closeButton = screen.getByLabelText('Close CCIP bridge dialog');
       fireEvent.click(closeButton);
 
       expect(onClose).toHaveBeenCalledTimes(1);
@@ -551,7 +551,10 @@ describe('CCIPBridgeModal', () => {
 
       const dialog = screen.getByRole('dialog');
       expect(dialog).toHaveAttribute('aria-modal', 'true');
-      expect(dialog).toHaveAttribute('aria-label', 'CCIP bridge transfer');
+      // The dialog is named via aria-labelledby (the visible title), not a
+      // static aria-label.
+      expect(dialog).toHaveAttribute('aria-labelledby');
+      expect(dialog).toHaveAccessibleName('CCIP Bridge');
       expect(dialog).toHaveAttribute('tabIndex', '-1');
     });
   });
@@ -766,7 +769,7 @@ describe('CCIPBridgeModal', () => {
       fireEvent.click(screen.getByText('Start CCIP Transfer'));
 
       expect(
-        await screen.findByText('Transaction: 0xabc123def456'),
+        await screen.findByText('0xabc123def456'),
       ).toBeInTheDocument();
     });
 
@@ -786,7 +789,7 @@ describe('CCIPBridgeModal', () => {
       fireEvent.click(screen.getByText('Start CCIP Transfer'));
 
       await screen.findByText('CCIP transfer confirmed');
-      expect(screen.getByText('Transaction: 0xxyz789')).toBeInTheDocument();
+      expect(screen.getByText('0xxyz789')).toBeInTheDocument();
     });
 
     it('displays transaction hash in error state when available', async () => {
@@ -810,7 +813,7 @@ describe('CCIPBridgeModal', () => {
       fireEvent.click(screen.getByText('Start CCIP Transfer'));
 
       await screen.findByText('CCIP transfer error');
-      expect(screen.getByText('Transaction: 0xerror123')).toBeInTheDocument();
+      expect(screen.getByText('0xerror123')).toBeInTheDocument();
     });
   });
 

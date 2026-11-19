@@ -68,16 +68,18 @@ describe('BankDetailsModal border colours (#742)', () => {
     );
   });
 
-  it('bank search input uses theme-input-border, not border-gray-600', () => {
+  it('bank search input uses theme-input-border, not border-gray-600', async () => {
     renderModal();
-    const search = screen.getByPlaceholderText(/search banks/i);
+    // The input only renders once the bank list has finished loading.
+    const search = await screen.findByPlaceholderText(/search banks/i);
     expect(search.className).toContain('theme-input-border');
     expect(search.className).not.toContain('border-gray-600');
   });
 
-  it('bank search input has theme-input background/text class', () => {
+  it('bank search input has theme-input background/text class', async () => {
     renderModal();
-    const search = screen.getByPlaceholderText(/search banks/i);
+    // The input only renders once the bank list has finished loading.
+    const search = await screen.findByPlaceholderText(/search banks/i);
     expect(search.className).toContain('theme-input');
   });
 

@@ -100,13 +100,29 @@ describe('useFeatureFlag', () => {
 });
 
 describe('useClipboardCopy', () => {
+  const originalClipboard = Object.getOwnPropertyDescriptor(
+    navigator,
+    'clipboard',
+  );
+
   beforeEach(() => {
     vi.useFakeTimers();
+    // jsdom does not implement navigator.clipboard, so install a stub that
+    // vi.spyOn can wrap.
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
+    if (originalClipboard) {
+      Object.defineProperty(navigator, 'clipboard', originalClipboard);
+    } else {
+      delete (navigator as unknown as { clipboard?: unknown }).clipboard;
+    }
   });
 
   it('copies text to clipboard and sets isCopied to true', async () => {
@@ -193,18 +209,18 @@ describe('useClipboardCopy', () => {
   });
 
   it('does nothing when window is undefined (SSR)', async () => {
-    const originalWindow = global.window;
-    // @ts-expect-error - simulating SSR environment
-    delete global.window;
-
+    const writeTextSpy = vi.spyOn(navigator.clipboard, 'writeText');
     const { result } = renderHook(() => useClipboardCopy());
 
-    await act(async () => {
+    // Render with a DOM, then invoke the callback as if window were absent.
+    vi.stubGlobal('window', undefined);
+    try {
       await result.current.copyToClipboard('test text');
-    });
+    } finally {
+      vi.unstubAllGlobals();
+    }
 
+    expect(writeTextSpy).not.toHaveBeenCalled();
     expect(result.current.isCopied).toBe(false);
-
-    global.window = originalWindow;
   });
 });

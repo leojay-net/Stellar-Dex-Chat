@@ -293,11 +293,13 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
       if (currentSession && currentSession.messages.length > 0) {
         setMessages(currentSession.messages);
         machine.transition(ChatEvent.INITIALIZE_SESSION);
+        machine.transition(ChatEvent.LOAD_SESSION);
         createNewSession(currentSession.messages);
       } else if (!currentSessionId) {
         setMessages([]);
         createNewSession([]);
         machine.transition(ChatEvent.INITIALIZE_SESSION);
+        machine.transition(ChatEvent.LOAD_SESSION);
       }
     }
   }, [currentSession, currentSessionId, createNewSession, hasHydrated]);
