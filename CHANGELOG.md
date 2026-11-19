@@ -1281,6 +1281,7 @@ Repo Avatar
 - **changelog:** Update changelog [skip ci]
 - **contract:** Archive root notes, add threat model and event reference
 - **changelog:** Update changelog [skip ci]
+- **changelog:** Update changelog [skip ci]
 
 ### Deprecated
 
@@ -1798,6 +1799,9 @@ remove legacy FeeWithdrawalNonce key and migrate_fee_withdrawal_nonce…
 - Refactor multisig action approval tests
 
 Removed assertions related to executed proposals and added a new test for uninitialized state.
+- Merge pull request #1825 from Maxwell316/main
+
+docs(frontend): remove or relocate the eight status notes in the frontend package root  #1703
 
 ### Security
 
