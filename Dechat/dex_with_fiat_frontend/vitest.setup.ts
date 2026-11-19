@@ -2,6 +2,11 @@ import '@testing-library/jest-dom';
 import { afterEach, vi } from 'vitest';
 import { resetNetworkQueueForTests } from '@/lib/networkQueue';
 
+// `server-only` throws when imported outside a Next.js server bundle. Unit
+// tests exercise server modules directly, so neutralise it globally instead of
+// mocking it in every test file.
+vi.mock('server-only', () => ({}));
+
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: vi.fn().mockImplementation((query: string) => ({
