@@ -65,8 +65,9 @@ export async function installMockWalletBridge(page: Page): Promise<void> {
   await page.addInitScript(() => {
     if (typeof window.mockStellarConnect !== 'function') {
       window.mockStellarConnect = (addr: string) => {
-        (window as Window & { __MOCK_CONNECTED_ADDRESS__?: string }).__MOCK_CONNECTED_ADDRESS__ =
-          addr;
+        (
+          window as Window & { __MOCK_CONNECTED_ADDRESS__?: string }
+        ).__MOCK_CONNECTED_ADDRESS__ = addr;
         window.dispatchEvent(
           new CustomEvent('mockStellarConnect', { detail: addr }),
         );
@@ -119,18 +120,21 @@ export async function mockSorobanRpc(
 ): Promise<void> {
   const adminAddress = options.adminAddress ?? MOCK_WALLET_ADDRESS;
 
-  await page.route('**/horizon-testnet.stellar.org/accounts/**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        id: adminAddress,
-        account_id: adminAddress,
-        sequence: '123456789',
-        balances: [{ balance: '1000.0000000', asset_type: 'native' }],
-      }),
-    });
-  });
+  await page.route(
+    '**/horizon-testnet.stellar.org/accounts/**',
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: adminAddress,
+          account_id: adminAddress,
+          sequence: '123456789',
+          balances: [{ balance: '1000.0000000', asset_type: 'native' }],
+        }),
+      });
+    },
+  );
 
   await page.route('**/soroban-testnet.stellar.org/**', async (route) => {
     if (route.request().method() !== 'POST') {

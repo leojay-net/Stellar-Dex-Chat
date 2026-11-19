@@ -19,7 +19,9 @@ test.describe('Admin Reconciliation E2E', () => {
   });
 
   test.describe('Page load', () => {
-    test('loads the reconciliation dashboard for admin users', async ({ page }) => {
+    test('loads the reconciliation dashboard for admin users', async ({
+      page,
+    }) => {
       await expect(adminReconciliationHeading(page)).toBeVisible({
         timeout: 20_000,
       });
@@ -93,7 +95,9 @@ test.describe('Admin Reconciliation E2E', () => {
     });
 
     test('triggers CSV download on click', async ({ page }) => {
-      const downloadPromise = page.waitForEvent('download', { timeout: 20_000 });
+      const downloadPromise = page.waitForEvent('download', {
+        timeout: 20_000,
+      });
       const exportBtn = page.getByRole('button', { name: /Export CSV/i });
       await exportBtn.click();
       const download = await downloadPromise;

@@ -12,7 +12,9 @@ interface ReceiptQrCodeProps {
 export default function ReceiptQrCode({ value, label }: ReceiptQrCodeProps) {
   const [dataUrl, setDataUrl] = useState('');
   const [isGenerating, setIsGenerating] = useState(true);
-  const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
+  const prefersReducedMotion = useMediaQuery(
+    '(prefers-reduced-motion: reduce)',
+  );
 
   useEffect(() => {
     let cancelled = false;

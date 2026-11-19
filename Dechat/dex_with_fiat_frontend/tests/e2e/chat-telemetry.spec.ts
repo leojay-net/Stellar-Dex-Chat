@@ -46,9 +46,12 @@ test.describe('chatTelemetry E2E Coverage', () => {
   });
 
   test.describe('Consent Management & Event Suppression', () => {
-    test('suppresses telemetry events when consent is not granted', async ({ page }) => {
+    test('suppresses telemetry events when consent is not granted', async ({
+      page,
+    }) => {
       await page.evaluate(async () => {
-        const { chatTelemetry, setTelemetryConsent } = await import('@/lib/chatTelemetry');
+        const { chatTelemetry, setTelemetryConsent } =
+          await import('@/lib/chatTelemetry');
         setTelemetryConsent(false);
         chatTelemetry.messageSend({ messageLength: 10, hasWallet: false });
       });
@@ -61,12 +64,15 @@ test.describe('chatTelemetry E2E Coverage', () => {
 
     test('emits telemetry events when consent is granted', async ({ page }) => {
       await page.evaluate(async () => {
-        const { chatTelemetry, setTelemetryConsent } = await import('@/lib/chatTelemetry');
+        const { chatTelemetry, setTelemetryConsent } =
+          await import('@/lib/chatTelemetry');
         setTelemetryConsent(true);
         chatTelemetry.messageSend({ messageLength: 25, hasWallet: true });
       });
 
-      await page.waitForFunction(() => (window as any).__collectedTelemetryEvents.length === 1);
+      await page.waitForFunction(
+        () => (window as any).__collectedTelemetryEvents.length === 1,
+      );
       const events = await getCollectedEvents(page);
       expect(events.length).toBe(1);
       expect(events[0].name).toBe('message_send');
@@ -76,18 +82,24 @@ test.describe('chatTelemetry E2E Coverage', () => {
       expect(typeof events[0].timestamp).toBe('number');
     });
 
-    test('immediately stops emitting events when consent is revoked', async ({ page }) => {
+    test('immediately stops emitting events when consent is revoked', async ({
+      page,
+    }) => {
       await page.evaluate(async () => {
-        const { chatTelemetry, setTelemetryConsent } = await import('@/lib/chatTelemetry');
+        const { chatTelemetry, setTelemetryConsent } =
+          await import('@/lib/chatTelemetry');
         setTelemetryConsent(true);
         chatTelemetry.messageSend({ messageLength: 15, hasWallet: true });
       });
 
-      await page.waitForFunction(() => (window as any).__collectedTelemetryEvents.length === 1);
+      await page.waitForFunction(
+        () => (window as any).__collectedTelemetryEvents.length === 1,
+      );
       await clearCollectedEvents(page);
 
       await page.evaluate(async () => {
-        const { chatTelemetry, setTelemetryConsent } = await import('@/lib/chatTelemetry');
+        const { chatTelemetry, setTelemetryConsent } =
+          await import('@/lib/chatTelemetry');
         setTelemetryConsent(false);
         chatTelemetry.messageSend({ messageLength: 30, hasWallet: false });
       });
@@ -109,10 +121,15 @@ test.describe('chatTelemetry E2E Coverage', () => {
     test('emits messageRetry event with correct payload', async ({ page }) => {
       await page.evaluate(async () => {
         const { chatTelemetry } = await import('@/lib/chatTelemetry');
-        chatTelemetry.messageRetry({ retryAttempts: 3, errorMessage: 'Network timeout' });
+        chatTelemetry.messageRetry({
+          retryAttempts: 3,
+          errorMessage: 'Network timeout',
+        });
       });
 
-      await page.waitForFunction(() => (window as any).__collectedTelemetryEvents.length === 1);
+      await page.waitForFunction(
+        () => (window as any).__collectedTelemetryEvents.length === 1,
+      );
       const [event] = await getCollectedEvents(page);
       expect(event.name).toBe('message_retry');
       expect(event.payload.retryAttempts).toBe(3);
@@ -125,21 +142,27 @@ test.describe('chatTelemetry E2E Coverage', () => {
         chatTelemetry.walletConnect({ walletType: 'freighter', success: true });
       });
 
-      await page.waitForFunction(() => (window as any).__collectedTelemetryEvents.length === 1);
+      await page.waitForFunction(
+        () => (window as any).__collectedTelemetryEvents.length === 1,
+      );
       const [event] = await getCollectedEvents(page);
       expect(event.name).toBe('wallet_connect');
       expect(event.payload.walletType).toBe('freighter');
       expect(event.payload.success).toBe(true);
     });
 
-    test('emits bridgeOpen event for deposit and withdraw flows', async ({ page }) => {
+    test('emits bridgeOpen event for deposit and withdraw flows', async ({
+      page,
+    }) => {
       await page.evaluate(async () => {
         const { chatTelemetry } = await import('@/lib/chatTelemetry');
         chatTelemetry.bridgeOpen({ flow: 'deposit' });
         chatTelemetry.bridgeOpen({ flow: 'withdraw' });
       });
 
-      await page.waitForFunction(() => (window as any).__collectedTelemetryEvents.length === 2);
+      await page.waitForFunction(
+        () => (window as any).__collectedTelemetryEvents.length === 2,
+      );
       const events = await getCollectedEvents(page);
       expect(events[0].name).toBe('bridge_open');
       expect(events[0].payload.flow).toBe('deposit');
@@ -147,7 +170,9 @@ test.describe('chatTelemetry E2E Coverage', () => {
       expect(events[1].payload.flow).toBe('withdraw');
     });
 
-    test('emits txConfirm event with asset and network details', async ({ page }) => {
+    test('emits txConfirm event with asset and network details', async ({
+      page,
+    }) => {
       await page.evaluate(async () => {
         const { chatTelemetry } = await import('@/lib/chatTelemetry');
         chatTelemetry.txConfirm({
@@ -157,7 +182,9 @@ test.describe('chatTelemetry E2E Coverage', () => {
         });
       });
 
-      await page.waitForFunction(() => (window as any).__collectedTelemetryEvents.length === 1);
+      await page.waitForFunction(
+        () => (window as any).__collectedTelemetryEvents.length === 1,
+      );
       const [event] = await getCollectedEvents(page);
       expect(event.name).toBe('tx_confirm');
       expect(event.payload.assetCode).toBe('XLM');
@@ -176,7 +203,9 @@ test.describe('chatTelemetry E2E Coverage', () => {
         });
       });
 
-      await page.waitForFunction(() => (window as any).__collectedTelemetryEvents.length === 1);
+      await page.waitForFunction(
+        () => (window as any).__collectedTelemetryEvents.length === 1,
+      );
       const [event] = await getCollectedEvents(page);
       expect(event.name).toBe('fiat_payout_step');
       expect(event.payload.action).toBe('step_change');
@@ -185,7 +214,9 @@ test.describe('chatTelemetry E2E Coverage', () => {
       expect(event.payload.bankCode).toBe('058');
     });
 
-    test('emits paymentStatus event with reference and state', async ({ page }) => {
+    test('emits paymentStatus event with reference and state', async ({
+      page,
+    }) => {
       await page.evaluate(async () => {
         const { chatTelemetry } = await import('@/lib/chatTelemetry');
         chatTelemetry.paymentStatus({
@@ -196,7 +227,9 @@ test.describe('chatTelemetry E2E Coverage', () => {
         });
       });
 
-      await page.waitForFunction(() => (window as any).__collectedTelemetryEvents.length === 1);
+      await page.waitForFunction(
+        () => (window as any).__collectedTelemetryEvents.length === 1,
+      );
       const [event] = await getCollectedEvents(page);
       expect(event.name).toBe('payment_status');
       expect(event.payload.status).toBe('success');
@@ -205,7 +238,9 @@ test.describe('chatTelemetry E2E Coverage', () => {
       expect(event.payload.hasFailureReason).toBe(false);
     });
 
-    test('emits networkStatus event on connectivity transitions', async ({ page }) => {
+    test('emits networkStatus event on connectivity transitions', async ({
+      page,
+    }) => {
       await page.evaluate(async () => {
         const { chatTelemetry } = await import('@/lib/chatTelemetry');
         chatTelemetry.networkStatus({
@@ -214,7 +249,9 @@ test.describe('chatTelemetry E2E Coverage', () => {
         });
       });
 
-      await page.waitForFunction(() => (window as any).__collectedTelemetryEvents.length === 1);
+      await page.waitForFunction(
+        () => (window as any).__collectedTelemetryEvents.length === 1,
+      );
       const [event] = await getCollectedEvents(page);
       expect(event.name).toBe('network_status');
       expect(event.payload.status).toBe('offline');
@@ -231,7 +268,9 @@ test.describe('chatTelemetry E2E Coverage', () => {
         });
       });
 
-      await page.waitForFunction(() => (window as any).__collectedTelemetryEvents.length === 1);
+      await page.waitForFunction(
+        () => (window as any).__collectedTelemetryEvents.length === 1,
+      );
       const [event] = await getCollectedEvents(page);
       expect(event.name).toBe('split_view');
       expect(event.payload.action).toBe('swap_sessions');
@@ -248,7 +287,9 @@ test.describe('chatTelemetry E2E Coverage', () => {
       });
     });
 
-    test('avatarColorCheck emits event with enriched contrast calculations', async ({ page }) => {
+    test('avatarColorCheck emits event with enriched contrast calculations', async ({
+      page,
+    }) => {
       await page.evaluate(async () => {
         const { chatTelemetry } = await import('@/lib/chatTelemetry');
         chatTelemetry.avatarColorCheck({
@@ -256,7 +297,9 @@ test.describe('chatTelemetry E2E Coverage', () => {
         });
       });
 
-      await page.waitForFunction(() => (window as any).__collectedTelemetryEvents.length === 1);
+      await page.waitForFunction(
+        () => (window as any).__collectedTelemetryEvents.length === 1,
+      );
       const [event] = await getCollectedEvents(page);
       expect(event.name).toBe('avatar_color_check');
       expect(event.payload.avatarBackgroundColor).toBe('#000000');
@@ -265,14 +308,16 @@ test.describe('chatTelemetry E2E Coverage', () => {
       expect(event.payload.avatarContrastRatio).toBeGreaterThanOrEqual(4.5);
     });
 
-    test('calculateContrastRatio computes WCAG luminance ratios in browser', async ({ page }) => {
+    test('calculateContrastRatio computes WCAG luminance ratios in browser', async ({
+      page,
+    }) => {
       const results = await page.evaluate(async () => {
-        const { calculateContrastRatio, getAccessibleAvatarTextColor } = await import(
-          '@/lib/chatTelemetry'
-        );
+        const { calculateContrastRatio, getAccessibleAvatarTextColor } =
+          await import('@/lib/chatTelemetry');
         const whiteOnBlack = calculateContrastRatio('#FFFFFF', '#000000');
         const blackOnWhite = calculateContrastRatio('#000000', '#FFFFFF');
-        const accessibleTextForLightBg = getAccessibleAvatarTextColor('#F3F4F6');
+        const accessibleTextForLightBg =
+          getAccessibleAvatarTextColor('#F3F4F6');
         const accessibleTextForDarkBg = getAccessibleAvatarTextColor('#1E293B');
 
         return {
@@ -293,7 +338,8 @@ test.describe('chatTelemetry E2E Coverage', () => {
   test.describe('Motion Variants & Reduced Motion', () => {
     test('resolves telemetry motion intents correctly', async ({ page }) => {
       const intents = await page.evaluate(async () => {
-        const { telemetryEventMotionIntent } = await import('@/lib/chatTelemetry');
+        const { telemetryEventMotionIntent } =
+          await import('@/lib/chatTelemetry');
         return {
           retry: telemetryEventMotionIntent('message_retry'),
           avatar: telemetryEventMotionIntent('avatar_color_check'),
@@ -310,7 +356,8 @@ test.describe('chatTelemetry E2E Coverage', () => {
 
     test('returns reduced motion variants when requested', async ({ page }) => {
       const variants = await page.evaluate(async () => {
-        const { getTelemetryMotionVariants } = await import('@/lib/chatTelemetry');
+        const { getTelemetryMotionVariants } =
+          await import('@/lib/chatTelemetry');
         // `Variants` is an index signature of the `Variant` union, which hides the
         // concrete animation props; narrow to the concrete variant object type.
         return getTelemetryMotionVariants({ reducedMotion: true }) as Record<

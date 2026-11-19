@@ -14,7 +14,8 @@ describe('withRetry - exponential backoff retry logic', () => {
   });
 
   it('retries on retryable errors with exponential backoff', async () => {
-    const mockFn = vi.fn()
+    const mockFn = vi
+      .fn()
       .mockRejectedValueOnce(new Error('Network error'))
       .mockRejectedValueOnce(new Error('Network error'))
       .mockResolvedValue('success');
@@ -36,14 +37,19 @@ describe('withRetry - exponential backoff retry logic', () => {
     const mockFn = vi.fn().mockRejectedValue(new Error('Persistent error'));
 
     await expect(
-      withRetry(mockFn, { maxRetries: 2, initialDelay: 50, isRetryable: () => true }),
+      withRetry(mockFn, {
+        maxRetries: 2,
+        initialDelay: 50,
+        isRetryable: () => true,
+      }),
     ).rejects.toThrow('Persistent error');
 
     expect(mockFn).toHaveBeenCalledTimes(3); // initial + 2 retries
   });
 
   it('respects maxDelay cap', async () => {
-    const mockFn = vi.fn()
+    const mockFn = vi
+      .fn()
       .mockRejectedValueOnce(new Error('Error 1'))
       .mockRejectedValueOnce(new Error('Error 2'))
       .mockResolvedValue('success');
@@ -61,7 +67,8 @@ describe('withRetry - exponential backoff retry logic', () => {
   });
 
   it('uses custom isRetryable function', async () => {
-    const mockFn = vi.fn()
+    const mockFn = vi
+      .fn()
       .mockRejectedValueOnce(new Error('Custom error'))
       .mockResolvedValue('success');
 
@@ -95,7 +102,6 @@ describe('withRetry - exponential backoff retry logic', () => {
     expect(mockFn).toHaveBeenCalledTimes(1);
   });
 
-
   it('does not retry Response errors with non-retryable status codes', async () => {
     const mockResponse = {
       ok: false,
@@ -118,7 +124,8 @@ describe('withRetry - exponential backoff retry logic', () => {
 
   it('handles network errors (TypeError with fetch)', async () => {
     const networkError = new TypeError('Failed to fetch');
-    const mockFn = vi.fn()
+    const mockFn = vi
+      .fn()
       .mockRejectedValueOnce(networkError)
       .mockResolvedValue('success');
 
@@ -143,11 +150,10 @@ describe('withRetry - exponential backoff retry logic', () => {
 
   it('calculates correct exponential backoff delays', async () => {
     const delays: number[] = [];
-    const mockFn = vi.fn()
-      .mockImplementation(async () => {
-        delays.push(0);
-        throw new Error('Error');
-      });
+    const mockFn = vi.fn().mockImplementation(async () => {
+      delays.push(0);
+      throw new Error('Error');
+    });
 
     await expect(
       withRetry(mockFn, {
@@ -163,7 +169,8 @@ describe('withRetry - exponential backoff retry logic', () => {
   });
 
   it('returns attempt count and total delay in result', async () => {
-    const mockFn = vi.fn()
+    const mockFn = vi
+      .fn()
       .mockRejectedValueOnce(new Error('Error 1'))
       .mockRejectedValueOnce(new Error('Error 2'))
       .mockResolvedValue('success');

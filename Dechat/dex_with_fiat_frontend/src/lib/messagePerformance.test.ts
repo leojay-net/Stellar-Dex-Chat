@@ -3,11 +3,11 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 /**
  * Performance benchmarks for virtualized chat messages
- * 
+ *
  * This test suite measures the performance impact of implementing virtualization
  * for chat messages. The metrics are collected and can be compared with the
  * non-virtualized version for analysis.
- * 
+ *
  * Run with: npm run test:unit -- messagePerformance.test
  */
 
@@ -29,7 +29,9 @@ describe('Chat Message Virtualization Performance', () => {
     }, 'Virtualized List - 100 messages');
 
     expect(metrics.renderTime).toBeLessThan(1000); // Should render in less than 1 second
-    console.log(`✅ Rendered 100 messages in ${metrics.renderTime.toFixed(2)}ms`);
+    console.log(
+      `✅ Rendered 100 messages in ${metrics.renderTime.toFixed(2)}ms`,
+    );
   });
 
   it('should measure render time for virtualized list with 500 messages', () => {
@@ -42,7 +44,9 @@ describe('Chat Message Virtualization Performance', () => {
     }, 'Virtualized List - 500 messages');
 
     expect(metrics.renderTime).toBeLessThan(1000);
-    console.log(`✅ Rendered 500 messages in ${metrics.renderTime.toFixed(2)}ms`);
+    console.log(
+      `✅ Rendered 500 messages in ${metrics.renderTime.toFixed(2)}ms`,
+    );
   });
 
   it('should measure render time for virtualized list with 1000+ messages', () => {
@@ -55,7 +59,9 @@ describe('Chat Message Virtualization Performance', () => {
     }, 'Virtualized List - 1000 messages');
 
     expect(metrics.renderTime).toBeLessThan(2000);
-    console.log(`✅ Rendered 1000+ messages in ${metrics.renderTime.toFixed(2)}ms`);
+    console.log(
+      `✅ Rendered 1000+ messages in ${metrics.renderTime.toFixed(2)}ms`,
+    );
   });
 
   it('should maintain consistent scroll performance with virtualized list', () => {
@@ -63,13 +69,16 @@ describe('Chat Message Virtualization Performance', () => {
 
     // Simulate multiple scroll operations
     for (let i = 0; i < 5; i++) {
-      const metrics = PerformanceBench.measureRender(() => {
-        let total = 0;
-        for (let j = 0; j < 100; j++) {
-          total += j;
-        }
-        return total;
-      }, `Scroll Operation ${i + 1}`);
+      const metrics = PerformanceBench.measureRender(
+        () => {
+          let total = 0;
+          for (let j = 0; j < 100; j++) {
+            total += j;
+          }
+          return total;
+        },
+        `Scroll Operation ${i + 1}`,
+      );
       results.push(metrics.renderTime);
     }
 
@@ -77,7 +86,9 @@ describe('Chat Message Virtualization Performance', () => {
     const maxTime = Math.max(...results);
 
     expect(maxTime - avgTime).toBeLessThan(10); // Consistent performance
-    console.log(`✅ Average scroll time: ${avgTime.toFixed(2)}ms (max deviation: ${(maxTime - avgTime).toFixed(2)}ms)`);
+    console.log(
+      `✅ Average scroll time: ${avgTime.toFixed(2)}ms (max deviation: ${(maxTime - avgTime).toFixed(2)}ms)`,
+    );
   });
 
   it('should provide accurate performance metrics comparison', () => {
@@ -94,7 +105,7 @@ describe('Chat Message Virtualization Performance', () => {
     };
 
     const comparison = PerformanceBench.compare(before, after);
-    
+
     expect(comparison).toContain('Performance Comparison');
     expect(comparison).toContain('150.00ms');
     expect(comparison).toContain('45.00ms');
@@ -103,10 +114,13 @@ describe('Chat Message Virtualization Performance', () => {
 
   it('should measure web vitals', () => {
     const metrics = PerformanceBench.measureWebVitals();
-    
+
     expect(metrics).toBeDefined();
-    expect(typeof metrics.renderTime === 'number' || metrics.renderTime === undefined).toBe(true);
-    
+    expect(
+      typeof metrics.renderTime === 'number' ||
+        metrics.renderTime === undefined,
+    ).toBe(true);
+
     console.log('📊 Web Vitals:', metrics);
   });
 
@@ -136,22 +150,22 @@ describe('Chat Message Virtualization Performance', () => {
 
 /**
  * BENCHMARK RESULTS GUIDE:
- * 
+ *
  * Expected Performance Metrics with Virtualization:
- * 
+ *
  * ✅ 100 messages: ~20-50ms rendering time
- * ✅ 500 messages: ~30-80ms rendering time  
+ * ✅ 500 messages: ~30-80ms rendering time
  * ✅ 1000+ messages: ~40-150ms rendering time
  * ✅ Memory usage: ~5-15MB (significantly reduced from non-virtualized)
  * ✅ Scroll performance: Smooth 60 FPS (consistent across all message counts)
- * 
+ *
  * Non-Virtualized Baseline (before optimization):
  * ❌ 100 messages: ~100-200ms rendering time
  * ❌ 500 messages: ~400-800ms rendering time
  * ❌ 1000+ messages: ~2000ms+ rendering time (severe lag)
  * ❌ Memory usage: ~50-100MB (linear with message count)
  * ❌ Scroll performance: Visible jank, dropped frames
- * 
+ *
  * Performance Improvements:
  * 📈 50-60% faster rendering for small lists
  * 📈 70-80% faster rendering for medium lists

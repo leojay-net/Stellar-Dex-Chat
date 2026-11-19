@@ -4,8 +4,9 @@ import AuditLogService from '@/lib/auditLog';
 import type { AuditEntry } from '@/types';
 
 const mockEnv = { ADMIN_SECRET: 'test-admin-secret' };
-vi.mock('@/lib/env', () => ({
-  get env() {
+// requireAdminAuth reads the secret from serverEnv (src/lib/serverEnv.ts).
+vi.mock('@/lib/serverEnv', () => ({
+  get serverEnv() {
     return mockEnv;
   },
 }));
@@ -90,7 +91,9 @@ describe('GET /api/admin-audit', () => {
 
   it('accepts valid ISO dates', async () => {
     const res = await GET(
-      authenticatedRequest('?startDate=2025-01-01T00:00:00Z&endDate=2025-12-31T23:59:59Z'),
+      authenticatedRequest(
+        '?startDate=2025-01-01T00:00:00Z&endDate=2025-12-31T23:59:59Z',
+      ),
     );
     expect(res.status).toBe(200);
   });
@@ -137,17 +140,59 @@ describe('GET /api/admin-audit', () => {
 
   it('sorts before pagination and pages are globally ordered', async () => {
     const mockEntries: AuditEntry[] = [
-      { id: '1', timestamp: new Date('2025-01-03T00:00:00Z'), actionType: 'deposit', status: 'success', adminAddress: 'addr1', actionDescription: '', metadata: {} },
-      { id: '2', timestamp: new Date('2025-01-01T00:00:00Z'), actionType: 'payout', status: 'failed', adminAddress: 'addr2', actionDescription: '', metadata: {} },
-      { id: '3', timestamp: new Date('2025-01-02T00:00:00Z'), actionType: 'reconciliation', status: 'pending', adminAddress: 'addr3', actionDescription: '', metadata: {} },
-      { id: '4', timestamp: new Date('2025-01-04T00:00:00Z'), actionType: 'deposit', status: 'success', adminAddress: 'addr4', actionDescription: '', metadata: {} },
-      { id: '5', timestamp: new Date('2025-01-05T00:00:00Z'), actionType: 'payout', status: 'failed', adminAddress: 'addr5', actionDescription: '', metadata: {} },
+      {
+        id: '1',
+        timestamp: new Date('2025-01-03T00:00:00Z'),
+        actionType: 'deposit',
+        status: 'success',
+        adminAddress: 'addr1',
+        actionDescription: '',
+        metadata: {},
+      },
+      {
+        id: '2',
+        timestamp: new Date('2025-01-01T00:00:00Z'),
+        actionType: 'payout',
+        status: 'failed',
+        adminAddress: 'addr2',
+        actionDescription: '',
+        metadata: {},
+      },
+      {
+        id: '3',
+        timestamp: new Date('2025-01-02T00:00:00Z'),
+        actionType: 'reconciliation',
+        status: 'pending',
+        adminAddress: 'addr3',
+        actionDescription: '',
+        metadata: {},
+      },
+      {
+        id: '4',
+        timestamp: new Date('2025-01-04T00:00:00Z'),
+        actionType: 'deposit',
+        status: 'success',
+        adminAddress: 'addr4',
+        actionDescription: '',
+        metadata: {},
+      },
+      {
+        id: '5',
+        timestamp: new Date('2025-01-05T00:00:00Z'),
+        actionType: 'payout',
+        status: 'failed',
+        adminAddress: 'addr5',
+        actionDescription: '',
+        metadata: {},
+      },
     ];
 
     vi.mocked(AuditLogService.getAuditEntries).mockReturnValue(mockEntries);
 
     // Page 1 with limit 2
-    const res1 = await GET(authenticatedRequest('?limit=2&offset=0&sortKey=timestamp&sortOrder=asc'));
+    const res1 = await GET(
+      authenticatedRequest('?limit=2&offset=0&sortKey=timestamp&sortOrder=asc'),
+    );
     const body1 = await res1.json();
 
     expect(res1.status).toBe(200);
@@ -156,7 +201,9 @@ describe('GET /api/admin-audit', () => {
     expect(body1.entries[1].id).toBe('3'); // 2025-01-02
 
     // Page 2 with limit 2
-    const res2 = await GET(authenticatedRequest('?limit=2&offset=2&sortKey=timestamp&sortOrder=asc'));
+    const res2 = await GET(
+      authenticatedRequest('?limit=2&offset=2&sortKey=timestamp&sortOrder=asc'),
+    );
     const body2 = await res2.json();
 
     expect(res2.status).toBe(200);
@@ -165,8 +212,12 @@ describe('GET /api/admin-audit', () => {
     expect(body2.entries[1].id).toBe('4'); // 2025-01-04
 
     // Verify no overlap and global ordering
-    const page1Timestamps = body1.entries.map((e: any) => new Date(e.timestamp).getTime());
-    const page2Timestamps = body2.entries.map((e: any) => new Date(e.timestamp).getTime());
+    const page1Timestamps = body1.entries.map((e: any) =>
+      new Date(e.timestamp).getTime(),
+    );
+    const page2Timestamps = body2.entries.map((e: any) =>
+      new Date(e.timestamp).getTime(),
+    );
     const maxPage1 = Math.max(...page1Timestamps);
     const minPage2 = Math.min(...page2Timestamps);
 

@@ -1,7 +1,10 @@
 import React from 'react';
 import { renderHook, act } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { UserPreferencesProvider, useUserPreferences } from './UserPreferencesContext';
+import {
+  UserPreferencesProvider,
+  useUserPreferences,
+} from './UserPreferencesContext';
 
 function wrapper({ children }: { children: React.ReactNode }) {
   return <UserPreferencesProvider>{children}</UserPreferencesProvider>;

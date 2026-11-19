@@ -133,7 +133,11 @@ describe('Message — keyboard shortcuts (#683)', () => {
       const messageEl = screen.getByTestId('message');
       act(() => {
         messageEl.dispatchEvent(
-          new KeyboardEvent('keydown', { key: 'r', ctrlKey: true, bubbles: true }),
+          new KeyboardEvent('keydown', {
+            key: 'r',
+            ctrlKey: true,
+            bubbles: true,
+          }),
         );
       });
 
@@ -153,7 +157,11 @@ describe('Message — keyboard shortcuts (#683)', () => {
       const messageEl = screen.getByTestId('message');
       act(() => {
         messageEl.dispatchEvent(
-          new KeyboardEvent('keydown', { key: 'r', metaKey: true, bubbles: true }),
+          new KeyboardEvent('keydown', {
+            key: 'r',
+            metaKey: true,
+            bubbles: true,
+          }),
         );
       });
 
@@ -163,12 +171,7 @@ describe('Message — keyboard shortcuts (#683)', () => {
 
   describe('Escape key — blur', () => {
     it('blurs the message element when Escape is pressed', () => {
-      render(
-        <Message
-          message={makeMessage()}
-          onActionClick={vi.fn()}
-        />,
-      );
+      render(<Message message={makeMessage()} onActionClick={vi.fn()} />);
 
       const messageEl = screen.getByTestId('message');
       messageEl.focus();
@@ -218,12 +221,7 @@ describe('Message — keyboard shortcuts (#683)', () => {
       const writeText = vi.fn().mockResolvedValue(undefined);
       Object.assign(navigator, { clipboard: { writeText } });
 
-      render(
-        <Message
-          message={makeMessage()}
-          onActionClick={vi.fn()}
-        />,
-      );
+      render(<Message message={makeMessage()} onActionClick={vi.fn()} />);
 
       const messageEl = screen.getByTestId('message');
       act(() => {
@@ -251,24 +249,14 @@ describe('Message — keyboard shortcuts (#683)', () => {
     });
 
     it('does not include R for non-failed messages', () => {
-      render(
-        <Message
-          message={makeMessage()}
-          onActionClick={vi.fn()}
-        />,
-      );
+      render(<Message message={makeMessage()} onActionClick={vi.fn()} />);
 
       const messageEl = screen.getByTestId('message');
       expect(messageEl.getAttribute('aria-keyshortcuts')).not.toContain('R');
     });
 
     it('always includes C and Escape', () => {
-      render(
-        <Message
-          message={makeMessage()}
-          onActionClick={vi.fn()}
-        />,
-      );
+      render(<Message message={makeMessage()} onActionClick={vi.fn()} />);
 
       const messageEl = screen.getByTestId('message');
       const shortcuts = messageEl.getAttribute('aria-keyshortcuts');

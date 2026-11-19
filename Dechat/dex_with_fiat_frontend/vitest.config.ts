@@ -18,7 +18,13 @@ export default defineConfig({
     hookTimeout: 15000,
     fakeTimers: {
       // Avoid mocking queueMicrotask (Vitest 3+ default) — prevents memory growth in CI.
-      toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
+      toFake: [
+        'Date',
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+      ],
     },
     coverage: {
       provider: 'v8',

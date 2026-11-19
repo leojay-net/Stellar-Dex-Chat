@@ -1,5 +1,11 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import {
+  act,
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+} from '@testing-library/react';
 import { vi, type Mock } from 'vitest';
 import StellarFiatModal from '../StellarFiatModal';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -14,6 +20,8 @@ vi.mock('@/contexts/StellarWalletContext', () => ({
       network: 'TESTNET',
     },
     signTx: vi.fn(),
+    xlmBalance: '100',
+    refreshXlmBalance: vi.fn().mockResolvedValue(undefined),
   }),
 }));
 
@@ -110,7 +118,9 @@ describe('StellarFiatModal', () => {
   });
 
   it('shows an error state when the transaction fails', async () => {
-    mockedContract.depositToContract.mockRejectedValueOnce(new Error('Network failure'));
+    mockedContract.depositToContract.mockRejectedValueOnce(
+      new Error('Network failure'),
+    );
 
     const { getByRole } = render(
       React.createElement(StellarFiatModal, {
@@ -161,8 +171,8 @@ describe('StellarFiatModal fiat estimate cancellation pattern (Issue #709)', () 
     });
 
     // Run the async work
-    const asyncWork = fetchPromise.then(() => {
-      setState();
+    const asyncWork = fetchPromise.then((value) => {
+      setState(value);
     });
 
     // Simulate unmount before the fetch completes
@@ -264,7 +274,9 @@ describe('StellarFiatModal skeleton loading state', () => {
     );
 
     // The skeleton should be rendered (SkeletonPayout renders skeleton elements)
-    const skeletonElements = container.querySelectorAll('[class*="animate-pulse"]');
+    const skeletonElements = container.querySelectorAll(
+      '[class*="animate-pulse"]',
+    );
     expect(skeletonElements.length).toBeGreaterThan(0);
   });
 
@@ -296,7 +308,7 @@ describe('StellarFiatModal fee simulation debounce', () => {
 
   it('debounces fee simulation when typing multi-character amount', async () => {
     const mockedContract = await import('@/lib/stellarContract');
-    mockedContract.simulateDeposit.mockClear();
+    vi.mocked(mockedContract.simulateDeposit).mockClear();
 
     const { getByRole } = render(
       React.createElement(StellarFiatModal, {
@@ -306,31 +318,34 @@ describe('StellarFiatModal fee simulation debounce', () => {
       }),
     );
 
-    // Wait for initial render
-    await vi.runAllTimersAsync();
+    // Wait out the 500ms loading skeleton and the initial fee simulation.
+    await vi.advanceTimersByTimeAsync(1000);
+    // The default amount triggers its own initial simulation; only count the
+    // calls caused by typing.
+    vi.mocked(mockedContract.simulateDeposit).mockClear();
 
     // Simulate typing "1000.5" character by character
     const input = getByRole('spinbutton') as HTMLInputElement;
-    
+
     // Type '0' -> "10"
     fireEvent.change(input, { target: { value: '10' } });
     await vi.advanceTimersByTimeAsync(100);
-    
+
     // Type '0' -> "100"
     fireEvent.change(input, { target: { value: '100' } });
     await vi.advanceTimersByTimeAsync(100);
-    
+
     // Type '0' -> "1000"
     fireEvent.change(input, { target: { value: '1000' } });
     await vi.advanceTimersByTimeAsync(100);
-    
+
     // Type '.' -> "1000."
     fireEvent.change(input, { target: { value: '1000.' } });
     await vi.advanceTimersByTimeAsync(100);
-    
+
     // Type '5' -> "1000.5"
     fireEvent.change(input, { target: { value: '1000.5' } });
-    
+
     // Advance past the debounce delay (300ms)
     await vi.advanceTimersByTimeAsync(350);
 
@@ -340,7 +355,7 @@ describe('StellarFiatModal fee simulation debounce', () => {
 
   it('cancels in-flight simulation when amount changes', async () => {
     const mockedContract = await import('@/lib/stellarContract');
-    mockedContract.simulateDeposit.mockClear();
+    vi.mocked(mockedContract.simulateDeposit).mockClear();
 
     const { getByRole } = render(
       React.createElement(StellarFiatModal, {
@@ -350,21 +365,22 @@ describe('StellarFiatModal fee simulation debounce', () => {
       }),
     );
 
-    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(1000);
+    vi.mocked(mockedContract.simulateDeposit).mockClear();
 
     const input = getByRole('spinbutton') as HTMLInputElement;
-    
+
     // Change amount to trigger first simulation
     fireEvent.change(input, { target: { value: '20' } });
     await vi.advanceTimersByTimeAsync(100);
-    
+
     // Change amount again before debounce fires
     fireEvent.change(input, { target: { value: '30' } });
     await vi.advanceTimersByTimeAsync(100);
-    
+
     // Change amount again
     fireEvent.change(input, { target: { value: '40' } });
-    
+
     // Advance past the debounce delay
     await vi.advanceTimersByTimeAsync(350);
 
@@ -375,7 +391,7 @@ describe('StellarFiatModal fee simulation debounce', () => {
   // Regression: #779 — inputs must not carry hardcoded border-gray-600;
   // they should use theme-input / theme-input-border so the colour follows
   // the design-system token and is never left on the browser default.
-  it('amount input uses theme border classes and not hard-coded gray border', () => {
+  it('amount input uses theme border classes and not hard-coded gray border', async () => {
     const { getByRole } = render(
       React.createElement(StellarFiatModal, {
         isOpen: true,
@@ -383,6 +399,10 @@ describe('StellarFiatModal fee simulation debounce', () => {
       }),
     );
 
+    // The form is replaced by a skeleton for the first 500ms.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
     const input = getByRole('spinbutton') as HTMLInputElement;
     expect(input.className).not.toMatch(/border-gray-\d+/);
     expect(input.className).toMatch(/theme-input/);

@@ -50,9 +50,8 @@ vi.mock('react-markdown', () => ({
 }));
 
 const { default: Message } = await import('@/components/Message');
-const { MAX_AUTO_RETRIES, RETRY_BASE_DELAY_MS } = await import(
-  '@/hooks/useMessageRetry'
-);
+const { MAX_AUTO_RETRIES, RETRY_BASE_DELAY_MS } =
+  await import('@/hooks/useMessageRetry');
 
 function failedMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {
@@ -65,6 +64,9 @@ function failedMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
       timestamp: new Date('2026-01-01T00:00:00Z'),
       retryAttempts: 0,
     },
+    // useChat marks a failed send with both `error` and status 'failed';
+    // the automatic retry loop is keyed off the status.
+    metadata: { status: 'failed' },
     originalPayload: { content: 'Convert 100 XLM to USD' },
     ...overrides,
   };

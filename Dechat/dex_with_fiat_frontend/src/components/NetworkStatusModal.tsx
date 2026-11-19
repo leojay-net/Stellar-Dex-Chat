@@ -2,14 +2,20 @@
 
 import { X, Wifi, WifiOff, AlertTriangle } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useStellarWallet, EXPECTED_NETWORK } from '@/contexts/StellarWalletContext';
+import {
+  useStellarWallet,
+  EXPECTED_NETWORK,
+} from '@/contexts/StellarWalletContext';
 
 interface NetworkStatusModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-export default function NetworkStatusModal({ isOpen, onClose }: NetworkStatusModalProps) {
+export default function NetworkStatusModal({
+  isOpen,
+  onClose,
+}: NetworkStatusModalProps) {
   const { isDarkMode } = useTheme();
   const { connection, isNetworkMismatch } = useStellarWallet();
 
@@ -39,7 +45,8 @@ export default function NetworkStatusModal({ isOpen, onClose }: NetworkStatusMod
     disconnected: {
       dot: 'bg-red-500',
       label: 'Disconnected',
-      description: 'No Stellar wallet is connected. Connect Freighter to send transactions.',
+      description:
+        'No Stellar wallet is connected. Connect Freighter to send transactions.',
       Icon: WifiOff,
       iconClass: isDarkMode ? 'text-red-400' : 'text-red-600',
     },
@@ -78,29 +85,41 @@ export default function NetworkStatusModal({ isOpen, onClose }: NetworkStatusMod
         </div>
 
         <div className="flex items-start gap-3">
-          <span className={`mt-1 w-3 h-3 rounded-full flex-shrink-0 ${statusConfig.dot}`} />
+          <span
+            className={`mt-1 w-3 h-3 rounded-full flex-shrink-0 ${statusConfig.dot}`}
+          />
           <div>
             <p className="font-medium text-sm">{statusConfig.label}</p>
-            <p className={`text-xs mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            <p
+              className={`text-xs mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+            >
               {statusConfig.description}
             </p>
           </div>
         </div>
 
         {connection.isConnected && (
-          <dl className={`mt-4 space-y-2 text-xs border-t pt-4 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+          <dl
+            className={`mt-4 space-y-2 text-xs border-t pt-4 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+          >
             <div className="flex justify-between">
-              <dt className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Address</dt>
+              <dt className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>
+                Address
+              </dt>
               <dd className="font-mono">
                 {connection.address.slice(0, 6)}…{connection.address.slice(-4)}
               </dd>
             </div>
             <div className="flex justify-between">
-              <dt className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Network</dt>
+              <dt className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>
+                Network
+              </dt>
               <dd>{connection.network || '—'}</dd>
             </div>
             <div className="flex justify-between">
-              <dt className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Expected</dt>
+              <dt className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>
+                Expected
+              </dt>
               <dd>{EXPECTED_NETWORK}</dd>
             </div>
           </dl>

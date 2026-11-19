@@ -1,98 +1,128 @@
-import { filterTransactions, FilterState } from "@/lib/transactionFilters";
-import { TransactionData } from "@/types";
+import { describe, expect, test } from 'vitest';
+import {
+  computeFilterStats,
+  filterTransactions,
+} from '@/lib/transactionFilters';
+import type { FilterState, TransactionHistoryEntry } from '@/types';
 
-const mockTransactions: TransactionData[] = [
+type NetworkedEntry = TransactionHistoryEntry & { network?: string };
+
+const mockTransactions: NetworkedEntry[] = [
   {
-    id: "1",
-    type: "deposit",
-    amountIn: "100",
-    tokenIn: "XLM",
-    timestamp: new Date("2023-10-01").getTime(),
-    status: "success",
+    id: '1',
+    kind: 'deposit',
+    status: 'completed',
+    asset: 'XLM',
+    amount: '100',
+    message: 'Deposit completed',
+    createdAt: new Date('2023-10-01'),
+    network: 'stellar-testnet',
   },
   {
-    id: "2",
-    type: "withdrawal",
-    amountIn: "500",
-    tokenIn: "USDC",
-    timestamp: new Date("2023-10-15").getTime(),
-    status: "success",
+    id: '2',
+    kind: 'payout',
+    status: 'pending',
+    asset: 'USDC',
+    amount: '500',
+    message: 'Payout pending',
+    createdAt: new Date('2023-10-15'),
+    network: 'stellar-mainnet',
   },
   {
-    id: "3",
-    type: "deposit",
-    amountIn: "1000",
-    tokenIn: "XLM",
-    timestamp: new Date("2023-11-01").getTime(),
-    status: "success",
+    id: '3',
+    kind: 'deposit',
+    status: 'failed',
+    asset: 'XLM',
+    amount: '1000',
+    message: 'Deposit failed',
+    createdAt: new Date('2023-11-01'),
+    network: 'stellar-testnet',
   },
 ];
 
-describe("transactionFilters utility", () => {
-  const defaultFilters: FilterState = {
-    type: "all",
-    dateRange: { start: null, end: null },
-    amountRange: { min: null, max: null },
-  };
+const noFilters: FilterState = { status: [], asset: [], network: [] };
 
-  test("should return all transactions when no filters are applied", () => {
-    const result = filterTransactions(mockTransactions, defaultFilters);
+describe('filterTransactions', () => {
+  test('returns all transactions when no filters are applied', () => {
+    const result = filterTransactions(mockTransactions, noFilters);
     expect(result).toHaveLength(3);
   });
 
-  test("should filter by transaction type (deposit)", () => {
-    const filters: FilterState = { ...defaultFilters, type: "deposit" };
-    const result = filterTransactions(mockTransactions, filters);
-    expect(result).toHaveLength(2);
-    expect(result.every((t) => t.type === "deposit")).toBe(true);
+  test('filters by status', () => {
+    const result = filterTransactions(mockTransactions, {
+      ...noFilters,
+      status: ['completed'],
+    });
+    expect(result.map((t) => t.id)).toEqual(['1']);
   });
 
-  test("should filter by date range", () => {
-    const filters: FilterState = {
-      ...defaultFilters,
-      dateRange: {
-        start: new Date("2023-10-10"),
-        end: new Date("2023-10-20"),
-      },
-    };
-    const result = filterTransactions(mockTransactions, filters);
-    expect(result).toHaveLength(1);
-    expect(result[0].id).toBe("2");
+  test('uses OR logic within a category', () => {
+    const result = filterTransactions(mockTransactions, {
+      ...noFilters,
+      status: ['completed', 'failed'],
+    });
+    expect(result.map((t) => t.id)).toEqual(['1', '3']);
   });
 
-  test("should filter by amount range", () => {
-    const filters: FilterState = {
-      ...defaultFilters,
-      amountRange: { min: 400, max: 600 },
-    };
-    const result = filterTransactions(mockTransactions, filters);
-    expect(result).toHaveLength(1);
-    expect(result[0].id).toBe("2");
+  test('filters by asset', () => {
+    const result = filterTransactions(mockTransactions, {
+      ...noFilters,
+      asset: ['XLM'],
+    });
+    expect(result.map((t) => t.id)).toEqual(['1', '3']);
   });
 
-  test("should apply combined filters", () => {
-    const filters: FilterState = {
-      type: "deposit",
-      amountRange: { min: 500, max: 1500 },
-      dateRange: { start: new Date("2023-10-20"), end: null },
-    };
-    const result = filterTransactions(mockTransactions, filters);
-    expect(result).toHaveLength(1);
-    expect(result[0].id).toBe("3");
+  test('filters by network', () => {
+    const result = filterTransactions(mockTransactions, {
+      ...noFilters,
+      network: ['stellar-mainnet'],
+    });
+    expect(result.map((t) => t.id)).toEqual(['2']);
   });
 
-  test("should return empty array when no transactions match criteria", () => {
-    const filters: FilterState = {
-      ...defaultFilters,
-      type: "withdrawal",
-      amountRange: { min: 1000 },
-    };
-    const result = filterTransactions(mockTransactions, filters);
+  test('uses AND logic between categories', () => {
+    const result = filterTransactions(mockTransactions, {
+      status: ['failed'],
+      asset: ['XLM'],
+      network: ['stellar-testnet'],
+    });
+    expect(result.map((t) => t.id)).toEqual(['3']);
+  });
+
+  test('returns an empty array when no transactions match', () => {
+    const result = filterTransactions(mockTransactions, {
+      status: ['completed'],
+      asset: ['USDC'],
+      network: [],
+    });
     expect(result).toHaveLength(0);
   });
 
-  test("should handle empty transaction list", () => {
-    const result = filterTransactions([], defaultFilters);
-    expect(result).toHaveLength(0);
+  test('handles an empty transaction list', () => {
+    expect(filterTransactions([], noFilters)).toHaveLength(0);
+  });
+});
+
+describe('computeFilterStats', () => {
+  test('counts options and reports totals', () => {
+    const stats = computeFilterStats(mockTransactions, {
+      ...noFilters,
+      asset: ['XLM'],
+    });
+    expect(stats.totalCount).toBe(3);
+    expect(stats.filteredCount).toBe(2);
+    expect(stats.assetOptions).toEqual([
+      { value: 'USDC', label: 'USDC', count: 1 },
+      { value: 'XLM', label: 'XLM', count: 2 },
+    ]);
+    expect(stats.statusOptions.map((o) => o.label)).toEqual([
+      'Completed',
+      'Failed',
+      'Pending',
+    ]);
+    expect(stats.networkOptions).toEqual([
+      { value: 'stellar-mainnet', label: 'Stellar Mainnet', count: 1 },
+      { value: 'stellar-testnet', label: 'Stellar Testnet', count: 2 },
+    ]);
   });
 });

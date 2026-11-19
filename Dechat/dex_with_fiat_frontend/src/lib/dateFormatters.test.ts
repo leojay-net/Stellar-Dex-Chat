@@ -9,13 +9,16 @@ describe('formatRelativeHistoryDate', () => {
     ['en', 'Yesterday'],
     ['fr', 'Hier'],
     ['es', 'Ayer'],
-  ] as const)('uses the %s yesterday translation at midnight', (locale, label) => {
-    const lateYesterday = new Date(2026, 5, 24, 23, 50);
+  ] as const)(
+    'uses the %s yesterday translation at midnight',
+    (locale, label) => {
+      const lateYesterday = new Date(2026, 5, 24, 23, 50);
 
-    expect(
-      formatRelativeHistoryDate(lateYesterday, locale, label, now),
-    ).toBe(label);
-  });
+      expect(formatRelativeHistoryDate(lateYesterday, locale, label, now)).toBe(
+        label,
+      );
+    },
+  );
 
   it.each(['en', 'fr', 'es'] as const)(
     'formats relative days with the %s locale',

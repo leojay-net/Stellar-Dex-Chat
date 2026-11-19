@@ -15,7 +15,10 @@ const TEST_URL = '/test-offline-status-banner';
 async function stubConnectivityCheck(page: Page, reachable = true) {
   await page.route('**/cdn-cgi/trace**', async (route) => {
     if (reachable) {
-      await route.fulfill({ status: 200, body: 'fl=123\nvisit_scheme=https\n' });
+      await route.fulfill({
+        status: 200,
+        body: 'fl=123\nvisit_scheme=https\n',
+      });
     } else {
       await route.abort('failed');
     }
@@ -24,7 +27,10 @@ async function stubConnectivityCheck(page: Page, reachable = true) {
   await page.route('**/cloudflare.com/**', async (route) => {
     try {
       if (reachable) {
-        await route.fulfill({ status: 200, body: 'fl=123\nvisit_scheme=https\n' });
+        await route.fulfill({
+          status: 200,
+          body: 'fl=123\nvisit_scheme=https\n',
+        });
       } else {
         await route.abort('failed');
       }
@@ -73,7 +79,9 @@ test.describe('OfflineStatusBanner', () => {
       await expect(banner).toBeHidden({ timeout: 5_000 });
     });
 
-    test('loading skeleton renders and disappears on first paint', async ({ page }) => {
+    test('loading skeleton renders and disappears on first paint', async ({
+      page,
+    }) => {
       await stubConnectivityCheck(page, true);
       await page.goto(TEST_URL);
 
@@ -86,7 +94,9 @@ test.describe('OfflineStatusBanner', () => {
   });
 
   test.describe('Offline state', () => {
-    test('banner appears with offline message when network drops', async ({ page }) => {
+    test('banner appears with offline message when network drops', async ({
+      page,
+    }) => {
       await stubConnectivityCheck(page, false);
       await page.goto(TEST_URL);
       await page.waitForLoadState('domcontentloaded');
@@ -96,11 +106,15 @@ test.describe('OfflineStatusBanner', () => {
       const banner = page.getByRole('status');
       await expect(banner).toBeVisible({ timeout: 5_000 });
       await expect(
-        page.getByText('You are offline. Messages will be sent when you reconnect.'),
+        page.getByText(
+          'You are offline. Messages will be sent when you reconnect.',
+        ),
       ).toBeVisible({ timeout: 5_000 });
     });
 
-    test('banner has correct ARIA attributes when offline', async ({ page }) => {
+    test('banner has correct ARIA attributes when offline', async ({
+      page,
+    }) => {
       await stubConnectivityCheck(page, false);
       await page.goto(TEST_URL);
       await page.waitForLoadState('domcontentloaded');
@@ -114,7 +128,9 @@ test.describe('OfflineStatusBanner', () => {
       await expect(banner).toHaveAttribute('aria-atomic', 'true');
     });
 
-    test('banner shows pending message count when messages are queued', async ({ page }) => {
+    test('banner shows pending message count when messages are queued', async ({
+      page,
+    }) => {
       await stubConnectivityCheck(page, false);
       await page.goto(TEST_URL);
       await page.waitForLoadState('domcontentloaded');
@@ -154,7 +170,9 @@ test.describe('OfflineStatusBanner', () => {
       // Either 'Reconnecting...' is briefly visible or banner disappears — both valid
       // We simply confirm the offline message is gone
       await expect(
-        page.getByText('You are offline. Messages will be sent when you reconnect.'),
+        page.getByText(
+          'You are offline. Messages will be sent when you reconnect.',
+        ),
       ).toBeHidden({ timeout: 5_000 });
     });
 
@@ -239,7 +257,9 @@ test.describe('OfflineStatusBanner', () => {
       }
 
       // If we reach here without timeout the keyboard is not trapped
-      const focused = await page.evaluate(() => document.activeElement?.tagName);
+      const focused = await page.evaluate(
+        () => document.activeElement?.tagName,
+      );
       expect(focused).toBeDefined();
     });
   });

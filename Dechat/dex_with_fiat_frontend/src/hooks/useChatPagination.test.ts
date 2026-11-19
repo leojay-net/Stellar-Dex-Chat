@@ -99,7 +99,7 @@ describe('useChatPagination', () => {
     const initialMessages = createMessages(50);
     const { result, rerender } = renderHook(
       ({ messages }) => useChatPagination(messages, 20),
-      { initialProps: { messages: initialMessages } }
+      { initialProps: { messages: initialMessages } },
     );
 
     act(() => {
@@ -121,7 +121,9 @@ describe('useChatPagination', () => {
 
   it('does not update state after unmount when setTimeout fires', () => {
     const messages = createMessages(50);
-    const { result, unmount } = renderHook(() => useChatPagination(messages, 20));
+    const { result, unmount } = renderHook(() =>
+      useChatPagination(messages, 20),
+    );
 
     act(() => {
       result.current.loadMore();

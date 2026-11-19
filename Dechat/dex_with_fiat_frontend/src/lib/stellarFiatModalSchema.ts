@@ -87,7 +87,9 @@ export function validateStellarFiatModalForm(input: {
       amount: amountStringSchema,
       note: noteSchema,
       riskConfirmation: riskConfirmationSchema,
-      twoFactorConfirmation: input.twoFactorConfirmation ? twoFactorConfirmationSchema : z.string().optional(),
+      twoFactorConfirmation: input.twoFactorConfirmation
+        ? twoFactorConfirmationSchema
+        : z.string().optional(),
     })
     .safeParse({
       amount: input.amount,

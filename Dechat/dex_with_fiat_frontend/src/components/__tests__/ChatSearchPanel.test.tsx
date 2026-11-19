@@ -8,7 +8,9 @@ vi.mock('@/contexts/ThemeContext', () => ({
   useTheme: () => ({ isDarkMode: false }),
 }));
 
-function makeMessage(overrides: Partial<ChatMessage> & { content: string }): ChatMessage {
+function makeMessage(
+  overrides: Partial<ChatMessage> & { content: string },
+): ChatMessage {
   return {
     id: Math.random().toString(36).slice(2),
     role: 'assistant',
@@ -36,18 +38,26 @@ describe('ChatSearchPanel – keyboard shortcuts (#1183)', () => {
       makeSession({
         id: 'session-1',
         title: 'Bridging XLM',
-        messages: [makeMessage({ id: 'm1', content: 'How do I bridge XLM to USDC?' })],
+        messages: [
+          makeMessage({ id: 'm1', content: 'How do I bridge XLM to USDC?' }),
+        ],
       }),
       makeSession({
         id: 'session-2',
         title: 'Wallet setup',
-        messages: [makeMessage({ id: 'm2', content: 'Connect your XLM wallet first' })],
+        messages: [
+          makeMessage({ id: 'm2', content: 'Connect your XLM wallet first' }),
+        ],
       }),
     ];
     const onSelectResult = vi.fn();
     const onClose = vi.fn();
     const utils = render(
-      <ChatSearchPanel sessions={sessions} onSelectResult={onSelectResult} onClose={onClose} />,
+      <ChatSearchPanel
+        sessions={sessions}
+        onSelectResult={onSelectResult}
+        onClose={onClose}
+      />,
     );
     return { ...utils, onSelectResult, onClose };
   }

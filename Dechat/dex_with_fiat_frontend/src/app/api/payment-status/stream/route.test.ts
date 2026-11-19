@@ -4,17 +4,22 @@ import { NextRequest } from 'next/server';
 const applyRateLimitMock = vi.fn<(...args: unknown[]) => null>(() => null);
 
 vi.mock('@/lib/rateLimit', () => ({
-  applyRateLimit: (...args: Parameters<typeof import('@/lib/rateLimit').applyRateLimit>) => applyRateLimitMock(...args),
+  applyRateLimit: (
+    ...args: Parameters<typeof import('@/lib/rateLimit').applyRateLimit>
+  ) => applyRateLimitMock(...args),
   getClientIp: vi.fn(() => '127.0.0.1'),
 }));
 
-const subscribeToPaymentStatusMock = vi.fn<(...args: unknown[]) => ReturnType<typeof vi.fn>>(
-  () => vi.fn(),
-);
+const subscribeToPaymentStatusMock = vi.fn<
+  (...args: unknown[]) => ReturnType<typeof vi.fn>
+>(() => vi.fn());
 
 vi.mock('@/lib/paymentStatusEvents', () => ({
-  subscribeToPaymentStatus: (...args: Parameters<typeof import('@/lib/paymentStatusEvents').subscribeToPaymentStatus>) =>
-    subscribeToPaymentStatusMock(...args),
+  subscribeToPaymentStatus: (
+    ...args: Parameters<
+      typeof import('@/lib/paymentStatusEvents').subscribeToPaymentStatus
+    >
+  ) => subscribeToPaymentStatusMock(...args),
 }));
 
 const { GET } = await import('./route');
@@ -87,7 +92,9 @@ describe('GET /api/payment-status/stream', () => {
     subscribeToPaymentStatusMock.mockReturnValue(unsubscribe);
 
     const controller = new AbortController();
-    const res = await GET(makeRequest('?sessionId=session-abc', controller.signal));
+    const res = await GET(
+      makeRequest('?sessionId=session-abc', controller.signal),
+    );
 
     expect(res.status).toBe(200);
     expect(subscribeToPaymentStatusMock).toHaveBeenCalledWith(
@@ -99,7 +106,7 @@ describe('GET /api/payment-status/stream', () => {
     controller.abort();
 
     // Wait for the abort event to be processed
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     // Verify cleanup was called
     expect(unsubscribe).toHaveBeenCalled();
@@ -112,17 +119,18 @@ describe('GET /api/payment-status/stream', () => {
     const res = await GET(makeRequest('?sessionId=session-abc'));
 
     expect(res.status).toBe(200);
-    
+
     const reader = res.body?.getReader();
     const decoder = new TextDecoder();
-    
+
     // Read the first chunk which should contain the retry line
     const { value } = await reader!.read();
     const text = decoder.decode(value);
-    
+
     expect(text).toContain('retry: 3000');
-    
-    // Tear down the stream
-    await res.body?.cancel();
+
+    // Tear down the stream. `getReader()` locks the body, so cancel through
+    // the reader; calling `res.body.cancel()` on a locked stream throws.
+    await reader!.cancel();
   });
 });

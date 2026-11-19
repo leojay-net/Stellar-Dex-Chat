@@ -14,7 +14,9 @@ import OfflineStatusBanner from '@/components/OfflineStatusBanner';
 export default function TestOfflineStatusBannerPage() {
   return (
     <main className="min-h-screen p-6">
-      <h1 className="text-lg font-semibold mb-4">OfflineStatusBanner Test Harness</h1>
+      <h1 className="text-lg font-semibold mb-4">
+        OfflineStatusBanner Test Harness
+      </h1>
       <p className="text-sm text-gray-600">
         The banner renders fixed at the top of the viewport when offline.
       </p>

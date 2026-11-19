@@ -115,9 +115,12 @@ function dispatchTelemetry(
       ...detail,
     };
     window.dispatchEvent(
-      new CustomEvent<BridgeStatsTelemetryDetail>(BRIDGE_STATS_TELEMETRY_EVENT, {
-        detail: payload,
-      }),
+      new CustomEvent<BridgeStatsTelemetryDetail>(
+        BRIDGE_STATS_TELEMETRY_EVENT,
+        {
+          detail: payload,
+        },
+      ),
     );
   } catch {
     // Swallow: a broken telemetry sink must never break the hook.
@@ -165,6 +168,10 @@ export default function useBridgeStats(): BridgeStats {
     dispatchTelemetry('bridge_stats_mounted');
     return () => {
       isMountedRef.current = false;
+      dispatchTelemetry('bridge_stats_unmounted', {
+        fetchCount: fetchCountRef.current,
+        lifetimeMs: Date.now() - mountedAtRef.current,
+      });
       // Invalidate any request which was started by this mounted instance.
       // This also covers Strict Mode's mount/cleanup/remount cycle.
       fetchIdRef.current += 1;
@@ -225,7 +232,8 @@ export default function useBridgeStats(): BridgeStats {
         error: msg,
       });
     } finally {
-      if (isMountedRef.current && fetchId === fetchIdRef.current) setLoading(false);
+      if (isMountedRef.current && fetchId === fetchIdRef.current)
+        setLoading(false);
     }
   }, []);
 

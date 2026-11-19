@@ -18,6 +18,8 @@ test.describe('ReceiptDrawer', () => {
       .getByRole('button', { name: 'Close transaction receipts' })
       .click();
 
-    await expect(page.locator('.receipt-drawer-panel')).toHaveClass(/translate-x-full/);
+    await expect(page.locator('.receipt-drawer-panel')).toHaveClass(
+      /translate-x-full/,
+    );
   });
 });

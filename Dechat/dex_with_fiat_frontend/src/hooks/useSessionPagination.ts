@@ -1,10 +1,15 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { DEFAULT_PAGE_SIZE } from '@/lib/chatPaginationUtils';
 
-function dispatchSessionPaginationTelemetry(event: string, detail?: Record<string, unknown>) {
+function dispatchSessionPaginationTelemetry(
+  event: string,
+  detail?: Record<string, unknown>,
+) {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(
-      new CustomEvent('session_pagination_telemetry', { detail: { event, ...detail } }),
+      new CustomEvent('session_pagination_telemetry', {
+        detail: { event, ...detail },
+      }),
     );
   }
 }
@@ -13,7 +18,10 @@ function dispatchSessionPaginationTelemetry(event: string, detail?: Record<strin
  * Generic list pagination hook following the same virtualisation pattern
  * used by `useChatPagination` but for arbitrary item lists (sessions).
  */
-export const useSessionPagination = <T,>(allItems: T[], pageSize: number = DEFAULT_PAGE_SIZE) => {
+export const useSessionPagination = <T>(
+  allItems: T[],
+  pageSize: number = DEFAULT_PAGE_SIZE,
+) => {
   const [visibleCount, setVisibleCount] = useState(pageSize);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);

@@ -55,7 +55,10 @@ export const useChatPerformance = (messages: ChatMessage[]) => {
         listType: 'virtualized',
       };
 
-      if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      if (
+        typeof window !== 'undefined' &&
+        window.location.hostname === 'localhost'
+      ) {
         console.log('📊 Chat Performance:', chatMetrics);
       }
     }

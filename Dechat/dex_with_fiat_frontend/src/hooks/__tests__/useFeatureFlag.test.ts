@@ -9,36 +9,41 @@ describe('useFeatureFlag', () => {
   });
 
   it('returns the requested feature flag on the first render', () => {
-    vi
-      .spyOn(featureFlags, 'getFeatureFlag')
-      .mockImplementation((flag) => flag === 'enableAdminReconciliation');
+    vi.spyOn(featureFlags, 'getFeatureFlag').mockImplementation(
+      (flag) => flag === 'enableAdminReconciliation',
+    );
 
     const { result } = renderHook(() =>
-      useFeatureFlag('enableAdminReconciliation')
+      useFeatureFlag('enableAdminReconciliation'),
     );
 
     expect(result.current).toBe(true);
     expect(featureFlags.getFeatureFlag).toHaveBeenCalledWith(
-      'enableAdminReconciliation'
+      'enableAdminReconciliation',
     );
   });
 
   it('updates immediately when the requested flag changes', () => {
-    vi
-      .spyOn(featureFlags, 'getFeatureFlag')
-      .mockImplementation((flag) => flag === 'enableConversionReminders');
+    vi.spyOn(featureFlags, 'getFeatureFlag').mockImplementation(
+      (flag) => flag === 'enableConversionReminders',
+    );
 
     const { result, rerender } = renderHook<
       boolean,
       { flag: 'enableAdminReconciliation' | 'enableConversionReminders' }
     >(
-      ({ flag }: { flag: 'enableAdminReconciliation' | 'enableConversionReminders' }) =>
-        useFeatureFlag(flag),
+      ({
+        flag,
+      }: {
+        flag: 'enableAdminReconciliation' | 'enableConversionReminders';
+      }) => useFeatureFlag(flag),
       {
         initialProps: {
-          flag: 'enableAdminReconciliation' as 'enableAdminReconciliation' | 'enableConversionReminders',
+          flag: 'enableAdminReconciliation' as
+            | 'enableAdminReconciliation'
+            | 'enableConversionReminders',
         },
-      }
+      },
     );
 
     expect(result.current).toBe(false);
@@ -59,7 +64,9 @@ describe('useFeatureFlag', () => {
     const { unmount } = renderHook(() => useFeatureFlag('enableHaptics'));
 
     // A storage listener must have been registered.
-    const storageListeners = addSpy.mock.calls.filter(([type]) => type === 'storage');
+    const storageListeners = addSpy.mock.calls.filter(
+      ([type]) => type === 'storage',
+    );
     expect(storageListeners.length).toBeGreaterThan(0);
 
     const registeredHandler = storageListeners[0][1];
@@ -75,7 +82,9 @@ describe('useFeatureFlag', () => {
 
   it('re-evaluates the flag when a storage event fires', () => {
     let flagEnabled = false;
-    vi.spyOn(featureFlags, 'getFeatureFlag').mockImplementation(() => flagEnabled);
+    vi.spyOn(featureFlags, 'getFeatureFlag').mockImplementation(
+      () => flagEnabled,
+    );
 
     const { result } = renderHook(() => useFeatureFlag('enableHaptics'));
     expect(result.current).toBe(false);
@@ -91,17 +100,35 @@ describe('useFeatureFlag', () => {
 });
 
 describe('useClipboardCopy', () => {
+  const originalClipboard = Object.getOwnPropertyDescriptor(
+    navigator,
+    'clipboard',
+  );
+
   beforeEach(() => {
     vi.useFakeTimers();
+    // jsdom does not implement navigator.clipboard, so install a stub that
+    // vi.spyOn can wrap.
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
+    if (originalClipboard) {
+      Object.defineProperty(navigator, 'clipboard', originalClipboard);
+    } else {
+      delete (navigator as unknown as { clipboard?: unknown }).clipboard;
+    }
   });
 
   it('copies text to clipboard and sets isCopied to true', async () => {
-    const writeTextSpy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
+    const writeTextSpy = vi
+      .spyOn(navigator.clipboard, 'writeText')
+      .mockResolvedValue();
 
     const { result } = renderHook(() => useClipboardCopy());
 
@@ -158,9 +185,13 @@ describe('useClipboardCopy', () => {
   });
 
   it('handles clipboard errors gracefully', async () => {
-    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('Clipboard error'));
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(
+      new Error('Clipboard error'),
+    );
 
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
 
     const { result } = renderHook(() => useClipboardCopy());
 
@@ -169,24 +200,27 @@ describe('useClipboardCopy', () => {
     });
 
     expect(result.current.isCopied).toBe(false);
-    expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to copy to clipboard:', expect.any(Error));
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      'Failed to copy to clipboard:',
+      expect.any(Error),
+    );
 
     consoleErrorSpy.mockRestore();
   });
 
   it('does nothing when window is undefined (SSR)', async () => {
-    const originalWindow = global.window;
-    // @ts-expect-error - simulating SSR environment
-    delete global.window;
-
+    const writeTextSpy = vi.spyOn(navigator.clipboard, 'writeText');
     const { result } = renderHook(() => useClipboardCopy());
 
-    await act(async () => {
+    // Render with a DOM, then invoke the callback as if window were absent.
+    vi.stubGlobal('window', undefined);
+    try {
       await result.current.copyToClipboard('test text');
-    });
+    } finally {
+      vi.unstubAllGlobals();
+    }
 
+    expect(writeTextSpy).not.toHaveBeenCalled();
     expect(result.current.isCopied).toBe(false);
-
-    global.window = originalWindow;
   });
 });

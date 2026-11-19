@@ -13,7 +13,9 @@ interface BankDetailsModalWrapperProps {
   xlmAmount: number;
 }
 
-export default function BankDetailsModalWrapper(props: BankDetailsModalWrapperProps) {
+export default function BankDetailsModalWrapper(
+  props: BankDetailsModalWrapperProps,
+) {
   return (
     <Suspense fallback={null}>
       <BankDetailsModal {...props} />

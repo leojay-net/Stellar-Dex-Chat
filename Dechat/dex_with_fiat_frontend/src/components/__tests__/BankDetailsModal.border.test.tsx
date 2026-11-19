@@ -3,27 +3,51 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import BankDetailsModal from '../BankDetailsModal';
 
 vi.mock('@/lib/cryptoPriceService', () => ({
-  fetchLockedQuote: vi.fn().mockResolvedValue({ ngnAmount: 1000, expiresAt: Date.now() + 120_000 }),
+  fetchLockedQuote: vi
+    .fn()
+    .mockResolvedValue({ ngnAmount: 1000, expiresAt: Date.now() + 120_000 }),
 }));
-vi.mock('@/hooks/useNotifications', () => ({ useNotifications: () => ({ addNotification: vi.fn() }) }));
+vi.mock('@/hooks/useNotifications', () => ({
+  useNotifications: () => ({ addNotification: vi.fn() }),
+}));
 vi.mock('@/hooks/useBeneficiaries', () => ({
-  useBeneficiaries: () => ({ beneficiaries: [], isLoaded: true, addBeneficiary: vi.fn(), renameBeneficiary: vi.fn(), deleteBeneficiary: vi.fn() }),
+  useBeneficiaries: () => ({
+    beneficiaries: [],
+    isLoaded: true,
+    addBeneficiary: vi.fn(),
+    renameBeneficiary: vi.fn(),
+    deleteBeneficiary: vi.fn(),
+  }),
 }));
-vi.mock('@/hooks/useTxHistory', () => ({ useTxHistory: () => ({ addEntry: vi.fn() }) }));
+vi.mock('@/hooks/useTxHistory', () => ({
+  useTxHistory: () => ({ addEntry: vi.fn() }),
+}));
 vi.mock('@/hooks/useAccessibleModal', () => ({ useAccessibleModal: vi.fn() }));
 vi.mock('@/hooks/useIdempotentAction', () => ({
   useIdempotentAction: () => ({ execute: vi.fn(), isProcessing: false }),
 }));
-vi.mock('@/lib/chatTelemetry', () => ({ chatTelemetry: { fiatPayoutStep: vi.fn() } }));
-vi.mock('@/lib/clientSession', () => ({ getOrCreateClientSessionId: () => 'sess-1' }));
+vi.mock('@/lib/chatTelemetry', () => ({
+  chatTelemetry: { fiatPayoutStep: vi.fn() },
+}));
+vi.mock('@/lib/clientSession', () => ({
+  getOrCreateClientSessionId: () => 'sess-1',
+}));
 vi.mock('framer-motion', async (importOriginal) => {
   const actual = await importOriginal<typeof import('framer-motion')>();
   return {
     ...actual,
-    AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    AnimatePresence: ({ children }: { children: React.ReactNode }) => (
+      <>{children}</>
+    ),
     motion: {
-      div: ({ children, className, ...rest }: React.HTMLAttributes<HTMLDivElement>) => (
-        <div className={className} {...rest}>{children}</div>
+      div: ({
+        children,
+        className,
+        ...rest
+      }: React.HTMLAttributes<HTMLDivElement>) => (
+        <div className={className} {...rest}>
+          {children}
+        </div>
       ),
     },
     useReducedMotion: () => false,
@@ -36,19 +60,26 @@ function renderModal() {
 
 describe('BankDetailsModal border colours (#742)', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ json: async () => ({ success: true, data: [] }) }));
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue({ json: async () => ({ success: true, data: [] }) }),
+    );
   });
 
-  it('bank search input uses theme-input-border, not border-gray-600', () => {
+  it('bank search input uses theme-input-border, not border-gray-600', async () => {
     renderModal();
-    const search = screen.getByPlaceholderText(/search banks/i);
+    // The input only renders once the bank list has finished loading.
+    const search = await screen.findByPlaceholderText(/search banks/i);
     expect(search.className).toContain('theme-input-border');
     expect(search.className).not.toContain('border-gray-600');
   });
 
-  it('bank search input has theme-input background/text class', () => {
+  it('bank search input has theme-input background/text class', async () => {
     renderModal();
-    const search = screen.getByPlaceholderText(/search banks/i);
+    // The input only renders once the bank list has finished loading.
+    const search = await screen.findByPlaceholderText(/search banks/i);
     expect(search.className).toContain('theme-input');
   });
 
@@ -90,7 +121,9 @@ describe('BankDetailsModal border colours (#742)', () => {
     renderModal();
     const ibanInput = screen.queryByPlaceholderText(/GB29/i);
     if (!ibanInput) return;
-    fireEvent.change(ibanInput, { target: { value: 'GB29NWBK60161331926819' } });
+    fireEvent.change(ibanInput, {
+      target: { value: 'GB29NWBK60161331926819' },
+    });
     fireEvent.blur(ibanInput);
     expect(ibanInput.className).toContain('border-green-500');
     expect(ibanInput.className).not.toContain('border-red-500');

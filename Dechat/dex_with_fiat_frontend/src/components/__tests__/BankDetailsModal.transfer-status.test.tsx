@@ -1,5 +1,11 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  cleanup,
+} from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import BankDetailsModal from '../BankDetailsModal';
 import * as cryptoPriceService from '@/lib/cryptoPriceService';
@@ -72,16 +78,44 @@ function makeFetch(transferStatusResponse: {
 }) {
   return vi.fn().mockImplementation(async (url: string) => {
     if (url.includes('/api/banks')) {
-      return { ok: true, json: async () => ({ success: true, data: [{ id: 1, name: 'Test Bank', code: '001', active: true }] }) };
+      return {
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: [{ id: 1, name: 'Test Bank', code: '001', active: true }],
+        }),
+      };
     }
     if (url.includes('/api/verify-account')) {
-      return { ok: true, json: async () => ({ success: true, data: { account_name: 'Test Account' } }) };
+      return {
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: { account_name: 'Test Account' },
+        }),
+      };
     }
     if (url.includes('/api/create-recipient')) {
-      return { ok: true, json: async () => ({ success: true, data: { recipient_code: 'RCP_test123' } }) };
+      return {
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: { recipient_code: 'RCP_test123' },
+        }),
+      };
     }
     if (url.includes('/api/initiate-transfer')) {
-      return { ok: true, json: async () => ({ success: true, data: { reference: 'TRF_test123', transfer_code: 'TRF_test123', status: 'pending' } }) };
+      return {
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: {
+            reference: 'TRF_test123',
+            transfer_code: 'TRF_test123',
+            status: 'pending',
+          },
+        }),
+      };
     }
     if (url.includes('/api/transfer-status/')) {
       return {
@@ -112,7 +146,9 @@ async function navigateToConfirmAndSubmit() {
   const nextBtn2 = await screen.findByRole('button', { name: /next/i });
   fireEvent.click(nextBtn2);
 
-  const confirmButton = await screen.findByRole('button', { name: /confirm payout/i });
+  const confirmButton = await screen.findByRole('button', {
+    name: /confirm payout/i,
+  });
   fireEvent.click(confirmButton);
 
   // The transfer has been initiated but not yet resolved — this is the
@@ -171,7 +207,10 @@ describe('BankDetailsModal - transfer status resolution (#1478)', () => {
     'moves pending → failed and surfaces the failure reason once the status poll confirms it',
     async () => {
       vi.spyOn(global, 'fetch').mockImplementation(
-        makeFetch({ status: 'failed', failureReason: 'Insufficient funds' }) as any,
+        makeFetch({
+          status: 'failed',
+          failureReason: 'Insufficient funds',
+        }) as any,
       );
       vi.spyOn(cryptoPriceService, 'fetchLockedQuote').mockResolvedValue({
         ngnAmount: 1000,
@@ -190,7 +229,9 @@ describe('BankDetailsModal - transfer status resolution (#1478)', () => {
         { timeout: POLL_WAIT_TIMEOUT },
       );
       // Appears both in the status paragraph and the transfer timeline.
-      expect(screen.getAllByText(/Insufficient funds/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Insufficient funds/i).length).toBeGreaterThan(
+        0,
+      );
       expect(mockAddNotification).toHaveBeenCalledWith(
         'payout_fail',
         expect.stringContaining('Insufficient funds'),

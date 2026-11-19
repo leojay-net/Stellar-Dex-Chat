@@ -24,28 +24,32 @@ export const clientSchema = z.object({
     .string()
     .url()
     .default('https://soroban-testnet.stellar.org'),
-  NEXT_PUBLIC_STELLAR_HORIZON_URL: z
-    .string()
-    .url()
-    .optional(),
-  NEXT_PUBLIC_SENTRY_DSN: z
-    .string()
-    .url()
-    .optional(),
+  NEXT_PUBLIC_STELLAR_HORIZON_URL: z.string().url().optional(),
+  NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
 });
 
 const processClientEnvVars = () => {
   const clientVars = {
     NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT:
-      typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT : undefined,
+      typeof process !== 'undefined'
+        ? process.env.NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT
+        : undefined,
     NEXT_PUBLIC_XLM_SAC_CONTRACT:
-      typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_XLM_SAC_CONTRACT : undefined,
+      typeof process !== 'undefined'
+        ? process.env.NEXT_PUBLIC_XLM_SAC_CONTRACT
+        : undefined,
     NEXT_PUBLIC_STELLAR_RPC_URL:
-      typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_STELLAR_RPC_URL : undefined,
+      typeof process !== 'undefined'
+        ? process.env.NEXT_PUBLIC_STELLAR_RPC_URL
+        : undefined,
     NEXT_PUBLIC_STELLAR_HORIZON_URL:
-      typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_STELLAR_HORIZON_URL : undefined,
+      typeof process !== 'undefined'
+        ? process.env.NEXT_PUBLIC_STELLAR_HORIZON_URL
+        : undefined,
     NEXT_PUBLIC_SENTRY_DSN:
-      typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SENTRY_DSN : undefined,
+      typeof process !== 'undefined'
+        ? process.env.NEXT_PUBLIC_SENTRY_DSN
+        : undefined,
   };
 
   const parsed = clientSchema.safeParse(clientVars);

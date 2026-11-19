@@ -19,12 +19,12 @@ interface AdminIpAllowlistConfig {
 
 export interface AdminIpAllowlistValidation {
   reason:
-  | 'allowlist_disabled'
-  | 'allowlist_bypass_local'
-  | 'allowlist_allowed'
-  | 'allowlist_denied'
-  | 'allowlist_ip_unresolved'
-  | 'allowlist_misconfigured';
+    | 'allowlist_disabled'
+    | 'allowlist_bypass_local'
+    | 'allowlist_allowed'
+    | 'allowlist_denied'
+    | 'allowlist_ip_unresolved'
+    | 'allowlist_misconfigured';
   requestIp: string | null;
   allowlistEnabled: boolean;
   bypassLocal: boolean;

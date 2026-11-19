@@ -24,8 +24,12 @@ vi.mock('@/contexts/UserPreferencesContext', () => ({
 // Mock framer-motion to avoid animation issues in tests
 vi.mock('framer-motion', () => ({
   motion: {
-    div: ({ children, ...props }: React.PropsWithChildren) => <div {...props}>{children}</div>,
-    span: ({ children, ...props }: React.PropsWithChildren) => <span {...props}>{children}</span>,
+    div: ({ children, ...props }: React.PropsWithChildren) => (
+      <div {...props}>{children}</div>
+    ),
+    span: ({ children, ...props }: React.PropsWithChildren) => (
+      <span {...props}>{children}</span>
+    ),
   },
 }));
 
@@ -44,12 +48,12 @@ describe('TransactionAmountDisplay', () => {
 
   it('shows stored fiat when provided', () => {
     render(
-      <TransactionAmountDisplay 
-        amount={100} 
-        asset="XLM" 
-        fiatAmount="12.40" 
-        fiatCurrency="USD" 
-      />
+      <TransactionAmountDisplay
+        amount={100}
+        asset="XLM"
+        fiatAmount="12.40"
+        fiatCurrency="USD"
+      />,
     );
     expect(screen.getByText(/Stored fiat: 12.40 USD/i)).toBeDefined();
   });
@@ -93,14 +97,18 @@ describe('TransactionAmountDisplay', () => {
 
     render(<TransactionAmountDisplay amount={100} asset="XLM" />);
 
-    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'nearest' });
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      behavior: 'smooth',
+      block: 'nearest',
+    });
   });
 
   it('calls scrollIntoView again when displayText changes', async () => {
     const scrollIntoView = vi.fn();
     window.HTMLElement.prototype.scrollIntoView = scrollIntoView;
 
-    const { useCurrencyConversion } = await import('@/hooks/useCurrencyConversion');
+    const { useCurrencyConversion } =
+      await import('@/hooks/useCurrencyConversion');
     const mockHook = vi.mocked(useCurrencyConversion);
 
     mockHook.mockReturnValueOnce({
@@ -111,10 +119,13 @@ describe('TransactionAmountDisplay', () => {
       fiatCurrency: 'USD',
       isLoading: false,
       hasError: false,
+      isStale: false,
       forceRefresh: vi.fn(),
     });
 
-    const { rerender } = render(<TransactionAmountDisplay amount={100} asset="XLM" />);
+    const { rerender } = render(
+      <TransactionAmountDisplay amount={100} asset="XLM" />,
+    );
     const callsBefore = scrollIntoView.mock.calls.length;
 
     mockHook.mockReturnValueOnce({
@@ -125,6 +136,7 @@ describe('TransactionAmountDisplay', () => {
       fiatCurrency: 'USD',
       isLoading: false,
       hasError: false,
+      isStale: false,
       forceRefresh: vi.fn(),
     });
 
@@ -154,7 +166,7 @@ describe('TransactionAmountDisplay - dynamic theme tokens', () => {
         asset="XLM"
         fiatAmount="12.40"
         fiatCurrency="USD"
-      />
+      />,
     );
     const storedFiat = screen.getByText(/Stored fiat: 12.40 USD/i);
     expect(storedFiat).toHaveClass('theme-text-muted');
@@ -200,7 +212,7 @@ describe('TransactionAmountDisplay - Framer Motion Animations', () => {
         asset="XLM"
         fiatAmount="12.40"
         fiatCurrency="USD"
-      />
+      />,
     );
     const storedFiat = screen.getByText(/Stored fiat: 12.40 USD/i);
     expect(storedFiat).toBeInTheDocument();
@@ -217,14 +229,18 @@ describe('TransactionAmountDisplay - Framer Motion Animations', () => {
   });
 
   it('maintains correct structure with animations for valid data', () => {
-    const { container } = render(<TransactionAmountDisplay amount={100} asset="XLM" />);
+    const { container } = render(
+      <TransactionAmountDisplay amount={100} asset="XLM" />,
+    );
     const wrapper = container.querySelector('.flex.flex-col');
     expect(wrapper).toBeInTheDocument();
     expect(wrapper?.children.length).toBeGreaterThan(0);
   });
 
   it('handles value changes with key prop for animation', () => {
-    const { rerender } = render(<TransactionAmountDisplay amount={100} asset="XLM" />);
+    const { rerender } = render(
+      <TransactionAmountDisplay amount={100} asset="XLM" />,
+    );
     const displayText1 = screen.getByText(/100 XLM ≈ \$12\.40 USD/i);
     expect(displayText1).toBeInTheDocument();
 
@@ -260,7 +276,9 @@ describe('TransactionAmountDisplay - Rules of Hooks regression', () => {
   it('does not crash when switching from valid to invalid props', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const { rerender } = render(<TransactionAmountDisplay amount={100} asset="XLM" />);
+    const { rerender } = render(
+      <TransactionAmountDisplay amount={100} asset="XLM" />,
+    );
     expect(screen.getByText(/100 XLM ≈ \$12\.40 USD/i)).toBeDefined();
 
     expect(() => {
@@ -278,13 +296,18 @@ describe('TransactionAmountDisplay - Rules of Hooks regression', () => {
     render(<TransactionAmountDisplay amount={100} asset="XLM" />);
 
     // The ref must be attached to the rendered div, so scrollIntoView fires
-    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'nearest' });
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      behavior: 'smooth',
+      block: 'nearest',
+    });
   });
 
   it('renders multiple valid/invalid cycles without hook-order errors', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const { rerender } = render(<TransactionAmountDisplay amount={100} asset="XLM" />);
+    const { rerender } = render(
+      <TransactionAmountDisplay amount={100} asset="XLM" />,
+    );
 
     for (let i = 0; i < 3; i++) {
       rerender(<TransactionAmountDisplay amount={-1} />);
@@ -293,7 +316,7 @@ describe('TransactionAmountDisplay - Rules of Hooks regression', () => {
 
     // If no hook-order error, console.error is only called for invalid props
     const hookErrors = consoleSpy.mock.calls.filter((args) =>
-      String(args[0]).toLowerCase().includes('hook')
+      String(args[0]).toLowerCase().includes('hook'),
     );
     expect(hookErrors).toHaveLength(0);
 
@@ -307,7 +330,8 @@ describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
   afterEach(cleanup);
 
   it('shows confirmed conversion when not loading', async () => {
-    const { useCurrencyConversion } = await import('@/hooks/useCurrencyConversion');
+    const { useCurrencyConversion } =
+      await import('@/hooks/useCurrencyConversion');
     const mockHook = vi.mocked(useCurrencyConversion);
     mockHook.mockReturnValue({
       displayText: '100 XLM ≈ $12.40 USD',
@@ -317,6 +341,7 @@ describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
       fiatCurrency: 'USD',
       originalAmount: 100,
       originalCurrency: 'XLM',
+      isStale: false,
       forceRefresh: vi.fn(),
     });
 
@@ -329,7 +354,8 @@ describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
   });
 
   it('shows optimistic estimate while loading after a prior conversion', async () => {
-    const { useCurrencyConversion } = await import('@/hooks/useCurrencyConversion');
+    const { useCurrencyConversion } =
+      await import('@/hooks/useCurrencyConversion');
     const mockHook = vi.mocked(useCurrencyConversion);
     mockHook.mockReturnValue({
       displayText: '100 XLM ≈ $12.40 USD',
@@ -339,10 +365,13 @@ describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
       fiatCurrency: 'USD',
       originalAmount: 100,
       originalCurrency: 'XLM',
+      isStale: false,
       forceRefresh: vi.fn(),
     });
 
-    const { rerender } = render(<TransactionAmountDisplay amount={100} asset="XLM" />);
+    const { rerender } = render(
+      <TransactionAmountDisplay amount={100} asset="XLM" />,
+    );
 
     mockHook.mockReturnValue({
       displayText: '200 XLM ≈ ...',
@@ -352,6 +381,7 @@ describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
       fiatCurrency: 'USD',
       originalAmount: 200,
       originalCurrency: 'XLM',
+      isStale: false,
       forceRefresh: vi.fn(),
     });
 
@@ -367,7 +397,8 @@ describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
   });
 
   it('falls back to hook display text when loading without a prior rate', async () => {
-    const { useCurrencyConversion } = await import('@/hooks/useCurrencyConversion');
+    const { useCurrencyConversion } =
+      await import('@/hooks/useCurrencyConversion');
     const mockHook = vi.mocked(useCurrencyConversion);
     mockHook.mockReturnValue({
       displayText: '50 XLM ≈ ...',
@@ -377,6 +408,7 @@ describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
       fiatCurrency: 'USD',
       originalAmount: 50,
       originalCurrency: 'XLM',
+      isStale: false,
       forceRefresh: vi.fn(),
     });
 
@@ -391,7 +423,8 @@ describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
   // ── Skeleton Loading State ────────────────────────────────
 
   it('displays skeleton loading state when loading with no fallback text', async () => {
-    const { useCurrencyConversion } = await import('@/hooks/useCurrencyConversion');
+    const { useCurrencyConversion } =
+      await import('@/hooks/useCurrencyConversion');
     const mockHook = vi.mocked(useCurrencyConversion);
     mockHook.mockReturnValue({
       displayText: '',
@@ -401,11 +434,13 @@ describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
       fiatCurrency: 'USD',
       originalAmount: 100,
       originalCurrency: 'XLM',
+      isStale: false,
       forceRefresh: vi.fn(),
     });
 
     render(<TransactionAmountDisplay amount={100} asset="XLM" />);
-    
+
     // Skeleton should be displayed (no amount text visible)
     expect(screen.queryByText(/100 XLM/i)).toBeNull();
-  });});
+  });
+});
