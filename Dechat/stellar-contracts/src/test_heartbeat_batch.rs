@@ -66,9 +66,9 @@ fn test_batch_heartbeat_success_multiple_operators() {
     bridge.set_operator(&op2, &true, &1);
     bridge.set_operator(&op3, &true, &2);
 
-    assert_eq!(bridge.get_operator_nonce(&op1), 1);
-    assert_eq!(bridge.get_operator_nonce(&op2), 1);
-    assert_eq!(bridge.get_operator_nonce(&op3), 1);
+    assert_eq!(bridge.get_operator_nonce(&op1), 0);
+    assert_eq!(bridge.get_operator_nonce(&op2), 0);
+    assert_eq!(bridge.get_operator_nonce(&op3), 0);
 
     // Advance ledger
     env.ledger().with_mut(|li| {
@@ -79,15 +79,15 @@ fn test_batch_heartbeat_success_multiple_operators() {
     let mut items = Vec::new(&env);
     items.push_back(HeartbeatItem {
         operator: op1.clone(),
-        nonce: 1,
+        nonce: 0,
     });
     items.push_back(HeartbeatItem {
         operator: op2.clone(),
-        nonce: 1,
+        nonce: 0,
     });
     items.push_back(HeartbeatItem {
         operator: op3.clone(),
-        nonce: 1,
+        nonce: 0,
     });
 
     let result = bridge.heartbeat_batch(&items);
@@ -107,9 +107,9 @@ fn test_batch_heartbeat_success_multiple_operators() {
     assert_eq!(bridge.get_operator_heartbeat(&op2), Some(current_ledger));
     assert_eq!(bridge.get_operator_heartbeat(&op3), Some(current_ledger));
 
-    assert_eq!(bridge.get_operator_nonce(&op1), 2);
-    assert_eq!(bridge.get_operator_nonce(&op2), 2);
-    assert_eq!(bridge.get_operator_nonce(&op3), 2);
+    assert_eq!(bridge.get_operator_nonce(&op1), 1);
+    assert_eq!(bridge.get_operator_nonce(&op2), 1);
+    assert_eq!(bridge.get_operator_nonce(&op3), 1);
 }
 
 #[test]
@@ -133,20 +133,20 @@ fn test_batch_heartbeat_partial_failure() {
     let current_ledger = env.ledger().sequence();
 
     let mut items = Vec::new(&env);
-    // op1: valid nonce (1)
+    // op1: valid nonce (0)
     items.push_back(HeartbeatItem {
         operator: op1.clone(),
-        nonce: 1,
+        nonce: 0,
     });
     // op2: invalid future nonce (99) -> should fail
     items.push_back(HeartbeatItem {
         operator: op2.clone(),
         nonce: 99,
     });
-    // op3: valid nonce (1)
+    // op3: valid nonce (0)
     items.push_back(HeartbeatItem {
         operator: op3.clone(),
-        nonce: 1,
+        nonce: 0,
     });
 
     let result = bridge.heartbeat_batch(&items);
@@ -163,14 +163,14 @@ fn test_batch_heartbeat_partial_failure() {
 
     // op1 and op3 succeeded
     assert_eq!(bridge.get_operator_heartbeat(&op1), Some(current_ledger));
-    assert_eq!(bridge.get_operator_nonce(&op1), 2);
+    assert_eq!(bridge.get_operator_nonce(&op1), 1);
 
     assert_eq!(bridge.get_operator_heartbeat(&op3), Some(current_ledger));
-    assert_eq!(bridge.get_operator_nonce(&op3), 2);
+    assert_eq!(bridge.get_operator_nonce(&op3), 1);
 
-    // op2 failed: heartbeat remains unset and nonce remains 1
+    // op2 failed: heartbeat remains unset and nonce remains 0
     assert_eq!(bridge.get_operator_heartbeat(&op2), None);
-    assert_eq!(bridge.get_operator_nonce(&op2), 1);
+    assert_eq!(bridge.get_operator_nonce(&op2), 0);
 }
 
 #[test]
@@ -190,7 +190,7 @@ fn test_batch_heartbeat_non_operator_rejected_in_batch() {
     let mut items = Vec::new(&env);
     items.push_back(HeartbeatItem {
         operator: op1.clone(),
-        nonce: 1,
+        nonce: 0,
     });
     items.push_back(HeartbeatItem {
         operator: non_op.clone(),
@@ -198,7 +198,7 @@ fn test_batch_heartbeat_non_operator_rejected_in_batch() {
     });
     items.push_back(HeartbeatItem {
         operator: op2.clone(),
-        nonce: 1,
+        nonce: 0,
     });
 
     let result = bridge.heartbeat_batch(&items);
@@ -237,7 +237,7 @@ fn test_batch_heartbeat_blocked_by_circuit_breaker() {
     let mut items = Vec::new(&env);
     items.push_back(HeartbeatItem {
         operator: op.clone(),
-        nonce: 1,
+        nonce: 0,
     });
 
     let result = bridge.try_heartbeat_batch(&items);
@@ -278,7 +278,7 @@ fn test_batch_heartbeat_replay_attack_rejected() {
     let mut items = Vec::new(&env);
     items.push_back(HeartbeatItem {
         operator: op.clone(),
-        nonce: 1,
+        nonce: 0,
     });
 
     // First batch execution succeeds
@@ -286,7 +286,7 @@ fn test_batch_heartbeat_replay_attack_rejected() {
     assert_eq!(result.success_count, 1);
     assert_eq!(result.failure_count, 0);
 
-    // Replay the exact same batch with stale nonce 1
+    // Replay the exact same batch with stale nonce 0
     let replay_result = bridge.heartbeat_batch(&items);
     assert_eq!(replay_result.success_count, 0);
     assert_eq!(replay_result.failure_count, 1);
@@ -303,29 +303,29 @@ fn test_batch_heartbeat_sequential_execution() {
     let op = Address::generate(&env);
     bridge.set_operator(&op, &true, &0);
 
-    // Batch 1: nonce 1
+    // Batch 1: nonce 0
     let mut batch1 = Vec::new(&env);
     batch1.push_back(HeartbeatItem {
         operator: op.clone(),
-        nonce: 1,
+        nonce: 0,
     });
     let res1 = bridge.heartbeat_batch(&batch1);
     assert_eq!(res1.success_count, 1);
-    assert_eq!(bridge.get_operator_nonce(&op), 2);
+    assert_eq!(bridge.get_operator_nonce(&op), 1);
 
-    // Batch 2: nonce 2
+    // Batch 2: nonce 1
     let mut batch2 = Vec::new(&env);
     batch2.push_back(HeartbeatItem {
         operator: op.clone(),
-        nonce: 2,
+        nonce: 1,
     });
     let res2 = bridge.heartbeat_batch(&batch2);
     assert_eq!(res2.success_count, 1);
-    assert_eq!(bridge.get_operator_nonce(&op), 3);
+    assert_eq!(bridge.get_operator_nonce(&op), 2);
 
-    // Single heartbeat: nonce 3
-    bridge.heartbeat(&op, &3);
-    assert_eq!(bridge.get_operator_nonce(&op), 4);
+    // Single heartbeat: nonce 2
+    bridge.heartbeat(&op, &2);
+    assert_eq!(bridge.get_operator_nonce(&op), 3);
 }
 
 #[test]
@@ -345,7 +345,7 @@ fn test_batch_heartbeat_emits_expected_events() {
     let mut items = Vec::new(&env);
     items.push_back(HeartbeatItem {
         operator: op1.clone(),
-        nonce: 1,
+        nonce: 0,
     });
     items.push_back(HeartbeatItem {
         operator: op2.clone(),
