@@ -68,7 +68,7 @@ fn setup_bridge_with_min(
     (contract_id, bridge, _admin, token_addr, token, token_sac)
 }
 
-fn load_valid_contract_wasm_fixture() -> std::vec::Vec<u8> {
+pub(crate) fn load_valid_contract_wasm_fixture() -> std::vec::Vec<u8> {
     let cargo_home = std::env::var("CARGO_HOME").unwrap_or_else(|_| {
         let home = std::env::var("HOME").unwrap_or_else(|_| std::string::String::from("."));
         let mut path = home;

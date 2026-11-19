@@ -1,6 +1,12 @@
 #![cfg(test)]
-use crate::{DataKey, Error, FiatBridge, FiatBridgeClient, UpgradeProposal, UpgradeProposalTiming};
-use soroban_sdk::{testutils::Address as _, testutils::Ledger, Address, BytesN, Env, IntoVal};
+use crate::test::load_valid_contract_wasm_fixture;
+use crate::{
+    DataKey, Error, FiatBridge, FiatBridgeClient, UpgradeProposal, UpgradeProposalTiming,
+    MIN_UPGRADE_DELAY,
+};
+use soroban_sdk::{
+    testutils::Address as _, testutils::Ledger, Address, Bytes, BytesN, Env, IntoVal,
+};
 
 #[test]
 fn test_migrate_upgrade_proposal_timing_no_proposal() {
@@ -48,7 +54,11 @@ fn test_migrate_upgrade_proposal_timing_legacy_proposal() {
         &0,
     );
 
-    let wasm_hash = BytesN::from_array(&env, &[1u8; 32]);
+    // Use a real uploaded wasm so the final execute_upgrade can actually swap code.
+    let fixture_wasm = load_valid_contract_wasm_fixture();
+    let wasm_hash = env
+        .deployer()
+        .upload_contract_wasm(Bytes::from_slice(&env, fixture_wasm.as_slice()));
     let executable_after = 200_000;
 
     env.as_contract(&contract_id, || {
@@ -73,8 +83,13 @@ fn test_migrate_upgrade_proposal_timing_legacy_proposal() {
 
     assert_eq!(timing.wasm_hash, wasm_hash);
     assert_eq!(timing.executable_after, executable_after);
-    assert_eq!(timing.delay, 120960);
-    assert_eq!(timing.proposed_at, executable_after.saturating_sub(120960));
+    // init stores MIN_UPGRADE_DELAY as the configured upgrade delay, and the
+    // migration reconstructs the legacy proposal's timing from that value.
+    assert_eq!(timing.delay, MIN_UPGRADE_DELAY);
+    assert_eq!(
+        timing.proposed_at,
+        executable_after.saturating_sub(MIN_UPGRADE_DELAY)
+    );
 
     env.ledger().with_mut(|li| {
         li.sequence_number = executable_after + 1;
