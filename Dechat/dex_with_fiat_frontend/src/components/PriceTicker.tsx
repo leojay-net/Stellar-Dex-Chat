@@ -3,17 +3,20 @@
 import { useState, useEffect, useRef, useCallback, useId } from 'react';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import { fetchTickerData, TickerData } from '@/lib/cryptoPriceService';
+import { formatCurrency, formatPercent, formatRelativeTime } from '@/lib/formatters';
 
 interface PriceTickerProps {
   symbols?: string[];
   currency?: string;
   refreshInterval?: number;
+  locale?: string;
 }
 
 export default function PriceTicker({
   symbols = ['XLM', 'ETH', 'BTC'],
   currency = 'usd',
   refreshInterval = 60000, // 60 seconds default
+  locale = 'en-US',
 }: PriceTickerProps) {
   const [prices, setPrices] = useState<TickerData>({});
   const [error, setError] = useState(false);
@@ -37,29 +40,19 @@ export default function PriceTicker({
   const itemsPerPage = 5;
   const totalPages = Math.max(1, Math.ceil(symbols.length / itemsPerPage));
 
-  // Format price based on currency
-  const formatPrice = (price: number) => {
-    if (currency.toUpperCase() === 'JPY') {
-      return `¥${price.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-    }
-    if (currency.toUpperCase() === 'NGN') {
-      return `₦${price.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-    }
-    if (price < 1) {
-      return `$${price.toFixed(4)}`;
-    }
-    if (price < 1000) {
-      return `$${price.toFixed(2)}`;
-    }
-    return `$${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  };
+  const formatPrice = (price: number) => formatCurrency(price, currency, locale);
 
-  // Format change percentage
   const formatChange = (change: number | undefined) => {
     if (change === undefined || change === null) return 'N/A%';
-    const formatted = change.toFixed(2);
-    return `${change >= 0 ? '+' : ''}${formatted}%`;
+    return formatPercent(change, locale);
   };
+
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
 
   // Fetch prices with exponential backoff retry on failure
   const fetchPrices = useCallback(async () => {
@@ -76,6 +69,7 @@ export default function PriceTicker({
       if (Object.keys(newPrices).length > 0) {
         setPrices(newPrices);
         hasPreviousDataRef.current = true;
+        setLastUpdated(Date.now());
         setIsStale(false);
         retryCountRef.current = 0;
       } else {
@@ -315,6 +309,11 @@ export default function PriceTicker({
       {isStale && (
         <p className="text-yellow-500 dark:text-yellow-400 text-[10px] mt-2 text-center" aria-live="polite">
           Prices may be stale — retrying&hellip;
+        </p>
+      )}
+      {lastUpdated !== null && (
+        <p className="theme-text-secondary text-[10px] mt-2 text-center opacity-60" data-testid="last-updated">
+          Updated {formatRelativeTime(lastUpdated, now, locale)}
         </p>
       )}
       {error && !isStale && Object.keys(prices).length > 0 && (
