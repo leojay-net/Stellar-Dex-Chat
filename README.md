@@ -47,6 +47,9 @@ The services will be available at:
 ## Documentation
 
 - [Main README](Dechat/README.md) - Complete setup guide, architecture, and development instructions
+- [Testing Guide](docs/testing.md) - Primary entry point for unit, E2E, and contract testing
+- [Production Frontend Deployment](docs/deployment-frontend.md) - Deploying the Next.js frontend to production
+- [Glossary](docs/glossary.md) - Definitions for Stellar-Dex-Chat terminology used in contracts, frontend, and docs
 - [Slippage Threshold](docs/slippage-threshold.md) - How slippage BPS and on-chain threshold interact
 - [TypeScript SDK Examples](docs/typescript-sdk-examples.md) - Guide for calling contract functions
 
