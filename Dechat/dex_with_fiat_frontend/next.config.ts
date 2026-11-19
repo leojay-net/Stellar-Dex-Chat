@@ -1,6 +1,37 @@
 import type { NextConfig } from 'next';
 import { withSentryConfig } from '@sentry/nextjs';
 
+// Origins the browser bundle calls directly. `connect-src` must list every one
+// of them or the CSP blocks the request in production.
+function originOf(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+const connectSrc = Array.from(
+  new Set(
+    [
+      "'self'",
+      'https://*.sentry.io',
+      // Stellar network endpoints (defaults plus any configured override).
+      'https://horizon.stellar.org',
+      'https://horizon-testnet.stellar.org',
+      'https://soroban-testnet.stellar.org',
+      originOf(process.env.NEXT_PUBLIC_STELLAR_RPC_URL),
+      originOf(process.env.NEXT_PUBLIC_STELLAR_HORIZON_URL),
+      // Live prices (lib/cryptoPriceService.ts) and the connectivity probe
+      // (hooks/useOnlineStatus.ts).
+      'https://api.coingecko.com',
+      'https://www.cloudflare.com',
+      'wss://*.freighter.app',
+    ].filter((v): v is string => Boolean(v)),
+  ),
+);
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   async headers() {
@@ -40,7 +71,7 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: https: blob:",
               "font-src 'self' data:",
-              "connect-src 'self' https://*.sentry.io https://horizon.stellar.org https://horizon-testnet.stellar.org wss://*.freighter.app",
+              `connect-src ${connectSrc.join(' ')}`,
               "frame-src 'self' https://*.freighter.app",
               "worker-src 'self' blob:",
             ].join('; '),
