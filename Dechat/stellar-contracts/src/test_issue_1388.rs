@@ -74,15 +74,14 @@ fn test_prune_operator_without_heartbeat() {
     // Prune should deactivate the operator
     bridge.prune_inactive_operators();
 
+    // Verify OperatorPrunedEvent was emitted. The test environment only keeps
+    // the events of the most recent top-level invocation, so read them before
+    // making any further contract call.
+    let events = env.events().all().filter_by_contract(&contract_id);
+    assert!(!events.events().is_empty());
+
     // Verify operator is now inactive
     assert!(!bridge.is_operator(&operator));
-
-    // Verify OperatorPrunedEvent was emitted
-    let events = env.events().all().filter_by_contract(&contract_id);
-    extern crate std;
-    std::println!("ALL CONTRACT EVENTS: {:?}", events.events());
-    std::println!("ALL EVENTS: {:?}", env.events().all().events());
-    assert!(!events.events().is_empty());
 }
 
 #[test]
@@ -127,7 +126,7 @@ fn test_operator_with_heartbeat_not_pruned_prematurely() {
     bridge.set_operator(&operator, &true, &0);
 
     // Operator sends a heartbeat
-    bridge.heartbeat(&operator, &1);
+    bridge.heartbeat(&operator, &0);
 
     // Advance ledger but not past the inactivity threshold
     env.ledger().set_sequence_number(50);
@@ -154,7 +153,7 @@ fn test_operator_with_heartbeat_pruned_after_threshold() {
     bridge.set_operator(&operator, &true, &0);
 
     // Operator sends a heartbeat at ledger 0
-    bridge.heartbeat(&operator, &1);
+    bridge.heartbeat(&operator, &0);
 
     // Advance ledger past the inactivity threshold
     env.ledger().set_sequence_number(200);
@@ -162,10 +161,11 @@ fn test_operator_with_heartbeat_pruned_after_threshold() {
     // Prune should deactivate the operator
     bridge.prune_inactive_operators();
 
-    // Verify operator is now inactive
-    assert!(!bridge.is_operator(&operator));
-
-    // Verify OperatorPrunedEvent was emitted
+    // Verify OperatorPrunedEvent was emitted (read before any further call,
+    // since the test environment keeps only the latest invocation's events).
     let events = env.events().all().filter_by_contract(&contract_id);
     assert!(!events.events().is_empty());
+
+    // Verify operator is now inactive
+    assert!(!bridge.is_operator(&operator));
 }
