@@ -49,6 +49,7 @@ The services will be available at:
 - [Main README](Dechat/README.md) - Complete setup guide, architecture, and development instructions
 - [Environment Variable Reference](docs/environment.md) - Complete reference for frontend, server, Docker, and CI variables
 - [Accessibility Conformance Checklist](docs/accessibility.md) - WCAG 2.2 AA target specifications, reviewer checklists, and gap analysis
+- [ADR-003: Offline Message Queue & IndexedDB](docs/adr/ADR-003-offline-message-queue.md) - Architectural decision record for client-side offline queue and storage
 - [Slippage Threshold](docs/slippage-threshold.md) - How slippage BPS and on-chain threshold interact
 - [TypeScript SDK Examples](docs/typescript-sdk-examples.md) - Guide for calling contract functions
 
