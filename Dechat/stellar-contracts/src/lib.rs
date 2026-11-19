@@ -4770,9 +4770,18 @@ impl FiatBridge {
     /// (`WITHDRAWAL_EXPIRY_WINDOW_LEDGERS`).
     pub fn set_withdrawal_expiry(env: Env, ledgers: u32) -> Result<(), Error> {
         let _admin = Self::require_admin(&env)?;
-        env.storage()
-            .instance()
-            .set(&DataKey::WithdrawalExpiryWindow, &ledgers);
+        if ledgers == 0 {
+            // `0` selects the compile-time default: drop any stored override so
+            // readers fall back to WITHDRAWAL_EXPIRY_WINDOW_LEDGERS instead of
+            // seeing a zero-length window.
+            env.storage()
+                .instance()
+                .remove(&DataKey::WithdrawalExpiryWindow);
+        } else {
+            env.storage()
+                .instance()
+                .set(&DataKey::WithdrawalExpiryWindow, &ledgers);
+        }
         Ok(())
     }
 
