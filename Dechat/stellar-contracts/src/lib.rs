@@ -6685,3 +6685,6 @@ mod test_multisig_update;
 
 #[cfg(test)]
 mod test_issues_1400_1403;
+
+#[cfg(test)]
+mod test_events_doc;

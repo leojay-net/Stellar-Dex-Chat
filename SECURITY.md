@@ -53,3 +53,7 @@ This security policy applies to:
 ### Acknowledgments
 
 We appreciate responsible disclosure and will acknowledge security researchers who help improve the security of this project (with their permission).
+
+## Threat model
+
+What the FiatBridge contract defends against, and the residual risks, are described in [Dechat/stellar-contracts/docs/THREAT_MODEL.md](Dechat/stellar-contracts/docs/THREAT_MODEL.md).
