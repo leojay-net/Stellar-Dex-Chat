@@ -16,7 +16,6 @@ async function loadReplayIntegration() {
   replayIntegrationLoaded = true;
 
   try {
-    // @ts-expect-error @sentry/replay is an optional dynamic peer dependency
     const { replayIntegration } = await import('@sentry/replay');
     Sentry.addIntegration(replayIntegration(REPLAY_OPTIONS));
   } catch (error) {

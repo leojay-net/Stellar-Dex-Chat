@@ -228,8 +228,6 @@ export default function ChatHistorySidebar({
   const [isLoading, setIsLoading] = useState(true);
   const [contractEvents, setContractEvents] = useState<ContractEvent[]>([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
-  // Dynamic theme tokens for dynamic theme switching
-  const [themeTokens, setThemeTokens] = useState<Record<string, string>>({});
 
   // ── Optimistic UI state ──────────────────────────────────────────────────
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);

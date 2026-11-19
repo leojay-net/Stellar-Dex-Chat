@@ -12,7 +12,6 @@ describe('FeatureFlags', () => {
   it('should return false and log an error for an invalid feature flag', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     
-    const result = getFeatureFlag('nonExistentFlag' as ReturnType<typeof import('@/lib/featureFlags').FeatureFlagNameSchema.parse>);
     const result = getFeatureFlag('nonExistentFlag');
     
     expect(result).toBe(false);

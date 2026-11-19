@@ -16,7 +16,6 @@ vi.mock('@/contexts/UserPreferencesContext', () => ({
 
 // Resolve real copy so the assertions below exercise the actual strings.
 vi.mock('@/contexts/TranslationContext', async () => {
-  const en = (await import('@/locales/en.json')).default as Record<string, any>;
   const en = (await import('@/locales/en.json')).default as unknown as Record<
     string,
     Record<string, string>

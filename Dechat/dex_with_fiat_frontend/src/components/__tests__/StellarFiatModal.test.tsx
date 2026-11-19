@@ -65,7 +65,6 @@ const onClose = vi.fn();
 const onDepositSuccess = vi.fn();
 
 describe('StellarFiatModal', () => {
-  let mockedContract: any;
   let mockedContract: {
     depositToContract: Mock;
     withdrawFromContract: Mock;

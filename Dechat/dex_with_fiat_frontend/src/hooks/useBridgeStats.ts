@@ -146,9 +146,9 @@ export default function useBridgeStats(): BridgeStats {
   // Initialise to false (SSR-safe); updated to real value after first paint.
   const [prefersDark, setPrefersDark] = useState(false);
   // Optimistic UI: Track pending updates for immediate feedback
-  const [pendingBalance, setPendingBalance] = useState<bigint | null>(null);
-  const [pendingLimit, setPendingLimit] = useState<bigint | null>(null);
-  const [pendingTotalDeposited, setPendingTotalDeposited] = useState<bigint | null>(null);
+  const [pendingBalance] = useState<bigint | null>(null);
+  const [pendingLimit] = useState<bigint | null>(null);
+  const [pendingTotalDeposited] = useState<bigint | null>(null);
   // A client component may be rendered on the server before it is hydrated.
   // Keep async updates disabled until React has committed the client instance;
   // this makes the server snapshot and the first client render deterministic.

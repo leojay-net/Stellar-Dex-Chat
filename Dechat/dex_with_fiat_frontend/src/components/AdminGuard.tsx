@@ -192,6 +192,10 @@ export default function AdminGuard({ children }: AdminGuardProps) {
     }
 
     checkAdmin();
+
+    return () => {
+      cancelled = true;
+    };
   }, [connection.address, connection.networkPassphrase, connection.network]);
 
   if (loading) {

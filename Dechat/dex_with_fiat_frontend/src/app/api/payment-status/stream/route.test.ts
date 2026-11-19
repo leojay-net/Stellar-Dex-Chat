@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const applyRateLimitMock: any = vi.fn(() => null);
 const applyRateLimitMock = vi.fn<(...args: unknown[]) => null>(() => null);
 
 vi.mock('@/lib/rateLimit', () => ({
@@ -9,7 +8,6 @@ vi.mock('@/lib/rateLimit', () => ({
   getClientIp: vi.fn(() => '127.0.0.1'),
 }));
 
-const subscribeToPaymentStatusMock: any = vi.fn(() => vi.fn());
 const subscribeToPaymentStatusMock = vi.fn<(...args: unknown[]) => ReturnType<typeof vi.fn>>(
   () => vi.fn(),
 );

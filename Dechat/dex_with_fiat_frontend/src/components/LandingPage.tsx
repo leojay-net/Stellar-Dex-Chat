@@ -113,8 +113,6 @@ export default function LandingPage() {
   const [xlmPrice, setXlmPrice] = useState<number | null>(null);
   const [xlmChange, setXlmChange] = useState<number | null>(null);
   const [priceLoading, setPriceLoading] = useState(true);
-  // Dynamic theme tokens for dynamic theme switching
-  const [themeTokens, setThemeTokens] = useState<Record<string, string>>({});
 
   const contractAddress = CONTRACT_ID;
 

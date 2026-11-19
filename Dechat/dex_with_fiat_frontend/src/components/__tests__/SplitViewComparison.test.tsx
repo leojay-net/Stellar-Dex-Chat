@@ -286,7 +286,6 @@ describe('SplitViewComparison – race condition regression (#523)', () => {
     await waitFor(() => {
       const calls = splitViewAddToastMock.mock.calls;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const severities = calls.map((c: any[]) => (c[0] as { severity: string }).severity);
       const severities = calls.map(
         (c: unknown[]) => (c[0] as { severity: string }).severity,
       );

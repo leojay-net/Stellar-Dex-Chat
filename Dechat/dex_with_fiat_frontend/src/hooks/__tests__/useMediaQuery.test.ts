@@ -4,7 +4,6 @@ import { useMediaQuery } from '../useMediaQuery';
 
 describe('useMediaQuery', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let matchMediaMock: any;
   let matchMediaMock: Mock<(query: string) => MediaQueryList>;
   let listeners: Array<(event: MediaQueryListEvent) => void>;
 
