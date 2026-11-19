@@ -27,7 +27,9 @@ fn setup<'a>(env: &Env) -> (FiatBridgeClient<'a>, Address) {
     (client, admin)
 }
 
-/// A fresh operator's first heartbeat (nonce == 1) must succeed.
+/// A fresh operator's first heartbeat (nonce == 0) must succeed. Heartbeat
+/// nonces are keyed per operator and are unaffected by `set_operator`, which
+/// uses its own admin-keyed nonce.
 #[test]
 fn test_heartbeat_first_call_accepted() {
     let env = Env::default();
@@ -36,10 +38,10 @@ fn test_heartbeat_first_call_accepted() {
 
     let op = Address::generate(&env);
     bridge.set_operator(&op, &true, &0);
-    assert_eq!(bridge.get_operator_nonce(&op), 1);
+    assert_eq!(bridge.get_operator_nonce(&op), 0);
 
-    bridge.heartbeat(&op, &1);
-    assert_eq!(bridge.get_operator_nonce(&op), 2);
+    bridge.heartbeat(&op, &0);
+    assert_eq!(bridge.get_operator_nonce(&op), 1);
     assert!(bridge.get_operator_heartbeat(&op).is_some());
 }
 
@@ -53,16 +55,16 @@ fn test_heartbeat_replay_rejected() {
     let op = Address::generate(&env);
     bridge.set_operator(&op, &true, &0);
 
-    // First heartbeat with nonce 1 — must succeed.
-    bridge.heartbeat(&op, &1);
-    assert_eq!(bridge.get_operator_nonce(&op), 2);
+    // First heartbeat with nonce 0 — must succeed.
+    bridge.heartbeat(&op, &0);
+    assert_eq!(bridge.get_operator_nonce(&op), 1);
 
-    // Replaying nonce 1 must fail with InvalidNonce.
-    let result = bridge.try_heartbeat(&op, &1);
-    assert_eq!(result, Err(Ok(Error::InvalidNonce)));
+    // Replaying nonce 0 is an already-used nonce and must fail with StaleNonce.
+    let result = bridge.try_heartbeat(&op, &0);
+    assert_eq!(result, Err(Ok(Error::StaleNonce)));
 
-    // Nonce must remain at 2 (replay did not advance it).
-    assert_eq!(bridge.get_operator_nonce(&op), 2);
+    // Nonce must remain at 1 (replay did not advance it).
+    assert_eq!(bridge.get_operator_nonce(&op), 1);
 }
 
 /// Skipping ahead to a future nonce must also be rejected.
@@ -75,10 +77,10 @@ fn test_heartbeat_future_nonce_rejected() {
     let op = Address::generate(&env);
     bridge.set_operator(&op, &true, &0);
 
-    // Nonce 1 is expected; supplying 99 must fail.
+    // Nonce 0 is expected; supplying 99 must fail.
     let result = bridge.try_heartbeat(&op, &99);
     assert_eq!(result, Err(Ok(Error::InvalidNonce)));
-    assert_eq!(bridge.get_operator_nonce(&op), 1);
+    assert_eq!(bridge.get_operator_nonce(&op), 0);
 }
 
 /// Sequential heartbeats with monotonically increasing nonces must all succeed.
@@ -91,7 +93,7 @@ fn test_heartbeat_sequential_nonces_accepted() {
     let op = Address::generate(&env);
     bridge.set_operator(&op, &true, &0);
 
-    for expected_nonce in 1u64..=5 {
+    for expected_nonce in 0u64..5 {
         env.ledger().with_mut(|li| li.sequence_number += 10);
         bridge.heartbeat(&op, &expected_nonce);
         assert_eq!(bridge.get_operator_nonce(&op), expected_nonce + 1);
@@ -112,9 +114,9 @@ fn test_heartbeat_non_operator_rejected() {
     assert_eq!(bridge.get_operator_nonce(&stranger), 0);
 }
 
-/// After an operator is removed and re-registered, replay of the original
-/// nonce 1 must be rejected because the nonce carried over from removal
-/// is greater than 1.
+/// After an operator is removed and re-registered, replay of an already-used
+/// heartbeat nonce must still be rejected because the operator's heartbeat
+/// nonce persists across deactivation.
 #[test]
 fn test_heartbeat_replay_after_re_registration_rejected() {
     let env = Env::default();
@@ -124,25 +126,23 @@ fn test_heartbeat_replay_after_re_registration_rejected() {
     let op = Address::generate(&env);
     bridge.set_operator(&op, &true, &0);
 
-    // Use nonce 1, nonce advances to 2.
+    // Use nonce 0, nonce advances to 1.
+    bridge.heartbeat(&op, &0);
+
+    // Remove operator (admin-keyed set_operator nonce is now 1).
+    bridge.set_operator(&op, &false, &1);
+
+    // Re-register; the heartbeat nonce persists in storage and remains 1.
+    bridge.set_operator(&op, &true, &2);
+    assert_eq!(bridge.get_operator_nonce(&op), 1);
+
+    // Replaying nonce 0 must still fail.
+    let result = bridge.try_heartbeat(&op, &0);
+    assert_eq!(result, Err(Ok(Error::StaleNonce)));
+
+    // The next nonce (1) works.
     bridge.heartbeat(&op, &1);
-
-    // Remove operator.
-    bridge.set_operator(&op, &false, &0);
-
-    // Re-register; the nonce slot persists in storage — operator nonce remains 2.
-    bridge.set_operator(&op, &true, &0);
-
-    // Replaying nonce 1 must still fail.
-    let result = bridge.try_heartbeat(&op, &1);
-    assert_eq!(result, Err(Ok(Error::InvalidNonce)));
-
-    // Correct next nonce (2) must still work, however, because we bumped set_operator nonce.
-    // The operator nonce after two set_operator calls is 3 (each set_operator consumes one).
-    // So we call with whatever get_operator_nonce reports.
-    let next = bridge.get_operator_nonce(&op);
-    bridge.heartbeat(&op, &next);
-    assert_eq!(bridge.get_operator_nonce(&op), next + 1);
+    assert_eq!(bridge.get_operator_nonce(&op), 2);
 }
 
 /// Replay of a heartbeat that was blocked by the circuit breaker must be

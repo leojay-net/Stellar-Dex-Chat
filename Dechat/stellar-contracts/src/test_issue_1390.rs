@@ -73,11 +73,13 @@ fn test_set_lock_period_accepts_maximum() {
     // Set lock period to MAX_LOCK_PERIOD should succeed
     bridge.set_lock_period(&6_307_200);
 
-    assert_eq!(bridge.get_lock_period(), 6_307_200);
-
-    // Verify SetLockPeriodEvent was emitted
+    // Verify SetLockPeriodEvent was emitted. The test environment keeps only
+    // the latest top-level invocation's events, so read them before calling
+    // any other contract function.
     let events = env.events().all().filter_by_contract(&contract_id);
     assert!(!events.events().is_empty());
+
+    assert_eq!(bridge.get_lock_period(), 6_307_200);
 }
 
 #[test]
@@ -97,7 +99,19 @@ fn test_request_withdrawal_uses_checked_add() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_, bridge, admin, token_addr, _, token_admin) = setup_bridge(&env);
+    // Put the ledger so that `sequence + lock_period` overflows u32 while the
+    // instance TTL bump (`sequence + MAX_TTL`) still fits. This is done before
+    // any contract state exists so no entry has to survive a ledger jump.
+    // `max_entry_ttl` is lowered so the host's own `sequence + max_entry_ttl`
+    // bookkeeping does not overflow at this ledger.
+    env.ledger().with_mut(|li| {
+        li.sequence_number = u32::MAX - 6_000_000;
+        li.max_entry_ttl = 1_000_000;
+        li.min_persistent_entry_ttl = 100;
+        li.min_temp_entry_ttl = 100;
+    });
+
+    let (_, bridge, _admin, token_addr, _, token_admin) = setup_bridge(&env);
     let user = Address::generate(&env);
 
     // Set lock period to maximum allowed value
@@ -107,9 +121,6 @@ fn test_request_withdrawal_uses_checked_add() {
     token_admin.mint(&user, &5_000);
     let reference = soroban_sdk::Bytes::from_slice(&env, b"test");
     bridge.deposit(&user, &1_000, &token_addr, &reference, &0, &0, &None);
-
-    // Set ledger to a high value near u32::MAX
-    env.ledger().set_sequence_number(u32::MAX - 6_307_200);
 
     // request_withdrawal should not panic, but should return Overflow error
     let result = bridge.try_request_withdrawal(&user, &500, &token_addr, &None, &0);
@@ -139,6 +150,13 @@ fn test_set_lock_batch_rejects_max() {
     let mut operations = soroban_sdk::Vec::new(&env);
     operations.push_back(op);
 
-    let result = bridge.try_execute_batch_admin(&operations);
-    assert_eq!(result, Err(Ok(Error::InvalidAmount)));
+    // execute_batch_admin reports per-op failures in its result instead of
+    // aborting the whole call, so the rejected op shows up as a failure and
+    // the lock period is left untouched.
+    let result = bridge.execute_batch_admin(&operations);
+    assert_eq!(result.total_ops, 1);
+    assert_eq!(result.success_count, 0);
+    assert_eq!(result.failure_count, 1);
+    assert_eq!(result.failed_index, Some(0));
+    assert_eq!(bridge.get_lock_period(), 0);
 }

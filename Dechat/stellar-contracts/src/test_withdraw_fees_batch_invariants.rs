@@ -177,6 +177,8 @@ fn withdraw_fees_batch_sweeps_multiple_tokens_in_one_call() {
     let (contract_id, bridge, admin, token_a, token_a_client, token_a_admin) = setup_bridge(&env);
     let (token_b_client, token_b_admin) = create_token_contract(&env, &admin);
     let token_b = token_b_client.address.clone();
+    // check_invariants requires every swept token to have a registry entry.
+    bridge.register_token(&token_b, &1_000_000, &0);
 
     token_a_admin.mint(&contract_id, &1_000);
     token_b_admin.mint(&contract_id, &1_000);
@@ -281,6 +283,8 @@ fn withdraw_fees_batch_emits_one_event_per_swept_token() {
     let (contract_id, bridge, admin, token_a, _, token_a_admin) = setup_bridge(&env);
     let (token_b_client, token_b_admin) = create_token_contract(&env, &admin);
     let token_b = token_b_client.address.clone();
+    // check_invariants requires every swept token to have a registry entry.
+    bridge.register_token(&token_b, &1_000_000, &0);
 
     token_a_admin.mint(&contract_id, &1_000);
     token_b_admin.mint(&contract_id, &1_000);

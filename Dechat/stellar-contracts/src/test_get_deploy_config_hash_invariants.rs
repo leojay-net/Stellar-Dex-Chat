@@ -238,8 +238,10 @@ fn test_deploy_config_hash_different_for_different_configs() {
     let contract_id2 = env.register(FiatBridge, ());
     let client2 = FiatBridgeClient::new(&env, &contract_id2);
 
+    // A threshold of 2 is only valid with at least two signers.
     let mut signers2 = Vec::new(&env);
     signers2.push_back(admin.clone());
+    signers2.push_back(Address::generate(&env));
     client2.init(&admin, &token_address, &2_000_000, &200, &signers2, &2, &0);
 
     // Hashes should be different for different configurations
