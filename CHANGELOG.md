@@ -1282,6 +1282,8 @@ Repo Avatar
 - **contract:** Archive root notes, add threat model and event reference
 - **changelog:** Update changelog [skip ci]
 - **changelog:** Update changelog [skip ci]
+- **changelog:** Update changelog [skip ci]
+- Add a troubleshooting guide for the common local and CI failures
 
 ### Deprecated
 
