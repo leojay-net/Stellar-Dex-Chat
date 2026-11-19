@@ -1444,7 +1444,7 @@ fn test_operator_cap_recovers_after_deactivation() {
     bridge.set_max_operators(&1);
     bridge.set_operator(&op1, &true, &0);
     bridge.set_operator(&op1, &false, &1);
-    bridge.set_operator(&op2, &true, &0);
+    bridge.set_operator(&op2, &true, &2);
 
     assert!(!bridge.is_operator(&op1));
     assert!(bridge.is_operator(&op2));
@@ -1463,8 +1463,8 @@ fn test_set_max_operators_boundary_check_rejects_reduction_below_current_count()
     // Set max to 3 and add 3 operators
     bridge.set_max_operators(&3);
     bridge.set_operator(&op1, &true, &0);
-    bridge.set_operator(&op2, &true, &0);
-    bridge.set_operator(&op3, &true, &0);
+    bridge.set_operator(&op2, &true, &1);
+    bridge.set_operator(&op3, &true, &2);
 
     assert!(bridge.is_operator(&op1));
     assert!(bridge.is_operator(&op2));
@@ -1492,7 +1492,7 @@ fn test_set_max_operators_allows_increase_above_current_count() {
     // Set max to 2 and add 2 operators
     bridge.set_max_operators(&2);
     bridge.set_operator(&op1, &true, &0);
-    bridge.set_operator(&op2, &true, &0);
+    bridge.set_operator(&op2, &true, &1);
 
     // Increasing max should succeed
     bridge.set_max_operators(&5);
@@ -1514,7 +1514,7 @@ fn test_set_max_operators_allows_exact_match_with_current_count() {
     // Set max to 2 and add 2 operators
     bridge.set_max_operators(&2);
     bridge.set_operator(&op1, &true, &0);
-    bridge.set_operator(&op2, &true, &0);
+    bridge.set_operator(&op2, &true, &1);
 
     // Setting max to exact current count should succeed
     bridge.set_max_operators(&2);
@@ -1537,8 +1537,8 @@ fn test_set_max_operators_zero_remains_unlimited() {
     // Set max to 0 (unlimited) with multiple operators should always work
     bridge.set_max_operators(&0);
     bridge.set_operator(&op1, &true, &0);
-    bridge.set_operator(&op2, &true, &0);
-    bridge.set_operator(&op3, &true, &0);
+    bridge.set_operator(&op2, &true, &1);
+    bridge.set_operator(&op3, &true, &2);
 
     // Setting max to 0 again should always succeed (unlimited is always valid)
     bridge.set_max_operators(&0);
@@ -1558,14 +1558,14 @@ fn test_prune_inactive_operators_keeps_active_operator() {
     let active = Address::generate(&env);
 
     bridge.set_operator(&inactive, &true, &0);
-    bridge.set_operator(&active, &true, &0);
-    bridge.heartbeat(&inactive, &1);
+    bridge.set_operator(&active, &true, &1);
+    bridge.heartbeat(&inactive, &0);
 
     env.ledger().with_mut(|li| {
         li.sequence_number = DEFAULT_INACTIVITY_THRESHOLD + 5;
     });
 
-    bridge.heartbeat(&active, &1);
+    bridge.heartbeat(&active, &0);
     bridge.prune_inactive_operators();
 
     assert!(!bridge.is_operator(&inactive));
@@ -1582,13 +1582,13 @@ fn test_set_operator_prunes_inactive_on_next_admin_action() {
     let newcomer = Address::generate(&env);
 
     bridge.set_operator(&stale, &true, &0);
-    bridge.heartbeat(&stale, &1);
+    bridge.heartbeat(&stale, &0);
 
     env.ledger().with_mut(|li| {
         li.sequence_number = DEFAULT_INACTIVITY_THRESHOLD + 5;
     });
 
-    bridge.set_operator(&newcomer, &true, &0);
+    bridge.set_operator(&newcomer, &true, &1);
 
     assert!(!bridge.is_operator(&stale));
     assert!(bridge.is_operator(&newcomer));
@@ -1910,18 +1910,17 @@ fn test_is_denied_emits_event_for_denied_address() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+    let (contract_id, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
     let user = Address::generate(&env);
 
     bridge.deny_address(&user);
 
-    // is_denied should return true and emit IsDeniedCheckedEvent
+    // Issue #1427: is_denied is a read-only getter and must not publish events.
     let result = bridge.is_denied(&user);
     assert!(result);
 
-    // At least one event was emitted (DenyAddressEvent + IsDeniedCheckedEvent)
-    let events = env.events().all();
-    assert!(!events.events().is_empty(), "expected events to be emitted");
+    let events = env.events().all().filter_by_contract(&contract_id);
+    assert!(events.events().is_empty(), "is_denied must not emit events");
 }
 
 #[test]
@@ -1929,17 +1928,17 @@ fn test_is_denied_emits_event_for_non_denied_address() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
+    let (contract_id, bridge, _, _, _, _) = setup_bridge(&env, 10_000);
     let user = Address::generate(&env);
 
-    // is_denied on a non-denied address should return false and emit an event
+    // Issue #1427: is_denied on a non-denied address returns false and emits nothing.
     let result = bridge.is_denied(&user);
     assert!(!result);
 
-    let events = env.events().all();
+    let events = env.events().all().filter_by_contract(&contract_id);
     assert!(
-        !events.events().is_empty(),
-        "IsDeniedCheckedEvent should be emitted even for non-denied address"
+        events.events().is_empty(),
+        "is_denied must not emit events for a non-denied address"
     );
 }
 
@@ -2229,6 +2228,9 @@ fn test_withdraw_fees_success() {
     bridge.deposit(&user, &1_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
 
     // Accrue fees
+    // Fees are paid out of real tokens held by the contract; the invariant
+    // check forbids a fee withdrawal from dipping into depositor funds.
+    token_sac.mint(&contract_id, &200);
     bridge.accrue_fee(&token_addr, &200);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 200);
 
@@ -2236,7 +2238,7 @@ fn test_withdraw_fees_success() {
     bridge.withdraw_fees(&recipient, &token_addr, &100, &0);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 100);
     assert_eq!(token.balance(&recipient), 100);
-    assert_eq!(token.balance(&contract_id), 900);
+    assert_eq!(token.balance(&contract_id), 1_100);
 }
 
 #[test]
@@ -2248,6 +2250,8 @@ fn test_withdraw_fees_batch_full_sweep() {
     let token_b_admin = Address::generate(&env);
     let (token_b_addr, token_b, token_b_sac) = create_token(&env, &token_b_admin);
     let recipient = Address::generate(&env);
+    // check_invariants requires every swept token to have a registry entry.
+    bridge.register_token(&token_b_addr, &10_000, &0);
 
     token_a_sac.mint(&contract_id, &120);
     token_b_sac.mint(&contract_id, &80);
@@ -2334,6 +2338,9 @@ fn test_withdraw_fees_exact_balance_succeeds() {
     token_sac.mint(&user, &5_000);
 
     bridge.deposit(&user, &1_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    // Fees are paid out of real tokens held by the contract; the invariant
+    // check forbids a fee withdrawal from dipping into depositor funds.
+    token_sac.mint(&contract_id, &100);
     bridge.accrue_fee(&token_addr, &100);
 
     // Withdraw exactly the accrued amount — boundary condition must succeed
@@ -2369,6 +2376,9 @@ fn test_fee_vault_isolation_from_principal() {
     assert_eq!(bridge.get_total_deposited(), 1_000);
 
     // Accrue 200 in fees — this is separate accounting
+    // Fees are paid out of real tokens held by the contract; the invariant
+    // check forbids a fee withdrawal from dipping into depositor funds.
+    token_sac.mint(&contract_id, &200);
     bridge.accrue_fee(&token_addr, &200);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 200);
 
@@ -2378,7 +2388,7 @@ fn test_fee_vault_isolation_from_principal() {
     assert_eq!(bridge.get_total_withdrawn(), 0);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 0);
     assert_eq!(token.balance(&fee_recipient), 200);
-    assert_eq!(token.balance(&contract_id), 800);
+    assert_eq!(token.balance(&contract_id), 1_000);
 }
 
 // ── emergency token rescue tests ──────────────────────────────────────────
@@ -2519,16 +2529,22 @@ fn test_rescue_to_contract_address_rejected() {
 
 // ── nonce-based replay protection tests ───────────────────────────────────
 
+// Heartbeat nonces are keyed per operator and start at 0. `set_operator` uses a
+// separate admin-keyed nonce (`get_set_operator_nonce`) and never touches the
+// operator's heartbeat nonce.
+
 #[test]
 fn test_operator_nonce_starts_at_zero() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_, bridge, _, _, _, _) = setup_bridge(&env, 1000);
+    let (_, bridge, admin, _, _, _) = setup_bridge(&env, 1000);
     let operator = Address::generate(&env);
 
     bridge.set_operator(&operator, &true, &0);
-    assert_eq!(bridge.get_operator_nonce(&operator), 1);
+    assert_eq!(bridge.get_operator_nonce(&operator), 0);
+    // set_operator advances the admin-keyed nonce instead.
+    assert_eq!(bridge.get_set_operator_nonce(&admin), 1);
 }
 
 #[test]
@@ -2541,13 +2557,11 @@ fn test_heartbeat_with_valid_nonce_succeeds() {
 
     bridge.set_operator(&operator, &true, &0);
 
-    // First heartbeat with nonce 1 (set_operator incremented to 1)
+    bridge.heartbeat(&operator, &0);
+    assert_eq!(bridge.get_operator_nonce(&operator), 1);
+
     bridge.heartbeat(&operator, &1);
     assert_eq!(bridge.get_operator_nonce(&operator), 2);
-
-    // Second heartbeat with nonce 2
-    bridge.heartbeat(&operator, &2);
-    assert_eq!(bridge.get_operator_nonce(&operator), 3);
 }
 
 #[test]
@@ -2560,16 +2574,15 @@ fn test_heartbeat_with_stale_nonce_fails() {
 
     bridge.set_operator(&operator, &true, &0);
 
-    // First heartbeat with nonce 1 (set_operator incremented to 1)
-    bridge.heartbeat(&operator, &1);
-    assert_eq!(bridge.get_operator_nonce(&operator), 2);
+    bridge.heartbeat(&operator, &0);
+    assert_eq!(bridge.get_operator_nonce(&operator), 1);
 
-    // Try to replay with nonce 1 (stale)
-    let result = bridge.try_heartbeat(&operator, &1);
+    // Replaying nonce 0 is stale
+    let result = bridge.try_heartbeat(&operator, &0);
     assert_eq!(result, Err(Ok(Error::StaleNonce)));
 
     // Nonce should remain unchanged
-    assert_eq!(bridge.get_operator_nonce(&operator), 2);
+    assert_eq!(bridge.get_operator_nonce(&operator), 1);
 }
 
 #[test]
@@ -2582,12 +2595,12 @@ fn test_heartbeat_with_future_nonce_fails() {
 
     bridge.set_operator(&operator, &true, &0);
 
-    // Try to use nonce 5 when current is 1
+    // Try to use nonce 5 when current is 0
     let result = bridge.try_heartbeat(&operator, &5);
     assert_eq!(result, Err(Ok(Error::InvalidNonce)));
 
     // Nonce should remain unchanged
-    assert_eq!(bridge.get_operator_nonce(&operator), 1);
+    assert_eq!(bridge.get_operator_nonce(&operator), 0);
 }
 
 #[test]
@@ -2600,8 +2613,7 @@ fn test_heartbeat_replay_attack_prevented() {
 
     bridge.set_operator(&operator, &true, &0);
 
-    // Execute heartbeat with nonce 1 (set_operator incremented to 1)
-    bridge.heartbeat(&operator, &1);
+    bridge.heartbeat(&operator, &0);
     let first_heartbeat = bridge.get_operator_heartbeat(&operator);
 
     // Advance ledger
@@ -2610,7 +2622,7 @@ fn test_heartbeat_replay_attack_prevented() {
     });
 
     // Try to replay the same nonce
-    let result = bridge.try_heartbeat(&operator, &1);
+    let result = bridge.try_heartbeat(&operator, &0);
     assert_eq!(result, Err(Ok(Error::StaleNonce)));
 
     // Heartbeat timestamp should not have changed
@@ -2627,21 +2639,21 @@ fn test_nonce_is_per_operator() {
     let operator_b = Address::generate(&env);
 
     bridge.set_operator(&operator_a, &true, &0);
-    bridge.set_operator(&operator_b, &true, &0);
+    bridge.set_operator(&operator_b, &true, &1);
 
-    // Both start at nonce 1 (set_operator incremented)
+    // Both start at heartbeat nonce 0
+    assert_eq!(bridge.get_operator_nonce(&operator_a), 0);
+    assert_eq!(bridge.get_operator_nonce(&operator_b), 0);
+
+    // Operator A uses nonce 0
+    bridge.heartbeat(&operator_a, &0);
+    assert_eq!(bridge.get_operator_nonce(&operator_a), 1);
+    assert_eq!(bridge.get_operator_nonce(&operator_b), 0);
+
+    // Operator B can still use nonce 0
+    bridge.heartbeat(&operator_b, &0);
     assert_eq!(bridge.get_operator_nonce(&operator_a), 1);
     assert_eq!(bridge.get_operator_nonce(&operator_b), 1);
-
-    // Operator A uses nonce 1
-    bridge.heartbeat(&operator_a, &1);
-    assert_eq!(bridge.get_operator_nonce(&operator_a), 2);
-    assert_eq!(bridge.get_operator_nonce(&operator_b), 1);
-
-    // Operator B can still use nonce 1
-    bridge.heartbeat(&operator_b, &1);
-    assert_eq!(bridge.get_operator_nonce(&operator_a), 2);
-    assert_eq!(bridge.get_operator_nonce(&operator_b), 2);
 }
 
 #[test]
@@ -2654,8 +2666,7 @@ fn test_nonce_increments_monotonically() {
 
     bridge.set_operator(&operator, &true, &0);
 
-    // Execute multiple heartbeats starting from nonce 1
-    for i in 1..11 {
+    for i in 0..10 {
         assert_eq!(bridge.get_operator_nonce(&operator), i);
         bridge.heartbeat(&operator, &i);
         assert_eq!(bridge.get_operator_nonce(&operator), i + 1);
@@ -2672,19 +2683,18 @@ fn test_nonce_skipping_not_allowed() {
 
     bridge.set_operator(&operator, &true, &0);
 
-    // Use nonce 1 (set_operator incremented to 1)
-    bridge.heartbeat(&operator, &1);
+    bridge.heartbeat(&operator, &0);
 
-    // Try to skip to nonce 3 (skipping 2)
-    let result = bridge.try_heartbeat(&operator, &3);
+    // Try to skip to nonce 2 (skipping 1)
+    let result = bridge.try_heartbeat(&operator, &2);
     assert_eq!(result, Err(Ok(Error::InvalidNonce)));
 
-    // Nonce should still be 2
-    assert_eq!(bridge.get_operator_nonce(&operator), 2);
+    // Nonce should still be 1
+    assert_eq!(bridge.get_operator_nonce(&operator), 1);
 
     // Using nonce 1 should work
-    bridge.heartbeat(&operator, &2);
-    assert_eq!(bridge.get_operator_nonce(&operator), 3);
+    bridge.heartbeat(&operator, &1);
+    assert_eq!(bridge.get_operator_nonce(&operator), 2);
 }
 
 #[test]
@@ -2692,31 +2702,31 @@ fn test_nonce_persists_across_operator_deactivation() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_, bridge, _, _, _, _) = setup_bridge(&env, 1000);
+    let (_, bridge, admin, _, _, _) = setup_bridge(&env, 1000);
     let operator = Address::generate(&env);
 
     bridge.set_operator(&operator, &true, &0);
 
-    // Use nonce 1 and 2 (set_operator incremented to 1)
+    bridge.heartbeat(&operator, &0);
     bridge.heartbeat(&operator, &1);
-    bridge.heartbeat(&operator, &2);
-    assert_eq!(bridge.get_operator_nonce(&operator), 3);
+    assert_eq!(bridge.get_operator_nonce(&operator), 2);
 
-    // Deactivate operator
-    bridge.set_operator(&operator, &false, &3);
+    // Deactivate operator (admin-keyed nonce is now 1)
+    bridge.set_operator(&operator, &false, &1);
+    assert_eq!(bridge.get_set_operator_nonce(&admin), 2);
 
-    // Nonce should still be 4
-    assert_eq!(bridge.get_operator_nonce(&operator), 4);
+    // The operator's heartbeat nonce is untouched by deactivation
+    assert_eq!(bridge.get_operator_nonce(&operator), 2);
 
     // Reactivate operator
-    bridge.set_operator(&operator, &true, &4);
+    bridge.set_operator(&operator, &true, &2);
 
-    // Must use nonce 5, not 0
+    // Must resume at nonce 2, not 0
     let result = bridge.try_heartbeat(&operator, &0);
     assert_eq!(result, Err(Ok(Error::StaleNonce)));
 
-    bridge.heartbeat(&operator, &5);
-    assert_eq!(bridge.get_operator_nonce(&operator), 6);
+    bridge.heartbeat(&operator, &2);
+    assert_eq!(bridge.get_operator_nonce(&operator), 3);
 }
 
 #[test]
@@ -2729,18 +2739,17 @@ fn test_duplicate_nonce_rejected() {
 
     bridge.set_operator(&operator, &true, &0);
 
-    // Use nonce 1 (set_operator incremented to 1)
-    bridge.heartbeat(&operator, &1);
+    bridge.heartbeat(&operator, &0);
 
-    // Try to use nonce 1 again
-    let result = bridge.try_heartbeat(&operator, &1);
+    // Try to use nonce 0 again
+    let result = bridge.try_heartbeat(&operator, &0);
     assert_eq!(result, Err(Ok(Error::StaleNonce)));
 
-    // Use nonce 2
-    bridge.heartbeat(&operator, &2);
+    // Use nonce 1
+    bridge.heartbeat(&operator, &1);
 
-    // Try to use nonce 1 again
-    let result = bridge.try_heartbeat(&operator, &1);
+    // Try to use nonce 0 again
+    let result = bridge.try_heartbeat(&operator, &0);
     assert_eq!(result, Err(Ok(Error::StaleNonce)));
 }
 
@@ -2755,7 +2764,7 @@ fn test_nonce_validation_before_heartbeat_update() {
     bridge.set_operator(&operator, &true, &0);
 
     let initial_ledger = env.ledger().sequence();
-    bridge.heartbeat(&operator, &1);
+    bridge.heartbeat(&operator, &0);
     assert_eq!(
         bridge.get_operator_heartbeat(&operator),
         Some(initial_ledger)
@@ -2767,7 +2776,7 @@ fn test_nonce_validation_before_heartbeat_update() {
     });
 
     // Try with invalid nonce - heartbeat should not update
-    let result = bridge.try_heartbeat(&operator, &1);
+    let result = bridge.try_heartbeat(&operator, &0);
     assert_eq!(result, Err(Ok(Error::StaleNonce)));
 
     // Heartbeat timestamp should not have changed
@@ -2806,17 +2815,13 @@ fn test_nonce_overflow_protection() {
 
     bridge.set_operator(&operator, &true, &0);
 
-    // Simulate high nonce value (near u64::MAX would take too long to test)
-    // Instead, test that the system handles large nonces correctly
-    let _large_nonce = 1_000_000u64;
-
-    // Manually set a high nonce by executing many operations
-    // For testing purposes, we'll just verify the logic works with reasonable values
-    for i in 1..101 {
+    // Reaching u64::MAX is not feasible here; verify the nonce advances by
+    // exactly one per accepted heartbeat across many calls.
+    for i in 0..100 {
         bridge.heartbeat(&operator, &i);
     }
 
-    assert_eq!(bridge.get_operator_nonce(&operator), 101);
+    assert_eq!(bridge.get_operator_nonce(&operator), 100);
 }
 
 #[test]
@@ -2830,20 +2835,20 @@ fn test_concurrent_operators_independent_nonces() {
     let op3 = Address::generate(&env);
 
     bridge.set_operator(&op1, &true, &0);
-    bridge.set_operator(&op2, &true, &0);
-    bridge.set_operator(&op3, &true, &0);
+    bridge.set_operator(&op2, &true, &1);
+    bridge.set_operator(&op3, &true, &2);
 
-    // Interleaved operations (all start at nonce 1 after set_operator)
+    // Interleaved operations (all heartbeat nonces start at 0)
+    bridge.heartbeat(&op1, &0);
+    bridge.heartbeat(&op2, &0);
     bridge.heartbeat(&op1, &1);
+    bridge.heartbeat(&op3, &0);
     bridge.heartbeat(&op2, &1);
     bridge.heartbeat(&op1, &2);
-    bridge.heartbeat(&op3, &1);
-    bridge.heartbeat(&op2, &2);
-    bridge.heartbeat(&op1, &3);
 
-    assert_eq!(bridge.get_operator_nonce(&op1), 4);
-    assert_eq!(bridge.get_operator_nonce(&op2), 3);
-    assert_eq!(bridge.get_operator_nonce(&op3), 2);
+    assert_eq!(bridge.get_operator_nonce(&op1), 3);
+    assert_eq!(bridge.get_operator_nonce(&op2), 2);
+    assert_eq!(bridge.get_operator_nonce(&op3), 1);
 }
 
 // ── Issue #214: deployment config hash tests ─────────────────────────────
@@ -3386,7 +3391,7 @@ fn test_event_version_get_receipt_by_index() {
 // ── get_receipt_by_index circuit breaker tests ───────────────────────────
 
 #[test]
-fn test_get_receipt_by_index_circuit_breaker_emits_event_on_out_of_bounds() {
+fn test_get_receipt_by_index_circuit_breaker_emits_no_event_on_out_of_bounds() {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -3403,12 +3408,12 @@ fn test_get_receipt_by_index_circuit_breaker_emits_event_on_out_of_bounds() {
         "circuit breaker must return None for out-of-bounds index"
     );
 
-    // At least one ReceiptIndexOutOfBoundsEvent should have been emitted
+    // Issue #1427: the read-only getter must not publish an event, even when
+    // the circuit breaker trips.
     let events = env.events().all().filter_by_contract(&contract_id);
-    let raw = events.events();
     assert!(
-        !raw.is_empty(),
-        "ReceiptIndexOutOfBoundsEvent should be emitted when circuit breaker trips"
+        events.events().is_empty(),
+        "get_receipt_by_index must not emit events on out-of-bounds access"
     );
 }
 
@@ -3425,7 +3430,7 @@ fn test_get_receipt_by_index_circuit_breaker_u64_max() {
 }
 
 #[test]
-fn test_get_receipt_by_index_circuit_breaker_empty_store() {
+fn test_get_receipt_by_index_circuit_breaker_empty_store_emits_no_event() {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -3435,10 +3440,11 @@ fn test_get_receipt_by_index_circuit_breaker_empty_store() {
     let result = bridge.get_receipt_by_index(&0);
     assert!(result.is_none());
 
+    // Issue #1427: no event, even though the circuit breaker trips.
     let events = env.events().all().filter_by_contract(&contract_id);
     assert!(
-        !events.events().is_empty(),
-        "circuit breaker event must fire even for index 0 when store is empty"
+        events.events().is_empty(),
+        "get_receipt_by_index must not emit events when the store is empty"
     );
 }
 
@@ -3575,7 +3581,7 @@ fn test_event_snapshot_heartbeat() {
     });
 
     assert_bridge_events_have_version(&env, &contract_id, || {
-        bridge.heartbeat(&operator, &1);
+        bridge.heartbeat(&operator, &0);
     });
 }
 
@@ -5268,14 +5274,14 @@ fn test_set_operator_invariant_operator_list_consistency() {
     let op3 = Address::generate(&env);
 
     bridge.set_operator(&op1, &true, &0);
-    bridge.set_operator(&op2, &true, &0);
-    bridge.set_operator(&op3, &true, &0);
+    bridge.set_operator(&op2, &true, &1);
+    bridge.set_operator(&op3, &true, &2);
 
     assert!(bridge.is_operator(&op1));
     assert!(bridge.is_operator(&op2));
     assert!(bridge.is_operator(&op3));
 
-    bridge.set_operator(&op2, &false, &1);
+    bridge.set_operator(&op2, &false, &3);
 
     assert!(bridge.is_operator(&op1));
     assert!(!bridge.is_operator(&op2));
@@ -5350,10 +5356,10 @@ fn test_set_operator_invariant_respects_max_cap() {
     let op3 = Address::generate(&env);
 
     bridge.set_operator(&op1, &true, &0);
-    bridge.set_operator(&op2, &true, &0);
+    bridge.set_operator(&op2, &true, &1);
 
     // Third operator should fail due to cap
-    let result = bridge.try_set_operator(&op3, &true, &0);
+    let result = bridge.try_set_operator(&op3, &true, &2);
     assert_eq!(result, Err(Ok(Error::OperatorCapReached)));
 
     assert!(bridge.is_operator(&op1));
@@ -5396,6 +5402,9 @@ fn test_withdraw_fees_edge_case_exact_amount() {
     token_sac.mint(&user, &1000);
 
     bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    // Fees are paid out of real tokens held by the contract; the invariant
+    // check forbids a fee withdrawal from dipping into depositor funds.
+    token_sac.mint(&contract_id, &100);
     bridge.accrue_fee(&token_addr, &100);
 
     // Withdraw exactly the accrued amount
@@ -5443,6 +5452,9 @@ fn test_withdraw_fees_edge_case_multiple_withdrawals() {
     token_sac.mint(&user, &1000);
 
     bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    // Fees are paid out of real tokens held by the contract; the invariant
+    // check forbids a fee withdrawal from dipping into depositor funds.
+    token_sac.mint(&contract_id, &300);
     bridge.accrue_fee(&token_addr, &300);
 
     bridge.withdraw_fees(&recipient, &token_addr, &100, &0);
@@ -5460,12 +5472,15 @@ fn test_withdraw_fees_edge_case_stale_nonce() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1000);
+    let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1000);
     let user = Address::generate(&env);
     let recipient = Address::generate(&env);
     token_sac.mint(&user, &1000);
 
     bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    // Fees are paid out of real tokens held by the contract; the invariant
+    // check forbids a fee withdrawal from dipping into depositor funds.
+    token_sac.mint(&contract_id, &100);
     bridge.accrue_fee(&token_addr, &100);
 
     bridge.withdraw_fees(&recipient, &token_addr, &100, &0);
@@ -5486,6 +5501,9 @@ fn test_withdraw_fees_edge_case_emits_event() {
     token_sac.mint(&user, &1000);
 
     bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    // Fees are paid out of real tokens held by the contract; the invariant
+    // check forbids a fee withdrawal from dipping into depositor funds.
+    token_sac.mint(&contract_id, &100);
     bridge.accrue_fee(&token_addr, &100);
 
     bridge.withdraw_fees(&recipient, &token_addr, &50, &0);
@@ -5516,6 +5534,9 @@ fn test_withdraw_fees_event_schema_fields_are_correct() {
     token_sac.mint(&user, &5_000);
 
     bridge.deposit(&user, &2_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    // Fees are paid out of real tokens held by the contract; the invariant
+    // check forbids a fee withdrawal from dipping into depositor funds.
+    token_sac.mint(&contract_id, &400);
     bridge.accrue_fee(&token_addr, &400);
 
     // Withdraw 150 of 400 accrued; remaining_fees should become 250.
@@ -5543,6 +5564,8 @@ fn test_withdraw_fees_batch_emits_per_token_event() {
     let token_c_admin = Address::generate(&env);
     let (token_c_addr, _, _) = create_token(&env, &token_c_admin);
     let recipient = Address::generate(&env);
+    // check_invariants requires every swept token to have a registry entry.
+    bridge.register_token(&token_b_addr, &10_000, &0);
 
     // Mint contract-side balances
     token_a_sac.mint(&contract_id, &300);
@@ -5661,12 +5684,15 @@ fn test_withdraw_fees_event_remaining_fees_reflects_vault_balance() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
     let user = Address::generate(&env);
     let recipient = Address::generate(&env);
     token_sac.mint(&user, &5_000);
 
     bridge.deposit(&user, &3_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    // Fees are paid out of real tokens held by the contract; the invariant
+    // check forbids a fee withdrawal from dipping into depositor funds.
+    token_sac.mint(&contract_id, &600);
     bridge.accrue_fee(&token_addr, &600);
 
     // First partial withdrawal: 200 out of 600
