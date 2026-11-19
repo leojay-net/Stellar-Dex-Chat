@@ -6682,4 +6682,6 @@ mod test_ttl_advance;
 
 #[cfg(test)]
 mod test_multisig_update;
+
+#[cfg(test)]
 mod test_issues_1400_1403;
