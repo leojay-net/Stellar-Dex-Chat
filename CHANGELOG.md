@@ -1280,6 +1280,7 @@ Repo Avatar
 - Remove committed vim swap files and ignore *.swp
 - **changelog:** Update changelog [skip ci]
 - **contract:** Archive root notes, add threat model and event reference
+- **changelog:** Update changelog [skip ci]
 
 ### Deprecated
 
