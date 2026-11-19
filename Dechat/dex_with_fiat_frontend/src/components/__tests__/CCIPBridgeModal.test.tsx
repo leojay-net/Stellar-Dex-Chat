@@ -768,9 +768,7 @@ describe('CCIPBridgeModal', () => {
 
       fireEvent.click(screen.getByText('Start CCIP Transfer'));
 
-      expect(
-        await screen.findByText('0xabc123def456'),
-      ).toBeInTheDocument();
+      expect(await screen.findByText('0xabc123def456')).toBeInTheDocument();
     });
 
     it('displays transaction hash in success state', async () => {

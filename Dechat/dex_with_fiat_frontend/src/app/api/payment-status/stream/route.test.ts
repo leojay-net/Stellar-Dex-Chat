@@ -129,7 +129,8 @@ describe('GET /api/payment-status/stream', () => {
 
     expect(text).toContain('retry: 3000');
 
-    // Tear down the stream
-    await res.body?.cancel();
+    // Tear down the stream. `getReader()` locks the body, so cancel through
+    // the reader; calling `res.body.cancel()` on a locked stream throws.
+    await reader!.cancel();
   });
 });

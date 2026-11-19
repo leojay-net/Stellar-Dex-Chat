@@ -4,7 +4,15 @@ import { NextRequest } from 'next/server';
 import {
   setAdminSession,
   deleteAdminSession,
+  requireAdminAuth,
 } from '../../_utils/requireAdminAuth';
+
+// `cookies()` only works inside a Next.js request scope; stub it so the route
+// handler can be called directly.
+const cookieSet = vi.fn();
+vi.mock('next/headers', () => ({
+  cookies: vi.fn(async () => ({ set: cookieSet })),
+}));
 
 // Mock the dependencies
 vi.mock('@/lib/stellarContract', () => ({
@@ -60,6 +68,11 @@ describe('Admin Auth Nonce Route', () => {
 
     expect(response.status).toBe(200);
     expect(data.success).toBe(true);
+    expect(cookieSet).toHaveBeenCalledWith(
+      'admin_session',
+      expect.any(String),
+      expect.objectContaining({ httpOnly: true }),
+    );
   });
 
   it('POST should reject missing fields', async () => {
@@ -155,7 +168,6 @@ describe('Admin Session Management', () => {
       headers: { cookie: `admin_session=${sessionToken}` },
     });
 
-    const { requireAdminAuth } = require('../../_utils/requireAdminAuth');
     const result = requireAdminAuth(mockRequest);
 
     // Should return null (no error) for valid session
@@ -177,7 +189,6 @@ describe('Admin Session Management', () => {
       headers: { cookie: `admin_session=${sessionToken}` },
     });
 
-    const { requireAdminAuth } = require('../../_utils/requireAdminAuth');
     const result = requireAdminAuth(mockRequest);
 
     // Should return 401 error for expired session
@@ -198,7 +209,6 @@ describe('Admin Session Management', () => {
       headers: { cookie: `admin_session=${sessionToken}` },
     });
 
-    const { requireAdminAuth } = require('../../_utils/requireAdminAuth');
     const result = requireAdminAuth(mockRequest);
 
     // Should return 401 error for deleted session

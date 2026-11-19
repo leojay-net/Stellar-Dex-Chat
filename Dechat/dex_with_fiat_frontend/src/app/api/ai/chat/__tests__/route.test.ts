@@ -2,10 +2,18 @@ import { describe, it, expect, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { POST } from '../route';
 
+// Without GEMINI_API_KEY the route short-circuits to its "not configured"
+// fallback before ever reaching the (mocked) model.
+vi.mock('@/lib/serverEnv', () => ({
+  serverEnv: { GEMINI_API_KEY: 'test-gemini-key' },
+}));
+
 // Mock GoogleGenerativeAI so tests don't try to actually hit Gemini
 vi.mock('@google/generative-ai', () => {
   return {
-    GoogleGenerativeAI: vi.fn().mockImplementation(() => {
+    // Vitest 4 only lets `new` call mocks whose implementation is a
+    // `function`/class, not an arrow function.
+    GoogleGenerativeAI: vi.fn().mockImplementation(function () {
       return {
         getGenerativeModel: vi.fn().mockReturnValue({
           generateContent: vi.fn().mockResolvedValue({

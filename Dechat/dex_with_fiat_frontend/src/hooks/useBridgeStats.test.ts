@@ -1,5 +1,5 @@
 import React from 'react';
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
 import { renderToString } from 'react-dom/server';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import useBridgeStats from './useBridgeStats';
@@ -37,10 +37,11 @@ describe('useBridgeStats', () => {
   it('fetches stats on mount and sets state', async () => {
     const { result } = renderHook(() => useBridgeStats());
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    await vi.waitFor(() => {
+      expect(result.current.fetchCount).toBe(1);
     });
 
+    expect(result.current.loading).toBe(false);
     expect(result.current.balance).toBe(100n);
     expect(result.current.limit).toBe(1000n);
     expect(result.current.totalDeposited).toBe(500n);
@@ -119,13 +120,17 @@ describe('useBridgeStats', () => {
     // Resolve the second (newer) fetch first
     resolveSecond(999n);
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    await vi.waitFor(() => {
+      expect(result.current.balance).toBe(999n);
     });
 
     // Now resolve the first (stale) fetch — its result should be discarded
     resolveFirst(111n);
-    await vi.runAllTimersAsync();
+    // Flush microtasks only: the 30s poll interval is still live, so
+    // runAllTimersAsync would loop forever.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
 
     // The newer fetch result (999n) should be preserved
     expect(result.current.balance).toBe(999n);
@@ -136,7 +141,7 @@ describe('useBridgeStats', () => {
 
     const { result } = renderHook(() => useBridgeStats());
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
 
@@ -146,27 +151,26 @@ describe('useBridgeStats', () => {
 
   it('dispatches bridge_stats_telemetry events', async () => {
     const events: CustomEvent[] = [];
-    window.addEventListener('bridge_stats_telemetry', (e) => {
+    const listener = (e: Event) => {
       events.push(e as CustomEvent);
-    });
+    };
+    window.addEventListener('bridge_stats_telemetry', listener);
 
     const { unmount } = renderHook(() => useBridgeStats());
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(
         events.some((e) => e.detail?.event === 'bridge_stats_mounted'),
       ).toBe(true);
     });
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(
         events.some((e) => e.detail?.event === 'bridge_stats_fetch_success'),
       ).toBe(true);
     });
 
     unmount();
-    window.removeEventListener('bridge_stats_telemetry', (e) => {
-      events.push(e as CustomEvent);
-    });
+    window.removeEventListener('bridge_stats_telemetry', listener);
   });
 });

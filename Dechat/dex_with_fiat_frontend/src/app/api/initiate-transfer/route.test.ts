@@ -44,12 +44,21 @@ vi.mock('@/lib/apiSchemas', () => ({
 
 const { POST } = await import('./route');
 
-function makeRequest(body: unknown) {
+let keyCounter = 0;
+// The route requires X-Idempotency-Key and caches results per key, so each
+// request gets a fresh key unless a test passes one explicitly.
+function makeRequest(
+  body: unknown,
+  idempotencyKey = `test-key-${++keyCounter}`,
+) {
   return new NextRequest(
     new Request('http://localhost/api/initiate-transfer', {
       method: 'POST',
       body: JSON.stringify(body),
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        'X-Idempotency-Key': idempotencyKey,
+      },
     }),
   );
 }
@@ -64,7 +73,10 @@ describe('POST /api/initiate-transfer', () => {
       new Request('http://localhost/api/initiate-transfer', {
         method: 'POST',
         body: 'not json{{{',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          'X-Idempotency-Key': `test-key-${++keyCounter}`,
+        },
       }),
     );
 
@@ -74,6 +86,26 @@ describe('POST /api/initiate-transfer', () => {
     expect(res.status).toBe(400);
     expect(body.success).toBe(false);
     expect(body.message).toContain('Invalid JSON');
+  });
+
+  it('returns 400 when the X-Idempotency-Key header is missing', async () => {
+    const req = new NextRequest(
+      new Request('http://localhost/api/initiate-transfer', {
+        method: 'POST',
+        body: JSON.stringify({
+          source: 'wallet',
+          reason: 'payment',
+          amount: '100',
+          recipient: 'GABC123',
+        }),
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const res = await POST(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.message).toContain('X-Idempotency-Key');
   });
 
   it('returns 400 for validation failures', async () => {
@@ -88,6 +120,7 @@ describe('POST /api/initiate-transfer', () => {
 
     expect(res.status).toBe(400);
     expect(body.success).toBe(false);
+    expect(body.message).toBe('Validation failed');
   });
 
   it('returns 200 for valid request', async () => {
@@ -102,5 +135,22 @@ describe('POST /api/initiate-transfer', () => {
 
     expect(res.status).toBe(200);
     expect(body.success).toBe(true);
+  });
+
+  it('replays the cached result for a repeated idempotency key', async () => {
+    const payload = {
+      source: 'wallet',
+      reason: 'payment',
+      amount: '100',
+      recipient: 'GABC123',
+    };
+    const first = await POST(makeRequest(payload, 'replay-key'));
+    expect(first.status).toBe(200);
+    const firstBody = await first.json();
+
+    const second = await POST(makeRequest(payload, 'replay-key'));
+    const secondBody = await second.json();
+    expect(second.status).toBe(200);
+    expect(secondBody).toEqual(firstBody);
   });
 });

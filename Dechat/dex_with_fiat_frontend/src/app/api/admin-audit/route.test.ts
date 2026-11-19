@@ -4,8 +4,9 @@ import AuditLogService from '@/lib/auditLog';
 import type { AuditEntry } from '@/types';
 
 const mockEnv = { ADMIN_SECRET: 'test-admin-secret' };
-vi.mock('@/lib/env', () => ({
-  get env() {
+// requireAdminAuth reads the secret from serverEnv (src/lib/serverEnv.ts).
+vi.mock('@/lib/serverEnv', () => ({
+  get serverEnv() {
     return mockEnv;
   },
 }));
