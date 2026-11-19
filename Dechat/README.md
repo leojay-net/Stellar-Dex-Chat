@@ -282,7 +282,7 @@ keep review predictable:
   so the right reviewer picks it up.
 - **PR descriptions** — every PR needs a test plan: the commands you ran
   (`cargo test`, `cargo clippy`, `pnpm typecheck`, `pnpm lint`, `pnpm test:unit`,
-  `pnpm build`) and their outcome. [`PR_TEMPLATE.md`](../docs/PR_TEMPLATE.md) in
+  `pnpm build`) and their outcome. [`pull_request_template.md`](../.github/pull_request_template.md) in
   `docs/` shows the shape of a fully written-up PR.
 - **Generated files** — build output (`.next/`, `target/`, `*.wasm`,
   `tsconfig.tsbuildinfo`) is not source and does not belong in a commit. If you
