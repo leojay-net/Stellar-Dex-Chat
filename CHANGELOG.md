@@ -438,6 +438,7 @@ Repo Avatar
 - Implement minimal updates for issues #714, #723, #728, #729
 - **contract:** Implement emergency recovery, storage TTL bump, multisig update and escrow migration (issues 1-4)
 - **contract:** Add register_token and get_token_config
+- **frontend:** Locale-aware formatters and last-updated badge for prices
 
 ### Fixed
 
@@ -1277,6 +1278,8 @@ Repo Avatar
 - **frontend:** Pin pnpm 9.15.9 to match the v9 lockfile
 - **frontend:** Mock server-only globally so server-module suites can load
 - Remove committed vim swap files and ignore *.swp
+- **changelog:** Update changelog [skip ci]
+- **contract:** Archive root notes, add threat model and event reference
 
 ### Deprecated
 
