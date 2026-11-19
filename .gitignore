@@ -35,3 +35,7 @@ pr.md/stellar-contracts/
 /Stellar-Dex-Chat
 package-lock.json
 yarn.lock
+
+# Editor swap files
+*.swp
+*.swo
