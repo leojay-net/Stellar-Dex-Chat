@@ -1800,6 +1800,14 @@ impl FiatBridge {
             .instance()
             .get(&DataKey::NextRequestID)
             .unwrap_or(0);
+        // Resolve the unlock ledger with checked arithmetic before any TTL
+        // bump so an overflowing lock period yields a typed `Overflow` error
+        // instead of a host trap from an out-of-range TTL extension.
+        let unlock_ledger = env
+            .ledger()
+            .sequence()
+            .checked_add(lock_period)
+            .ok_or(Error::Overflow)?;
         let receipt_min_ttl = MIN_TTL
             .saturating_add(lock_period)
             .saturating_add(cooldown_ledgers);
@@ -1811,11 +1819,6 @@ impl FiatBridge {
             .get(&DataKey::WithdrawQueueLen)
             .unwrap_or(0);
 
-        let unlock_ledger = env
-            .ledger()
-            .sequence()
-            .checked_add(lock_period)
-            .ok_or(Error::Overflow)?;
         let request = WithdrawRequest {
             to: to.clone(),
             token: token.clone(),
