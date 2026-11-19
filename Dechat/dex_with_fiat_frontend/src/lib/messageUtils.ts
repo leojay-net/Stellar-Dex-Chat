@@ -46,7 +46,7 @@
  * source (API response vs. localStorage cache).
  */
 export function toDate(value: Date | string | unknown): Date {
-    if (value instanceof Date) return value;
-    const d = new Date(value as string);
-    return isNaN(d.getTime()) ? new Date() : d;
+  if (value instanceof Date) return value;
+  const d = new Date(value as string);
+  return isNaN(d.getTime()) ? new Date() : d;
 }

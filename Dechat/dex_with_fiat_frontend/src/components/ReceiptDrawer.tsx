@@ -190,7 +190,6 @@ export default function ReceiptDrawer({
 
   // Keyboard shortcuts: Escape closes, Backspace/Delete clears history (issue #528)
 
-
   // Inject print styles once
   useEffect(() => {
     const id = 'receipt-print-styles';
@@ -208,7 +207,11 @@ export default function ReceiptDrawer({
       if (!isOpen) return;
       if (e.key === 'Escape') {
         onClose();
-      } else if ((e.key === 'Backspace' || e.key === 'Delete') && onClearHistory && !isDeleting) {
+      } else if (
+        (e.key === 'Backspace' || e.key === 'Delete') &&
+        onClearHistory &&
+        !isDeleting
+      ) {
         setIsDeleting(true);
         onClearHistory();
         setTimeout(() => setIsDeleting(false), 300);
@@ -273,15 +276,17 @@ export default function ReceiptDrawer({
     <div id="receipt-drawer-root">
       {/* Backdrop */}
       <div
-        className={`receipt-drawer-backdrop fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity z-[100] ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
-          }`}
+        className={`receipt-drawer-backdrop fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity z-[100] ${
+          isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
         onClick={onClose}
       />
 
       {/* Drawer */}
       <div
-        className={`receipt-drawer-panel fixed top-0 right-0 h-full w-full max-w-md bg-white dark:bg-gray-900 shadow-2xl z-[101] transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : 'translate-x-full'
-          }`}
+        className={`receipt-drawer-panel fixed top-0 right-0 h-full w-full max-w-md bg-white dark:bg-gray-900 shadow-2xl z-[101] transform transition-transform duration-300 ease-in-out ${
+          isOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
         aria-busy={isLoading}
         role="dialog"
         aria-modal="true"
@@ -379,10 +384,11 @@ export default function ReceiptDrawer({
               displayTransactions.map((tx) => (
                 <div
                   key={tx.id}
-                  className={`receipt-card p-4 rounded-xl border transition-all hover:shadow-md ${isDarkMode
+                  className={`receipt-card p-4 rounded-xl border transition-all hover:shadow-md ${
+                    isDarkMode
                       ? 'bg-gray-800 border-gray-700 hover:border-gray-600'
                       : 'bg-gray-50 border-gray-200 hover:border-gray-300'
-                    }`}
+                  }`}
                 >
                   <div className="flex justify-between items-start mb-3">
                     <div className="flex items-center gap-2">
@@ -398,12 +404,13 @@ export default function ReceiptDrawer({
                       </span>
                     </div>
                     <span
-                      className={`receipt-status-badge text-[10px] px-2 py-0.5 rounded-full font-medium ${tx.status === 'completed'
+                      className={`receipt-status-badge text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                        tx.status === 'completed'
                           ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200'
                           : tx.status === 'failed'
                             ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200'
                             : 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-200'
-                        }`}
+                      }`}
                     >
                       {tx.status}
                     </span>
@@ -446,8 +453,12 @@ export default function ReceiptDrawer({
                       </div>
                     )}
                     <div className="flex justify-between text-[10px] text-gray-500 pt-2 border-t dark:border-gray-700">
-                      <span className="truncate min-w-0 mr-2" title={tx.id}>{tx.id}</span>
-                      <span className="shrink-0">{new Date(tx.createdAt).toLocaleString()}</span>
+                      <span className="truncate min-w-0 mr-2" title={tx.id}>
+                        {tx.id}
+                      </span>
+                      <span className="shrink-0">
+                        {new Date(tx.createdAt).toLocaleString()}
+                      </span>
                     </div>
                     <ReceiptQrCode
                       value={getReceiptQrValue(tx)}

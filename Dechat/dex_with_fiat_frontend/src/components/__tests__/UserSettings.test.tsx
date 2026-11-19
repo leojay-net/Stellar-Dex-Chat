@@ -100,7 +100,10 @@ vi.mock('@/hooks/useAccessibleModal', () => ({
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 function renderSettings(isOpen = true, onClose = vi.fn()) {
-  return { onClose, ...render(<UserSettings isOpen={isOpen} onClose={onClose} />) };
+  return {
+    onClose,
+    ...render(<UserSettings isOpen={isOpen} onClose={onClose} />),
+  };
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────
@@ -115,12 +118,16 @@ describe('UserSettings', () => {
 
   it('renders the panel when isOpen is true', () => {
     renderSettings(true);
-    expect(screen.getByRole('dialog', { name: /user settings/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('dialog', { name: /user settings/i }),
+    ).toBeInTheDocument();
     expect(screen.getByText('Settings')).toBeInTheDocument();
   });
 
   it('does not render anything when isOpen is false', () => {
-    const { container } = render(<UserSettings isOpen={false} onClose={vi.fn()} />);
+    const { container } = render(
+      <UserSettings isOpen={false} onClose={vi.fn()} />,
+    );
     expect(container).toBeEmptyDOMElement();
   });
 
@@ -135,21 +142,27 @@ describe('UserSettings', () => {
 
   it('close button has an accessible label', () => {
     renderSettings();
-    expect(screen.getByRole('button', { name: /close settings/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /close settings/i }),
+    ).toBeInTheDocument();
   });
 
   // ── Close behaviour ──────────────────────────────────────────────────────
 
   it('calls onClose when the X button is clicked', async () => {
     const { onClose } = renderSettings();
-    await userEvent.click(screen.getByRole('button', { name: /close settings/i }));
+    await userEvent.click(
+      screen.getByRole('button', { name: /close settings/i }),
+    );
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('calls onClose when the backdrop is clicked', async () => {
     const { onClose } = renderSettings();
     // The backdrop is the element right before the panel
-    const backdrop = document.querySelector('[aria-hidden="true"]') as HTMLElement;
+    const backdrop = document.querySelector(
+      '[aria-hidden="true"]',
+    ) as HTMLElement;
     await userEvent.click(backdrop);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -168,7 +181,11 @@ describe('UserSettings', () => {
     // Simulate useAccessibleModal wiring an Escape listener
     const onClose = vi.fn();
     mockUseAccessibleModal.mockImplementation(
-      (_isOpen: boolean, _ref: React.RefObject<HTMLElement>, close: () => void) => {
+      (
+        _isOpen: boolean,
+        _ref: React.RefObject<HTMLElement>,
+        close: () => void,
+      ) => {
         // Attach a keydown listener that fires onClose for Escape
         const handler = (e: KeyboardEvent) => {
           if (e.key === 'Escape') close();
@@ -187,9 +204,14 @@ describe('UserSettings', () => {
   it('calls addBeneficiary when name and address are filled and Add is clicked', async () => {
     renderSettings();
     // Open the add form
-    await userEvent.click(screen.getByRole('button', { name: /add new beneficiary/i }));
+    await userEvent.click(
+      screen.getByRole('button', { name: /add new beneficiary/i }),
+    );
 
-    await userEvent.type(screen.getByRole('textbox', { name: /beneficiary name/i }), 'Alice');
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /beneficiary name/i }),
+      'Alice',
+    );
     await userEvent.type(
       screen.getByRole('textbox', { name: /beneficiary account address/i }),
       'GABC123',
@@ -209,7 +231,9 @@ describe('UserSettings', () => {
 
   it('does not call addBeneficiary when name is blank', async () => {
     renderSettings();
-    await userEvent.click(screen.getByRole('button', { name: /add new beneficiary/i }));
+    await userEvent.click(
+      screen.getByRole('button', { name: /add new beneficiary/i }),
+    );
     // Only fill address, leave name blank
     await userEvent.type(
       screen.getByRole('textbox', { name: /beneficiary account address/i }),
@@ -221,8 +245,13 @@ describe('UserSettings', () => {
 
   it('does not call addBeneficiary when address is blank', async () => {
     renderSettings();
-    await userEvent.click(screen.getByRole('button', { name: /add new beneficiary/i }));
-    await userEvent.type(screen.getByRole('textbox', { name: /beneficiary name/i }), 'Alice');
+    await userEvent.click(
+      screen.getByRole('button', { name: /add new beneficiary/i }),
+    );
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /beneficiary name/i }),
+      'Alice',
+    );
     // Leave address blank
     await userEvent.click(screen.getByRole('button', { name: /^add$/i }));
     expect(mockAddBeneficiary).not.toHaveBeenCalled();
@@ -275,7 +304,9 @@ describe('UserSettings', () => {
 
   it('calls addAddress when a valid address is entered', async () => {
     renderSettings();
-    await userEvent.click(screen.getByRole('button', { name: /add wallet to watchlist/i }));
+    await userEvent.click(
+      screen.getByRole('button', { name: /add wallet to watchlist/i }),
+    );
     await userEvent.type(
       screen.getByRole('textbox', { name: /wallet address to watch/i }),
       'GABC456',
@@ -286,7 +317,9 @@ describe('UserSettings', () => {
 
   it('does not call addAddress when address field is blank', async () => {
     renderSettings();
-    await userEvent.click(screen.getByRole('button', { name: /add wallet to watchlist/i }));
+    await userEvent.click(
+      screen.getByRole('button', { name: /add wallet to watchlist/i }),
+    );
     // Do not type anything — address stays blank
     await userEvent.click(screen.getByRole('button', { name: /^add$/i }));
     expect(mockAddAddress).not.toHaveBeenCalled();
@@ -319,7 +352,9 @@ describe('UserSettings', () => {
   it('calls setHighValueThreshold for a valid positive number', async () => {
     renderSettings();
     // Enable two-factor to reveal the threshold input
-    await userEvent.click(screen.getByRole('button', { name: /two-factor confirmation/i }));
+    await userEvent.click(
+      screen.getByRole('button', { name: /two-factor confirmation/i }),
+    );
     expect(mockSetTwoFactorEnabled).toHaveBeenCalledWith(true);
   });
 

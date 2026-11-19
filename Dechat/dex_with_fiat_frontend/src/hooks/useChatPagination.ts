@@ -14,7 +14,7 @@ import {
  */
 export const useChatPagination = (
   allMessages: ChatMessage[],
-  pageSize: number = DEFAULT_PAGE_SIZE
+  pageSize: number = DEFAULT_PAGE_SIZE,
 ) => {
   const [visibleCount, setVisibleCount] = useState(pageSize);
   const [isLoadingMore, setIsLoadingMore] = useState(false);

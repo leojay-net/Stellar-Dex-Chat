@@ -8,7 +8,10 @@ import { initiateTransferSchema } from '@/lib/apiSchemas';
 
 const RATE_LIMIT = { maxRequests: 3, windowMs: 60_000 };
 
-const idempotencyCache = new Map<string, { result: unknown; timestamp: number }>();
+const idempotencyCache = new Map<
+  string,
+  { result: unknown; timestamp: number }
+>();
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 
 export async function POST(request: NextRequest) {
@@ -119,7 +122,10 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    idempotencyCache.set(idempotencyKey, { result: data, timestamp: Date.now() });
+    idempotencyCache.set(idempotencyKey, {
+      result: data,
+      timestamp: Date.now(),
+    });
 
     return NextResponse.json({
       success: true,

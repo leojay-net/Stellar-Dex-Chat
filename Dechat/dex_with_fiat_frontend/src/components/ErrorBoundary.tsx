@@ -19,7 +19,10 @@ interface ErrorBoundaryState {
 
 type WindowWithSentry = Window & {
   Sentry?: {
-    captureException(error: Error, ctx: { extra: Record<string, unknown> }): void;
+    captureException(
+      error: Error,
+      ctx: { extra: Record<string, unknown> },
+    ): void;
   };
 };
 

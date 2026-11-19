@@ -53,7 +53,10 @@ describe('Message — assistant markdown links (#1498)', () => {
     ['mixed-case javascript:', '[click me](JaVaScRiPt:alert(1))'],
     ['percent-encoded javascript:', '[click me](javas%63ript:alert(1))'],
     ['vbscript:', '[click me](vbscript:msgbox(1))'],
-    ['data: html', '[click me](data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==)'],
+    [
+      'data: html',
+      '[click me](data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==)',
+    ],
     ['file:', '[click me](file:///etc/passwd)'],
   ])('blocks a %s link', (_label, markdown) => {
     it('is not clickable and keeps its text visible', () => {
@@ -80,7 +83,9 @@ describe('Message — assistant markdown links (#1498)', () => {
       '[a](http://example.com) [b](mailto:hi@example.com) [c](/relative/path)',
     );
 
-    const hrefs = screen.getAllByRole('link').map((el) => el.getAttribute('href'));
+    const hrefs = screen
+      .getAllByRole('link')
+      .map((el) => el.getAttribute('href'));
     expect(hrefs).toEqual([
       'http://example.com',
       'mailto:hi@example.com',
@@ -89,7 +94,9 @@ describe('Message — assistant markdown links (#1498)', () => {
   });
 
   it('shows a blocked image as its alt text, without an <img>', () => {
-    const { container } = renderMarkdown('![tracking pixel](javascript:alert(1))');
+    const { container } = renderMarkdown(
+      '![tracking pixel](javascript:alert(1))',
+    );
 
     expect(container.querySelector('img')).toBeNull();
     expect(screen.getByText('tracking pixel')).toBeTruthy();
@@ -104,7 +111,9 @@ describe('Message — assistant markdown links (#1498)', () => {
   });
 
   it('still renders a safe https image', () => {
-    const { container } = renderMarkdown('![logo](https://example.com/logo.png)');
+    const { container } = renderMarkdown(
+      '![logo](https://example.com/logo.png)',
+    );
 
     const img = container.querySelector('img');
     expect(img).not.toBeNull();

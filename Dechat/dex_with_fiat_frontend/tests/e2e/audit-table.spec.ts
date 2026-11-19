@@ -1,16 +1,21 @@
 import { test, expect } from '@playwright/test';
-import { mockSorobanRpc, installMockWalletBridge, connectMockWallet, MOCK_ADMIN_ADDRESS } from './helpers';
+import {
+  mockSorobanRpc,
+  installMockWalletBridge,
+  connectMockWallet,
+  MOCK_ADMIN_ADDRESS,
+} from './helpers';
 
 test.describe('AuditTable E2E', () => {
   test.beforeEach(async ({ page }) => {
     // Mock Soroban RPC for admin authentication
     await mockSorobanRpc(page, { adminAddress: MOCK_ADMIN_ADDRESS });
-    
+
     // Mock the admin audit-log API route
     await page.route('**/api/admin/audit-log*', async (route) => {
       const url = new URL(route.request().url());
       const action = url.searchParams.get('action');
-      
+
       // Return different responses based on query params for testing different states
       if (url.searchParams.get('error') === 'true') {
         await route.fulfill({
@@ -25,13 +30,13 @@ test.describe('AuditTable E2E', () => {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({ 
-            entries: [], 
-            page: 1, 
-            pageSize: 20, 
-            total: 0, 
+          body: JSON.stringify({
+            entries: [],
+            page: 1,
+            pageSize: 20,
+            total: 0,
             totalPages: 0,
-            actions: [] 
+            actions: [],
           }),
         });
         return;
@@ -42,7 +47,8 @@ test.describe('AuditTable E2E', () => {
         {
           id: '1',
           timestamp: new Date('2026-03-20T10:00:00Z').toISOString(),
-          adminAddress: 'GBEFLW6RTALNHCL7HW2INWB4ASHZ7E6MF6E2IOIIMBVEAU2B2B4XLRQW',
+          adminAddress:
+            'GBEFLW6RTALNHCL7HW2INWB4ASHZ7E6MF6E2IOIIMBVEAU2B2B4XLRQW',
           action: 'withdrawal_approved' as const,
           parameters: { userId: 'user123', amount: 100 },
           result: 'success',
@@ -50,7 +56,8 @@ test.describe('AuditTable E2E', () => {
         {
           id: '2',
           timestamp: new Date('2026-03-21T14:30:00Z').toISOString(),
-          adminAddress: 'GBEFLW6RTALNHCL7HW2INWB4ASHZ7E6MF6E2IOIIMBVEAU2B2B4XLRQW',
+          adminAddress:
+            'GBEFLW6RTALNHCL7HW2INWB4ASHZ7E6MF6E2IOIIMBVEAU2B2B4XLRQW',
           action: 'withdrawal_rejected' as const,
           parameters: { userId: 'user456', reason: 'Insufficient funds' },
           result: 'failed',
@@ -58,7 +65,8 @@ test.describe('AuditTable E2E', () => {
         {
           id: '3',
           timestamp: new Date('2026-03-22T09:15:00Z').toISOString(),
-          adminAddress: 'GBEFLW6RTALNHCL7HW2INWB4ASHZ7E6MF6E2IOIIMBVEAU2B2B4XLRQW',
+          adminAddress:
+            'GBEFLW6RTALNHCL7HW2INWB4ASHZ7E6MF6E2IOIIMBVEAU2B2B4XLRQW',
           action: 'reconciliation_adjustment' as const,
           parameters: { adjustmentAmount: 50 },
           result: 'success',
@@ -66,9 +74,10 @@ test.describe('AuditTable E2E', () => {
       ];
 
       // Filter entries if action is specified
-      const filteredEntries = action && action !== 'all' 
-        ? entries.filter(entry => entry.action === action)
-        : entries;
+      const filteredEntries =
+        action && action !== 'all'
+          ? entries.filter((entry) => entry.action === action)
+          : entries;
 
       await route.fulfill({
         status: 200,
@@ -79,7 +88,15 @@ test.describe('AuditTable E2E', () => {
           pageSize: 20,
           total: filteredEntries.length,
           totalPages: 1,
-          actions: ['withdrawal_approved', 'withdrawal_rejected', 'reconciliation_adjustment', 'operator_added', 'operator_removed', 'bridge_paused', 'bridge_unpaused'],
+          actions: [
+            'withdrawal_approved',
+            'withdrawal_rejected',
+            'reconciliation_adjustment',
+            'operator_added',
+            'operator_removed',
+            'bridge_paused',
+            'bridge_unpaused',
+          ],
         }),
       });
     });
@@ -97,14 +114,14 @@ test.describe('AuditTable E2E', () => {
   test('should display loading state', async ({ page }) => {
     // Mock a delayed response to show loading state
     await page.route('**/api/admin/audit-log*', async (route) => {
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
       await route.continue();
     });
 
     await installMockWalletBridge(page);
     await page.goto('/admin');
     await connectMockWallet(page, MOCK_ADMIN_ADDRESS);
-    
+
     // Check for loading skeleton
     await expect(page.getByText('Loading...')).toBeVisible();
   });
@@ -113,10 +130,10 @@ test.describe('AuditTable E2E', () => {
     await installMockWalletBridge(page);
     await page.goto('/admin?empty=true');
     await connectMockWallet(page, MOCK_ADMIN_ADDRESS);
-    
+
     // Wait for admin dashboard to load
     await expect(page.getByText('Admin Dashboard')).toBeVisible();
-    
+
     // The audit section should show empty state
     await expect(page.getByText(/no audit entries/i)).toBeVisible();
   });
@@ -125,10 +142,10 @@ test.describe('AuditTable E2E', () => {
     await installMockWalletBridge(page);
     await page.goto('/admin?error=true');
     await connectMockWallet(page, MOCK_ADMIN_ADDRESS);
-    
+
     // Wait for admin dashboard to load
     await expect(page.getByText('Admin Dashboard')).toBeVisible();
-    
+
     // Check for error message in audit section
     await expect(page.getByText(/error/i)).toBeVisible();
   });
@@ -137,11 +154,11 @@ test.describe('AuditTable E2E', () => {
     await installMockWalletBridge(page);
     await page.goto('/admin');
     await connectMockWallet(page, MOCK_ADMIN_ADDRESS);
-    
+
     // Wait for admin dashboard to load
     await expect(page.getByText('Admin Dashboard')).toBeVisible();
     await expect(page.getByText('Loading...')).toBeHidden();
-    
+
     // Check that audit entries are displayed
     await expect(page.getByText('Withdrawal Approved')).toBeVisible();
     await expect(page.getByText('Withdrawal Rejected')).toBeVisible();
@@ -152,15 +169,15 @@ test.describe('AuditTable E2E', () => {
     await installMockWalletBridge(page);
     await page.goto('/admin');
     await connectMockWallet(page, MOCK_ADMIN_ADDRESS);
-    
+
     // Wait for admin dashboard to load
     await expect(page.getByText('Admin Dashboard')).toBeVisible();
     await expect(page.getByText('Loading...')).toBeHidden();
-    
+
     // Select withdrawal_approved filter
     const actionFilter = page.getByRole('combobox').first();
     await actionFilter.selectOption('withdrawal_approved');
-    
+
     // Wait for filtered results
     await expect(page.getByText('Withdrawal Approved')).toBeVisible();
   });
@@ -169,18 +186,18 @@ test.describe('AuditTable E2E', () => {
     await installMockWalletBridge(page);
     await page.goto('/admin');
     await connectMockWallet(page, MOCK_ADMIN_ADDRESS);
-    
+
     // Wait for admin dashboard to load
     await expect(page.getByText('Admin Dashboard')).toBeVisible();
     await expect(page.getByText('Loading...')).toBeHidden();
-    
+
     // Apply filter
     const actionFilter = page.getByRole('combobox').first();
     await actionFilter.selectOption('withdrawal_approved');
-    
+
     // Reset filter by selecting 'all'
     await actionFilter.selectOption('all');
-    
+
     // Verify filter is reset - all entries should be visible
     await expect(page.getByText('Withdrawal Approved')).toBeVisible();
     await expect(page.getByText('Withdrawal Rejected')).toBeVisible();
@@ -190,36 +207,38 @@ test.describe('AuditTable E2E', () => {
     await installMockWalletBridge(page);
     await page.goto('/admin');
     await connectMockWallet(page, MOCK_ADMIN_ADDRESS);
-    
+
     // Wait for admin dashboard to load
     await expect(page.getByText('Admin Dashboard')).toBeVisible();
     await expect(page.getByText('Loading...')).toBeHidden();
-    
+
     // Click export button
     const downloadPromise = page.waitForEvent('download');
     await page.getByRole('button', { name: /export/i }).click();
     const download = await downloadPromise;
-    
+
     // Verify download
     expect(download.suggestedFilename()).toMatch(/admin_audit_log_.*\.csv/);
   });
 
-  test('should navigate keyboard-only through all interactive elements', async ({ page }) => {
+  test('should navigate keyboard-only through all interactive elements', async ({
+    page,
+  }) => {
     await installMockWalletBridge(page);
     await page.goto('/admin');
     await connectMockWallet(page, MOCK_ADMIN_ADDRESS);
-    
+
     // Wait for admin dashboard to load
     await expect(page.getByText('Admin Dashboard')).toBeVisible();
     await expect(page.getByText('Loading...')).toBeHidden();
-    
+
     // Tab through interactive elements in the audit section
     await page.keyboard.press('Tab');
-    
+
     // Focus should be on first interactive element (action filter)
     let focused = await page.evaluate(() => document.activeElement?.tagName);
     expect(['SELECT', 'BUTTON']).toContain(focused);
-    
+
     // Continue tabbing through other elements
     for (let i = 0; i < 5; i++) {
       await page.keyboard.press('Tab');
@@ -234,7 +253,8 @@ test.describe('AuditTable E2E', () => {
       const entries = Array.from({ length: 25 }, (_, i) => ({
         id: String(i + 1),
         timestamp: new Date('2026-03-20T10:00:00Z').toISOString(),
-        adminAddress: 'GBEFLW6RTALNHCL7HW2INWB4ASHZ7E6MF6E2IOIIMBVEAU2B2B4XLRQW',
+        adminAddress:
+          'GBEFLW6RTALNHCL7HW2INWB4ASHZ7E6MF6E2IOIIMBVEAU2B2B4XLRQW',
         action: 'withdrawal_approved' as const,
         parameters: { userId: `user${i}`, amount: 100 },
         result: 'success',
@@ -243,13 +263,13 @@ test.describe('AuditTable E2E', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ 
-          entries, 
-          page: 1, 
-          pageSize: 20, 
-          total: 25, 
+        body: JSON.stringify({
+          entries,
+          page: 1,
+          pageSize: 20,
+          total: 25,
           totalPages: 2,
-          actions: ['withdrawal_approved'] 
+          actions: ['withdrawal_approved'],
         }),
       });
     });
@@ -257,11 +277,11 @@ test.describe('AuditTable E2E', () => {
     await installMockWalletBridge(page);
     await page.goto('/admin');
     await connectMockWallet(page, MOCK_ADMIN_ADDRESS);
-    
+
     // Wait for admin dashboard to load
     await expect(page.getByText('Admin Dashboard')).toBeVisible();
     await expect(page.getByText('Loading...')).toBeHidden();
-    
+
     // Check pagination controls are visible
     await expect(page.getByRole('button', { name: /next/i })).toBeVisible();
   });
@@ -270,11 +290,11 @@ test.describe('AuditTable E2E', () => {
     await installMockWalletBridge(page);
     await page.goto('/admin');
     await connectMockWallet(page, MOCK_ADMIN_ADDRESS);
-    
+
     // Wait for admin dashboard to load
     await expect(page.getByText('Admin Dashboard')).toBeVisible();
     await expect(page.getByText('Loading...')).toBeHidden();
-    
+
     // Check total entries display
     await expect(page.getByText(/total/i)).toBeVisible();
   });

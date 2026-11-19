@@ -83,12 +83,23 @@ export function useSplitView(sessions: ChatSession[]): UseSplitViewReturn {
 
   const setLeftSession = useCallback((id: string) => {
     chatTelemetry.splitView({ action: 'set_left_session', leftSessionId: id });
-    setState((prev) => ({ ...prev, leftSessionId: id, selectedMessageId: null }));
+    setState((prev) => ({
+      ...prev,
+      leftSessionId: id,
+      selectedMessageId: null,
+    }));
   }, []);
 
   const setRightSession = useCallback((id: string) => {
-    chatTelemetry.splitView({ action: 'set_right_session', rightSessionId: id });
-    setState((prev) => ({ ...prev, rightSessionId: id, selectedMessageId: null }));
+    chatTelemetry.splitView({
+      action: 'set_right_session',
+      rightSessionId: id,
+    });
+    setState((prev) => ({
+      ...prev,
+      rightSessionId: id,
+      selectedMessageId: null,
+    }));
   }, []);
 
   const swapSessions = useCallback(() => {

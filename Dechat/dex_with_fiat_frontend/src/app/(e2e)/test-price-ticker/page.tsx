@@ -11,7 +11,10 @@ function TestPriceTickerContent() {
   const intervalParam = searchParams.get('refreshInterval');
 
   const symbols = symbolsParam
-    ? symbolsParam.split(',').map((s) => s.trim()).filter(Boolean)
+    ? symbolsParam
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
     : undefined;
   const currency = currencyParam ?? undefined;
   const refreshInterval = intervalParam ? Number(intervalParam) : undefined;

@@ -62,7 +62,10 @@ export function useOnlineStatus() {
     const handleOffline = () => {
       setIsOnline(false);
       setWasOffline(true);
-      chatTelemetry.networkStatus({ status: 'offline', source: 'browser-event' });
+      chatTelemetry.networkStatus({
+        status: 'offline',
+        source: 'browser-event',
+      });
     };
 
     if (typeof window !== 'undefined') {

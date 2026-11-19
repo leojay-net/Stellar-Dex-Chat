@@ -53,7 +53,10 @@ export function deserializeFilters(
       VALID_STATUSES,
     ) as TransactionStatus[],
     asset: parseFilterParam(searchParams.get('asset'), validOptions.asset),
-    network: parseFilterParam(searchParams.get('network'), validOptions.network),
+    network: parseFilterParam(
+      searchParams.get('network'),
+      validOptions.network,
+    ),
   };
 }
 
@@ -94,9 +97,7 @@ function parseFilterParam(
     parsedValues = param.split(',');
   }
 
-  const values = parsedValues
-    .map((v) => v.trim())
-    .filter((v) => v.length > 0);
+  const values = parsedValues.map((v) => v.trim()).filter((v) => v.length > 0);
 
   if (validValues) {
     return values.filter((v) => validValues.includes(v));

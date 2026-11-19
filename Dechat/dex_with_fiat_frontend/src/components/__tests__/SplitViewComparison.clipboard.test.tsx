@@ -1,5 +1,11 @@
 import React from 'react';
-import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import {
+  act,
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 import SplitViewComparison from '../SplitViewComparison';
 import { ChatSession } from '@/types';
@@ -128,7 +134,8 @@ describe('SplitViewComparison - Clipboard Copy', () => {
       <SplitViewComparison splitView={mockSplitView} sessions={mockSessions} />,
     );
 
-    const [firstCopyButton, secondCopyButton] = screen.getAllByTestId('copy-message-btn');
+    const [firstCopyButton, secondCopyButton] =
+      screen.getAllByTestId('copy-message-btn');
     await act(async () => {
       fireEvent.click(firstCopyButton);
     });
@@ -140,7 +147,9 @@ describe('SplitViewComparison - Clipboard Copy', () => {
       vi.advanceTimersByTime(1000);
     });
 
-    expect(secondCopyButton.querySelector('[data-lucide="check"]')).toBeInTheDocument();
+    expect(
+      secondCopyButton.querySelector('[data-lucide="check"]'),
+    ).toBeInTheDocument();
   });
 
   it('does not trigger message selection when copy button is clicked', async () => {

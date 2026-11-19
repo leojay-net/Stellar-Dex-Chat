@@ -2,7 +2,11 @@ import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { ChatSession } from '@/types';
 import { useSplitView } from '@/hooks/useSplitView';
 import { renderHook, act } from '@testing-library/react';
-import { setTelemetryConsent, type ChatEvent, type SplitViewTelemetryPayload } from '@/lib/chatTelemetry';
+import {
+  setTelemetryConsent,
+  type ChatEvent,
+  type SplitViewTelemetryPayload,
+} from '@/lib/chatTelemetry';
 
 function makeSession(id: string, title = 'Session'): ChatSession {
   const now = new Date();
@@ -126,7 +130,8 @@ describe('useSplitView – structured telemetry (#1208)', () => {
   function captureEvents(): { events: ChatEvent<SplitViewTelemetryPayload>[] } {
     const box = { events: [] as ChatEvent<SplitViewTelemetryPayload>[] };
     window.addEventListener('chat:telemetry', ((e: Event) => {
-      const detail = (e as CustomEvent<ChatEvent<SplitViewTelemetryPayload>>).detail;
+      const detail = (e as CustomEvent<ChatEvent<SplitViewTelemetryPayload>>)
+        .detail;
       if (detail.name === 'split_view') {
         box.events.push(detail);
       }
@@ -193,7 +198,9 @@ describe('useSplitView – structured telemetry (#1208)', () => {
       result.current.swapSessions();
     });
 
-    const swapEvents = box.events.filter((e) => e.payload.action === 'swap_sessions');
+    const swapEvents = box.events.filter(
+      (e) => e.payload.action === 'swap_sessions',
+    );
     expect(swapEvents).toHaveLength(1);
     expect(swapEvents[0].payload).toMatchObject({
       leftSessionId: 's2',

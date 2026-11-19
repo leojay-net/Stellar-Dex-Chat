@@ -50,9 +50,8 @@ vi.mock('react-markdown', () => ({
 }));
 
 const { default: Message } = await import('@/components/Message');
-const { MAX_AUTO_RETRIES, RETRY_BASE_DELAY_MS } = await import(
-  '@/hooks/useMessageRetry'
-);
+const { MAX_AUTO_RETRIES, RETRY_BASE_DELAY_MS } =
+  await import('@/hooks/useMessageRetry');
 
 function failedMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {

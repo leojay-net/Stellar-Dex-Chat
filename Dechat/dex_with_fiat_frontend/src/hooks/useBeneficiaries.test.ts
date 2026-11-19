@@ -47,7 +47,9 @@ describe('useBeneficiaries', () => {
           createdAt: Date.now(),
         },
       ];
-      localStorageMock.getItem.mockReturnValue(JSON.stringify(mockBeneficiaries));
+      localStorageMock.getItem.mockReturnValue(
+        JSON.stringify(mockBeneficiaries),
+      );
 
       const { result } = renderHook(() => useBeneficiaries());
 
@@ -65,7 +67,9 @@ describe('useBeneficiaries', () => {
     });
 
     it('handles non-array localStorage data gracefully', () => {
-      localStorageMock.getItem.mockReturnValue(JSON.stringify({ not: 'an array' }));
+      localStorageMock.getItem.mockReturnValue(
+        JSON.stringify({ not: 'an array' }),
+      );
 
       const { result } = renderHook(() => useBeneficiaries());
 
@@ -105,11 +109,11 @@ describe('useBeneficiaries', () => {
       ];
 
       vi.spyOn(global, 'fetch').mockResolvedValue(
-        new Response(JSON.stringify(mockBeneficiaries), { status: 200 })
+        new Response(JSON.stringify(mockBeneficiaries), { status: 200 }),
       );
 
       const { result } = renderHook(() =>
-        useBeneficiaries({ fetchFromApi: true, userId: 'user-123' })
+        useBeneficiaries({ fetchFromApi: true, userId: 'user-123' }),
       );
 
       expect(result.current.isLoaded).toBe(false);
@@ -120,7 +124,7 @@ describe('useBeneficiaries', () => {
 
       expect(result.current.beneficiaries).toEqual(mockBeneficiaries);
       expect(global.fetch).toHaveBeenCalledWith(
-        '/api/beneficiaries?userId=user-123'
+        '/api/beneficiaries?userId=user-123',
       );
     });
 
@@ -128,7 +132,7 @@ describe('useBeneficiaries', () => {
       vi.spyOn(global, 'fetch').mockRejectedValue(new Error('Network error'));
 
       const { result } = renderHook(() =>
-        useBeneficiaries({ fetchFromApi: true })
+        useBeneficiaries({ fetchFromApi: true }),
       );
 
       await waitFor(() => {
@@ -140,11 +144,11 @@ describe('useBeneficiaries', () => {
 
     it('handles API non-OK responses gracefully', async () => {
       vi.spyOn(global, 'fetch').mockResolvedValue(
-        new Response(null, { status: 500 })
+        new Response(null, { status: 500 }),
       );
 
       const { result } = renderHook(() =>
-        useBeneficiaries({ fetchFromApi: true })
+        useBeneficiaries({ fetchFromApi: true }),
       );
 
       await waitFor(() => {
@@ -156,11 +160,11 @@ describe('useBeneficiaries', () => {
 
     it('handles non-array API response gracefully', async () => {
       vi.spyOn(global, 'fetch').mockResolvedValue(
-        new Response(JSON.stringify({ data: 'not array' }), { status: 200 })
+        new Response(JSON.stringify({ data: 'not array' }), { status: 200 }),
       );
 
       const { result } = renderHook(() =>
-        useBeneficiaries({ fetchFromApi: true })
+        useBeneficiaries({ fetchFromApi: true }),
       );
 
       await waitFor(() => {
@@ -171,18 +175,31 @@ describe('useBeneficiaries', () => {
     });
 
     it('deduplicates concurrent API requests for same userId', async () => {
-      const mockBeneficiaries = [{ id: '1', name: 'Test', bankId: 1, bankName: 'B', bankCode: 'C', accountNumber: '123', accountName: 'A', createdAt: 0 }];
-      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(
-        new Response(JSON.stringify(mockBeneficiaries), { status: 200 })
-      );
+      const mockBeneficiaries = [
+        {
+          id: '1',
+          name: 'Test',
+          bankId: 1,
+          bankName: 'B',
+          bankCode: 'C',
+          accountNumber: '123',
+          accountName: 'A',
+          createdAt: 0,
+        },
+      ];
+      const fetchSpy = vi
+        .spyOn(global, 'fetch')
+        .mockResolvedValue(
+          new Response(JSON.stringify(mockBeneficiaries), { status: 200 }),
+        );
 
       const { result } = renderHook(() =>
-        useBeneficiaries({ fetchFromApi: true, userId: 'user-123' })
+        useBeneficiaries({ fetchFromApi: true, userId: 'user-123' }),
       );
 
       // Simulate another component using the same hook with same userId
       const { result: result2 } = renderHook(() =>
-        useBeneficiaries({ fetchFromApi: true, userId: 'user-123' })
+        useBeneficiaries({ fetchFromApi: true, userId: 'user-123' }),
       );
 
       await waitFor(() => {
@@ -197,16 +214,21 @@ describe('useBeneficiaries', () => {
     });
 
     it('does not deduplicate requests for different userIds', async () => {
-      const fetchSpy = vi.spyOn(global, 'fetch')
-        .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
-        .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }));
+      const fetchSpy = vi
+        .spyOn(global, 'fetch')
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify([]), { status: 200 }),
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify([]), { status: 200 }),
+        );
 
       const { result } = renderHook(() =>
-        useBeneficiaries({ fetchFromApi: true, userId: 'user-1' })
+        useBeneficiaries({ fetchFromApi: true, userId: 'user-1' }),
       );
 
       const { result: result2 } = renderHook(() =>
-        useBeneficiaries({ fetchFromApi: true, userId: 'user-2' })
+        useBeneficiaries({ fetchFromApi: true, userId: 'user-2' }),
       );
 
       await waitFor(() => {
@@ -239,9 +261,7 @@ describe('useBeneficiaries', () => {
       unmount();
 
       // Resolve the fetch after unmount — should not update state
-      resolveFetch(
-        new Response(JSON.stringify([]), { status: 200 }),
-      );
+      resolveFetch(new Response(JSON.stringify([]), { status: 200 }));
 
       await waitFor(() => {
         // After resolving, state should remain unchanged (not loaded)
@@ -252,11 +272,16 @@ describe('useBeneficiaries', () => {
 
     it('cancels in-flight request when userId changes', async () => {
       let resolveFirst!: (value: Response) => void;
-      const firstFetch = new Promise<Response>((resolve) => { resolveFirst = resolve; });
+      const firstFetch = new Promise<Response>((resolve) => {
+        resolveFirst = resolve;
+      });
       let resolveSecond!: (value: Response) => void;
-      const secondFetch = new Promise<Response>((resolve) => { resolveSecond = resolve; });
+      const secondFetch = new Promise<Response>((resolve) => {
+        resolveSecond = resolve;
+      });
 
-      const fetchSpy = vi.spyOn(global, 'fetch')
+      const fetchSpy = vi
+        .spyOn(global, 'fetch')
         .mockReturnValueOnce(firstFetch)
         .mockReturnValueOnce(secondFetch);
 
@@ -271,10 +296,32 @@ describe('useBeneficiaries', () => {
       rerender();
 
       // Resolve stale request after userId change — state should reflect second request result
-      const firstData = [{ id: '1', name: 'Old', bankId: 1, bankName: 'B', bankCode: 'B', accountNumber: '1', accountName: 'A', createdAt: 0 }];
+      const firstData = [
+        {
+          id: '1',
+          name: 'Old',
+          bankId: 1,
+          bankName: 'B',
+          bankCode: 'B',
+          accountNumber: '1',
+          accountName: 'A',
+          createdAt: 0,
+        },
+      ];
       resolveFirst(new Response(JSON.stringify(firstData), { status: 200 }));
 
-      const secondData = [{ id: '2', name: 'New', bankId: 2, bankName: 'C', bankCode: 'C', accountNumber: '2', accountName: 'B', createdAt: 0 }];
+      const secondData = [
+        {
+          id: '2',
+          name: 'New',
+          bankId: 2,
+          bankName: 'C',
+          bankCode: 'C',
+          accountNumber: '2',
+          accountName: 'B',
+          createdAt: 0,
+        },
+      ];
       resolveSecond(new Response(JSON.stringify(secondData), { status: 200 }));
 
       await waitFor(() => {
@@ -288,11 +335,17 @@ describe('useBeneficiaries', () => {
 
       const { unmount } = renderHook(() => useBeneficiaries());
 
-      expect(addEventListenerSpy).toHaveBeenCalledWith('keydown', expect.any(Function));
+      expect(addEventListenerSpy).toHaveBeenCalledWith(
+        'keydown',
+        expect.any(Function),
+      );
 
       unmount();
 
-      expect(removeEventListenerSpy).toHaveBeenCalledWith('keydown', expect.any(Function));
+      expect(removeEventListenerSpy).toHaveBeenCalledWith(
+        'keydown',
+        expect.any(Function),
+      );
     });
 
     it.skip('does not add event listener when window is undefined', () => {
@@ -323,7 +376,7 @@ describe('useBeneficiaries', () => {
           'TB',
           '123456789',
           'Test Account',
-          'Custom Name'
+          'Custom Name',
         );
       });
 
@@ -350,7 +403,7 @@ describe('useBeneficiaries', () => {
           'Test Bank',
           'TB',
           '123456789',
-          'Test Account'
+          'Test Account',
         );
       });
 
@@ -367,7 +420,7 @@ describe('useBeneficiaries', () => {
           'Test Bank',
           'TB',
           '123456789',
-          'Test Account'
+          'Test Account',
         );
         beneficiaryId = beneficiary.id;
       });
@@ -398,7 +451,13 @@ describe('useBeneficiaries', () => {
 
       let beneficiaryId: string;
       act(() => {
-        const beneficiary = result.current.addBeneficiary(1, 'Bank', 'B', '123', 'Account');
+        const beneficiary = result.current.addBeneficiary(
+          1,
+          'Bank',
+          'B',
+          '123',
+          'Account',
+        );
         beneficiaryId = beneficiary.id;
       });
 
@@ -416,7 +475,13 @@ describe('useBeneficiaries', () => {
 
       let beneficiaryId: string;
       act(() => {
-        const beneficiary = result.current.addBeneficiary(1, 'Bank', 'B', '123', 'Account');
+        const beneficiary = result.current.addBeneficiary(
+          1,
+          'Bank',
+          'B',
+          '123',
+          'Account',
+        );
         beneficiaryId = beneficiary.id;
       });
 
@@ -437,13 +502,13 @@ describe('useBeneficiaries', () => {
           'TB',
           '123456789',
           'Test Account',
-          'Custom Name'
+          'Custom Name',
         );
       });
 
       expect(localStorageMock.setItem).toHaveBeenCalledWith(
         'stellar_beneficiaries',
-        expect.stringContaining('Custom Name')
+        expect.stringContaining('Custom Name'),
       );
     });
 
@@ -727,7 +792,7 @@ describe('useBeneficiaries', () => {
 
     it('handles component unmount before isMounted effect runs', () => {
       const { unmount } = renderHook(() => useBeneficiaries());
-      
+
       // Immediately unmount - should not cause errors
       unmount();
     });
@@ -748,7 +813,9 @@ describe('useBeneficiaries', () => {
           createdAt: Date.now(),
         },
       ];
-      localStorageMock.getItem.mockReturnValue(JSON.stringify(mockBeneficiaries));
+      localStorageMock.getItem.mockReturnValue(
+        JSON.stringify(mockBeneficiaries),
+      );
 
       const { result } = renderHook(() => useBeneficiaries());
 

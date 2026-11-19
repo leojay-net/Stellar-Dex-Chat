@@ -1,11 +1,18 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { POST, GET } from './route';
 import { NextRequest } from 'next/server';
-import { setAdminSession, deleteAdminSession } from '../../_utils/requireAdminAuth';
+import {
+  setAdminSession,
+  deleteAdminSession,
+} from '../../_utils/requireAdminAuth';
 
 // Mock the dependencies
 vi.mock('@/lib/stellarContract', () => ({
-  getAdmin: vi.fn(() => Promise.resolve('GADMIN12345678901234567890123456789012345678901234567890123')),
+  getAdmin: vi.fn(() =>
+    Promise.resolve(
+      'GADMIN12345678901234567890123456789012345678901234567890123',
+    ),
+  ),
 }));
 
 vi.mock('@/lib/stellarSignature', () => ({
@@ -20,7 +27,7 @@ describe('Admin Auth Nonce Route', () => {
   it('GET should return a nonce', async () => {
     const response = await GET();
     const data = await response.json();
-    
+
     expect(response.status).toBe(200);
     expect(data).toHaveProperty('nonce');
     expect(data).toHaveProperty('expires');
@@ -33,11 +40,12 @@ describe('Admin Auth Nonce Route', () => {
     // First get a nonce
     const getResponse = await GET();
     const { nonce } = await getResponse.json();
-    
+
     // Create a mock signed transaction
     const mockSignature = 'mock-signed-xdr';
-    const mockAddress = 'GADMIN12345678901234567890123456789012345678901234567890123';
-    
+    const mockAddress =
+      'GADMIN12345678901234567890123456789012345678901234567890123';
+
     const request = new NextRequest('http://localhost/api/admin/auth/nonce', {
       method: 'POST',
       body: JSON.stringify({
@@ -46,10 +54,10 @@ describe('Admin Auth Nonce Route', () => {
         address: mockAddress,
       }),
     });
-    
+
     const response = await POST(request);
     const data = await response.json();
-    
+
     expect(response.status).toBe(200);
     expect(data.success).toBe(true);
   });
@@ -59,10 +67,10 @@ describe('Admin Auth Nonce Route', () => {
       method: 'POST',
       body: JSON.stringify({}),
     });
-    
+
     const response = await POST(request);
     const data = await response.json();
-    
+
     expect(response.status).toBe(400);
     expect(data.error).toContain('Missing required fields');
   });
@@ -76,10 +84,10 @@ describe('Admin Auth Nonce Route', () => {
         address: 'GADMIN12345678901234567890123456789012345678901234567890123',
       }),
     });
-    
+
     const response = await POST(request);
     const data = await response.json();
-    
+
     expect(response.status).toBe(400);
     expect(data.error).toContain('Invalid or expired nonce');
   });
@@ -87,11 +95,11 @@ describe('Admin Auth Nonce Route', () => {
   it('POST should reject non-admin address', async () => {
     const { verifySignedTransaction } = await import('@/lib/stellarSignature');
     vi.mocked(verifySignedTransaction).mockResolvedValueOnce(true);
-    
+
     // First get a nonce
     const getResponse = await GET();
     const { nonce } = await getResponse.json();
-    
+
     const request = new NextRequest('http://localhost/api/admin/auth/nonce', {
       method: 'POST',
       body: JSON.stringify({
@@ -100,10 +108,10 @@ describe('Admin Auth Nonce Route', () => {
         address: 'GNOTADMIN1234567890123456789012345678901234567890123456',
       }),
     });
-    
+
     const response = await POST(request);
     const data = await response.json();
-    
+
     expect(response.status).toBe(403);
     expect(data.error).toContain('Address is not the admin');
   });
@@ -111,11 +119,11 @@ describe('Admin Auth Nonce Route', () => {
   it('POST should reject invalid signature', async () => {
     const { verifySignedTransaction } = await import('@/lib/stellarSignature');
     vi.mocked(verifySignedTransaction).mockResolvedValueOnce(false);
-    
+
     // First get a nonce
     const getResponse = await GET();
     const { nonce } = await getResponse.json();
-    
+
     const request = new NextRequest('http://localhost/api/admin/auth/nonce', {
       method: 'POST',
       body: JSON.stringify({
@@ -124,10 +132,10 @@ describe('Admin Auth Nonce Route', () => {
         address: 'GADMIN12345678901234567890123456789012345678901234567890123',
       }),
     });
-    
+
     const response = await POST(request);
     const data = await response.json();
-    
+
     expect(response.status).toBe(401);
     expect(data.error).toContain('Invalid signature');
   });
@@ -136,40 +144,42 @@ describe('Admin Auth Nonce Route', () => {
 describe('Admin Session Management', () => {
   it('should set and validate admin session', () => {
     const sessionToken = 'test-session-token';
-    const address = 'GADMIN12345678901234567890123456789012345678901234567890123';
+    const address =
+      'GADMIN12345678901234567890123456789012345678901234567890123';
     const ttlMs = 30000;
-    
+
     setAdminSession(sessionToken, address, ttlMs);
-    
+
     // Session should be set
     const mockRequest = new Request('http://localhost', {
       headers: { cookie: `admin_session=${sessionToken}` },
     });
-    
+
     const { requireAdminAuth } = require('../../_utils/requireAdminAuth');
     const result = requireAdminAuth(mockRequest);
-    
+
     // Should return null (no error) for valid session
     expect(result).toBeNull();
   });
 
   it('should reject expired session', async () => {
     const sessionToken = 'expired-session-token';
-    const address = 'GADMIN12345678901234567890123456789012345678901234567890123';
+    const address =
+      'GADMIN12345678901234567890123456789012345678901234567890123';
     const ttlMs = 1; // 1ms - will expire immediately
-    
+
     setAdminSession(sessionToken, address, ttlMs);
-    
+
     // Wait for session to expire
-    await new Promise(resolve => setTimeout(resolve, 10));
-    
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
     const mockRequest = new Request('http://localhost', {
       headers: { cookie: `admin_session=${sessionToken}` },
     });
-    
+
     const { requireAdminAuth } = require('../../_utils/requireAdminAuth');
     const result = requireAdminAuth(mockRequest);
-    
+
     // Should return 401 error for expired session
     expect(result).not.toBeNull();
     expect(result?.status).toBe(401);
@@ -177,19 +187,20 @@ describe('Admin Session Management', () => {
 
   it('should delete session', () => {
     const sessionToken = 'delete-session-token';
-    const address = 'GADMIN12345678901234567890123456789012345678901234567890123';
+    const address =
+      'GADMIN12345678901234567890123456789012345678901234567890123';
     const ttlMs = 30000;
-    
+
     setAdminSession(sessionToken, address, ttlMs);
     deleteAdminSession(sessionToken);
-    
+
     const mockRequest = new Request('http://localhost', {
       headers: { cookie: `admin_session=${sessionToken}` },
     });
-    
+
     const { requireAdminAuth } = require('../../_utils/requireAdminAuth');
     const result = requireAdminAuth(mockRequest);
-    
+
     // Should return 401 error for deleted session
     expect(result).not.toBeNull();
     expect(result?.status).toBe(401);

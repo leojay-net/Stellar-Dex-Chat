@@ -67,7 +67,9 @@ describe('ChatInput - Wallet Disconnect Handling', () => {
     expect(
       screen.getAllByText('Wallet disconnected. Reconnect to continue.'),
     ).toHaveLength(2);
-    expect(screen.getByRole('status')).toHaveTextContent('Wallet disconnected. Reconnect to continue.');
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Wallet disconnected. Reconnect to continue.',
+    );
     expect(mockOnSendMessage).not.toHaveBeenCalled();
   });
 
@@ -102,8 +104,12 @@ describe('ChatInput - Wallet Disconnect Handling', () => {
     rerender(<ChatInput {...defaultProps} />);
 
     await waitFor(() => {
-      expect(screen.queryByText('Wallet disconnected. Reconnect to continue.')).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('Wallet disconnected. Reconnect to continue.'),
+      ).not.toBeInTheDocument();
     });
-    expect(screen.getByRole('status')).toHaveTextContent('Wallet reconnected. You can send messages.');
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Wallet reconnected. You can send messages.',
+    );
   });
 });

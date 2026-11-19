@@ -165,7 +165,6 @@ function StellarChatInterfaceContent() {
     error: statsError,
   } = useBridgeStats();
 
-
   useEffect(() => {
     setIsHydrated(true);
   }, []);
@@ -245,7 +244,10 @@ function StellarChatInterfaceContent() {
 
   useEffect(() => {
     pollHealth();
-    healthIntervalRef.current = setInterval(pollHealth, HEALTH_POLL_INTERVAL_MS);
+    healthIntervalRef.current = setInterval(
+      pollHealth,
+      HEALTH_POLL_INTERVAL_MS,
+    );
     return () => {
       if (healthIntervalRef.current) clearInterval(healthIntervalRef.current);
     };
@@ -287,7 +289,8 @@ function StellarChatInterfaceContent() {
 
     const pollQueueDepth = async () => {
       try {
-        const { getWithdrawalQueueDepth } = await import('@/lib/stellarContract');
+        const { getWithdrawalQueueDepth } =
+          await import('@/lib/stellarContract');
         const depth = await getWithdrawalQueueDepth();
         if (!cancelled) {
           setWithdrawalQueueDepth(depth);
@@ -499,647 +502,658 @@ function StellarChatInterfaceContent() {
 
   return (
     <div className="theme-app flex h-screen w-screen overflow-hidden transition-colors duration-300">
-        {/* Desktop sidebar - only rendered on lg+ viewports or when toggled */}
-        {!isMobile && (
+      {/* Desktop sidebar - only rendered on lg+ viewports or when toggled */}
+      {!isMobile && (
+        <div
+          className={`shrink-0 transition-all duration-300 ${showSidebar ? 'w-72' : 'w-20'}`}
+        >
+          {isLoading ? (
+            <SkeletonSidebar />
+          ) : (
+            <ChatHistorySidebar
+              isCollapsed={!showSidebar}
+              onLoadSession={(id) => {
+                loadChatSession(id);
+              }}
+            />
+          )}
+        </div>
+      )}
+      {/* Main */}
+      <div className="flex flex-col flex-1 min-w-0">
+        {/* Issue #996: deep-link error banner */}
+        {deepLinkState.status === 'not-found' && (
           <div
-            className={`shrink-0 transition-all duration-300 ${showSidebar ? 'w-72' : 'w-20'}`}
+            role="alert"
+            className="flex items-center gap-2 bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 text-sm px-4 py-2 border-b border-red-200 dark:border-red-800"
           >
-            {isLoading ? (
-              <SkeletonSidebar />
-            ) : (
-              <ChatHistorySidebar
-                isCollapsed={!showSidebar}
-                onLoadSession={(id) => {
-                  loadChatSession(id);
-                }}
-              />
-            )}
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>
+              Session&nbsp;
+              <code className="font-mono">{deepLinkState.sessionId}</code>
+              &nbsp;was not found. It may have been deleted or the link may be
+              invalid.
+            </span>
           </div>
         )}
-        {/* Main */}
-        <div className="flex flex-col flex-1 min-w-0">
-          {/* Issue #996: deep-link error banner */}
-          {deepLinkState.status === 'not-found' && (
-            <div
-              role="alert"
-              className="flex items-center gap-2 bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 text-sm px-4 py-2 border-b border-red-200 dark:border-red-800"
+        {/* Header */}
+        <header className="theme-surface theme-border flex-shrink-0 flex items-center justify-between px-4 py-3 border-b transition-colors duration-300">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowSidebar(!showSidebar)}
+              className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
             >
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              <span>
-                Session&nbsp;<code className="font-mono">{deepLinkState.sessionId}</code>&nbsp;was not found.
-                It may have been deleted or the link may be invalid.
-              </span>
-            </div>
-          )}
-          {/* Header */}
-          <header className="theme-surface theme-border flex-shrink-0 flex items-center justify-between px-4 py-3 border-b transition-colors duration-300">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setShowSidebar(!showSidebar)}
-                className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
-              >
-                {showSidebar ? (
-                  <X className="w-5 h-5" />
-                ) : (
-                  <Menu className="w-5 h-5" />
-                )}
-              </button>
-
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-[var(--color-primary)] flex items-center justify-center">
-                  <Star className="w-4 h-4 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-xl font-bold text-[var(--color-primary)]">
-                    {t('header.title')}
-                  </h1>
-                  <p
-                    className={`text-xs leading-none mt-0.5 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-                  >
-                    {t('header.subtitle')}
-                  </p>
-                </div>
-              </div>
-
-              {/* ── Health badge ─────────────────────────────────────────────── */}
-              <div
-                title={healthBadge.title}
-                aria-label={healthBadge.title}
-                role="status"
-                className={`hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium select-none ${
-                  isDarkMode
-                    ? 'bg-gray-800 text-gray-300'
-                    : 'bg-gray-100 text-gray-600'
-                }`}
-              >
-                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${healthBadge.dot}`} />
-                {healthBadge.label}
-              </div>
-              {/* ─────────────────────────────────────────────────────────────── */}
-
-              {/* ── Stellar connection status indicator (issue #1030) ─────────── */}
-              {(() => {
-                const connDot = !connection.isConnected
-                  ? 'bg-red-500'
-                  : isNetworkMismatch
-                    ? 'bg-amber-400'
-                    : 'bg-green-400';
-                const connTitle = !connection.isConnected
-                  ? 'Stellar: Disconnected'
-                  : isNetworkMismatch
-                    ? `Stellar: Network mismatch (${connection.network})`
-                    : `Stellar: Connected (${connection.network})`;
-                return (
-                  <button
-                    type="button"
-                    title={connTitle}
-                    aria-label={connTitle}
-                    onClick={() => setShowNetworkStatusModal(true)}
-                    className={`hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium transition-colors ${
-                      isDarkMode
-                        ? 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${connDot}`} />
-                    Stellar
-                  </button>
-                );
-              })()}
-              {/* ─────────────────────────────────────────────────────────────── */}
-            </div>
+              {showSidebar ? (
+                <X className="w-5 h-5" />
+              ) : (
+                <Menu className="w-5 h-5" />
+              )}
+            </button>
 
             <div className="flex items-center gap-2">
-              <button
-                onClick={clearChat}
-                title={t('header.new_chat_title')}
-                className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
-              >
-                <Plus className="w-5 h-5" />
-              </button>
-
-              <NotificationsCenterWrapper />
-
-              {/* Search history */}
-              <button
-                onClick={() => setShowSearch((v) => !v)}
-                title="Search chat history"
-                aria-label="Search chat history"
-                aria-pressed={showSearch}
-                className={`p-2 rounded-lg transition-colors ${showSearch ? (isDarkMode ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-900') : (isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}`}
-              >
-                <Search className="w-5 h-5" />
-              </button>
-
-              {/* Split-view comparison */}
-              <button
-                onClick={() => {
-                  if (splitView.state.isOpen) {
-                    splitView.close();
-                  } else {
-                    splitView.open(sessions[0]?.id ?? '', sessions[1]?.id);
-                  }
-                }}
-                title="Compare threads side by side"
-                aria-label="Toggle split-view"
-                aria-pressed={splitView.state.isOpen}
-                className={`p-2 rounded-lg transition-colors ${splitView.state.isOpen ? (isDarkMode ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-900') : (isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}`}
-              >
-                <Columns2 className="w-5 h-5" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsReceiptDrawerOpen(true)}
-                title={t('header.receipts')}
-                aria-label={t('header.receipts')}
-                className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
-              >
-                <Receipt className="w-5 h-5" />
-              </button>
-
-              <button
-                onClick={() => setShowSettings(true)}
-                title={t('header.settings_title')}
-                aria-label={t('header.settings_aria_label')}
-                className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
-              >
-                <Settings className="w-5 h-5" />
-              </button>
-
-              <button
-                onClick={toggleDarkMode}
-                className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
-              >
-                {isDarkMode ? (
-                  <Sun className="w-5 h-5" />
-                ) : (
-                  <Moon className="w-5 h-5" />
-                )}
-              </button>
-
-              {connection.isConnected ? (
-                <div className="flex items-center gap-2">
-                  <div ref={accountDropdownRef} className="relative flex items-center gap-1">
-                    <button
-                      onClick={() =>
-                        accounts.length > 1 &&
-                        setShowAccountDropdown(!showAccountDropdown)
-                      }
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${isDarkMode ? 'bg-gray-800 text-gray-200 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'} ${accounts.length > 1 ? 'cursor-pointer' : 'cursor-default'}`}
-                    >
-                      <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />
-                      <span className="font-mono">
-                        {connection.address.slice(0, 6)}…
-                        {connection.address.slice(-4)}
-                      </span>
-                      {xlmBalance && (
-                        <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                          — {xlmBalance} XLM
-                        </span>
-                      )}
-                      {accounts.length > 1 && (
-                        <ChevronDown
-                          className={`w-3 h-3 transition-transform ${showAccountDropdown ? 'rotate-180' : ''}`}
-                        />
-                      )}
-                    </button>
-                    <CopyButton
-                      value={connection.address}
-                      iconClassName="w-3 h-3"
-                      className="p-0.5"
-                    />
-                    {showAccountDropdown && accounts.length > 1 && (
-                      <div
-                        className={`absolute right-0 top-full mt-1 w-56 rounded-lg shadow-lg border z-50 ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}
-                      >
-                        <div
-                          className={`px-3 py-2 text-xs font-semibold border-b ${isDarkMode ? 'text-gray-400 border-gray-700' : 'text-gray-500 border-gray-200'}`}
-                        >
-                          {t('header.switch_account')}
-                        </div>
-                        {accounts.map((account, idx) => (
-                          <div
-                            key={account.address}
-                            className={`flex items-center gap-1 px-1.5 py-1 ${idx === selectedAccountIndex ? (isDarkMode ? 'bg-blue-900/50 text-blue-400' : 'bg-blue-50 text-blue-600') : ''}`}
-                          >
-                            <button
-                              onClick={async () => {
-                                await selectAccount(idx);
-                                setShowAccountDropdown(false);
-                              }}
-                              className={`flex-1 flex items-center gap-2 px-1.5 py-1 text-xs rounded transition-colors ${idx === selectedAccountIndex ? '' : isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-50'}`}
-                            >
-                              <User className="w-3.5 h-3.5 flex-shrink-0" />
-                              <span className="font-mono truncate">
-                                {account.address.slice(0, 6)}…
-                                {account.address.slice(-4)}
-                              </span>
-                              {idx === selectedAccountIndex && (
-                                <span
-                                  className={`ml-auto text-[10px] px-1.5 py-0.5 rounded ${isDarkMode ? 'bg-blue-900/50' : 'bg-blue-100'}`}
-                                >
-                                  {t('header.active_account')}
-                                </span>
-                              )}
-                            </button>
-                            <CopyButton
-                              value={account.address}
-                              iconClassName="w-3 h-3"
-                              className="p-0.5"
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    onClick={disconnect}
-                    title={t('header.disconnect_title')}
-                    className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
-                  >
-                    <LogOut className="w-4 h-4" />
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={connect}
-                  className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-sm font-medium rounded-lg transition-all"
-                >
-                  <Wallet className="w-4 h-4" />
-                  {t('header.connect_freighter')}
-                </button>
-              )}
-            </div>
-          </header>
-
-          {walletError && (
-            <div
-              className="flex-shrink-0 justify-center py-2 px-4 text-sm font-medium text-red-100 bg-red-500/90"
-              role="alert"
-              aria-live="polite"
-            >
-              {walletError}
-            </div>
-          )}
-
-          {/* Network status */}
-          {(!isOnline || queuedReadables > 0 || showReconnectedNotice) && (
-            <div
-              className={`flex items-center justify-between gap-3 px-4 py-2 text-xs border-b transition-all duration-300 ${
-                !isOnline
-                  ? 'bg-amber-100 border-amber-200 text-amber-800'
-                  : 'bg-blue-50 border-blue-100 text-blue-800'
-              }`}
-              role="status"
-              aria-live="polite"
-            >
-              <div className="flex items-center gap-2">
-                {!isOnline ? (
-                  <AlertCircle className="w-4 h-4 animate-pulse" />
-                ) : (
-                  <RefreshCcw className="w-4 h-4 animate-spin" />
-                )}
-                <span>
-                  {!isOnline ? t('common.offline_detected') : t('common.online')}
-                  {queuedReadables > 0 &&
-                    ` (${queuedReadables} ${t('common.queued')})`}
-                </span>
+              <div className="w-8 h-8 rounded-full bg-[var(--color-primary)] flex items-center justify-center">
+                <Star className="w-4 h-4 text-white" />
               </div>
-              {queuedReadables > 0 && isOnline && (
-                <button
-                  onClick={() => void processQueue()}
-                  className="px-2 py-1 bg-white/50 hover:bg-white/80 rounded border border-current font-medium transition-colors"
+              <div>
+                <h1 className="text-xl font-bold text-[var(--color-primary)]">
+                  {t('header.title')}
+                </h1>
+                <p
+                  className={`text-xs leading-none mt-0.5 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
                 >
-                  {t('common.retry_now')}
-                </button>
-              )}
+                  {t('header.subtitle')}
+                </p>
+              </div>
             </div>
-          )}
 
-          {/* Network badge */}
-          {connection.isConnected && (
+            {/* ── Health badge ─────────────────────────────────────────────── */}
             <div
-              className={`flex-shrink-0 flex flex-col items-center gap-1 py-1.5 text-xs ${
-                isNetworkMismatch
-                  ? isDarkMode
-                    ? 'bg-red-900/40 text-red-400'
-                    : 'bg-red-100 text-red-700'
-                  : isDarkMode
-                    ? 'bg-gray-800/50 text-gray-400'
-                    : 'bg-gray-50 text-gray-700'
-              }`}
+              title={healthBadge.title}
+              aria-label={healthBadge.title}
               role="status"
-              aria-live="polite"
-            >
-              <span className="flex items-center gap-1.5">
-                <span
-                  className={`inline-block w-2 h-2 rounded-full ${
-                    isNetworkMismatch ? 'bg-red-500' : 'bg-green-500'
-                  }`}
-                />
-                {t('common.network')}:{' '}
-                <span
-                  className={`font-medium ${
-                    isNetworkMismatch
-                      ? isDarkMode
-                        ? 'text-red-400'
-                        : 'text-red-700'
-                      : isDarkMode
-                        ? 'text-blue-400'
-                        : 'text-blue-700'
-                  }`}
-                >
-                  {connection.network || t('common.unknown')}
-                </span>
-                {isNetworkMismatch && (
-                  <span className="font-semibold">
-                    ({t('common.expected')} {EXPECTED_NETWORK})
-                  </span>
-                )}
-                {!isNetworkMismatch && (
-                  <>
-                    {' · '}
-                    {isAdmin && (
-                      <>
-                        <button
-                          onClick={() => {
-                            setIsAdminMode(true);
-                            setShowModal(true);
-                          }}
-                          className="inline-flex items-center gap-2 text-blue-400 hover:text-blue-300 underline"
-                        >
-                          {t('common.withdraw_xlm')}
-                          <span
-                            className={`inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[10px] font-semibold no-underline ${withdrawalQueueTone}`}
-                            title={
-                              withdrawalQueueDepth === null
-                                ? 'Withdrawal queue unavailable'
-                                : `Withdrawal queue depth: ${withdrawalQueueDepth}`
-                            }
-                          >
-                            {withdrawalQueueDepth ?? '--'}
-                          </span>
-                        </button>
-                        {' · '}
-                      </>
-                    )}
-                    <button
-                      onClick={() => {
-                        setIsAdminMode(false);
-                        setShowModal(true);
-                      }}
-                      className="text-blue-400 hover:text-blue-300 underline"
-                    >
-                      {t('common.deposit_xlm')}
-                    </button>
-                  </>
-                )}
-              </span>
-              {isNetworkMismatch && (
-                <span className="flex items-center gap-1 text-[11px]">
-                  <AlertCircle className="w-3.5 h-3.5" />
-                  {t('common.network_mismatch_warning', {
-                    expectedNetwork: EXPECTED_NETWORK,
-                  })}
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* Bridge Stats Bar */}
-          {connection.isConnected && (
-            <div
-              className={`flex-shrink-0 py-2 px-4 text-xs ${
+              className={`hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium select-none ${
                 isDarkMode
-                  ? 'bg-gray-800/30 text-gray-300'
-                  : 'bg-gray-100 text-gray-700'
+                  ? 'bg-gray-800 text-gray-300'
+                  : 'bg-gray-100 text-gray-600'
               }`}
-              role="status"
-              aria-live="polite"
             >
-              {statsError ? (
-                <span className="text-red-400">{statsError}</span>
-              ) : statsLoading ? (
-                <span className="text-gray-500">{t('common.loading_stats')}</span>
-              ) : (
-                <div className="flex flex-col gap-1 sm:flex-row sm:gap-4 sm:items-center">
-                  <span className="font-medium">
-                    {t('common.bridge_balance')}:{' '}
-                    <span
-                      className={isDarkMode ? 'text-blue-400' : 'text-blue-700'}
-                    >
-                      {balance !== null ? stroopsToDisplay(balance) : '—'} XLM
-                    </span>
-                  </span>
-                  <span className="font-medium">
-                    {t('common.deposit_limit')}:{' '}
-                    <span
-                      className={isDarkMode ? 'text-blue-400' : 'text-blue-700'}
-                    >
-                      {limit !== null ? stroopsToDisplay(limit) : '—'} XLM
-                    </span>
-                  </span>
-                  <span className="font-medium">
-                    Total Deposited:{' '}
-                    <span
-                      className={isDarkMode ? 'text-blue-400' : 'text-blue-700'}
-                    >
-                      {totalDeposited !== null
-                        ? stroopsToDisplay(totalDeposited)
-                        : '—'}{' '}
-                      XLM
-                    </span>
-                  </span>
-                </div>
-              )}
+              <span
+                className={`w-2 h-2 rounded-full flex-shrink-0 ${healthBadge.dot}`}
+              />
+              {healthBadge.label}
             </div>
-          )}
+            {/* ─────────────────────────────────────────────────────────────── */}
 
-          {/* Messages */}
-          <div className="flex-1 min-h-0 flex flex-col">
-            {!isHydrated || (isLoading && messages.length === 0) ? (
-              <div
-                role="status"
-                aria-live="polite"
-                aria-atomic="true"
-                className="flex-1"
-              >
-                <SkeletonChat />
+            {/* ── Stellar connection status indicator (issue #1030) ─────────── */}
+            {(() => {
+              const connDot = !connection.isConnected
+                ? 'bg-red-500'
+                : isNetworkMismatch
+                  ? 'bg-amber-400'
+                  : 'bg-green-400';
+              const connTitle = !connection.isConnected
+                ? 'Stellar: Disconnected'
+                : isNetworkMismatch
+                  ? `Stellar: Network mismatch (${connection.network})`
+                  : `Stellar: Connected (${connection.network})`;
+              return (
+                <button
+                  type="button"
+                  title={connTitle}
+                  aria-label={connTitle}
+                  onClick={() => setShowNetworkStatusModal(true)}
+                  className={`hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium transition-colors ${
+                    isDarkMode
+                      ? 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full flex-shrink-0 ${connDot}`}
+                  />
+                  Stellar
+                </button>
+              );
+            })()}
+            {/* ─────────────────────────────────────────────────────────────── */}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={clearChat}
+              title={t('header.new_chat_title')}
+              className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
+            >
+              <Plus className="w-5 h-5" />
+            </button>
+
+            <NotificationsCenterWrapper />
+
+            {/* Search history */}
+            <button
+              onClick={() => setShowSearch((v) => !v)}
+              title="Search chat history"
+              aria-label="Search chat history"
+              aria-pressed={showSearch}
+              className={`p-2 rounded-lg transition-colors ${showSearch ? (isDarkMode ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-900') : isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
+            >
+              <Search className="w-5 h-5" />
+            </button>
+
+            {/* Split-view comparison */}
+            <button
+              onClick={() => {
+                if (splitView.state.isOpen) {
+                  splitView.close();
+                } else {
+                  splitView.open(sessions[0]?.id ?? '', sessions[1]?.id);
+                }
+              }}
+              title="Compare threads side by side"
+              aria-label="Toggle split-view"
+              aria-pressed={splitView.state.isOpen}
+              className={`p-2 rounded-lg transition-colors ${splitView.state.isOpen ? (isDarkMode ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-900') : isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
+            >
+              <Columns2 className="w-5 h-5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsReceiptDrawerOpen(true)}
+              title={t('header.receipts')}
+              aria-label={t('header.receipts')}
+              className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
+            >
+              <Receipt className="w-5 h-5" />
+            </button>
+
+            <button
+              onClick={() => setShowSettings(true)}
+              title={t('header.settings_title')}
+              aria-label={t('header.settings_aria_label')}
+              className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
+            >
+              <Settings className="w-5 h-5" />
+            </button>
+
+            <button
+              onClick={toggleDarkMode}
+              className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
+            >
+              {isDarkMode ? (
+                <Sun className="w-5 h-5" />
+              ) : (
+                <Moon className="w-5 h-5" />
+              )}
+            </button>
+
+            {connection.isConnected ? (
+              <div className="flex items-center gap-2">
+                <div
+                  ref={accountDropdownRef}
+                  className="relative flex items-center gap-1"
+                >
+                  <button
+                    onClick={() =>
+                      accounts.length > 1 &&
+                      setShowAccountDropdown(!showAccountDropdown)
+                    }
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${isDarkMode ? 'bg-gray-800 text-gray-200 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'} ${accounts.length > 1 ? 'cursor-pointer' : 'cursor-default'}`}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />
+                    <span className="font-mono">
+                      {connection.address.slice(0, 6)}…
+                      {connection.address.slice(-4)}
+                    </span>
+                    {xlmBalance && (
+                      <span
+                        className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+                      >
+                        — {xlmBalance} XLM
+                      </span>
+                    )}
+                    {accounts.length > 1 && (
+                      <ChevronDown
+                        className={`w-3 h-3 transition-transform ${showAccountDropdown ? 'rotate-180' : ''}`}
+                      />
+                    )}
+                  </button>
+                  <CopyButton
+                    value={connection.address}
+                    iconClassName="w-3 h-3"
+                    className="p-0.5"
+                  />
+                  {showAccountDropdown && accounts.length > 1 && (
+                    <div
+                      className={`absolute right-0 top-full mt-1 w-56 rounded-lg shadow-lg border z-50 ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}
+                    >
+                      <div
+                        className={`px-3 py-2 text-xs font-semibold border-b ${isDarkMode ? 'text-gray-400 border-gray-700' : 'text-gray-500 border-gray-200'}`}
+                      >
+                        {t('header.switch_account')}
+                      </div>
+                      {accounts.map((account, idx) => (
+                        <div
+                          key={account.address}
+                          className={`flex items-center gap-1 px-1.5 py-1 ${idx === selectedAccountIndex ? (isDarkMode ? 'bg-blue-900/50 text-blue-400' : 'bg-blue-50 text-blue-600') : ''}`}
+                        >
+                          <button
+                            onClick={async () => {
+                              await selectAccount(idx);
+                              setShowAccountDropdown(false);
+                            }}
+                            className={`flex-1 flex items-center gap-2 px-1.5 py-1 text-xs rounded transition-colors ${idx === selectedAccountIndex ? '' : isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-50'}`}
+                          >
+                            <User className="w-3.5 h-3.5 flex-shrink-0" />
+                            <span className="font-mono truncate">
+                              {account.address.slice(0, 6)}…
+                              {account.address.slice(-4)}
+                            </span>
+                            {idx === selectedAccountIndex && (
+                              <span
+                                className={`ml-auto text-[10px] px-1.5 py-0.5 rounded ${isDarkMode ? 'bg-blue-900/50' : 'bg-blue-100'}`}
+                              >
+                                {t('header.active_account')}
+                              </span>
+                            )}
+                          </button>
+                          <CopyButton
+                            value={account.address}
+                            iconClassName="w-3 h-3"
+                            className="p-0.5"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={disconnect}
+                  title={t('header.disconnect_title')}
+                  className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
               </div>
             ) : (
-              <ErrorBoundary
-                isDarkMode={isDarkMode}
-                title="Chat unavailable. Please refresh."
-                message="Something went wrong while loading the conversation."
-                retryLabel="Retry"
-                onRetry={() => window.location.reload()}
+              <button
+                onClick={connect}
+                className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-sm font-medium rounded-lg transition-all"
               >
-                <ChatMessages
-                  messages={messages}
-                  onActionClick={handleActionClick}
-                  onRetry={handleRetryMessage}
-                  isLoading={isLoading}
-                />
-              </ErrorBoundary>
+                <Wallet className="w-4 h-4" />
+                {t('header.connect_freighter')}
+              </button>
             )}
-            <ChatInput
-              onSendMessage={sendMessage}
-              onCancelRequest={cancelPendingRequest}
-              onNewChat={clearChat}
-              onOpenHistory={() => setShowSidebar(true)}
-              onOpenBridgeModal={() => {
-                setIsAdminMode(false);
-                setShowModal(true);
-              }}
-              isLoading={isLoading}
-              sessionId={currentSessionId}
-              placeholder="Ask about XLM rates, deposit, or anything Stellar…"
-            />
-            <div className="px-6 pb-4">
-              <WalletConnectionTimeline
-                isConnected={connection.isConnected}
-                isNetworkMismatch={isNetworkMismatch}
-                isConnecting={false}
-                contextMode={isAdmin ? 'advanced' : 'simple'}
-                onRetry={connect}
-              />
+          </div>
+        </header>
+
+        {walletError && (
+          <div
+            className="flex-shrink-0 justify-center py-2 px-4 text-sm font-medium text-red-100 bg-red-500/90"
+            role="alert"
+            aria-live="polite"
+          >
+            {walletError}
+          </div>
+        )}
+
+        {/* Network status */}
+        {(!isOnline || queuedReadables > 0 || showReconnectedNotice) && (
+          <div
+            className={`flex items-center justify-between gap-3 px-4 py-2 text-xs border-b transition-all duration-300 ${
+              !isOnline
+                ? 'bg-amber-100 border-amber-200 text-amber-800'
+                : 'bg-blue-50 border-blue-100 text-blue-800'
+            }`}
+            role="status"
+            aria-live="polite"
+          >
+            <div className="flex items-center gap-2">
+              {!isOnline ? (
+                <AlertCircle className="w-4 h-4 animate-pulse" />
+              ) : (
+                <RefreshCcw className="w-4 h-4 animate-spin" />
+              )}
+              <span>
+                {!isOnline ? t('common.offline_detected') : t('common.online')}
+                {queuedReadables > 0 &&
+                  ` (${queuedReadables} ${t('common.queued')})`}
+              </span>
             </div>
+            {queuedReadables > 0 && isOnline && (
+              <button
+                onClick={() => void processQueue()}
+                className="px-2 py-1 bg-white/50 hover:bg-white/80 rounded border border-current font-medium transition-colors"
+              >
+                {t('common.retry_now')}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Network badge */}
+        {connection.isConnected && (
+          <div
+            className={`flex-shrink-0 flex flex-col items-center gap-1 py-1.5 text-xs ${
+              isNetworkMismatch
+                ? isDarkMode
+                  ? 'bg-red-900/40 text-red-400'
+                  : 'bg-red-100 text-red-700'
+                : isDarkMode
+                  ? 'bg-gray-800/50 text-gray-400'
+                  : 'bg-gray-50 text-gray-700'
+            }`}
+            role="status"
+            aria-live="polite"
+          >
+            <span className="flex items-center gap-1.5">
+              <span
+                className={`inline-block w-2 h-2 rounded-full ${
+                  isNetworkMismatch ? 'bg-red-500' : 'bg-green-500'
+                }`}
+              />
+              {t('common.network')}:{' '}
+              <span
+                className={`font-medium ${
+                  isNetworkMismatch
+                    ? isDarkMode
+                      ? 'text-red-400'
+                      : 'text-red-700'
+                    : isDarkMode
+                      ? 'text-blue-400'
+                      : 'text-blue-700'
+                }`}
+              >
+                {connection.network || t('common.unknown')}
+              </span>
+              {isNetworkMismatch && (
+                <span className="font-semibold">
+                  ({t('common.expected')} {EXPECTED_NETWORK})
+                </span>
+              )}
+              {!isNetworkMismatch && (
+                <>
+                  {' · '}
+                  {isAdmin && (
+                    <>
+                      <button
+                        onClick={() => {
+                          setIsAdminMode(true);
+                          setShowModal(true);
+                        }}
+                        className="inline-flex items-center gap-2 text-blue-400 hover:text-blue-300 underline"
+                      >
+                        {t('common.withdraw_xlm')}
+                        <span
+                          className={`inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[10px] font-semibold no-underline ${withdrawalQueueTone}`}
+                          title={
+                            withdrawalQueueDepth === null
+                              ? 'Withdrawal queue unavailable'
+                              : `Withdrawal queue depth: ${withdrawalQueueDepth}`
+                          }
+                        >
+                          {withdrawalQueueDepth ?? '--'}
+                        </span>
+                      </button>
+                      {' · '}
+                    </>
+                  )}
+                  <button
+                    onClick={() => {
+                      setIsAdminMode(false);
+                      setShowModal(true);
+                    }}
+                    className="text-blue-400 hover:text-blue-300 underline"
+                  >
+                    {t('common.deposit_xlm')}
+                  </button>
+                </>
+              )}
+            </span>
+            {isNetworkMismatch && (
+              <span className="flex items-center gap-1 text-[11px]">
+                <AlertCircle className="w-3.5 h-3.5" />
+                {t('common.network_mismatch_warning', {
+                  expectedNetwork: EXPECTED_NETWORK,
+                })}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Bridge Stats Bar */}
+        {connection.isConnected && (
+          <div
+            className={`flex-shrink-0 py-2 px-4 text-xs ${
+              isDarkMode
+                ? 'bg-gray-800/30 text-gray-300'
+                : 'bg-gray-100 text-gray-700'
+            }`}
+            role="status"
+            aria-live="polite"
+          >
+            {statsError ? (
+              <span className="text-red-400">{statsError}</span>
+            ) : statsLoading ? (
+              <span className="text-gray-500">{t('common.loading_stats')}</span>
+            ) : (
+              <div className="flex flex-col gap-1 sm:flex-row sm:gap-4 sm:items-center">
+                <span className="font-medium">
+                  {t('common.bridge_balance')}:{' '}
+                  <span
+                    className={isDarkMode ? 'text-blue-400' : 'text-blue-700'}
+                  >
+                    {balance !== null ? stroopsToDisplay(balance) : '—'} XLM
+                  </span>
+                </span>
+                <span className="font-medium">
+                  {t('common.deposit_limit')}:{' '}
+                  <span
+                    className={isDarkMode ? 'text-blue-400' : 'text-blue-700'}
+                  >
+                    {limit !== null ? stroopsToDisplay(limit) : '—'} XLM
+                  </span>
+                </span>
+                <span className="font-medium">
+                  Total Deposited:{' '}
+                  <span
+                    className={isDarkMode ? 'text-blue-400' : 'text-blue-700'}
+                  >
+                    {totalDeposited !== null
+                      ? stroopsToDisplay(totalDeposited)
+                      : '—'}{' '}
+                    XLM
+                  </span>
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Messages */}
+        <div className="flex-1 min-h-0 flex flex-col">
+          {!isHydrated || (isLoading && messages.length === 0) ? (
+            <div
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+              className="flex-1"
+            >
+              <SkeletonChat />
+            </div>
+          ) : (
+            <ErrorBoundary
+              isDarkMode={isDarkMode}
+              title="Chat unavailable. Please refresh."
+              message="Something went wrong while loading the conversation."
+              retryLabel="Retry"
+              onRetry={() => window.location.reload()}
+            >
+              <ChatMessages
+                messages={messages}
+                onActionClick={handleActionClick}
+                onRetry={handleRetryMessage}
+                isLoading={isLoading}
+              />
+            </ErrorBoundary>
+          )}
+          <ChatInput
+            onSendMessage={sendMessage}
+            onCancelRequest={cancelPendingRequest}
+            onNewChat={clearChat}
+            onOpenHistory={() => setShowSidebar(true)}
+            onOpenBridgeModal={() => {
+              setIsAdminMode(false);
+              setShowModal(true);
+            }}
+            isLoading={isLoading}
+            sessionId={currentSessionId}
+            placeholder="Ask about XLM rates, deposit, or anything Stellar…"
+          />
+          <div className="px-6 pb-4">
+            <WalletConnectionTimeline
+              isConnected={connection.isConnected}
+              isNetworkMismatch={isNetworkMismatch}
+              isConnecting={false}
+              contextMode={isAdmin ? 'advanced' : 'simple'}
+              onRetry={connect}
+            />
           </div>
         </div>
-
-        {/* Mobile slide-out drawer - only rendered when isSheetMounted */}
-        {isSheetMounted && (
-          <>
-            {/* Backdrop */}
-            <div
-              className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm"
-              onClick={closeSheet}
-              aria-hidden="true"
-            />
-
-            {/* Drawer */}
-            <div
-              ref={sheetRef}
-              role="dialog"
-              aria-modal="true"
-              aria-label="Chat history"
-              tabIndex={-1}
-              className={`fixed top-0 left-0 bottom-0 w-80 z-[70] flex flex-col will-change-transform focus:outline-none ${
-                isDarkMode
-                  ? 'bg-gray-900 border-r border-gray-800'
-                  : 'bg-white border-r border-gray-200'
-              }`}
-            >
-              <ChatHistorySidebar
-                onLoadSession={(id) => {
-                  loadChatSession(id);
-                  closeSheet();
-                }}
-                onClose={closeSheet}
-              />
-            </div>
-          </>
-        )}
-
-        {/* Split-view comparison overlay */}
-        <SplitViewComparisonWrapper splitView={splitView} sessions={sessions} />
-
-        {/* Search panel — slide-over on the right */}
-        {showSearch && (
-          <div className="fixed inset-y-0 right-0 z-40 w-80 shadow-2xl flex flex-col">
-            <ChatSearchPanelWrapper
-              sessions={sessions}
-              onSelectResult={(sessionId: string) => {
-                loadChatSession(sessionId);
-                setShowSearch(false);
-              }}
-              onClose={() => setShowSearch(false)}
-            />
-          </div>
-        )}
-
-        {/* Deposit / Withdraw Modal */}
-        <StellarFiatModalWrapper
-          isOpen={showModal}
-          onClose={() => {
-            setShowModal(false);
-            setDefaultAmount('');
-            setIsAdminMode(false);
-          }}
-          isAdminMode={isAdminMode}
-          defaultAmount={defaultAmount}
-          fiatCurrency={fiatCurrency}
-          onDepositSuccess={handleDepositSuccess}
-          messages={messages}
-        />
-
-        {/* Bank details & fiat payout modal */}
-        <BankDetailsModalWrapper
-          isOpen={showBankDetails}
-          onClose={() => setShowBankDetails(false)}
-          xlmAmount={bankDetailsXlmAmount}
-        />
-
-        {/* Settings panel */}
-        <UserSettingsWrapper
-          isOpen={showSettings}
-          onClose={() => setShowSettings(false)}
-        />
-
-        {/* Network status modal (issue #1030) */}
-        <NetworkStatusModalWrapper
-          isOpen={showNetworkStatusModal}
-          onClose={() => setShowNetworkStatusModal(false)}
-        />
-
-        {/* Receipt Drawer */}
-        <ReceiptDrawer
-          isOpen={isReceiptDrawerOpen}
-          onClose={() => setIsReceiptDrawerOpen(false)}
-          transactions={txHistory}
-          onClearHistory={clearTxHistory}
-        />
-
-        {/* Session expired banner */}
-        {sessionExpired && (
-          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-md w-full px-4">
-            <div
-              className={`flex items-center gap-3 p-4 rounded-lg shadow-lg border ${isDarkMode ? 'bg-gray-800 border-yellow-600/50' : 'bg-white border-yellow-500'}`}
-            >
-              <AlertCircle className="w-5 h-5 text-yellow-500 flex-shrink-0" />
-              <div className="flex-1">
-                <p
-                  className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-                >
-                  Wallet Session Expired
-                </p>
-                <p
-                  className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-                >
-                  Your wallet session has expired after 24 hours. Please reconnect
-                  to continue.
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  clearSessionExpired();
-                  connect();
-                }}
-                className="flex-shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg bg-yellow-500 hover:bg-yellow-600 text-white transition-colors"
-              >
-                Reconnect
-              </button>
-              <button
-                onClick={clearSessionExpired}
-                className={`flex-shrink-0 p-1 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* Mobile slide-out drawer - only rendered when isSheetMounted */}
+      {isSheetMounted && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm"
+            onClick={closeSheet}
+            aria-hidden="true"
+          />
+
+          {/* Drawer */}
+          <div
+            ref={sheetRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Chat history"
+            tabIndex={-1}
+            className={`fixed top-0 left-0 bottom-0 w-80 z-[70] flex flex-col will-change-transform focus:outline-none ${
+              isDarkMode
+                ? 'bg-gray-900 border-r border-gray-800'
+                : 'bg-white border-r border-gray-200'
+            }`}
+          >
+            <ChatHistorySidebar
+              onLoadSession={(id) => {
+                loadChatSession(id);
+                closeSheet();
+              }}
+              onClose={closeSheet}
+            />
+          </div>
+        </>
+      )}
+
+      {/* Split-view comparison overlay */}
+      <SplitViewComparisonWrapper splitView={splitView} sessions={sessions} />
+
+      {/* Search panel — slide-over on the right */}
+      {showSearch && (
+        <div className="fixed inset-y-0 right-0 z-40 w-80 shadow-2xl flex flex-col">
+          <ChatSearchPanelWrapper
+            sessions={sessions}
+            onSelectResult={(sessionId: string) => {
+              loadChatSession(sessionId);
+              setShowSearch(false);
+            }}
+            onClose={() => setShowSearch(false)}
+          />
+        </div>
+      )}
+
+      {/* Deposit / Withdraw Modal */}
+      <StellarFiatModalWrapper
+        isOpen={showModal}
+        onClose={() => {
+          setShowModal(false);
+          setDefaultAmount('');
+          setIsAdminMode(false);
+        }}
+        isAdminMode={isAdminMode}
+        defaultAmount={defaultAmount}
+        fiatCurrency={fiatCurrency}
+        onDepositSuccess={handleDepositSuccess}
+        messages={messages}
+      />
+
+      {/* Bank details & fiat payout modal */}
+      <BankDetailsModalWrapper
+        isOpen={showBankDetails}
+        onClose={() => setShowBankDetails(false)}
+        xlmAmount={bankDetailsXlmAmount}
+      />
+
+      {/* Settings panel */}
+      <UserSettingsWrapper
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+      />
+
+      {/* Network status modal (issue #1030) */}
+      <NetworkStatusModalWrapper
+        isOpen={showNetworkStatusModal}
+        onClose={() => setShowNetworkStatusModal(false)}
+      />
+
+      {/* Receipt Drawer */}
+      <ReceiptDrawer
+        isOpen={isReceiptDrawerOpen}
+        onClose={() => setIsReceiptDrawerOpen(false)}
+        transactions={txHistory}
+        onClearHistory={clearTxHistory}
+      />
+
+      {/* Session expired banner */}
+      {sessionExpired && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-md w-full px-4">
+          <div
+            className={`flex items-center gap-3 p-4 rounded-lg shadow-lg border ${isDarkMode ? 'bg-gray-800 border-yellow-600/50' : 'bg-white border-yellow-500'}`}
+          >
+            <AlertCircle className="w-5 h-5 text-yellow-500 flex-shrink-0" />
+            <div className="flex-1">
+              <p
+                className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+              >
+                Wallet Session Expired
+              </p>
+              <p
+                className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+              >
+                Your wallet session has expired after 24 hours. Please reconnect
+                to continue.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                clearSessionExpired();
+                connect();
+              }}
+              className="flex-shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg bg-yellow-500 hover:bg-yellow-600 text-white transition-colors"
+            >
+              Reconnect
+            </button>
+            <button
+              onClick={clearSessionExpired}
+              className={`flex-shrink-0 p-1 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1151,7 +1165,10 @@ export default function StellarChatInterface() {
     <ErrorBoundary
       isDarkMode={isDarkMode}
       title={t('common.error_boundary_title') || 'Interface Error'}
-      message={t('common.error_boundary_message') || 'The interface encountered an unexpected error.'}
+      message={
+        t('common.error_boundary_message') ||
+        'The interface encountered an unexpected error.'
+      }
       onRetry={() => window.location.reload()}
     >
       <StellarChatInterfaceContent />

@@ -31,7 +31,9 @@ test.describe('Mobile Bottom-Sheet for Wallet Actions', () => {
       const overlay = page.locator('[data-testid="bottom-sheet-overlay"]');
       await expect(overlay).toBeVisible();
       await overlay.click({ position: { x: 187, y: 50 } });
-      await expect(page.locator('[data-testid="bottom-sheet"]')).not.toBeVisible();
+      await expect(
+        page.locator('[data-testid="bottom-sheet"]'),
+      ).not.toBeVisible();
     });
 
     test('should close bottom-sheet on Escape key', async ({ page }) => {
@@ -52,7 +54,9 @@ test.describe('Mobile Bottom-Sheet for Wallet Actions', () => {
       await page.goto('/test-stellar-fiat-modal');
       const dialog = page.getByRole('dialog', { name: /deposit to bridge/i });
       await expect(dialog).toBeVisible();
-      await expect(page.locator('[data-testid="bottom-sheet"]')).not.toBeVisible();
+      await expect(
+        page.locator('[data-testid="bottom-sheet"]'),
+      ).not.toBeVisible();
     });
   });
 });

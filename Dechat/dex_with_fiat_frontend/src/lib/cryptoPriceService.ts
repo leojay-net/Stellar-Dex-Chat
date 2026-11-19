@@ -137,9 +137,8 @@ export async function fetchCryptoPrices(
       const tokenSymbol = symbol.toUpperCase();
       vsCurrencies.forEach((currency) => {
         const currencyLower = currency.toLowerCase();
-        const cachedPrice = priceCache.get(
-          `${tokenSymbol}_${currencyLower}`,
-        )?.prices[currencyLower];
+        const cachedPrice = priceCache.get(`${tokenSymbol}_${currencyLower}`)
+          ?.prices[currencyLower];
         const fallbackPrice = fallbackPrices[tokenSymbol]?.[currencyLower];
         const price = cachedPrice ?? fallbackPrice;
         if (cachedPrice !== undefined) usedCache = true;

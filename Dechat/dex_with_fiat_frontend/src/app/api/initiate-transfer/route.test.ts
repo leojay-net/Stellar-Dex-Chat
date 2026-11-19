@@ -77,7 +77,12 @@ describe('POST /api/initiate-transfer', () => {
   });
 
   it('returns 400 for validation failures', async () => {
-    const req = makeRequest({ source: '', reason: '', amount: '', recipient: '' });
+    const req = makeRequest({
+      source: '',
+      reason: '',
+      amount: '',
+      recipient: '',
+    });
     const res = await POST(req);
     const body = await res.json();
 

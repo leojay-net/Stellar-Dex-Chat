@@ -29,7 +29,10 @@ function browserNotify(title: string, body: string): void {
   }
 }
 
-async function fetchPayments(address: string, limit = 5): Promise<PaymentRecord[]> {
+async function fetchPayments(
+  address: string,
+  limit = 5,
+): Promise<PaymentRecord[]> {
   try {
     const res = await fetch(
       `${HORIZON_URL}/accounts/${encodeURIComponent(address)}/payments?order=desc&limit=${limit}`,
@@ -76,7 +79,9 @@ export function useWatchedWalletNotifications(watchlist: WatchedAddress[]) {
           const amt = incoming.amount
             ? `${incoming.amount}${incoming.asset_type === 'native' ? ' XLM' : ''}`
             : '';
-          const msg = amt ? `${label} received ${amt}` : `${label} received funds`;
+          const msg = amt
+            ? `${label} received ${amt}`
+            : `${label} received funds`;
           toastStore.addToast({ message: msg, variant: 'success' });
           browserNotify('Incoming Deposit', msg);
         }

@@ -28,7 +28,10 @@ test.describe('Offline reconnect queue', () => {
     context,
     browserName,
   }) => {
-    test.skip(browserName !== 'chromium', 'CDP network emulation requires Chromium.');
+    test.skip(
+      browserName !== 'chromium',
+      'CDP network emulation requires Chromium.',
+    );
 
     await mockChatApi(page);
     await gotoChatConnected(page);
@@ -65,12 +68,18 @@ test.describe('Offline reconnect queue', () => {
       connectionType: 'wifi',
     });
 
-    await expect(page.getByText('Back online. Replaying actions...')).toBeVisible({
+    await expect(
+      page.getByText('Back online. Replaying actions...'),
+    ).toBeVisible({
       timeout: 10_000,
     });
 
-    await expect(page.getByText(queuedMessage)).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText('Back online. Replaying actions...')).toBeHidden({
+    await expect(page.getByText(queuedMessage)).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(
+      page.getByText('Back online. Replaying actions...'),
+    ).toBeHidden({
       timeout: 15_000,
     });
   });

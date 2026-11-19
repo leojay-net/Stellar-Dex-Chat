@@ -65,13 +65,19 @@ describe('useEffectiveDarkMode', () => {
   });
 
   it('falls back to ThemeContext isDarkMode when data-theme is null', () => {
-    vi.mocked(useTheme).mockReturnValue({ isDarkMode: true, toggleDarkMode: vi.fn() });
+    vi.mocked(useTheme).mockReturnValue({
+      isDarkMode: true,
+      toggleDarkMode: vi.fn(),
+    });
     const { result } = renderHook(() => useEffectiveDarkMode());
     expect(result.current).toBe(true);
   });
 
   it('falls back to prefers-color-scheme: dark when data-theme is null and isDarkMode is false', () => {
-    vi.mocked(useTheme).mockReturnValue({ isDarkMode: false, toggleDarkMode: vi.fn() });
+    vi.mocked(useTheme).mockReturnValue({
+      isDarkMode: false,
+      toggleDarkMode: vi.fn(),
+    });
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
       value: vi.fn().mockImplementation((query) => ({
@@ -87,7 +93,10 @@ describe('useEffectiveDarkMode', () => {
   });
 
   it('reacts to media query change events', () => {
-    vi.mocked(useTheme).mockReturnValue({ isDarkMode: false, toggleDarkMode: vi.fn() });
+    vi.mocked(useTheme).mockReturnValue({
+      isDarkMode: false,
+      toggleDarkMode: vi.fn(),
+    });
     let mediaQueryHandler: (e: MediaQueryListEvent) => void = () => {};
 
     addEventListenerSpy.mockImplementation((event: string, handler: any) => {
@@ -131,7 +140,10 @@ describe('useEffectiveDarkMode', () => {
     const { unmount } = renderHook(() => useEffectiveDarkMode());
     unmount();
 
-    expect(removeEventListenerSpy).toHaveBeenCalledWith('change', expect.any(Function));
+    expect(removeEventListenerSpy).toHaveBeenCalledWith(
+      'change',
+      expect.any(Function),
+    );
     expect(mutationObserverDisconnectSpy).toHaveBeenCalledTimes(1);
   });
 });

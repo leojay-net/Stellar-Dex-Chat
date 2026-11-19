@@ -78,7 +78,9 @@ async function openExpandedHistory(page: Page) {
 }
 
 test.describe('ChatHistorySidebar', () => {
-  test('shows the empty history and contract activity states', async ({ page }) => {
+  test('shows the empty history and contract activity states', async ({
+    page,
+  }) => {
     await stubContractEvents(page);
     await openExpandedHistory(page);
 
@@ -87,7 +89,9 @@ test.describe('ChatHistorySidebar', () => {
     await expect(page.getByTitle('New Conversation')).toBeVisible();
   });
 
-  test('renders pinned and recent sessions from local storage', async ({ page }) => {
+  test('renders pinned and recent sessions from local storage', async ({
+    page,
+  }) => {
     await seedChatHistory(page);
     await stubContractEvents(page);
     await openExpandedHistory(page);
@@ -101,7 +105,9 @@ test.describe('ChatHistorySidebar', () => {
     );
   });
 
-  test('filters sessions and clears an empty search result', async ({ page }) => {
+  test('filters sessions and clears an empty search result', async ({
+    page,
+  }) => {
     await seedChatHistory(page);
     await stubContractEvents(page);
     await openExpandedHistory(page);
