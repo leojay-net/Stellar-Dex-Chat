@@ -121,4 +121,3 @@ Metric	Base	Head	Delta	Change	Limit
 ⚪	Ledger Write Bytes	0	0	±0	— (BASE 0)	132,096
 ⚪	Historical Read Bytes	Unavailable	Unavailable	Unavailable	—	Unavailable
 ⚪	Contract Data (instance)	Unavailable	Unavailable	Unavailable	—	Unavailable
-
