@@ -119,6 +119,7 @@ describe('TransactionAmountDisplay', () => {
       fiatCurrency: 'USD',
       isLoading: false,
       hasError: false,
+      isStale: false,
       forceRefresh: vi.fn(),
     });
 
@@ -135,6 +136,7 @@ describe('TransactionAmountDisplay', () => {
       fiatCurrency: 'USD',
       isLoading: false,
       hasError: false,
+      isStale: false,
       forceRefresh: vi.fn(),
     });
 
@@ -339,6 +341,7 @@ describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
       fiatCurrency: 'USD',
       originalAmount: 100,
       originalCurrency: 'XLM',
+      isStale: false,
       forceRefresh: vi.fn(),
     });
 
@@ -362,6 +365,7 @@ describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
       fiatCurrency: 'USD',
       originalAmount: 100,
       originalCurrency: 'XLM',
+      isStale: false,
       forceRefresh: vi.fn(),
     });
 
@@ -377,6 +381,7 @@ describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
       fiatCurrency: 'USD',
       originalAmount: 200,
       originalCurrency: 'XLM',
+      isStale: false,
       forceRefresh: vi.fn(),
     });
 
@@ -403,6 +408,7 @@ describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
       fiatCurrency: 'USD',
       originalAmount: 50,
       originalCurrency: 'XLM',
+      isStale: false,
       forceRefresh: vi.fn(),
     });
 
@@ -428,6 +434,7 @@ describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
       fiatCurrency: 'USD',
       originalAmount: 100,
       originalCurrency: 'XLM',
+      isStale: false,
       forceRefresh: vi.fn(),
     });
 

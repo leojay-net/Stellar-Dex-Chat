@@ -30,7 +30,9 @@ describe('useBeneficiaries', () => {
       const { result } = renderHook(() => useBeneficiaries());
 
       expect(result.current.beneficiaries).toEqual([]);
-      expect(result.current.isLoaded).toBe(false);
+      // Without an API fetch, localStorage is read synchronously in the mount
+      // effect, so the hook is already loaded once renderHook returns.
+      expect(result.current.isLoaded).toBe(true);
       expect(result.current.selectedIndex).toBe(-1);
     });
 
@@ -569,8 +571,12 @@ describe('useBeneficiaries', () => {
         preventDefault: vi.fn(),
       } as unknown as KeyboardEvent;
 
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      let resultAction = null as ReturnType<
+        typeof result.current.handleKeyboardShortcut
+      >;
+      act(() => {
+        resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      });
 
       expect(mockEvent.preventDefault).toHaveBeenCalled();
       expect(resultAction).toBe('add');
@@ -585,8 +591,12 @@ describe('useBeneficiaries', () => {
         preventDefault: vi.fn(),
       } as unknown as KeyboardEvent;
 
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      let resultAction = null as ReturnType<
+        typeof result.current.handleKeyboardShortcut
+      >;
+      act(() => {
+        resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      });
 
       expect(mockEvent.preventDefault).toHaveBeenCalled();
       expect(resultAction).toBe('focus');
@@ -606,8 +616,12 @@ describe('useBeneficiaries', () => {
         preventDefault: vi.fn(),
       } as unknown as KeyboardEvent;
 
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      let resultAction = null as ReturnType<
+        typeof result.current.handleKeyboardShortcut
+      >;
+      act(() => {
+        resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      });
 
       expect(mockEvent.preventDefault).toHaveBeenCalled();
       expect(resultAction).toBe('navigate-up');
@@ -627,8 +641,12 @@ describe('useBeneficiaries', () => {
         preventDefault: vi.fn(),
       } as unknown as KeyboardEvent;
 
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      let resultAction = null as ReturnType<
+        typeof result.current.handleKeyboardShortcut
+      >;
+      act(() => {
+        resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      });
 
       expect(resultAction).toBeNull();
       expect(result.current.selectedIndex).toBe(0);
@@ -648,8 +666,12 @@ describe('useBeneficiaries', () => {
         preventDefault: vi.fn(),
       } as unknown as KeyboardEvent;
 
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      let resultAction = null as ReturnType<
+        typeof result.current.handleKeyboardShortcut
+      >;
+      act(() => {
+        resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      });
 
       expect(mockEvent.preventDefault).toHaveBeenCalled();
       expect(resultAction).toBe('navigate-down');
@@ -669,8 +691,12 @@ describe('useBeneficiaries', () => {
         preventDefault: vi.fn(),
       } as unknown as KeyboardEvent;
 
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      let resultAction = null as ReturnType<
+        typeof result.current.handleKeyboardShortcut
+      >;
+      act(() => {
+        resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      });
 
       expect(resultAction).toBeNull();
       expect(result.current.selectedIndex).toBe(0);
@@ -689,8 +715,12 @@ describe('useBeneficiaries', () => {
         preventDefault: vi.fn(),
       } as unknown as KeyboardEvent;
 
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      let resultAction = null as ReturnType<
+        typeof result.current.handleKeyboardShortcut
+      >;
+      act(() => {
+        resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      });
 
       expect(mockEvent.preventDefault).toHaveBeenCalled();
       expect(resultAction).toBe('select');
@@ -711,8 +741,12 @@ describe('useBeneficiaries', () => {
         preventDefault: vi.fn(),
       } as unknown as KeyboardEvent;
 
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      let resultAction = null as ReturnType<
+        typeof result.current.handleKeyboardShortcut
+      >;
+      act(() => {
+        resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      });
 
       expect(mockEvent.preventDefault).toHaveBeenCalled();
       expect(resultAction).toBe('delete');
@@ -731,8 +765,12 @@ describe('useBeneficiaries', () => {
         preventDefault: vi.fn(),
       } as unknown as KeyboardEvent;
 
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      let resultAction = null as ReturnType<
+        typeof result.current.handleKeyboardShortcut
+      >;
+      act(() => {
+        resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      });
 
       expect(resultAction).toBeNull();
       expect(result.current.beneficiaries).toHaveLength(1);
@@ -748,8 +786,12 @@ describe('useBeneficiaries', () => {
         preventDefault: vi.fn(),
       } as unknown as KeyboardEvent;
 
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      let resultAction = null as ReturnType<
+        typeof result.current.handleKeyboardShortcut
+      >;
+      act(() => {
+        resultAction = result.current.handleKeyboardShortcut(mockEvent);
+      });
 
       expect(resultAction).toBeNull();
     });

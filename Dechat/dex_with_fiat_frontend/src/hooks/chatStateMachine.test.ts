@@ -12,6 +12,16 @@ import {
   formatChatStateSnapshot,
 } from './chatStateMachine';
 
+/**
+ * INITIALIZE_SESSION lands in SKELETON_LOADING (session data is being
+ * fetched); LOAD_SESSION completes the load and reaches INITIALIZED. This
+ * mirrors what useChat does at runtime.
+ */
+function initialize(m: ReturnType<typeof createChatStateMachine>): void {
+  m.transition(ChatEvent.INITIALIZE_SESSION);
+  m.transition(ChatEvent.LOAD_SESSION);
+}
+
 describe('ChatStateMachine', () => {
   let machine = createChatStateMachine();
 
@@ -25,14 +35,26 @@ describe('ChatStateMachine', () => {
       expect(state.state).toBe(ChatState.UNINITIALIZED);
     });
 
-    it('should transition from UNINITIALIZED to INITIALIZED on INITIALIZE_SESSION', () => {
+    it('should transition from UNINITIALIZED to SKELETON_LOADING on INITIALIZE_SESSION', () => {
       const result = machine.transition(ChatEvent.INITIALIZE_SESSION);
       expect(result).toBe(true);
+      expect(machine.getState().state).toBe(ChatState.SKELETON_LOADING);
+    });
+
+    it('should transition from SKELETON_LOADING to INITIALIZED on LOAD_SESSION', () => {
+      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      expect(machine.transition(ChatEvent.LOAD_SESSION)).toBe(true);
       expect(machine.getState().state).toBe(ChatState.INITIALIZED);
     });
 
-    it('should reset context during initialization', () => {
+    it('should not accept SEND_MESSAGE while SKELETON_LOADING', () => {
       machine.transition(ChatEvent.INITIALIZE_SESSION);
+      expect(machine.transition(ChatEvent.SEND_MESSAGE)).toBe(false);
+      expect(machine.getState().state).toBe(ChatState.SKELETON_LOADING);
+    });
+
+    it('should reset context during initialization', () => {
+      initialize(machine);
       const state = machine.getState();
       expect(state.context.messageCount).toBe(0);
       expect(state.context.hasUserCancelled).toBe(false);
@@ -47,7 +69,7 @@ describe('ChatStateMachine', () => {
 
   describe('Message Sending Flow', () => {
     beforeEach(() => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initialize(machine);
     });
 
     it('should transition from INITIALIZED to SENDING_MESSAGE on SEND_MESSAGE', () => {
@@ -74,7 +96,7 @@ describe('ChatStateMachine', () => {
 
   describe('Clarification Flow', () => {
     beforeEach(() => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initialize(machine);
       machine.transition(ChatEvent.SEND_MESSAGE);
       machine.transition(ChatEvent.ANALYSIS_COMPLETE);
     });
@@ -112,7 +134,7 @@ describe('ChatStateMachine', () => {
 
   describe('Transaction Flow', () => {
     beforeEach(() => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initialize(machine);
     });
 
     it('should not transition to READY_FOR_TRANSACTION without transaction data', () => {
@@ -201,7 +223,7 @@ describe('ChatStateMachine', () => {
 
   describe('Cancellation and Reset', () => {
     beforeEach(() => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initialize(machine);
     });
 
     it('should transition to CANCELLED state on CANCEL_FLOW', () => {
@@ -269,7 +291,7 @@ describe('ChatStateMachine', () => {
 
   describe('Error Handling', () => {
     beforeEach(() => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initialize(machine);
     });
 
     it('should transition to ERROR state on ENCOUNTER_ERROR', () => {
@@ -319,7 +341,7 @@ describe('ChatStateMachine', () => {
 
   describe('Required acceptance paths', () => {
     beforeEach(() => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initialize(machine);
     });
 
     it('idle -> sending -> success -> idle', () => {
@@ -535,7 +557,7 @@ describe('ChatStateMachine', () => {
         notifiedState = state;
       });
 
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initialize(machine);
       expect(notifiedState).toBe(ChatState.INITIALIZED);
 
       unsubscribe();
@@ -547,18 +569,18 @@ describe('ChatStateMachine', () => {
         notificationCount++;
       });
 
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
-      expect(notificationCount).toBe(1);
+      initialize(machine);
+      expect(notificationCount).toBe(2);
 
       unsubscribe();
       machine.transition(ChatEvent.SEND_MESSAGE);
-      expect(notificationCount).toBe(1);
+      expect(notificationCount).toBe(2);
     });
   });
 
   describe('Valid Transitions', () => {
     it('should list valid transitions from INITIALIZED', () => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initialize(machine);
       const validTransitions = machine.getValidTransitions();
       expect(validTransitions).toContain(ChatEvent.SEND_MESSAGE);
       expect(validTransitions).toContain(ChatEvent.LOAD_SESSION);
@@ -566,14 +588,14 @@ describe('ChatStateMachine', () => {
     });
 
     it('should list valid transitions from SENDING_MESSAGE', () => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initialize(machine);
       machine.transition(ChatEvent.SEND_MESSAGE);
       const validTransitions = machine.getValidTransitions();
       expect(validTransitions).toContain(ChatEvent.ANALYSIS_COMPLETE);
     });
 
     it('should list valid transitions from AWAITING_USER_INPUT', () => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initialize(machine);
       machine.transition(ChatEvent.SEND_MESSAGE);
       machine.transition(ChatEvent.ANALYSIS_COMPLETE);
       machine.transition(ChatEvent.ANALYSIS_COMPLETE);
@@ -586,28 +608,28 @@ describe('ChatStateMachine', () => {
 
   describe('Transition History', () => {
     it('should record transition history', () => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initialize(machine);
       machine.transition(ChatEvent.SEND_MESSAGE);
       machine.transition(ChatEvent.ANALYSIS_COMPLETE);
 
       const history = machine.getHistory();
-      expect(history.length).toBeGreaterThanOrEqual(3);
+      expect(history.length).toBeGreaterThanOrEqual(4);
       expect(history[0].from).toBe(ChatState.UNINITIALIZED);
-      expect(history[0].to).toBe(ChatState.INITIALIZED);
+      expect(history[0].to).toBe(ChatState.SKELETON_LOADING);
       expect(history[0].event).toBe(ChatEvent.INITIALIZE_SESSION);
     });
   });
 
   describe('Context Updates', () => {
     it('should update context without changing state', () => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initialize(machine);
       machine.updateContext({ messageCount: 5 });
       expect(machine.getState().state).toBe(ChatState.INITIALIZED);
       expect(machine.getState().context.messageCount).toBe(5);
     });
 
     it('should support partial context updates', () => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initialize(machine);
       const transactionData: TransactionData = {
         type: 'fiat_conversion',
         tokenIn: 'XLM',
@@ -626,6 +648,8 @@ describe('ChatStateMachine', () => {
     it('should handle complete transaction flow', () => {
       // Initialize
       expect(machine.transition(ChatEvent.INITIALIZE_SESSION)).toBe(true);
+      expect(machine.getState().state).toBe(ChatState.SKELETON_LOADING);
+      expect(machine.transition(ChatEvent.LOAD_SESSION)).toBe(true);
       expect(machine.getState().state).toBe(ChatState.INITIALIZED);
 
       // Send first message
@@ -666,7 +690,7 @@ describe('ChatStateMachine', () => {
     });
 
     it('should handle cancellation from transaction readiness', () => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initialize(machine);
       machine.transition(ChatEvent.SEND_MESSAGE);
       machine.transition(ChatEvent.ANALYSIS_COMPLETE);
       machine.updateContext({
@@ -695,11 +719,11 @@ describe('ChatStateMachine', () => {
 describe('chatStateMachine race condition regression (#590)', () => {
   it('two independent machines do not share context state', () => {
     const machineA = createChatStateMachine();
-    machineA.transition(ChatEvent.INITIALIZE_SESSION);
+    initialize(machineA);
     machineA.updateContext({ messageCount: 7, hasUserCancelled: true });
 
     const machineB = createChatStateMachine();
-    machineB.transition(ChatEvent.INITIALIZE_SESSION);
+    initialize(machineB);
 
     // Machine B must start clean — not polluted by machine A's mutations
     expect(machineB.getState().context.messageCount).toBe(0);
@@ -708,14 +732,14 @@ describe('chatStateMachine race condition regression (#590)', () => {
 
   it('action callbacks on machine A do not corrupt machine B context', () => {
     const machineA = createChatStateMachine();
-    machineA.transition(ChatEvent.INITIALIZE_SESSION);
+    initialize(machineA);
     machineA.transition(ChatEvent.SEND_MESSAGE);
     machineA.transition(ChatEvent.ANALYSIS_COMPLETE); // → ANALYZING
     machineA.transition(ChatEvent.ENCOUNTER_ERROR); // → ERROR
     machineA.updateContext({ errorMessage: 'A failed' });
 
     const machineB = createChatStateMachine();
-    machineB.transition(ChatEvent.INITIALIZE_SESSION);
+    initialize(machineB);
 
     expect(machineB.getState().context.errorMessage).toBeNull();
     expect(machineB.getState().state).toBe(ChatState.INITIALIZED);
@@ -724,10 +748,10 @@ describe('chatStateMachine race condition regression (#590)', () => {
   it('many machines created in sequence all start with zero messageCount', () => {
     for (let i = 0; i < 5; i++) {
       const m = createChatStateMachine();
-      m.transition(ChatEvent.INITIALIZE_SESSION);
+      initialize(m);
       m.updateContext({ messageCount: i + 10 });
       const fresh = createChatStateMachine();
-      fresh.transition(ChatEvent.INITIALIZE_SESSION);
+      initialize(fresh);
       expect(fresh.getState().context.messageCount).toBe(0);
     }
   });
@@ -788,7 +812,7 @@ describe('createDebouncedDispatcher (issue #588)', () => {
 
   it('applies a single dispatched event after the debounce delay', () => {
     const machine = createChatStateMachine();
-    machine.transition(ChatEvent.INITIALIZE_SESSION);
+    initialize(machine);
     const dispatcher = createDebouncedDispatcher(machine, 200);
 
     dispatcher.dispatch(ChatEvent.SEND_MESSAGE);
@@ -803,7 +827,7 @@ describe('createDebouncedDispatcher (issue #588)', () => {
 
   it('collapses a burst of events into the latest one', () => {
     const machine = createChatStateMachine();
-    machine.transition(ChatEvent.INITIALIZE_SESSION);
+    initialize(machine);
     const transitionSpy = vi.spyOn(machine, 'transition');
     const dispatcher = createDebouncedDispatcher(machine, 150);
 
@@ -821,7 +845,7 @@ describe('createDebouncedDispatcher (issue #588)', () => {
 
   it('flush applies the pending event immediately and returns the result', () => {
     const machine = createChatStateMachine();
-    machine.transition(ChatEvent.INITIALIZE_SESSION);
+    initialize(machine);
     const dispatcher = createDebouncedDispatcher(machine);
 
     dispatcher.dispatch(ChatEvent.SEND_MESSAGE);
@@ -837,7 +861,7 @@ describe('createDebouncedDispatcher (issue #588)', () => {
 
   it('cancel discards the pending event without applying it', () => {
     const machine = createChatStateMachine();
-    machine.transition(ChatEvent.INITIALIZE_SESSION);
+    initialize(machine);
     const dispatcher = createDebouncedDispatcher(machine, 200);
 
     dispatcher.dispatch(ChatEvent.SEND_MESSAGE);

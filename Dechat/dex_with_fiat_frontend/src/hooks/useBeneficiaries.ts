@@ -291,6 +291,7 @@ export function useBeneficiaries(options?: {
     getBeneficiary,
     selectBeneficiary,
     clearSelection,
+    handleKeyboardShortcut,
     keyboardShortcuts: KEYBOARD_SHORTCUTS,
   };
 }
