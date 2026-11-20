@@ -1284,6 +1284,11 @@ Repo Avatar
 - **changelog:** Update changelog [skip ci]
 - **changelog:** Update changelog [skip ci]
 - Add a troubleshooting guide for the common local and CI failures
+- **changelog:** Update changelog [skip ci]
+- Add centralized environment variable reference
+- Add WCAG 2.2 AA accessibility checklist
+- Record offline queue architecture decision
+- **contract:** Add FiatBridge function reference
 
 ### Deprecated
 
