@@ -1289,6 +1289,8 @@ Repo Avatar
 - Add WCAG 2.2 AA accessibility checklist
 - Record offline queue architecture decision
 - **contract:** Add FiatBridge function reference
+- **changelog:** Update changelog [skip ci]
+- Add testing, glossary, deployment and SDK guides
 
 ### Deprecated
 
