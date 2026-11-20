@@ -1,10 +1,8 @@
 import { z } from 'zod';
+import { isValidPublicKey, isValidRecipientAddress } from './stellarAddress';
 
 /** Must match typed confirmation in `StellarFiatModal` for large transfers. */
 export const STELLAR_FIAT_RISK_CONFIRMATION_PHRASE = 'CONFIRM LARGE AMOUNT';
-
-/** Stellar StrKey public account (56 chars, base32 subset). */
-const STELLAR_ACCOUNT_KEY = /^G[A-Z2-7]{55}$/;
 
 const amountStringSchema = z
   .string()
@@ -17,12 +15,29 @@ const amountStringSchema = z
 
 const noteSchema = z.string().max(160, 'Note must be at most 160 characters');
 
+/**
+ * Admin recipient: accepts an empty string (send-to-self), a plain `G...`
+ * account, or a muxed `M...` account.  Plain Soroban contract calls that
+ * require a `G...` key must use `contractRecipientSchema` instead.
+ */
 const adminRecipientSchema = z
   .string()
   .trim()
   .refine(
-    (s) => s === '' || STELLAR_ACCOUNT_KEY.test(s),
-    'Recipient must be empty (self) or a valid Stellar public key',
+    (s) => s === '' || isValidRecipientAddress(s),
+    'Recipient must be empty (self), a valid Stellar public key (G…), or a muxed account address (M…)',
+  );
+
+/**
+ * Contract recipient: accepts only a plain `G...` account key.
+ * Use where the Soroban contract rejects muxed addresses.
+ */
+export const contractRecipientSchema = z
+  .string()
+  .trim()
+  .refine(
+    (s) => isValidPublicKey(s),
+    'Contract recipient must be a plain Stellar public key (G…); muxed addresses (M…) are not accepted here',
   );
 
 const riskConfirmationSchema = z
