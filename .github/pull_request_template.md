@@ -336,6 +336,15 @@ If you have any questions about this implementation, please refer to:
 - [x] Performance verified
 - [x] Security considerations addressed
 
+### ♿ Accessibility (WCAG 2.2 AA) Checklist
+- [ ] **Keyboard Operability**: All new/modified interactive elements can be reached and activated using only the keyboard.
+- [ ] **Focus Management**: Focus remains visible, moves logically, and is neither trapped nor lost when dialogs/menus open or close.
+- [ ] **Screen Reader Support**: Meaningful `aria-label`, `aria-describedby`, and `aria-live` attributes are used where necessary; icon buttons have accessible names.
+- [ ] **Color & Contrast**: Text meets minimum 4.5:1 contrast ratio; information is not conveyed solely through color.
+- [ ] **Forms & Validation**: Inputs have explicit `<label>` elements; error states set `aria-invalid="true"` and link error text.
+- [ ] **Touch Targets & Scaling**: Interactive targets are adequately sized (>= 24px minimum, 44px ideal) and content scales to 200% zoom.
+- [ ] See [Accessibility Conformance Guide](docs/accessibility.md) for full WCAG 2.2 AA specifications and known gaps.
+
 ---
 
 ## Review Notes

@@ -28,6 +28,26 @@ jobs:
             exit 1
           fi
 
+      - name: Validate environment example files
+        run: |
+          node -e "
+          const fs = require('fs');
+          const dechatEnv = fs.readFileSync('Dechat/dex_with_fiat_frontend/.env.example', 'utf8');
+          const requiredVars = [
+            'NEXT_PUBLIC_STELLAR_RPC_URL',
+            'NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT',
+            'NEXT_PUBLIC_XLM_SAC_CONTRACT',
+            'PAYSTACK_SECRET_KEY',
+            'PAYOUT_PROVIDER'
+          ];
+          const missing = requiredVars.filter(v => !dechatEnv.includes(v));
+          if (missing.length > 0) {
+            console.error('❌ .env.example missing required variables:', missing.join(', '));
+            process.exit(1);
+          }
+          console.log('✅ .env.example contains all required environment variables');
+          "
+
       - name: Run actionlint
         uses: reviewdog/action-actionlint@ee28dc79d2c7e07b6a9c8abcf817194ab959c473 # v1.44.0
         with:

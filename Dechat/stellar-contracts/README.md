@@ -12,6 +12,7 @@ This directory contains the Soroban smart contracts for the Stellar DEX Chat app
 
 | Guide | Description |
 |-------|-------------|
+| [docs/REFERENCE.md](./docs/REFERENCE.md) | Comprehensive function-by-function reference for all 142 FiatBridge contract functions |
 | [FIAT_BRIDGE_README.md](./FIAT_BRIDGE_README.md) | Full API reference and error code documentation |
 | [docs/VERSION_MIGRATION.md](./docs/VERSION_MIGRATION.md) | Event versioning, upgrade mechanism, and migration guides |
 | [docs/OVERFLOW_PREVENTION.md](./docs/OVERFLOW_PREVENTION.md) | Overflow-prevention strategies and contributor checklist |

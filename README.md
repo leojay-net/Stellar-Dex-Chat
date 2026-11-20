@@ -50,6 +50,10 @@ The services will be available at:
 - [Testing Guide](docs/testing.md) - Primary entry point for unit, E2E, and contract testing
 - [Production Frontend Deployment](docs/deployment-frontend.md) - Deploying the Next.js frontend to production
 - [Glossary](docs/glossary.md) - Definitions for Stellar-Dex-Chat terminology used in contracts, frontend, and docs
+- [Environment Variable Reference](docs/environment.md) - Complete reference for frontend, server, Docker, and CI variables
+- [Accessibility Conformance Checklist](docs/accessibility.md) - WCAG 2.2 AA target specifications, reviewer checklists, and gap analysis
+- [ADR-003: Offline Message Queue & IndexedDB](docs/adr/ADR-003-offline-message-queue.md) - Architectural decision record for client-side offline queue and storage
+- [FiatBridge Contract Function Reference](Dechat/stellar-contracts/docs/REFERENCE.md) - Complete function reference for all 142 Soroban contract functions
 - [Slippage Threshold](docs/slippage-threshold.md) - How slippage BPS and on-chain threshold interact
 - [TypeScript SDK Examples](docs/typescript-sdk-examples.md) - Guide for calling contract functions
 
