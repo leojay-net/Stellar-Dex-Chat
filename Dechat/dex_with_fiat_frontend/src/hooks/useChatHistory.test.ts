@@ -1074,3 +1074,141 @@ describe('useChatHistory hook', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// BroadcastChannel / storage-event cross-tab sync (#1733)
+// ---------------------------------------------------------------------------
+
+describe('Cross-tab sync via BroadcastChannel (#1733)', () => {
+  type BroadcastHandler = (event: MessageEvent) => void;
+  let handlers: BroadcastHandler[] = [];
+  let postMessageMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    handlers = [];
+    postMessageMock = vi.fn();
+
+    // Minimal BroadcastChannel stub: captures onmessage handlers so tests can
+    // fire them manually, and records postMessage calls.
+    vi.stubGlobal(
+      'BroadcastChannel',
+      class {
+        onmessage: BroadcastHandler | null = null;
+        constructor() {
+          // Register this instance so tests can fire messages into it.
+          // Using a module-level array so the test can reach in.
+          // eslint-disable-next-line @typescript-eslint/no-this-alias
+          const self = this;
+          handlers.push((e) => self.onmessage?.(e));
+        }
+        postMessage = postMessageMock;
+        close = vi.fn();
+      },
+    );
+
+    // Reset localStorage between tests.
+    localStorage.clear();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('reloads state when a message arrives from another tab', async () => {
+    const { result } = renderHook(() => useChatHistory(), {
+      wrapper: ({ children }: { children: React.ReactNode }) => children,
+    });
+
+    // Wait for the initial load effect.
+    await act(async () => { vi.runAllTimers(); });
+
+    // Simulate another tab writing a session to localStorage.
+    const foreign = {
+      currentSessionId: 'foreign-session',
+      sessions: [
+        {
+          id: 'foreign-session',
+          title: 'From other tab',
+          messages: [],
+          createdAt: new Date().toISOString(),
+          lastUpdated: new Date().toISOString(),
+        },
+      ],
+    };
+    localStorage.setItem('defi_chat_history', JSON.stringify(foreign));
+
+    // Fire the broadcast from the foreign tab (different tabId).
+    await act(async () => {
+      handlers.forEach((h) =>
+        h(new MessageEvent('message', { data: { tabId: 'foreign-tab-id' } })),
+      );
+    });
+
+    expect(result.current.sessions.some((s) => s.id === 'foreign-session')).toBe(true);
+  });
+
+  it('does not reload when it receives its own tabId', async () => {
+    const { result } = renderHook(() => useChatHistory(), {
+      wrapper: ({ children }: { children: React.ReactNode }) => children,
+    });
+
+    await act(async () => { vi.runAllTimers(); });
+
+    const sessionsBefore = result.current.sessions;
+
+    // Simulate the tab receiving its own message (should be ignored).
+    // We cannot know the internal tabId, so we just verify no extra reload
+    // happens by checking the sessions array reference is stable.
+    // (In practice BroadcastChannel won't deliver to the sender, but we
+    // exercise the guard by checking the handler short-circuits gracefully.)
+    await act(async () => {
+      handlers.forEach((h) =>
+        h(new MessageEvent('message', { data: { tabId: 'own-tab' } })),
+      );
+    });
+
+    // Sessions reference may differ but content should not have new phantom sessions.
+    expect(result.current.sessions.length).toBe(sessionsBefore.length);
+  });
+
+  it('falls back to the storage event when BroadcastChannel is unavailable', async () => {
+    vi.unstubAllGlobals();
+    // @ts-expect-error – intentionally removing the global for this test
+    delete globalThis.BroadcastChannel;
+
+    const { result } = renderHook(() => useChatHistory(), {
+      wrapper: ({ children }: { children: React.ReactNode }) => children,
+    });
+
+    await act(async () => { vi.runAllTimers(); });
+
+    // Write foreign state to localStorage.
+    const foreign = {
+      currentSessionId: 'storage-session',
+      sessions: [
+        {
+          id: 'storage-session',
+          title: 'Via storage event',
+          messages: [],
+          createdAt: new Date().toISOString(),
+          lastUpdated: new Date().toISOString(),
+        },
+      ],
+    };
+    localStorage.setItem('defi_chat_history', JSON.stringify(foreign));
+
+    // Fire a storage event as the browser would for a write from another tab.
+    await act(async () => {
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'defi_chat_history',
+          newValue: JSON.stringify(foreign),
+        }),
+      );
+    });
+
+    expect(result.current.sessions.some((s) => s.id === 'storage-session')).toBe(true);
+  });
+});

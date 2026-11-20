@@ -18,8 +18,20 @@ interface SerializedMessage {
   metadata?: Record<string, unknown>;
 }
 
-const CHAT_HISTORY_KEY = 'defi_chat_history';
+export const CHAT_HISTORY_KEY = 'defi_chat_history';
 const MAX_SESSIONS = 50; // Limit to prevent storage overflow
+
+/**
+ * BroadcastChannel name used to notify sibling tabs after a localStorage write.
+ * The payload is a {@link ChatHistorySyncMessage}.
+ */
+export const CHAT_HISTORY_CHANNEL = 'defi_chat_history_sync';
+
+/** Posted on the channel after every successful localStorage save. */
+export interface ChatHistorySyncMessage {
+  /** Opaque ID of the tab that performed the write, so receivers can skip their own broadcasts. */
+  tabId: string;
+}
 
 export class ChatHistoryManager {
   static generateSessionTitle(messages: ChatMessage[]): string {

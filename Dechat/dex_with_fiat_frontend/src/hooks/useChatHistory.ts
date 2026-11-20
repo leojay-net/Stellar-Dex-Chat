@@ -2,7 +2,12 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { ChatSession, ChatHistoryState, ChatMessage } from '@/types';
-import { ChatHistoryManager } from '@/lib/chatHistory';
+import {
+  ChatHistoryManager,
+  CHAT_HISTORY_CHANNEL,
+  CHAT_HISTORY_KEY,
+  type ChatHistorySyncMessage,
+} from '@/lib/chatHistory';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
 
 export const useChatHistory = () => {
@@ -18,6 +23,13 @@ export const useChatHistory = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<ChatSession[]>([]);
 
+  // Stable per-tab ID so we can ignore our own BroadcastChannel echoes via the
+  // storage-event fallback path (BroadcastChannel itself never delivers to the
+  // sender, but the storage event fires in every tab including the writer).
+  const tabIdRef = useRef<string>(
+    typeof crypto !== 'undefined' ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+  );
+
   // Keep a ref to the latest sessions so callbacks that need to read (not write)
   // sessions never capture a stale closure snapshot.
   const sessionsRef = useRef<ChatSession[]>(historyState.sessions);
@@ -32,17 +44,81 @@ export const useChatHistory = () => {
     setIsLoaded(true);
   }, []);
 
-  // Debounced save to localStorage
+  // Debounced save to localStorage, then notify sibling tabs.
   // Persists an empty list too: skipping it left the last deleted session in
   // localStorage, so it came back after a reload (#1506).
   useEffect(() => {
     if (!isLoaded) return;
     const timeoutId = setTimeout(() => {
       ChatHistoryManager.saveToLocalStorage(historyState);
+
+      // Tell other tabs that localStorage has been updated.  BroadcastChannel
+      // is preferred; we fall back silently — the storage event (wired below)
+      // handles the cross-tab case in that environment.
+      try {
+        if (typeof BroadcastChannel !== 'undefined') {
+          const ch = new BroadcastChannel(CHAT_HISTORY_CHANNEL);
+          ch.postMessage({ tabId: tabIdRef.current } satisfies ChatHistorySyncMessage);
+          ch.close();
+        }
+      } catch {
+        // Non-fatal: the storage-event fallback still fires in other tabs.
+      }
     }, 500); // Debounce by 500ms
 
     return () => clearTimeout(timeoutId);
   }, [historyState, isLoaded]);
+
+  // Listen for cross-tab writes and reload in-memory state when another tab
+  // saves.  Supports both BroadcastChannel and the legacy storage event.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const reload = () => {
+      const fresh = ChatHistoryManager.loadFromLocalStorage();
+      setHistoryState(fresh);
+    };
+
+    let channel: BroadcastChannel | null = null;
+
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        channel = new BroadcastChannel(CHAT_HISTORY_CHANNEL);
+        channel.onmessage = (event: MessageEvent<ChatHistorySyncMessage>) => {
+          // BroadcastChannel never delivers to the sender, but guard anyway.
+          if (event.data?.tabId !== tabIdRef.current) {
+            reload();
+          }
+        };
+      } catch {
+        // Fall through to storage-event path.
+        channel = null;
+      }
+    }
+
+    // Always wire the storage event as a fallback for environments without
+    // BroadcastChannel (or when the channel open failed above).
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== CHAT_HISTORY_KEY) return;
+      // The storage event fires in every tab *except* the writer on modern
+      // browsers, but we guard with a sender tag stored in sessionStorage to
+      // be safe in environments that deviate from the spec.
+      const writerId = sessionStorage.getItem('__chat_history_writer__');
+      if (writerId && writerId === tabIdRef.current) return;
+      reload();
+    };
+
+    if (!channel) {
+      // Stamp our tabId so the storage handler on this tab can skip replays.
+      try { sessionStorage.setItem('__chat_history_writer__', tabIdRef.current); } catch { /* ignore */ }
+      window.addEventListener('storage', onStorage);
+    }
+
+    return () => {
+      channel?.close();
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
 
   // Debounced search - avoids triggering a lookup on every keystroke
   useEffect(() => {
