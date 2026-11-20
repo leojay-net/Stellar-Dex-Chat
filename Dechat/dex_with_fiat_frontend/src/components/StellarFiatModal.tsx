@@ -10,9 +10,11 @@ import {
   ArrowDownUp,
   Download,
   WifiOff,
+  ScanLine,
 } from 'lucide-react';
 import EmptyState from '@/components/ui/EmptyState';
 import CopyButton from '@/components/ui/CopyButton';
+import QrScanner from '@/components/QrScanner';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
 import {
@@ -94,6 +96,7 @@ export default function StellarFiatModal({
   const [amount, setAmount] = useState(defaultAmount);
   const [activePreset, setActivePreset] = useState<number | null>(null);
   const [recipient, setRecipient] = useState(recipientAddress);
+  const [showQrScanner, setShowQrScanner] = useState(false);
   const [fiatEstimate, setFiatEstimate] = useState<string | null>(null);
   const [isFiatEstimateStale, setIsFiatEstimateStale] = useState(false);
   const [note, setNote] = useState('');
@@ -1003,15 +1006,33 @@ export default function StellarFiatModal({
                 <label className="theme-text-secondary block text-sm mb-1">
                   Recipient address (leave blank for self)
                 </label>
-                <input
-                  type="text"
-                  value={recipient}
-                  onChange={(e) => setRecipient(e.target.value)}
-                  placeholder="G..."
-                  disabled={isTransactionBusy}
-                  className="theme-input theme-input-border w-full border rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 disabled:opacity-60 disabled:cursor-not-allowed font-mono text-sm"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={recipient}
+                    onChange={(e) => setRecipient(e.target.value)}
+                    placeholder="G..."
+                    disabled={isTransactionBusy}
+                    className="theme-input theme-input-border flex-1 border rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 disabled:opacity-60 disabled:cursor-not-allowed font-mono text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowQrScanner(true)}
+                    disabled={isTransactionBusy}
+                    aria-label="Scan QR code"
+                    title="Scan QR code"
+                    className="shrink-0 flex items-center justify-center w-11 h-11 rounded-lg border theme-input-border theme-input hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <ScanLine className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
+            )}
+            {showQrScanner && (
+              <QrScanner
+                onScan={(addr) => { setRecipient(addr); setShowQrScanner(false); }}
+                onClose={() => setShowQrScanner(false)}
+              />
             )}
 
             <div
