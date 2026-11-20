@@ -439,6 +439,12 @@ Repo Avatar
 - **contract:** Implement emergency recovery, storage TTL bump, multisig update and escrow migration (issues 1-4)
 - **contract:** Add register_token and get_token_config
 - **frontend:** Locale-aware formatters and last-updated badge for prices
+- **frontend:** Add QrScanner component with BarcodeDetector + jsQR fallback
+- **frontend:** Wire QrScanner into StellarFiatModal recipient field
+- **lib:** Add stellarAddress helpers for muxed M... account support
+- **schema:** Accept M... addresses in admin recipient; reject where contract needs G...
+- **chatHistory:** Export channel name and sync message type
+- **useChatHistory:** Sync history across tabs with BroadcastChannel
 
 ### Fixed
 
@@ -1291,6 +1297,7 @@ Repo Avatar
 - **contract:** Add FiatBridge function reference
 - **changelog:** Update changelog [skip ci]
 - Add testing, glossary, deployment and SDK guides
+- **changelog:** Update changelog [skip ci]
 
 ### Deprecated
 
