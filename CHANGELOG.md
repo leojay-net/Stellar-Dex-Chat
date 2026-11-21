@@ -1298,6 +1298,9 @@ Repo Avatar
 - **changelog:** Update changelog [skip ci]
 - Add testing, glossary, deployment and SDK guides
 - **changelog:** Update changelog [skip ci]
+- **changelog:** Update changelog [skip ci]
+- Docs: reconcile duplicated architecture content in README.md and Dechat/README.md
+Closes #1724, #1725, #1726, #1728
 
 ### Deprecated
 
