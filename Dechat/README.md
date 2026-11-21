@@ -124,8 +124,8 @@ The user sees a real-time transfer timeline in the chat interface and can downlo
 
 Before you begin, ensure you have the following installed:
 
-- **Node.js** (v20)
-- **pnpm**
+- **Node.js** (v20) - See `.nvmrc` in repository root
+- **pnpm** (v9.15.9) - See `packageManager` in package.json
 - **Rust** & Cargo tooling + `wasm32-unknown-unknown` target
 - **Stellar CLI** (for interacting with Soroban)
 - **Docker** & **Docker Compose** (optional, for quick start)
