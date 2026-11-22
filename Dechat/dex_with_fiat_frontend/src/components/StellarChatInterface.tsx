@@ -59,6 +59,7 @@ import UserSettingsWrapper from './UserSettingsWrapper';
 import NetworkStatusModalWrapper from './NetworkStatusModalWrapper';
 import NotificationsCenterWrapper from './NotificationsCenterWrapper';
 import Onboarding, { useOnboarding } from './Onboarding';
+import WalletPicker from './WalletPicker';
 
 /** Possible states for the API health badge */
 type HealthStatus = 'checking' | 'ok' | 'degraded';
@@ -79,6 +80,9 @@ function StellarChatInterfaceContent() {
     isNetworkMismatch,
     xlmBalance,
     error: walletError,
+    availableWallets,
+    selectedWalletId,
+    selectWallet,
   } = useStellarWallet();
   const { isDarkMode, toggleDarkMode } = useTheme();
   const { fiatCurrency } = useUserPreferences();
@@ -95,6 +99,7 @@ function StellarChatInterfaceContent() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showWalletPicker, setShowWalletPicker] = useState(false);
   const { isOnline, wasOffline, resetWasOffline } = useOnlineStatus();
   const isMobile = useMediaQuery('(max-width: 639px)');
   const { addToast } = useToast();
@@ -781,7 +786,14 @@ function StellarChatInterfaceContent() {
               ) : (
                 <button
                   id="onboarding-wallet-connect"
-                  onClick={connect}
+                  onClick={() => {
+                    const installedWallets = availableWallets.filter(w => w.isInstalled);
+                    if (installedWallets.length > 1) {
+                      setShowWalletPicker(true);
+                    } else {
+                      connect();
+                    }
+                  }}
                   className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-sm font-medium rounded-lg transition-all"
                 >
                   <Wallet className="w-4 h-4" />
@@ -1108,6 +1120,12 @@ function StellarChatInterfaceContent() {
             setShowOnboarding(true);
             setShowSettings(false);
           }}
+        />
+
+        {/* Wallet picker */}
+        <WalletPicker
+          isOpen={showWalletPicker}
+          onClose={() => setShowWalletPicker(false)}
         />
 
         {/* Network status modal (issue #1030) */}
