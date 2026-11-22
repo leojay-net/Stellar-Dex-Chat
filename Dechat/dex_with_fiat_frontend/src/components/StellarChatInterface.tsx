@@ -58,6 +58,7 @@ import StellarFiatModalWrapper from './StellarFiatModalWrapper';
 import UserSettingsWrapper from './UserSettingsWrapper';
 import NetworkStatusModalWrapper from './NetworkStatusModalWrapper';
 import NotificationsCenterWrapper from './NotificationsCenterWrapper';
+import Onboarding, { useOnboarding } from './Onboarding';
 
 /** Possible states for the API health badge */
 type HealthStatus = 'checking' | 'ok' | 'degraded';
@@ -81,6 +82,7 @@ function StellarChatInterfaceContent() {
   } = useStellarWallet();
   const { isDarkMode, toggleDarkMode } = useTheme();
   const { fiatCurrency } = useUserPreferences();
+  const { shouldShowOnboarding, resetOnboarding } = useOnboarding();
 
   const [showSidebar, setShowSidebar] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -92,6 +94,7 @@ function StellarChatInterfaceContent() {
   const [showAccountDropdown, setShowAccountDropdown] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAdminMode, setIsAdminMode] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const { isOnline, wasOffline, resetWasOffline } = useOnlineStatus();
   const isMobile = useMediaQuery('(max-width: 639px)');
   const { addToast } = useToast();
@@ -124,6 +127,17 @@ function StellarChatInterfaceContent() {
   // isn't an empty conversation pane before messages are restored.
   const [isHydrated, setIsHydrated] = useState(false);
   const { entries: txHistory, clearEntries: clearTxHistory } = useTxHistory();
+
+  // Show onboarding for new users after hydration
+  useEffect(() => {
+    if (isHydrated && shouldShowOnboarding) {
+      // Delay slightly to ensure the UI is fully rendered
+      const timer = setTimeout(() => {
+        setShowOnboarding(true);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [isHydrated, shouldShowOnboarding]);
   const accountDropdownRef = useRef<HTMLDivElement>(null);
   const reconnectNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -535,6 +549,7 @@ function StellarChatInterfaceContent() {
           <header className="theme-surface theme-border flex-shrink-0 flex items-center justify-between px-4 py-3 border-b transition-colors duration-300">
             <div className="flex items-center gap-3">
               <button
+                id="onboarding-sidebar-toggle"
                 onClick={() => setShowSidebar(!showSidebar)}
                 className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
               >
@@ -563,6 +578,7 @@ function StellarChatInterfaceContent() {
 
               {/* ── Health badge ─────────────────────────────────────────────── */}
               <div
+                id="onboarding-health-badge"
                 title={healthBadge.title}
                 aria-label={healthBadge.title}
                 role="status"
@@ -659,6 +675,7 @@ function StellarChatInterfaceContent() {
               </button>
 
               <button
+                id="onboarding-settings"
                 onClick={() => setShowSettings(true)}
                 title={t('header.settings_title')}
                 aria-label={t('header.settings_aria_label')}
@@ -763,6 +780,7 @@ function StellarChatInterfaceContent() {
                 </div>
               ) : (
                 <button
+                  id="onboarding-wallet-connect"
                   onClick={connect}
                   className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-sm font-medium rounded-lg transition-all"
                 >
@@ -1085,6 +1103,11 @@ function StellarChatInterfaceContent() {
         <UserSettingsWrapper
           isOpen={showSettings}
           onClose={() => setShowSettings(false)}
+          onResetOnboarding={() => {
+            resetOnboarding();
+            setShowOnboarding(true);
+            setShowSettings(false);
+          }}
         />
 
         {/* Network status modal (issue #1030) */}
@@ -1099,6 +1122,12 @@ function StellarChatInterfaceContent() {
           onClose={() => setIsReceiptDrawerOpen(false)}
           transactions={txHistory}
           onClearHistory={clearTxHistory}
+        />
+
+        {/* Onboarding coach marks */}
+        <Onboarding
+          isOpen={showOnboarding}
+          onClose={() => setShowOnboarding(false)}
         />
 
         {/* Session expired banner */}
