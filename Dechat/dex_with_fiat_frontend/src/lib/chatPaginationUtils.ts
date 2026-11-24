@@ -62,4 +62,3 @@ export const getNextMessageCount = <T>(
   const nextCount = currentVisibleCount + pageSize;
   return Math.min(nextCount, totalCount);
 };
-

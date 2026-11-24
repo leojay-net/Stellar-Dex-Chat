@@ -31,8 +31,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write       # needed to merge
-  pull-requests: write  # needed to read reviews / labels
+  contents: write # needed to merge
+  pull-requests: write # needed to read reviews / labels
   checks: read
   statuses: read
 

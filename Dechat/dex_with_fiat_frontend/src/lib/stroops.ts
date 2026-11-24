@@ -164,4 +164,3 @@ export function stroopsToXlmOrNull(stroops: bigint | string): string | null {
  * @deprecated Use {@link stroopsToXlm} directly instead.
  */
 export const stroopsToDisplay = stroopsToXlm;
-

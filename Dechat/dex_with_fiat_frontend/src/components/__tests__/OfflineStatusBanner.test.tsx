@@ -94,17 +94,20 @@ describe('OfflineStatusBanner', () => {
     });
 
     render(<OfflineStatusBanner />);
-    
-    expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({
-      message: expect.stringContaining('restored'),
-      severity: 'success',
-    }));
+
+    expect(mockAddToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining('restored'),
+        severity: 'success',
+      }),
+    );
     expect(mockResetWasOffline).toHaveBeenCalled();
   });
 
   it('falls back to default message when toast validation fails', async () => {
     // Mock safeParse to return failure
-    const { offlineStatusToastSchema } = await import('@/lib/offlineStatusSchema');
+    const { offlineStatusToastSchema } =
+      await import('@/lib/offlineStatusSchema');
     const originalSafeParse = offlineStatusToastSchema.safeParse;
     offlineStatusToastSchema.safeParse = vi.fn().mockReturnValue({
       success: false,
@@ -121,9 +124,9 @@ describe('OfflineStatusBanner', () => {
     });
 
     render(<OfflineStatusBanner />);
-    
+
     expect(mockAddToast).toHaveBeenCalledWith('Validation failed');
-    
+
     // Restore original
     offlineStatusToastSchema.safeParse = originalSafeParse;
   });

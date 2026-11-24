@@ -96,7 +96,10 @@ export async function withRetry<T>(
 /**
  * Default retry logic: retry on HTTP 5xx errors or network errors.
  */
-function isDefaultRetryable(error: unknown, retryableStatuses: number[]): boolean {
+function isDefaultRetryable(
+  error: unknown,
+  retryableStatuses: number[],
+): boolean {
   // Check for Response errors (HTTP status codes)
   if (error instanceof Response) {
     return retryableStatuses.includes(error.status);

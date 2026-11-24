@@ -23,7 +23,7 @@ describe('useDeepLink', () => {
 
   it('starts with idle state when no hash is present', () => {
     const { result } = renderHook(() =>
-      useDeepLink(mockLoadChatSession, mockHasSessionLoaded)
+      useDeepLink(mockLoadChatSession, mockHasSessionLoaded),
     );
 
     expect(result.current).toEqual({ status: 'idle' });
@@ -36,11 +36,14 @@ describe('useDeepLink', () => {
     mockHasSessionLoaded.mockReturnValue(false);
 
     const { result } = renderHook(() =>
-      useDeepLink(mockLoadChatSession, mockHasSessionLoaded)
+      useDeepLink(mockLoadChatSession, mockHasSessionLoaded),
     );
 
     expect(mockLoadChatSession).toHaveBeenCalledWith('session-123');
-    expect(result.current).toEqual({ status: 'not-found', sessionId: 'session-123' });
+    expect(result.current).toEqual({
+      status: 'not-found',
+      sessionId: 'session-123',
+    });
   });
 
   it('transitions to idle when session is successfully loaded', () => {
@@ -48,7 +51,7 @@ describe('useDeepLink', () => {
     mockHasSessionLoaded.mockReturnValue(true);
 
     const { result } = renderHook(() =>
-      useDeepLink(mockLoadChatSession, mockHasSessionLoaded)
+      useDeepLink(mockLoadChatSession, mockHasSessionLoaded),
     );
 
     expect(result.current).toEqual({ status: 'idle' });
@@ -61,10 +64,13 @@ describe('useDeepLink', () => {
     mockHasSessionLoaded.mockReturnValue(false);
 
     const { result } = renderHook(() =>
-      useDeepLink(mockLoadChatSession, mockHasSessionLoaded)
+      useDeepLink(mockLoadChatSession, mockHasSessionLoaded),
     );
 
-    expect(result.current).toEqual({ status: 'not-found', sessionId: 'session-789' });
+    expect(result.current).toEqual({
+      status: 'not-found',
+      sessionId: 'session-789',
+    });
     expect(mockLoadChatSession).toHaveBeenCalledWith('session-789');
     expect(mockHasSessionLoaded).toHaveBeenCalledWith('session-789');
   });
@@ -74,7 +80,7 @@ describe('useDeepLink', () => {
     mockHasSessionLoaded.mockReturnValue(true);
 
     const { result } = renderHook(() =>
-      useDeepLink(mockLoadChatSession, mockHasSessionLoaded)
+      useDeepLink(mockLoadChatSession, mockHasSessionLoaded),
     );
 
     expect(mockLoadChatSession).toHaveBeenCalledWith('session-trim');
@@ -85,7 +91,7 @@ describe('useDeepLink', () => {
     (window as any).location.hash = '#';
 
     const { result } = renderHook(() =>
-      useDeepLink(mockLoadChatSession, mockHasSessionLoaded)
+      useDeepLink(mockLoadChatSession, mockHasSessionLoaded),
     );
 
     expect(result.current).toEqual({ status: 'idle' });
@@ -97,7 +103,7 @@ describe('useDeepLink', () => {
     (window as any).location.hash = '#   ';
 
     const { result } = renderHook(() =>
-      useDeepLink(mockLoadChatSession, mockHasSessionLoaded)
+      useDeepLink(mockLoadChatSession, mockHasSessionLoaded),
     );
 
     expect(result.current).toEqual({ status: 'idle' });
@@ -114,7 +120,7 @@ describe('useDeepLink', () => {
     (window as any).location.hash = '';
 
     const { result } = renderHook(() =>
-      useDeepLink(mockLoadChatSession, mockHasSessionLoaded)
+      useDeepLink(mockLoadChatSession, mockHasSessionLoaded),
     );
 
     expect(result.current).toEqual({ status: 'idle' });
@@ -127,7 +133,7 @@ describe('useDeepLink', () => {
     mockHasSessionLoaded.mockReturnValue(true);
 
     const { result, rerender } = renderHook(() =>
-      useDeepLink(mockLoadChatSession, mockHasSessionLoaded)
+      useDeepLink(mockLoadChatSession, mockHasSessionLoaded),
     );
 
     expect(mockLoadChatSession).toHaveBeenCalledTimes(1);
@@ -144,7 +150,7 @@ describe('useDeepLink', () => {
     mockHasSessionLoaded.mockReturnValue(true);
 
     const { unmount } = renderHook(() =>
-      useDeepLink(mockLoadChatSession, mockHasSessionLoaded)
+      useDeepLink(mockLoadChatSession, mockHasSessionLoaded),
     );
 
     expect(mockLoadChatSession).toHaveBeenCalledTimes(1);
@@ -158,10 +164,12 @@ describe('useDeepLink', () => {
     mockHasSessionLoaded.mockReturnValue(true);
 
     const { result } = renderHook(() =>
-      useDeepLink(mockLoadChatSession, mockHasSessionLoaded)
+      useDeepLink(mockLoadChatSession, mockHasSessionLoaded),
     );
 
-    expect(mockLoadChatSession).toHaveBeenCalledWith('session-with_special.chars');
+    expect(mockLoadChatSession).toHaveBeenCalledWith(
+      'session-with_special.chars',
+    );
     expect(result.current).toEqual({ status: 'idle' });
   });
 });

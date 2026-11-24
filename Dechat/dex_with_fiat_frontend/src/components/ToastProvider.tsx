@@ -58,7 +58,7 @@ function ToastItem({ toast, onDismiss, isDarkMode }: ToastItemProps) {
 
   const getVariantStyles = (variant: ToastVariant) => {
     const baseClasses = `flex items-start gap-3 px-4 py-3 rounded-lg shadow-lg transition-all duration-300`;
-    
+
     switch (variant) {
       case 'success':
         return `${baseClasses} ${isDarkMode ? 'bg-green-900 border border-green-700' : 'bg-green-100 border border-green-300'} ${isDarkMode ? 'text-green-100' : 'text-green-800'}`;
@@ -88,7 +88,10 @@ function ToastItem({ toast, onDismiss, isDarkMode }: ToastItemProps) {
   };
 
   const swipeStyle = isSwiping
-    ? { transform: `translateX(${offsetX}px)`, opacity: Math.max(0, 1 - Math.abs(offsetX) / 300) }
+    ? {
+        transform: `translateX(${offsetX}px)`,
+        opacity: Math.max(0, 1 - Math.abs(offsetX) / 300),
+      }
     : { transform: 'translateX(0)', opacity: 1 };
 
   const motionPreference = prefersReducedMotion ? { transition: 'none' } : {};

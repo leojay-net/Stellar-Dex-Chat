@@ -4,7 +4,12 @@ export function formatCurrency(
   locale = 'en-US',
 ): string {
   const abs = Math.abs(value);
-  const digits = currency.toUpperCase() === 'JPY' || currency.toUpperCase() === 'NGN' ? 0 : abs < 1 ? 4 : 2;
+  const digits =
+    currency.toUpperCase() === 'JPY' || currency.toUpperCase() === 'NGN'
+      ? 0
+      : abs < 1
+        ? 4
+        : 2;
   return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: currency.toUpperCase(),

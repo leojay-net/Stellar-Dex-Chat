@@ -153,7 +153,7 @@ docker compose up
 
 # The services will be available at:
 # - Frontend: http://localhost:3000
-# - Soroban RPC: http://localhost:8000/soroban/rpc
+# - Soroban RPC: http://localhost:8000/rpc
 # - Horizon API: http://localhost:8000
 ```
 
@@ -162,6 +162,19 @@ docker compose up
 - **soroban-local-net**: Stellar quickstart image running a standalone Soroban network
 - **frontend**: Next.js development server with hot reload
 - **Pre-configured networking**: Services can communicate with each other
+
+### Updating Stellar Quickstart
+
+Dependabot tracks the digest for the Quickstart testing tag. To update it
+manually, run `docker buildx imagetools inspect stellar/quickstart:testing`
+and copy the top-level manifest digest into the image reference in
+`docker-compose.yml`. The top-level digest includes both amd64 and arm64.
+
+Validate the Compose file with `docker compose config`, start the pinned
+network with `docker compose up --wait soroban-local-net`, and verify that
+Horizon responds at `http://localhost:8000/` and an RPC `getHealth` JSON-RPC
+request returns `healthy` at `http://localhost:8000/rpc`. The Docker
+Validate workflow performs the same smoke test on Compose changes.
 
 ### Stopping the Stack
 

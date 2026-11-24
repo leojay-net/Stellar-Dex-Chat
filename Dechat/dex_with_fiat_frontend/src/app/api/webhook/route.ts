@@ -43,7 +43,9 @@ export async function POST(request: NextRequest) {
         success: false,
         error: 'Missing PAYSTACK_SECRET_KEY',
       });
-      console.error('PAYSTACK_SECRET_KEY is not configured. Rejecting webhook.');
+      console.error(
+        'PAYSTACK_SECRET_KEY is not configured. Rejecting webhook.',
+      );
       return NextResponse.json(
         { message: 'Webhook processing is not configured' },
         { status: 400 },
@@ -108,10 +110,15 @@ export async function POST(request: NextRequest) {
     try {
       event = JSON.parse(payload) as PaystackWebhookEvent;
     } catch {
-      telemetry.addLog(span.spanId, 'warn', 'Webhook payload is not valid JSON', {
-        endpoint: '/api/webhook',
-        payloadLength: payload.length,
-      });
+      telemetry.addLog(
+        span.spanId,
+        'warn',
+        'Webhook payload is not valid JSON',
+        {
+          endpoint: '/api/webhook',
+          payloadLength: payload.length,
+        },
+      );
       telemetry.finishSpan(span.spanId, {
         success: false,
         error: 'Invalid JSON payload',
@@ -130,9 +137,14 @@ export async function POST(request: NextRequest) {
     const dataId = event?.data?.id;
     const dataRef = event?.data?.reference;
     if (!dataId && !dataRef) {
-      telemetry.addLog(span.spanId, 'error', 'Missing event data id and reference', {
-        eventType: event.event,
-      });
+      telemetry.addLog(
+        span.spanId,
+        'error',
+        'Missing event data id and reference',
+        {
+          eventType: event.event,
+        },
+      );
       telemetry.finishSpan(span.spanId, {
         success: false,
         error: 'Missing event data id and reference',

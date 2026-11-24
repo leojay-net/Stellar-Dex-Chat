@@ -1,5 +1,14 @@
 version: 2
 updates:
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    allow:
+      - dependency-name: "stellar/quickstart"
+    labels:
+      - "dependencies"
+
   # ── Cargo (Stellar smart contracts) ───────────────────────────────────────
   - package-ecosystem: "cargo"
     directory: "/Dechat/stellar-contracts"
@@ -104,3 +113,39 @@ updates:
         # Batch all action version bumps into one PR.
         patterns:
           - "*"
+
+  # ── Docker: Root (docker-compose.yml) ─────────────────────────────────────
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "area: docker"
+    groups:
+      docker-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ── Docker: Frontend (Dockerfile.dev) ─────────────────────────────────────
+  - package-ecosystem: "docker"
+    directory: "/Dechat/dex_with_fiat_frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "area: docker"
+    groups:
+      docker-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"

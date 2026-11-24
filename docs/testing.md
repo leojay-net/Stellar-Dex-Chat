@@ -48,6 +48,28 @@ merges blob reports. See [`.github/workflows/frontend.yml`](../.github/workflows
 for the exact CI flags. Filtering by test name is also available through Vitest's `-t` option
 when a narrower slice than a file is needed.
 
+#### Coverage and test selection in CI
+
+Each unit-test shard writes its counts and failed test names to the GitHub Actions job
+summary. Coverage is enforced on the merged result and on full local coverage runs.
+
+| Metric | Baseline at `7533c61` | Minimum |
+| --- | ---: | ---: |
+| Statements | 67.63% | 64% |
+| Branches | 55.40% | 52% |
+| Functions | 67.41% | 64% |
+| Lines | 68.60% | 65% |
+
+The baseline was measured with Node 24 and all four Vitest coverage shards after
+reconciling the frontend lockfile. The initial floors leave a few percentage points
+for variation in the existing suite. As coverage improves, raise the floors in
+[`coverage-thresholds.json`](../Dechat/dex_with_fiat_frontend/coverage-thresholds.json)
+using a full run. Add or improve tests when a change falls below a floor. The coverage
+comment uses the same values as the gate.
+
+Lint rejects focused and skipped test declarations. Use the runner's CLI filters
+for local testing. Use Playwright project filters for browser-specific capabilities.
+
 ### Frontend E2E tests (Playwright)
 
 Playwright reads specs from `./tests/e2e` and starts a local Next.js server automatically:

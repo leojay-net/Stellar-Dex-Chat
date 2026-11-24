@@ -1,71 +1,71 @@
-import { renderHook, act } from "@testing-library/react";
-import { useTransactionFilters } from "@/hooks/useTransactionFilters";
-import { TransactionData } from "@/types";
+import { act, renderHook } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { useTransactionFilters } from '@/hooks/useTransactionFilters';
+import type { TransactionHistoryEntry } from '@/types';
 
-const mockTransactions: TransactionData[] = [
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  usePathname: () => '/transactions',
+  useSearchParams: () => new URLSearchParams(),
+}));
+
+const transactions: TransactionHistoryEntry[] = [
   {
-    id: "1",
-    type: "deposit",
-    amountIn: "100",
-    tokenIn: "XLM",
-    timestamp: Date.now(),
-    status: "success",
+    id: '1',
+    kind: 'deposit',
+    status: 'completed',
+    asset: 'XLM',
+    message: 'Deposit completed',
+    createdAt: new Date('2023-10-01'),
   },
   {
-    id: "2",
-    type: "withdrawal",
-    amountIn: "500",
-    tokenIn: "USDC",
-    timestamp: Date.now(),
-    status: "success",
+    id: '2',
+    kind: 'payout',
+    status: 'pending',
+    asset: 'USDC',
+    message: 'Payout pending',
+    createdAt: new Date('2023-10-15'),
   },
 ];
 
-describe("useTransactionFilters hook", () => {
-  it("should initialize with provided transactions and default filters", () => {
-    const { result } = renderHook(() =>
-      useTransactionFilters(mockTransactions)
-    );
+describe('useTransactionFilters hook', () => {
+  it('starts with the supplied transactions and empty selections', () => {
+    const { result } = renderHook(() => useTransactionFilters(transactions));
 
-    expect(result.current.filteredTransactions).toHaveLength(2);
-    expect(result.current.filters.type).toBe("all");
+    expect(result.current.filteredTransactions).toEqual(transactions);
+    expect(result.current.filterState).toEqual({
+      status: [],
+      asset: [],
+      network: [],
+    });
+    expect(result.current.hasActiveFilters).toBe(false);
   });
 
-  it("should update filtered transactions when setFilters is called", () => {
-    const { result } = renderHook(() =>
-      useTransactionFilters(mockTransactions)
-    );
+  it('shows only transactions matching the selected status', () => {
+    const { result } = renderHook(() => useTransactionFilters(transactions));
 
-    act(() => {
-      result.current.setFilters({ type: "deposit" });
-    });
+    act(() => result.current.toggleFilter('status', 'completed'));
 
-    expect(result.current.filteredTransactions).toHaveLength(1);
-    expect(result.current.filteredTransactions[0].type).toBe("deposit");
-    expect(result.current.filters.type).toBe("deposit");
+    expect(result.current.filteredTransactions).toEqual([transactions[0]]);
+    expect(result.current.filterState.status).toEqual(['completed']);
   });
 
-  it("should clear all filters back to default state", () => {
-    const { result } = renderHook(() =>
-      useTransactionFilters(mockTransactions)
-    );
+  it('clears all selected categories and restores every transaction', () => {
+    const { result } = renderHook(() => useTransactionFilters(transactions));
 
     act(() => {
-      result.current.setFilters({
-        type: "withdrawal",
-        amountRange: { min: 1000, max: 2000 },
-      });
+      result.current.toggleFilter('status', 'pending');
+      result.current.toggleFilter('asset', 'XLM');
     });
+    expect(result.current.filteredTransactions).toEqual([]);
 
-    expect(result.current.filteredTransactions).toHaveLength(0);
+    act(() => result.current.clearAllFilters());
 
-    act(() => {
-      result.current.clearFilters();
+    expect(result.current.filteredTransactions).toEqual(transactions);
+    expect(result.current.filterState).toEqual({
+      status: [],
+      asset: [],
+      network: [],
     });
-
-    expect(result.current.filteredTransactions).toHaveLength(2);
-    expect(result.current.filters.type).toBe("all");
-    expect(result.current.filters.amountRange.min).toBeNull();
-    expect(result.current.filters.amountRange.max).toBeNull();
   });
 });

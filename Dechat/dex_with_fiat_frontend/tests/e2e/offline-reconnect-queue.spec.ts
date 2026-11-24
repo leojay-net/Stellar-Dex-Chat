@@ -1,8 +1,13 @@
-import { test, expect, Page } from '@playwright/test';
+import { expect, Page } from '@playwright/test';
+import { test } from './fixtures';
 import { gotoChatConnected } from './helpers';
 
-async function mockChatApi(page: Page): Promise<void> {
+async function mockChatApi(
+  page: Page,
+  submittedMessages: string[],
+): Promise<void> {
   await page.route('**/api/ai/chat**', async (route) => {
+    submittedMessages.push(route.request().postDataJSON().message);
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -22,15 +27,13 @@ async function mockChatApi(page: Page): Promise<void> {
   });
 }
 
-test.describe('Offline reconnect queue', () => {
+test.describe('Offline reconnect queue', { tag: '@chromium-only' }, () => {
   test('@slow connect -> offline send -> reconnect replays queued message', async ({
     page,
     context,
-    browserName,
   }) => {
-    test.skip(browserName !== 'chromium', 'CDP network emulation requires Chromium.');
-
-    await mockChatApi(page);
+    const submittedMessages: string[] = [];
+    await mockChatApi(page, submittedMessages);
     await gotoChatConnected(page);
 
     const messageInput = page.locator('[data-testid="chat-input-textarea"]');
@@ -38,10 +41,11 @@ test.describe('Offline reconnect queue', () => {
 
     const queuedMessage = 'check xlm market rates';
     await messageInput.fill(queuedMessage);
+    await expect(messageInput).toBeFocused();
 
     const client = await context.newCDPSession(page);
-    await client.send('Network.enable');
-    await client.send('Network.emulateNetworkConditions', {
+    // Toggle connectivity events without interrupting Next.js asset loading.
+    await client.send('Network.overrideNetworkState', {
       offline: true,
       latency: 0,
       downloadThroughput: 0,
@@ -49,15 +53,24 @@ test.describe('Offline reconnect queue', () => {
       connectionType: 'none',
     });
 
-    await messageInput.press('Enter');
-
     await expect(
-      page.getByText(
-        'Offline detected. Read-only operations are queued and will retry when online.',
-      ),
+      page
+        .getByRole('main')
+        .getByText(
+          'Offline detected. Read-only operations are queued and will retry when online.',
+        ),
     ).toBeVisible({ timeout: 10_000 });
 
-    await client.send('Network.emulateNetworkConditions', {
+    const userMessage = page
+      .getByRole('group', { name: 'Your message' })
+      .getByText(queuedMessage, { exact: true });
+    await page.keyboard.press('Control+Enter');
+    await expect(
+      page.getByRole('group', { name: 'Your message' }),
+    ).toBeVisible();
+    expect(submittedMessages).toEqual([]);
+
+    await client.send('Network.overrideNetworkState', {
       offline: false,
       latency: 20,
       downloadThroughput: 5 * 1024 * 1024,
@@ -65,13 +78,12 @@ test.describe('Offline reconnect queue', () => {
       connectionType: 'wifi',
     });
 
-    await expect(page.getByText('Back online. Replaying actions...')).toBeVisible({
-      timeout: 10_000,
-    });
-
-    await expect(page.getByText(queuedMessage)).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText('Back online. Replaying actions...')).toBeHidden({
-      timeout: 15_000,
-    });
+    await expect(userMessage).toBeVisible();
+    await expect(
+      page
+        .getByRole('group', { name: 'Assistant message' })
+        .getByText('Queued message delivered after reconnect.'),
+    ).toBeVisible();
+    expect(submittedMessages).toEqual([queuedMessage]);
   });
 });

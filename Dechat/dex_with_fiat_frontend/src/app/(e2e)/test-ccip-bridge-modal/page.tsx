@@ -15,20 +15,22 @@ export default function TestCCIPBridgeModalPage() {
   const [network, setNetwork] = useState<string>('ethereum');
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const mode = params.get('mode');
-    if (
-      mode === 'error' ||
-      mode === 'timeout' ||
-      mode === 'polling' ||
-      mode === 'pending'
-    ) {
-      setTransferMode(mode);
-    }
-    const networkParam = params.get('network');
-    if (networkParam) {
-      setNetwork(networkParam);
-    }
+    const updateFromLocation = () => {
+      const params = new URLSearchParams(window.location.search);
+      const mode = params.get('mode');
+      setTransferMode(
+        mode === 'error' ||
+          mode === 'timeout' ||
+          mode === 'polling' ||
+          mode === 'pending'
+          ? mode
+          : 'success',
+      );
+      setNetwork(params.get('network') ?? 'ethereum');
+    };
+    updateFromLocation();
+    window.addEventListener('popstate', updateFromLocation);
+    return () => window.removeEventListener('popstate', updateFromLocation);
   }, []);
 
   const handleStartTransfer = async (): Promise<CCIPTransferStartResult> => {
@@ -41,20 +43,16 @@ export default function TestCCIPBridgeModalPage() {
 
     return {
       transactionHash: '0xabc123def456',
-      explorerUrl: 'https://ccip.chain.link/status?search=0xabc123def456',
     };
   };
 
-  const handleFetchStatus = async (
-    transactionHash: string,
-  ): Promise<CCIPStatusResult> => {
+  const handleFetchStatus = async (): Promise<CCIPStatusResult> => {
     // Simulate status fetch delay
     await new Promise((resolve) => setTimeout(resolve, 300));
 
     if (transferMode === 'success') {
       return {
         status: 'SUCCESS',
-        explorerUrl: `https://ccip.chain.link/status?search=${transactionHash}`,
       };
     }
 
@@ -62,7 +60,6 @@ export default function TestCCIPBridgeModalPage() {
       return {
         status: 'FAILED',
         errorMessage: 'CCIP transfer failed due to insufficient gas',
-        explorerUrl: `https://ccip.chain.link/status?search=${transactionHash}`,
       };
     }
 
@@ -70,21 +67,18 @@ export default function TestCCIPBridgeModalPage() {
       // Keep returning PENDING to trigger timeout
       return {
         status: 'PENDING',
-        explorerUrl: `https://ccip.chain.link/status?search=${transactionHash}`,
       };
     }
 
     if (transferMode === 'pending') {
       return {
         status: 'PENDING',
-        explorerUrl: `https://ccip.chain.link/status?search=${transactionHash}`,
       };
     }
 
     // Default: polling mode (PENDING then SUCCESS)
     return {
       status: 'PENDING',
-      explorerUrl: `https://ccip.chain.link/status?search=${transactionHash}`,
     };
   };
 

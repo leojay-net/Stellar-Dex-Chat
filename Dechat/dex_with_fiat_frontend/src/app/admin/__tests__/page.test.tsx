@@ -1,5 +1,11 @@
 import React from 'react';
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import {
+  render,
+  screen,
+  waitFor,
+  fireEvent,
+  act,
+} from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import '@testing-library/jest-dom';
 import AdminDashboard from '../page';
@@ -8,7 +14,9 @@ import { ThemeProvider } from '@/contexts/ThemeContext';
 // Mock dependencies
 vi.mock('@/contexts/ThemeContext', () => ({
   useTheme: () => ({ isDarkMode: false, toggleDarkMode: vi.fn() }),
-  ThemeProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  ThemeProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
 }));
 vi.mock('@/hooks/useFeatureFlag', () => ({
   useFeatureFlag: vi.fn(() => false),
@@ -98,7 +106,11 @@ describe('AdminDashboard - Dark Mode Support', () => {
 
   it('renders with theme-aware classes', async () => {
     await act(async () => {
-      render(<ThemeProvider><AdminDashboard /></ThemeProvider>);
+      render(
+        <ThemeProvider>
+          <AdminDashboard />
+        </ThemeProvider>,
+      );
     });
 
     await waitFor(() => {
@@ -113,7 +125,11 @@ describe('AdminDashboard - Dark Mode Support', () => {
   });
 
   it('applies CSS tokens for colors — no raw Tailwind colour classes remain', async () => {
-    render(<ThemeProvider><AdminDashboard /></ThemeProvider>);
+    render(
+      <ThemeProvider>
+        <AdminDashboard />
+      </ThemeProvider>,
+    );
 
     await waitFor(() => {
       expect(screen.getByText('Admin Dashboard')).toBeInTheDocument();
@@ -142,7 +158,11 @@ describe('AdminDashboard - Dark Mode Support', () => {
   });
 
   it('uses theme utility classes for surfaces', async () => {
-    render(<ThemeProvider><AdminDashboard /></ThemeProvider>);
+    render(
+      <ThemeProvider>
+        <AdminDashboard />
+      </ThemeProvider>,
+    );
 
     await waitFor(() => {
       expect(screen.getByText('Bridge Balance')).toBeInTheDocument();
@@ -153,7 +173,11 @@ describe('AdminDashboard - Dark Mode Support', () => {
   });
 
   it('uses theme utility classes for text', async () => {
-    render(<ThemeProvider><AdminDashboard /></ThemeProvider>);
+    render(
+      <ThemeProvider>
+        <AdminDashboard />
+      </ThemeProvider>,
+    );
 
     await waitFor(() => {
       expect(screen.getByText('Admin Dashboard')).toBeInTheDocument();
@@ -164,25 +188,39 @@ describe('AdminDashboard - Dark Mode Support', () => {
   });
 
   it('handles loading state with theme classes', () => {
-    render(<ThemeProvider><AdminDashboard /></ThemeProvider>);
+    render(
+      <ThemeProvider>
+        <AdminDashboard />
+      </ThemeProvider>,
+    );
 
     expect(document.querySelector('.animate-pulse')).toBeInTheDocument();
   });
 
   it('includes proper ARIA accessibility labels', async () => {
-    render(<ThemeProvider><AdminDashboard /></ThemeProvider>);
+    render(
+      <ThemeProvider>
+        <AdminDashboard />
+      </ThemeProvider>,
+    );
 
     await waitFor(() => {
       expect(screen.getByText('Admin Dashboard')).toBeInTheDocument();
     });
 
-    expect(screen.getByRole('main', { name: /admin dashboard/i })).toBeInTheDocument();
     expect(
-      screen.getByRole('combobox', { name: /filter admin audit log by action type/i }),
+      screen.getByRole('main', { name: /admin dashboard/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('combobox', {
+        name: /filter admin audit log by action type/i,
+      }),
     ).toBeInTheDocument();
 
     // Check chart has ARIA label
-    const chartContainer = screen.getByRole('img', { name: /transaction volume chart/i });
+    const chartContainer = screen.getByRole('img', {
+      name: /transaction volume chart/i,
+    });
     expect(chartContainer).toBeInTheDocument();
 
     // Check volume display has ARIA label
@@ -190,22 +228,28 @@ describe('AdminDashboard - Dark Mode Support', () => {
     expect(volumeDisplay).toBeInTheDocument();
 
     // Check export button has ARIA label
-    const exportButton = screen.getByRole('button', { name: /export audit log to csv file/i });
+    const exportButton = screen.getByRole('button', {
+      name: /export audit log to csv file/i,
+    });
     expect(exportButton).toBeInTheDocument();
 
     // Check table has ARIA label
-    const auditTable = screen.getByRole('table', { name: /admin audit log entries/i });
+    const auditTable = screen.getByRole('table', {
+      name: /admin audit log entries/i,
+    });
     expect(auditTable).toBeInTheDocument();
 
     // Check pagination buttons have ARIA labels
-    const prevButton = screen.getByRole('button', { name: /go to previous page/i });
+    const prevButton = screen.getByRole('button', {
+      name: /go to previous page/i,
+    });
     const nextButton = screen.getByRole('button', { name: /go to next page/i });
     expect(prevButton).toBeInTheDocument();
     expect(nextButton).toBeInTheDocument();
 
     // Check table headers have scope
     const headers = screen.getAllByRole('columnheader');
-    headers.forEach(header => {
+    headers.forEach((header) => {
       expect(header).toHaveAttribute('scope', 'col');
     });
   });
@@ -246,7 +290,11 @@ describe('AdminDashboard - Optimistic UI Updates', () => {
   });
 
   it('updates page number immediately when pagination button is clicked (optimistic UI)', async () => {
-    render(<ThemeProvider><AdminDashboard /></ThemeProvider>);
+    render(
+      <ThemeProvider>
+        <AdminDashboard />
+      </ThemeProvider>,
+    );
 
     await waitFor(() => {
       expect(screen.getByText('Admin Dashboard')).toBeInTheDocument();
@@ -262,7 +310,11 @@ describe('AdminDashboard - Optimistic UI Updates', () => {
   });
 
   it('updates filter immediately when action filter is changed (optimistic UI)', async () => {
-    render(<ThemeProvider><AdminDashboard /></ThemeProvider>);
+    render(
+      <ThemeProvider>
+        <AdminDashboard />
+      </ThemeProvider>,
+    );
 
     await waitFor(() => {
       expect(screen.getByText('Admin Dashboard')).toBeInTheDocument();
@@ -272,20 +324,28 @@ describe('AdminDashboard - Optimistic UI Updates', () => {
     expect(filterSelect).toHaveValue('all');
 
     // Change filter - optimistic UI should update immediately
-    fireEvent.change(filterSelect, { target: { value: 'withdrawal_approved' } });
+    fireEvent.change(filterSelect, {
+      target: { value: 'withdrawal_approved' },
+    });
 
     // Verify the select exists and can be changed
     expect(filterSelect).toBeInTheDocument();
   });
 
   it('shows optimistic success state for CSV export', async () => {
-    render(<ThemeProvider><AdminDashboard /></ThemeProvider>);
+    render(
+      <ThemeProvider>
+        <AdminDashboard />
+      </ThemeProvider>,
+    );
 
     await waitFor(() => {
       expect(screen.getByText('Admin Dashboard')).toBeInTheDocument();
     });
 
-    const exportButton = screen.getByRole('button', { name: /export audit log to csv file/i });
+    const exportButton = screen.getByRole('button', {
+      name: /export audit log to csv file/i,
+    });
     expect(exportButton).toHaveTextContent('Export CSV');
 
     // Click export button
@@ -297,10 +357,14 @@ describe('AdminDashboard - Optimistic UI Updates', () => {
 
   it('rolls back optimistic state on API error for pagination', async () => {
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementationOnce(() =>
-      Promise.reject(new Error('Network error'))
+      Promise.reject(new Error('Network error')),
     );
 
-    render(<ThemeProvider><AdminDashboard /></ThemeProvider>);
+    render(
+      <ThemeProvider>
+        <AdminDashboard />
+      </ThemeProvider>,
+    );
 
     await waitFor(() => {
       expect(screen.getByText('Admin Dashboard')).toBeInTheDocument();
@@ -317,10 +381,14 @@ describe('AdminDashboard - Optimistic UI Updates', () => {
 
   it('rolls back optimistic state on API error for filter change', async () => {
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementationOnce(() =>
-      Promise.reject(new Error('Network error'))
+      Promise.reject(new Error('Network error')),
     );
 
-    render(<ThemeProvider><AdminDashboard /></ThemeProvider>);
+    render(
+      <ThemeProvider>
+        <AdminDashboard />
+      </ThemeProvider>,
+    );
 
     await waitFor(() => {
       expect(screen.getByText('Admin Dashboard')).toBeInTheDocument();
@@ -329,7 +397,9 @@ describe('AdminDashboard - Optimistic UI Updates', () => {
     const filterSelect = screen.getByLabelText(/action type/i);
 
     // Change filter - should handle error gracefully
-    fireEvent.change(filterSelect, { target: { value: 'withdrawal_rejected' } });
+    fireEvent.change(filterSelect, {
+      target: { value: 'withdrawal_rejected' },
+    });
 
     // Verify error handling exists
     expect(filterSelect).toBeInTheDocument();
@@ -337,16 +407,22 @@ describe('AdminDashboard - Optimistic UI Updates', () => {
 
   it('rolls back optimistic export success state on export error', async () => {
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation(() =>
-      Promise.reject(new Error('Export failed'))
+      Promise.reject(new Error('Export failed')),
     );
 
-    render(<ThemeProvider><AdminDashboard /></ThemeProvider>);
+    render(
+      <ThemeProvider>
+        <AdminDashboard />
+      </ThemeProvider>,
+    );
 
     await waitFor(() => {
       expect(screen.getByText('Admin Dashboard')).toBeInTheDocument();
     });
 
-    const exportButton = screen.getByRole('button', { name: /export audit log to csv file/i });
+    const exportButton = screen.getByRole('button', {
+      name: /export audit log to csv file/i,
+    });
 
     // Click export button
     fireEvent.click(exportButton);
@@ -371,7 +447,11 @@ describe('AdminDashboard - Optimistic UI Updates', () => {
       } as Response);
     });
 
-    render(<ThemeProvider><AdminDashboard /></ThemeProvider>);
+    render(
+      <ThemeProvider>
+        <AdminDashboard />
+      </ThemeProvider>,
+    );
 
     await waitFor(() => {
       expect(screen.getByText('Admin Dashboard')).toBeInTheDocument();
@@ -437,7 +517,11 @@ describe('AdminDashboard - Clipboard copy button (#834)', () => {
   });
 
   it('renders copy buttons for the address, timestamp and parameters columns', async () => {
-    render(<ThemeProvider><AdminDashboard /></ThemeProvider>);
+    render(
+      <ThemeProvider>
+        <AdminDashboard />
+      </ThemeProvider>,
+    );
 
     expect(
       await screen.findByRole('button', {
@@ -456,7 +540,11 @@ describe('AdminDashboard - Clipboard copy button (#834)', () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
 
-    render(<ThemeProvider><AdminDashboard /></ThemeProvider>);
+    render(
+      <ThemeProvider>
+        <AdminDashboard />
+      </ThemeProvider>,
+    );
 
     const copyButton = await screen.findByRole('button', {
       name: /copy admin address GTEST123/i,
@@ -473,7 +561,11 @@ describe('AdminDashboard - Clipboard copy button (#834)', () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
 
-    render(<ThemeProvider><AdminDashboard /></ThemeProvider>);
+    render(
+      <ThemeProvider>
+        <AdminDashboard />
+      </ThemeProvider>,
+    );
 
     const copyButton = await screen.findByRole('button', {
       name: /copy parameters/i,
@@ -490,7 +582,11 @@ describe('AdminDashboard - Clipboard copy button (#834)', () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
 
-    render(<ThemeProvider><AdminDashboard /></ThemeProvider>);
+    render(
+      <ThemeProvider>
+        <AdminDashboard />
+      </ThemeProvider>,
+    );
 
     const copyButton = await screen.findByRole('button', {
       name: /copy timestamp/i,
@@ -507,7 +603,11 @@ describe('AdminDashboard - Clipboard copy button (#834)', () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
 
-    render(<ThemeProvider><AdminDashboard /></ThemeProvider>);
+    render(
+      <ThemeProvider>
+        <AdminDashboard />
+      </ThemeProvider>,
+    );
 
     const copyButton = await screen.findByRole('button', {
       name: /copy admin address GTEST123/i,
@@ -532,13 +632,19 @@ describe('AdminDashboard - ErrorBoundary protection', () => {
   });
 
   it('renders AdminErrorFallback when a child component throws', async () => {
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
 
     auditTableMock.mockImplementation(() => {
       throw new Error('Simulated runtime crash');
     });
 
-    render(<ThemeProvider><AdminDashboard /></ThemeProvider>);
+    render(
+      <ThemeProvider>
+        <AdminDashboard />
+      </ThemeProvider>,
+    );
 
     await waitFor(() => {
       expect(screen.getByText(/Failed to load dashboard/i)).toBeInTheDocument();
@@ -554,7 +660,9 @@ describe('AdminDashboard - ErrorBoundary protection', () => {
   });
 
   it('shows a retry button that reloads the page on click', async () => {
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
     const reloadSpy = vi.fn();
     Object.defineProperty(window, 'location', {
       value: { ...window.location, reload: reloadSpy },
@@ -565,7 +673,11 @@ describe('AdminDashboard - ErrorBoundary protection', () => {
       throw new Error('Simulated crash');
     });
 
-    render(<ThemeProvider><AdminDashboard /></ThemeProvider>);
+    render(
+      <ThemeProvider>
+        <AdminDashboard />
+      </ThemeProvider>,
+    );
 
     await waitFor(() => {
       expect(screen.getByText(/Failed to load dashboard/i)).toBeInTheDocument();

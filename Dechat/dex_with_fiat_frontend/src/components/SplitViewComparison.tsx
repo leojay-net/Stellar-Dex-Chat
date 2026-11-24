@@ -1,7 +1,20 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { ArrowLeftRight, X, ChevronDown, Copy, Check, Columns2 } from 'lucide-react';
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  useMemo,
+  useCallback,
+} from 'react';
+import {
+  ArrowLeftRight,
+  X,
+  ChevronDown,
+  Copy,
+  Check,
+  Columns2,
+} from 'lucide-react';
 import { ChatSession, ChatMessage } from '@/types';
 import { UseSplitViewReturn } from '@/hooks/useSplitView';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
@@ -444,7 +457,11 @@ export default function SplitViewComparison({
         {isLoading ? (
           <div className="flex flex-1 min-h-0 overflow-hidden flex-col md:flex-row gap-4 p-4">
             {[1, 2].map((index) => (
-              <div key={index} className="flex-1 space-y-4" data-testid="split-view-skeleton">
+              <div
+                key={index}
+                className="flex-1 space-y-4"
+                data-testid="split-view-skeleton"
+              >
                 <Skeleton className="h-10 w-3/4 bg-slate-200 dark:bg-slate-700" />
                 <div className="space-y-3">
                   <Skeleton className="h-16 bg-slate-200 dark:bg-slate-700" />

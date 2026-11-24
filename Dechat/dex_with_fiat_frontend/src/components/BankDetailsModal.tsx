@@ -61,7 +61,7 @@ export const bankDetailsSchema = z.object({
       (val) => {
         if (!val || val.trim() === '') return true; // optional field
         const cleaned = val.replace(/\s+/g, '').toUpperCase();
-       
+
         if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(cleaned)) return false;
         return validateIbanMod97(cleaned);
       },
@@ -109,7 +109,6 @@ export interface BankDetailsModalProps {
   xlmAmount: number;
 }
 
-
 const modalVariants = {
   hidden: {
     opacity: 0,
@@ -154,7 +153,6 @@ const stepVariants = {
     },
   },
 };
-
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -380,7 +378,9 @@ export default function BankDetailsModal({
     const result = bankDetailsSchema
       .pick({ iban: true })
       .safeParse({ iban: value });
-    return result.success ? '' : (result.error.issues[0]?.message ?? 'Invalid IBAN');
+    return result.success
+      ? ''
+      : (result.error.issues[0]?.message ?? 'Invalid IBAN');
   };
 
   const handleIbanChange = (value: string) => {
@@ -1024,7 +1024,9 @@ export default function BankDetailsModal({
                 <div className="mb-3">
                   <label className="block text-sm text-gray-400 mb-1">
                     IBAN{' '}
-                    <span className="text-gray-500 text-xs">(optional — for international transfers)</span>
+                    <span className="text-gray-500 text-xs">
+                      (optional — for international transfers)
+                    </span>
                   </label>
                   <input
                     type="text"
@@ -1239,15 +1241,15 @@ export default function BankDetailsModal({
                     )}
                   </div>
 
-                    {lockedQuote?.stale && (
-                      <p
-                        role="status"
-                        className="flex items-center gap-2 text-amber-400 text-xs"
-                      >
-                        <AlertCircle className="w-3 h-3 flex-shrink-0" />
-                        Estimated rate: live market prices are unavailable.
-                      </p>
-                    )}
+                  {lockedQuote?.stale && (
+                    <p
+                      role="status"
+                      className="flex items-center gap-2 text-amber-400 text-xs"
+                    >
+                      <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                      Estimated rate: live market prices are unavailable.
+                    </p>
+                  )}
 
                   {/* Quote lock countdown */}
                   {lockedQuote && (

@@ -6,9 +6,9 @@ import {
 } from './stellarFiatModalSchema';
 
 const VALID_G_ADDRESS =
-  'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
+  'GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H';
 const VALID_M_ADDRESS =
-  'MA7QYNF7SOWQ3GLR2BGMZEHXR776YZEUT2QZVE7VDTSXKOROVPMUSGAAAAAAAAAPCIBVZA';
+  'MAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAAAAAAAAAAAAFQGI';
 
 describe('validateStellarFiatModalForm', () => {
   it('rejects invalid amount for deposit', () => {
@@ -107,6 +107,8 @@ describe('validateStellarFiatModalForm', () => {
   });
 
   it('contractRecipientSchema accepts a plain G... address', () => {
-    expect(contractRecipientSchema.safeParse(VALID_G_ADDRESS).success).toBe(true);
+    expect(contractRecipientSchema.safeParse(VALID_G_ADDRESS).success).toBe(
+      true,
+    );
   });
 });

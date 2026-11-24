@@ -27,26 +27,36 @@ export default function NetworkModalHarness({
   const [open, setOpen] = useState(true);
   const seeded: NetworkState =
     (typeof window !== 'undefined' &&
-      (window as unknown as { __NETWORK_STATE?: NetworkState }).__NETWORK_STATE) ||
+      (window as unknown as { __NETWORK_STATE?: NetworkState })
+        .__NETWORK_STATE) ||
     {};
 
   const connection = seeded.connection ?? {
     isConnected: variant !== 'disconnected',
-    address: variant === 'disconnected' ? '' : 'GBEFLW6RT4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA7NQ',
+    address:
+      variant === 'disconnected'
+        ? ''
+        : 'GBEFLW6RT4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA7NQ',
     network: variant === 'mismatch' ? 'PUBLIC' : 'TESTNET',
   };
   const isNetworkMismatch = seeded.isNetworkMismatch ?? variant === 'mismatch';
   const isDarkMode = seeded.isDarkMode ?? dark;
 
   const wallet = {
-    connection: { ...connection, publicKey: connection.address, networkPassphrase: '' },
+    connection: {
+      ...connection,
+      publicKey: connection.address,
+      networkPassphrase: '',
+    },
     isNetworkMismatch,
   } as unknown as React.ContextType<typeof StellarWalletContext>;
 
   return (
     <ThemeContext.Provider value={{ isDarkMode, toggleDarkMode: () => {} }}>
       <StellarWalletContext.Provider value={wallet}>
-        <main className={`min-h-screen p-6 ${isDarkMode ? 'dark bg-gray-950' : ''}`}>
+        <main
+          className={`min-h-screen p-6 ${isDarkMode ? 'dark bg-gray-950' : ''}`}
+        >
           <NetworkStatusModal isOpen={open} onClose={() => setOpen(false)} />
         </main>
       </StellarWalletContext.Provider>

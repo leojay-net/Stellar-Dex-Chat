@@ -5,9 +5,217 @@ import { z } from 'zod';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
 import { getAdmin } from '@/lib/stellarContract';
 import { signTransaction } from '@stellar/freighter-api';
-import { TransactionBuilder, BASE_FEE, Networks, Memo, Account } from '@stellar/stellar-sdk';
+import {
+  TransactionBuilder,
+  BASE_FEE,
+  Networks,
+  Memo,
+  Account,
+  Address,
+  scValToNative,
+  xdr,
+} from '@stellar/stellar-sdk';
 import LandingPage from '@/components/LandingPage';
 import { ThemeContext } from '@/contexts/ThemeContext';
+
+interface PaymentRequirements {
+  scheme: string;
+  network: string;
+  asset: string;
+  amount: string;
+  payTo: string;
+}
+
+export const MAX_PAYMENT_SIGNATURE_TRANSACTION_CHARS = 64 * 1024;
+
+export type StaticPaymentCheck =
+  | { valid: true }
+  | { valid: false; reason: string };
+
+function nativeAddress(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  return value;
+}
+
+function nativeAmount(value: unknown): string | undefined {
+  if (typeof value === 'bigint') return value.toString();
+  if (typeof value === 'string' && /^[0-9]+$/.test(value)) return value;
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) {
+    return String(value);
+  }
+  return undefined;
+}
+
+export function checkStaticX402Payment(
+  transactionBase64: string,
+  requirements: PaymentRequirements,
+  accepted: PaymentRequirements,
+): StaticPaymentCheck {
+  if (transactionBase64.length > MAX_PAYMENT_SIGNATURE_TRANSACTION_CHARS) {
+    return {
+      valid: false,
+      reason: 'payment transaction envelope is too large',
+    };
+  }
+
+  if (accepted.scheme !== 'exact') {
+    return { valid: false, reason: 'payment accepted a non-exact scheme' };
+  }
+  if (
+    accepted.network !== requirements.network ||
+    accepted.asset !== requirements.asset ||
+    accepted.amount !== requirements.amount ||
+    accepted.payTo !== requirements.payTo
+  ) {
+    return {
+      valid: false,
+      reason: 'payment accepted terms do not match the configured offer',
+    };
+  }
+
+  const passphrase =
+    requirements.network === 'stellar:testnet'
+      ? Networks.TESTNET
+      : requirements.network === 'stellar:pubnet'
+        ? Networks.PUBLIC
+        : undefined;
+  if (!passphrase) {
+    return { valid: false, reason: 'unsupported Stellar network' };
+  }
+
+  let transaction: ReturnType<typeof TransactionBuilder.fromXDR>;
+  try {
+    transaction = TransactionBuilder.fromXDR(transactionBase64, passphrase);
+  } catch {
+    return { valid: false, reason: 'payment transaction envelope is invalid' };
+  }
+
+  if (!('operations' in transaction)) {
+    return {
+      valid: false,
+      reason: 'fee-bump transactions are not accepted for x402 exact payments',
+    };
+  }
+  if (transaction.operations.length !== 1) {
+    return {
+      valid: false,
+      reason: 'payment transaction must contain exactly one operation',
+    };
+  }
+
+  const operation = transaction.operations[0];
+  if (!operation || operation.type !== 'invokeHostFunction') {
+    return {
+      valid: false,
+      reason: 'payment transaction must invoke one Soroban contract',
+    };
+  }
+
+  const invokeOperation = operation as typeof operation & {
+    func: {
+      switch(): { name: string };
+      invokeContract(): {
+        contractAddress(): Parameters<typeof Address.fromScAddress>[0];
+        functionName(): string | Uint8Array;
+        args(): xdr.ScVal[];
+      };
+    };
+  };
+  if (invokeOperation.func.switch().name !== 'hostFunctionTypeInvokeContract') {
+    return {
+      valid: false,
+      reason: 'payment transaction host function is not an invoke contract',
+    };
+  }
+
+  let invocation;
+  try {
+    invocation = invokeOperation.func.invokeContract();
+  } catch {
+    return {
+      valid: false,
+      reason: 'payment transaction has an invalid contract invocation',
+    };
+  }
+
+  let contractAddress: string;
+  let functionName: string;
+  let args: xdr.ScVal[];
+  try {
+    contractAddress = Address.fromScAddress(
+      invocation.contractAddress(),
+    ).toString();
+    const rawFunctionName = invocation.functionName();
+    functionName =
+      typeof rawFunctionName === 'string'
+        ? rawFunctionName
+        : new TextDecoder().decode(new Uint8Array(rawFunctionName));
+    args = invocation.args();
+  } catch {
+    return {
+      valid: false,
+      reason: 'payment transaction has invalid invocation arguments',
+    };
+  }
+
+  if (contractAddress !== requirements.asset) {
+    return {
+      valid: false,
+      reason: 'payment contract does not match the configured asset',
+    };
+  }
+  if (functionName !== 'transfer') {
+    return {
+      valid: false,
+      reason: 'payment contract function is not transfer',
+    };
+  }
+  if (args.length !== 3) {
+    return {
+      valid: false,
+      reason: 'payment transfer must have exactly three arguments',
+    };
+  }
+
+  let to: unknown;
+  let amount: unknown;
+  try {
+    to = scValToNative(args[1]);
+    amount = scValToNative(args[2]);
+  } catch {
+    return {
+      valid: false,
+      reason: 'payment transfer arguments are invalid',
+    };
+  }
+
+  if (nativeAddress(to) !== requirements.payTo) {
+    return {
+      valid: false,
+      reason: 'payment transfer recipient does not match the configured payee',
+    };
+  }
+  if (nativeAmount(amount) !== requirements.amount) {
+    return {
+      valid: false,
+      reason: 'payment transfer amount does not match the configured amount',
+    };
+  }
+
+  return { valid: true };
+}
+
+export function checkStaticOfferPayment(
+  transactionBase64: string,
+  requirements: PaymentRequirements,
+  accepted: PaymentRequirements,
+): StaticPaymentCheck {
+  return checkStaticX402Payment(transactionBase64, requirements, accepted);
+}
+
+export function toRequirementsInput<T>(offer: T): T {
+  return offer;
+}
 
 /** Zod schema for validating a Stellar public key (56-char G-prefixed string). */
 export const stellarAddressSchema = z.string().length(56).startsWith('G');
@@ -31,7 +239,10 @@ export function useAdminGuardColorScheme(): AdminGuardColorScheme {
   const [systemPrefersDark, setSystemPrefersDark] = useState(false);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    if (
+      typeof window === 'undefined' ||
+      typeof window.matchMedia !== 'function'
+    ) {
       return;
     }
 
@@ -52,7 +263,10 @@ export function useAdminGuardColorScheme(): AdminGuardColorScheme {
     const observer = new MutationObserver(() => {
       setDataTheme(root.getAttribute('data-theme'));
     });
-    observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+    observer.observe(root, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    });
     return () => observer.disconnect();
   }, []);
 
@@ -88,9 +302,14 @@ export default function AdminGuard({ children }: AdminGuardProps) {
         return;
       }
 
-      const connectedParsed = stellarAddressSchema.safeParse(connection.address);
+      const connectedParsed = stellarAddressSchema.safeParse(
+        connection.address,
+      );
       if (!connectedParsed.success) {
-        console.error('Invalid connected wallet address format:', connectedParsed.error);
+        console.error(
+          'Invalid connected wallet address format:',
+          connectedParsed.error,
+        );
         setError('Invalid wallet address format. Access denied.');
         setIsAdmin(false);
         setLoading(false);
@@ -101,14 +320,17 @@ export default function AdminGuard({ children }: AdminGuardProps) {
         const adminAddress = await getAdmin();
         const adminParsed = stellarAddressSchema.safeParse(adminAddress);
         if (!adminParsed.success) {
-          console.error('Invalid admin address configured in contract:', adminParsed.error);
+          console.error(
+            'Invalid admin address configured in contract:',
+            adminParsed.error,
+          );
           setError('Invalid contract configuration. Access denied.');
           setIsAdmin(false);
           return;
         }
 
         const isAddressMatch = connectedParsed.data === adminParsed.data;
-        
+
         if (!isAddressMatch) {
           setIsAdmin(false);
           setLoading(false);
@@ -117,30 +339,34 @@ export default function AdminGuard({ children }: AdminGuardProps) {
 
         // Address matches, now authenticate with server via nonce/signature
         setAuthenticating(true);
-        
+
         // Request nonce from server
         const nonceResponse = await fetch('/api/admin/auth/nonce');
         if (!nonceResponse.ok) {
           throw new Error('Failed to request authentication nonce');
         }
-        
+
         const { nonce } = await nonceResponse.json();
         if (cancelled) return;
-        
+
         // Create a minimal transaction with the nonce as a memo hash
         // We need to fetch the account sequence first
         const accountResponse = await fetch(
-          `${connection.network?.toUpperCase() === 'PUBLIC' ? 'https://horizon.stellar.org' : 'https://horizon-testnet.stellar.org'}/accounts/${connection.address}`
+          `${connection.network?.toUpperCase() === 'PUBLIC' ? 'https://horizon.stellar.org' : 'https://horizon-testnet.stellar.org'}/accounts/${connection.address}`,
         );
         if (!accountResponse.ok) {
           throw new Error('Failed to fetch account details');
         }
         const accountData = await accountResponse.json();
         if (cancelled) return;
-        
-        const networkPassphrase = connection.networkPassphrase || Networks.TESTNET;
-        const account = new Account(accountData.account_id, accountData.sequence);
-        
+
+        const networkPassphrase =
+          connection.networkPassphrase || Networks.TESTNET;
+        const account = new Account(
+          accountData.account_id,
+          accountData.sequence,
+        );
+
         const transaction = new TransactionBuilder(account, {
           fee: BASE_FEE,
           networkPassphrase,
@@ -148,20 +374,20 @@ export default function AdminGuard({ children }: AdminGuardProps) {
           .addMemo(Memo.hash(Buffer.from(nonce, 'base64')))
           .setTimeout(30)
           .build();
-        
+
         const xdr = transaction.toXDR();
-        
+
         // Sign the transaction with Freighter
         const signResult = await signTransaction(xdr, {
           networkPassphrase,
           address: connection.address,
         });
         if (cancelled) return;
-        
+
         if (signResult.error) {
           throw new Error(`Failed to sign: ${signResult.error}`);
         }
-        
+
         // Submit signature to server to establish session
         const authResponse = await fetch('/api/admin/auth/nonce', {
           method: 'POST',
@@ -172,18 +398,22 @@ export default function AdminGuard({ children }: AdminGuardProps) {
             address: connection.address,
           }),
         });
-        
+
         if (cancelled) return;
 
         if (!authResponse.ok) {
           const errorData = await authResponse.json();
           throw new Error(errorData.error || 'Authentication failed');
         }
-        
+
         if (!cancelled) setIsAdmin(true);
       } catch (err) {
         console.error('Failed to verify admin status:', err);
-        setError(err instanceof Error ? err.message : 'Failed to verify admin status. Please try again.');
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Failed to verify admin status. Please try again.',
+        );
         setIsAdmin(false);
       } finally {
         setLoading(false);
@@ -214,7 +444,9 @@ export default function AdminGuard({ children }: AdminGuardProps) {
           }}
         />
         <span className="theme-text-secondary ml-3 font-medium">
-          {authenticating ? 'Authenticating admin session...' : 'Verifying admin access...'}
+          {authenticating
+            ? 'Authenticating admin session...'
+            : 'Verifying admin access...'}
         </span>
       </div>
     );
@@ -229,8 +461,18 @@ export default function AdminGuard({ children }: AdminGuardProps) {
         className="theme-app flex h-screen flex-col items-center justify-center p-6 text-center"
       >
         <div className="mb-4" style={{ color: 'var(--color-danger)' }}>
-          <svg className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          <svg
+            className="mx-auto h-12 w-12"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            />
           </svg>
         </div>
         <h2 className="theme-text-primary text-xl font-bold mb-2">{error}</h2>
@@ -245,9 +487,7 @@ export default function AdminGuard({ children }: AdminGuardProps) {
   }
 
   if (!isAdmin) {
-    return (
-      <LandingPage />
-    );
+    return <LandingPage />;
   }
 
   return <>{children}</>;

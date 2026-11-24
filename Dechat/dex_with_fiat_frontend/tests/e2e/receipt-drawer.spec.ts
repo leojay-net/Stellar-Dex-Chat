@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from './fixtures';
 import { gotoChatConnected } from './helpers';
 
 test.describe('ReceiptDrawer', () => {
@@ -18,6 +19,8 @@ test.describe('ReceiptDrawer', () => {
       .getByRole('button', { name: 'Close transaction receipts' })
       .click();
 
-    await expect(page.locator('.receipt-drawer-panel')).toHaveClass(/translate-x-full/);
+    await expect(page.locator('.receipt-drawer-panel')).toHaveClass(
+      /translate-x-full/,
+    );
   });
 });

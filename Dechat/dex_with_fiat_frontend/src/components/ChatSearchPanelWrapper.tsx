@@ -14,7 +14,9 @@ interface ChatSearchPanelWrapperProps {
   onClose: () => void;
 }
 
-export default function ChatSearchPanelWrapper(props: ChatSearchPanelWrapperProps) {
+export default function ChatSearchPanelWrapper(
+  props: ChatSearchPanelWrapperProps,
+) {
   return (
     <Suspense fallback={null}>
       <ChatSearchPanel {...props} />

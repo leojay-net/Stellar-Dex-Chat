@@ -1,98 +1,90 @@
-import { filterTransactions, FilterState } from "@/lib/transactionFilters";
-import { TransactionData } from "@/types";
+import { describe, expect, it } from 'vitest';
+import { filterTransactions } from '@/lib/transactionFilters';
+import type { FilterState, TransactionHistoryEntry } from '@/types';
 
-const mockTransactions: TransactionData[] = [
+const transactions: (TransactionHistoryEntry & { network?: string })[] = [
   {
-    id: "1",
-    type: "deposit",
-    amountIn: "100",
-    tokenIn: "XLM",
-    timestamp: new Date("2023-10-01").getTime(),
-    status: "success",
+    id: '1',
+    kind: 'deposit',
+    status: 'completed',
+    asset: 'XLM',
+    message: 'Deposit completed',
+    createdAt: new Date('2023-10-01'),
+    network: 'stellar-testnet',
   },
   {
-    id: "2",
-    type: "withdrawal",
-    amountIn: "500",
-    tokenIn: "USDC",
-    timestamp: new Date("2023-10-15").getTime(),
-    status: "success",
+    id: '2',
+    kind: 'payout',
+    status: 'pending',
+    asset: 'USDC',
+    message: 'Payout pending',
+    createdAt: new Date('2023-10-15'),
+    network: 'stellar-mainnet',
   },
   {
-    id: "3",
-    type: "deposit",
-    amountIn: "1000",
-    tokenIn: "XLM",
-    timestamp: new Date("2023-11-01").getTime(),
-    status: "success",
+    id: '3',
+    kind: 'deposit',
+    status: 'failed',
+    asset: 'XLM',
+    message: 'Deposit failed',
+    createdAt: new Date('2023-11-01'),
   },
 ];
+const emptyFilters: FilterState = { status: [], asset: [], network: [] };
 
-describe("transactionFilters utility", () => {
-  const defaultFilters: FilterState = {
-    type: "all",
-    dateRange: { start: null, end: null },
-    amountRange: { min: null, max: null },
-  };
-
-  test("should return all transactions when no filters are applied", () => {
-    const result = filterTransactions(mockTransactions, defaultFilters);
-    expect(result).toHaveLength(3);
+describe('transactionFilters utility', () => {
+  it('returns all transactions when no filters are applied', () => {
+    expect(filterTransactions(transactions, emptyFilters)).toEqual(
+      transactions,
+    );
   });
 
-  test("should filter by transaction type (deposit)", () => {
-    const filters: FilterState = { ...defaultFilters, type: "deposit" };
-    const result = filterTransactions(mockTransactions, filters);
-    expect(result).toHaveLength(2);
-    expect(result.every((t) => t.type === "deposit")).toBe(true);
-  });
-
-  test("should filter by date range", () => {
+  it('matches either selected status', () => {
     const filters: FilterState = {
-      ...defaultFilters,
-      dateRange: {
-        start: new Date("2023-10-10"),
-        end: new Date("2023-10-20"),
-      },
+      ...emptyFilters,
+      status: ['completed', 'failed'],
     };
-    const result = filterTransactions(mockTransactions, filters);
-    expect(result).toHaveLength(1);
-    expect(result[0].id).toBe("2");
+    expect(filterTransactions(transactions, filters)).toEqual([
+      transactions[0],
+      transactions[2],
+    ]);
   });
 
-  test("should filter by amount range", () => {
+  it('filters by asset', () => {
+    const filters = { ...emptyFilters, asset: ['USDC'] };
+    expect(filterTransactions(transactions, filters)).toEqual([
+      transactions[1],
+    ]);
+  });
+
+  it('filters by network and excludes entries without a network', () => {
+    const filters = { ...emptyFilters, network: ['stellar-testnet'] };
+    expect(filterTransactions(transactions, filters)).toEqual([
+      transactions[0],
+    ]);
+  });
+
+  it('requires a match in every selected category', () => {
     const filters: FilterState = {
-      ...defaultFilters,
-      amountRange: { min: 400, max: 600 },
+      status: ['pending', 'failed'],
+      asset: ['XLM'],
+      network: [],
     };
-    const result = filterTransactions(mockTransactions, filters);
-    expect(result).toHaveLength(1);
-    expect(result[0].id).toBe("2");
+    expect(filterTransactions(transactions, filters)).toEqual([
+      transactions[2],
+    ]);
   });
 
-  test("should apply combined filters", () => {
+  it('returns an empty array when no transaction matches', () => {
     const filters: FilterState = {
-      type: "deposit",
-      amountRange: { min: 500, max: 1500 },
-      dateRange: { start: new Date("2023-10-20"), end: null },
+      ...emptyFilters,
+      status: ['failed'],
+      asset: ['USDC'],
     };
-    const result = filterTransactions(mockTransactions, filters);
-    expect(result).toHaveLength(1);
-    expect(result[0].id).toBe("3");
+    expect(filterTransactions(transactions, filters)).toEqual([]);
   });
 
-  test("should return empty array when no transactions match criteria", () => {
-    const filters: FilterState = {
-      ...defaultFilters,
-      type: "withdrawal",
-      amountRange: { min: 1000 },
-    };
-    const result = filterTransactions(mockTransactions, filters);
-    expect(result).toHaveLength(0);
-  });
-
-  test("should handle empty transaction list", () => {
-    const result = filterTransactions([], defaultFilters);
-    expect(result).toHaveLength(0);
+  it('handles an empty transaction list', () => {
+    expect(filterTransactions([], emptyFilters)).toEqual([]);
   });
 });

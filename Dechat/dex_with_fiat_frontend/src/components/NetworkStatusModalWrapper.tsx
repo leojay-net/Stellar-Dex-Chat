@@ -12,7 +12,9 @@ interface NetworkStatusModalWrapperProps {
   onClose: () => void;
 }
 
-export default function NetworkStatusModalWrapper(props: NetworkStatusModalWrapperProps) {
+export default function NetworkStatusModalWrapper(
+  props: NetworkStatusModalWrapperProps,
+) {
   return (
     <Suspense fallback={null}>
       <NetworkStatusModal {...props} />

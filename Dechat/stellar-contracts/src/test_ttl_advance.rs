@@ -47,7 +47,15 @@ fn test_ttl_advance_token_registry() {
     env.ledger().set_sequence_number(100_000);
 
     // Deposit should refresh TokenRegistry TTL and succeed
-    bridge.deposit(&user, &10_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.deposit(
+        &user,
+        &10_000,
+        &token_addr,
+        &Bytes::new(&env),
+        &0,
+        &0,
+        &None,
+    );
     assert_eq!(bridge.get_total_deposited(), 10_000);
 
     // Advance another 150,000 ledgers (total 250,000)
@@ -61,7 +69,15 @@ fn test_ttl_advance_token_registry() {
     env.ledger().set_sequence_number(350_000);
 
     // Second deposit should work smoothly
-    bridge.deposit(&user, &20_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.deposit(
+        &user,
+        &20_000,
+        &token_addr,
+        &Bytes::new(&env),
+        &0,
+        &0,
+        &None,
+    );
     assert_eq!(bridge.get_total_deposited(), 30_000);
 }
 
@@ -74,7 +90,15 @@ fn test_ttl_advance_withdraw_queue() {
     let user = Address::generate(&env);
 
     token_sac.mint(&user, &100_000);
-    bridge.deposit(&user, &50_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.deposit(
+        &user,
+        &50_000,
+        &token_addr,
+        &Bytes::new(&env),
+        &0,
+        &0,
+        &None,
+    );
 
     // Queue withdrawal at ledger 100
     env.ledger().set_sequence_number(100);
@@ -84,7 +108,9 @@ fn test_ttl_advance_withdraw_queue() {
     env.ledger().set_sequence_number(50_100);
 
     // get_withdrawal_request extends TTL on read
-    let req = bridge.get_withdrawal_request(&req_id).expect("request should exist");
+    let req = bridge
+        .get_withdrawal_request(&req_id)
+        .expect("request should exist");
     assert_eq!(req.amount, 30_000);
     assert_eq!(req.to, user);
 
@@ -124,7 +150,15 @@ fn test_ttl_advance_denylist() {
 
     // Attempted deposit by bad_actor should be rejected
     token_sac.mint(&bad_actor, &10_000);
-    let res = bridge.try_deposit(&bad_actor, &1_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    let res = bridge.try_deposit(
+        &bad_actor,
+        &1_000,
+        &token_addr,
+        &Bytes::new(&env),
+        &0,
+        &0,
+        &None,
+    );
     assert_eq!(res, Err(Ok(Error::AddressDenied)));
 }
 
@@ -183,7 +217,15 @@ fn test_ttl_advance_multi_cycle_interleaved() {
 
     // Advance 80,000 ledgers
     env.ledger().set_sequence_number(80_100);
-    bridge.deposit(&user, &100_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
+    bridge.deposit(
+        &user,
+        &100_000,
+        &token_addr,
+        &Bytes::new(&env),
+        &0,
+        &0,
+        &None,
+    );
     let req_id = bridge.request_withdrawal(&user, &50_000, &token_addr, &None, &0);
 
     // Advance 80,000 ledgers (total 160,100)

@@ -1,4 +1,5 @@
-import { test, expect, Page } from '@playwright/test';
+import { expect, Page } from '@playwright/test';
+import { test } from './fixtures';
 import { gotoChatConnected, mockSorobanRpc } from './helpers';
 
 async function mockGeminiDepositReply(page: Page): Promise<void> {
@@ -48,6 +49,8 @@ test.describe('Deposit flow', () => {
 
   test('page title includes Stellar', async ({ page }) => {
     await page.goto('/');
-    await expect(page).toHaveTitle(/stellar|dexfiat|bridge/i, { timeout: 10_000 });
+    await expect(page).toHaveTitle(/stellar|dexfiat|bridge/i, {
+      timeout: 10_000,
+    });
   });
 });
