@@ -448,6 +448,7 @@ Repo Avatar
 
 ### Fixed
 
+- Frontend maintenance batch for issues #1770, #1773, #1774, and #1775
 - Add missing Ledger import and fix sequence_number field name in tests
 - Integrate receipt system with allowlist branch
 - Properly integrate multi-token + receipt system features
