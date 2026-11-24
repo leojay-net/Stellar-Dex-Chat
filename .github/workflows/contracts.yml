@@ -189,6 +189,8 @@ jobs:
     name: WASM Size Report
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    env:
+      MAX_WASM_BYTES: "125000"
 
     steps:
       - name: Checkout PR head

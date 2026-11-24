@@ -72,7 +72,7 @@ cargo test
 
 # Deploy (Testnet)
 stellar contract deploy \
-    --wasm target/wasm32v1-none/release/stellar_contracts.optimized.wasm \
+    --wasm target/wasm32v1-none/release/stellar_contracts.wasm \
   --network testnet
 ```
 
