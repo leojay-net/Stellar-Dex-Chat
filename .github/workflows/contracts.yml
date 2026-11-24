@@ -231,7 +231,7 @@ jobs:
       - name: Record head size
         id: head_size
         run: |
-          SIZE=$(wc -c < "${{ github.workspace }}/.wasm-size-target/wasm32v1-none/release/stellar_contracts.optimized.wasm" | tr -d '[:space:]')
+          SIZE=$(wc -c < "${{ github.workspace }}/.wasm-size-target/wasm32v1-none/release/stellar_contracts.wasm" | tr -d '[:space:]')
           echo "size=$SIZE" >> "$GITHUB_OUTPUT"
 
       - name: Build base WASM
@@ -243,7 +243,7 @@ jobs:
       - name: Record base size
         id: base_size
         run: |
-          SIZE=$(wc -c < "${{ github.workspace }}/.wasm-size-target/wasm32v1-none/release/stellar_contracts.optimized.wasm" | tr -d '[:space:]')
+          SIZE=$(wc -c < "${{ github.workspace }}/.wasm-size-target/wasm32v1-none/release/stellar_contracts.wasm" | tr -d '[:space:]')
           echo "size=$SIZE" >> "$GITHUB_OUTPUT"
 
       - name: Write size report

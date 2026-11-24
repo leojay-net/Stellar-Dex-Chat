@@ -113,16 +113,11 @@ export default function LandingPage() {
   const router = useRouter();
   const { isDarkMode, toggleDarkMode } = useTheme();
   const singleKeyShortcuts = useSingleKeyShortcuts();
-  const [heroVisible, setHeroVisible] = useState(false);
   const [xlmPrice, setXlmPrice] = useState<number | null>(null);
   const [xlmChange, setXlmChange] = useState<number | null>(null);
   const [priceLoading, setPriceLoading] = useState(true);
 
   const contractAddress = CONTRACT_ID;
-
-  useEffect(() => {
-    setHeroVisible(true);
-  }, []);
 
   // Fetch XLM price data every 60 seconds
   useEffect(() => {
@@ -294,9 +289,7 @@ export default function LandingPage() {
             <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-blue-600/5 rounded-full blur-3xl animate-pulse delay-1000"></div>
           </div>
 
-          <div
-            className={`relative z-10 text-center max-w-5xl mx-auto transform transition-all duration-1000 ${heroVisible ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'}`}
-          >
+          <div className="relative z-10 text-center max-w-5xl mx-auto">
             <h1
               id="landing-hero-heading"
               className="text-5xl md:text-7xl font-bold mb-6 leading-tight"

@@ -7,7 +7,7 @@
 FRONTEND := Dechat/dex_with_fiat_frontend
 CONTRACTS := Dechat/stellar-contracts
 PNPM := pnpm --dir $(FRONTEND)
-WASM := $(CONTRACTS)/target/wasm32v1-none/release/stellar_contracts.optimized.wasm
+WASM := $(CONTRACTS)/target/wasm32v1-none/release/stellar_contracts.wasm
 MAX_WASM_BYTES ?= 98500
 
 .PHONY: ci frontend-check frontend-typecheck frontend-lint frontend-build frontend-test \
