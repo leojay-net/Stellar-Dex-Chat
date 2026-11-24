@@ -1040,6 +1040,16 @@ pub enum DataKey {
     SlippageThreshold,
     // ── Issue #1044: fee recipient address ───────────────────────────
     FeeRecipient,
+    OperatorDailyLimit(Address),
+    OperatorDailyVolume(Address),
+    SetOperatorNonce(Address),
+    SetLimitNonce(Address),
+    InitNonce(Address),
+    FeeWithdrawalNonceByCaller(Address),
+    LimitMaxCap,
+    UpgradeCancellationNonce(Address),
+    EmergencyRecoveryCap,
+    WithdrawalExecutionNonce(Address),
 }
 
 const ORACLE_PRICE_DECIMALS: i128 = 10_000_000;

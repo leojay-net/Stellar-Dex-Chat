@@ -24,7 +24,15 @@ fn setup(env: &Env) -> (FiatBridgeClient, Address, Address, TokenClient) {
     let token = TokenClient::new(env, &token_addr);
 
     let signers = vec![env, admin.clone()];
-    client.init(&admin, &token_addr, &10_000_000i128, &1i128, &signers, &1);
+    client.init(
+        &admin,
+        &token_addr,
+        &10_000_000i128,
+        &1i128,
+        &signers,
+        &1,
+        &0,
+    );
 
     StellarAssetClient::new(env, &token_addr).mint(&admin, &10_000_000i128);
 
