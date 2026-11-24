@@ -701,16 +701,12 @@ export default function BankDetailsModal({
 
   const handleCancelPayout = async () => {
     try {
-      const res = await fetch(
-        `/api/transfer-status/${transferReference}`,
-        { method: 'POST' },
-      );
+      const res = await fetch(`/api/transfer-status/${transferReference}`, {
+        method: 'POST',
+      });
       const json = await res.json();
       if (json.success) {
-        pushStatusEvent(
-          'cancelled',
-          'Transfer cancelled',
-        );
+        pushStatusEvent('cancelled', 'Transfer cancelled');
         addNotification(
           'payout_cancelled',
           'Payout was cancelled successfully.',

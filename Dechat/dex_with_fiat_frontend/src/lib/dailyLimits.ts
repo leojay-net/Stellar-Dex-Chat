@@ -19,14 +19,17 @@ export function remainingOf(cap: bigint, used: bigint): bigint {
 export function parseAmountToStroops(input: string): bigint | null {
   const s = input.trim();
   if (!/^\d+(\.\d{0,7})?$/.test(s)) return null;
-  const [whole, frac = ""] = s.split(".");
-  return BigInt(whole) * STROOPS_PER_UNIT + BigInt(frac.padEnd(7, "0"));
+  const [whole, frac = ''] = s.split('.');
+  return BigInt(whole) * STROOPS_PER_UNIT + BigInt(frac.padEnd(7, '0'));
 }
 
 /** 125000000n -> "12.5" */
 export function formatStroops(v: bigint): string {
   const whole = v / STROOPS_PER_UNIT;
-  const frac = (v % STROOPS_PER_UNIT).toString().padStart(7, "0").replace(/0+$/, "");
+  const frac = (v % STROOPS_PER_UNIT)
+    .toString()
+    .padStart(7, '0')
+    .replace(/0+$/, '');
   return frac ? `${whole}.${frac}` : `${whole}`;
 }
 
@@ -37,9 +40,9 @@ export function formatStroops(v: bigint): string {
  */
 export function usedToday(raw: unknown, nowMs: number): bigint {
   if (raw == null) return 0n;
-  if (typeof raw === "bigint") return raw;
-  if (typeof raw === "number") return BigInt(Math.trunc(raw));
-  if (typeof raw === "object") {
+  if (typeof raw === 'bigint') return raw;
+  if (typeof raw === 'number') return BigInt(Math.trunc(raw));
+  if (typeof raw === 'object') {
     const r = raw as Record<string, unknown>;
     const amount = r.amount ?? r.total ?? r.deposited ?? r.withdrawn ?? 0n;
     const day = r.day ?? r.day_index ?? r.last_day;
