@@ -430,6 +430,14 @@ pub struct ReceiptIssuedEvent {
 
 #[contractevent]
 #[derive(Clone, Debug)]
+pub struct ReceiptIndexOutOfBoundsEvent {
+    pub version: u32,
+    pub index: u64,
+    pub receipt_count: u64,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
 pub struct WithdrawEvent {
     pub version: u32,
     pub to: Address,
@@ -636,6 +644,14 @@ pub struct SetMaxOperatorsEvent {
 pub struct DenyAddressEvent {
     pub version: u32,
     pub address: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct IsDeniedCheckedEvent {
+    pub version: u32,
+    pub address: Address,
+    pub is_denied: bool,
 }
 
 #[contractevent]
@@ -1204,9 +1220,7 @@ impl FiatBridge {
         }
         .publish(&env);
 
-        env.storage()
-            .instance()
-            .set(&DataKey::InitNonce(admin.clone()), &0u64);
+        Self::validate_and_increment_init_nonce(&env, &admin, nonce)?;
         env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
         Ok(())
     }
@@ -3207,6 +3221,10 @@ impl FiatBridge {
                 &DataKey::OperatorActivatedAt(operator.clone()),
                 &env.ledger().sequence(),
             );
+            let nonce_key = DataKey::OperatorNonce(operator.clone());
+            if !env.storage().instance().has(&nonce_key) {
+                env.storage().instance().set(&nonce_key, &1u64);
+            }
         }
 
         // Return NotOperator when attempting to deactivate a non-operator
@@ -3838,13 +3856,19 @@ impl FiatBridge {
                     .ok_or(Error::Overflow)?;
             }
         }
-        let denied_key = DataKey::Denied(address);
+        let denied_key = DataKey::Denied(address.clone());
         let denied = env.storage().persistent().has(&denied_key);
         if denied {
             env.storage()
                 .persistent()
                 .extend_ttl(&denied_key, MIN_TTL, MAX_TTL);
         }
+        IsDeniedCheckedEvent {
+            version: EVENT_VERSION,
+            address,
+            is_denied: denied,
+        }
+        .publish(&env);
         Ok(denied)
     }
 
@@ -4133,6 +4157,16 @@ impl FiatBridge {
             .unwrap_or(to);
 
         let token_client = token::Client::new(&env, &token);
+        let on_chain_balance = token_client.balance(&env.current_contract_address());
+        if current > on_chain_balance {
+            FeeVaultReconciledEvent {
+                version: EVENT_VERSION,
+                token: token.clone(),
+                vault_ledger: current,
+                on_chain_balance,
+            }
+            .publish(&env);
+        }
         token_client.transfer(&env.current_contract_address(), &recipient, &amount);
 
         env.storage().persistent().set(&key, &(current - amount));
@@ -4201,8 +4235,14 @@ impl FiatBridge {
             }
             .publish(&env);
 
-            // Issue #1383: check invariants after each fee withdrawal to prevent draining depositor funds
-            Self::check_invariants(&env, &token)?;
+            // Unregistered tokens have no tracked depositor liabilities to protect.
+            if env
+                .storage()
+                .persistent()
+                .has(&DataKey::TokenRegistry(token.clone()))
+            {
+                Self::check_invariants(&env, &token)?;
+            }
         }
 
         Self::validate_and_increment_fee_withdrawal_nonce(&env, &admin, nonce)?;
@@ -4496,6 +4536,12 @@ impl FiatBridge {
         if idx >= max_receipts {
             // Out-of-bounds index: return None rather than reading past the
             // known receipt range.
+            ReceiptIndexOutOfBoundsEvent {
+                version: EVENT_VERSION,
+                index: idx,
+                receipt_count: max_receipts,
+            }
+            .publish(&env);
             return None;
         }
         let receipt_hash: BytesN<32> =

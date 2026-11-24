@@ -131,10 +131,11 @@ fn snapshot_get_accrued_fees() {
     assert_eq!(initial_fees, 0i128, "Initial accrued fees should be 0");
     assert!(initial_fees >= 0, "Accrued fees should never be negative");
 
-    // Make a deposit to accrue some fees (assuming 1% fee rate)
+    // Make a deposit, then record fees through the fee-vault entrypoint.
     let depositor = Address::generate(&env);
     let deposit_amount: i128 = 1_000_000;
     make_deposit(&env, &client, &token_addr, &depositor, deposit_amount);
+    client.accrue_fee(&token_addr, &10_000);
 
     // Get updated fees
     let updated_fees = client.get_accrued_fees(&token_addr);
