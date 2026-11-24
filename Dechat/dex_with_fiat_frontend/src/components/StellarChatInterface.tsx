@@ -62,6 +62,8 @@ import StellarFiatModalWrapper from './StellarFiatModalWrapper';
 import UserSettingsWrapper from './UserSettingsWrapper';
 import NetworkStatusModalWrapper from './NetworkStatusModalWrapper';
 import NotificationsCenterWrapper from './NotificationsCenterWrapper';
+import Onboarding, { useOnboarding } from './Onboarding';
+import WalletPicker from './WalletPicker';
 import ShortcutsHelp from './ShortcutsHelp';
 
 /** Possible states for the API health badge */
@@ -83,9 +85,13 @@ function StellarChatInterfaceContent() {
     isNetworkMismatch,
     xlmBalance,
     error: walletError,
+    availableWallets,
+    selectedWalletId,
+    selectWallet,
   } = useStellarWallet();
   const { isDarkMode, toggleDarkMode } = useTheme();
   const { fiatCurrency } = useUserPreferences();
+  const { shouldShowOnboarding, resetOnboarding } = useOnboarding();
 
   const [showSidebar, setShowSidebar] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -97,6 +103,8 @@ function StellarChatInterfaceContent() {
   const [showAccountDropdown, setShowAccountDropdown] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAdminMode, setIsAdminMode] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showWalletPicker, setShowWalletPicker] = useState(false);
   const { isOnline, wasOffline, resetWasOffline } = useOnlineStatus();
   const isMobile = useMediaQuery('(max-width: 639px)');
   const { addToast } = useToast();
@@ -129,6 +137,17 @@ function StellarChatInterfaceContent() {
   // isn't an empty conversation pane before messages are restored.
   const [isHydrated, setIsHydrated] = useState(false);
   const { entries: txHistory, clearEntries: clearTxHistory } = useTxHistory();
+
+  // Show onboarding for new users after hydration
+  useEffect(() => {
+    if (isHydrated && shouldShowOnboarding) {
+      // Delay slightly to ensure the UI is fully rendered
+      const timer = setTimeout(() => {
+        setShowOnboarding(true);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [isHydrated, shouldShowOnboarding]);
   const accountDropdownRef = useRef<HTMLDivElement>(null);
   const reconnectNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -548,6 +567,27 @@ function StellarChatInterfaceContent() {
               onClick={() => setShowSidebar(!showSidebar)}
               className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
             >
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>
+                Session&nbsp;<code className="font-mono">{deepLinkState.sessionId}</code>&nbsp;was not found.
+                It may have been deleted or the link may be invalid.
+              </span>
+            </div>
+          )}
+          {/* Header */}
+          <header className="theme-surface theme-border flex-shrink-0 flex items-center justify-between px-4 py-3 border-b transition-colors duration-300">
+            <div className="flex items-center gap-3">
+              <button
+                id="onboarding-sidebar-toggle"
+                onClick={() => setShowSidebar(!showSidebar)}
+                className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
+              >
+                {showSidebar ? (
+                  <X className="w-5 h-5" />
+                ) : (
+                  <Menu className="w-5 h-5" />
+                )}
+              </button>
               {showSidebar ? (
                 <X className="w-5 h-5" />
               ) : (
@@ -559,6 +599,21 @@ function StellarChatInterfaceContent() {
               <div className="w-8 h-8 rounded-full bg-[var(--color-primary)] flex items-center justify-center">
                 <Star className="w-4 h-4 text-white" />
               </div>
+
+              {/* ── Health badge ─────────────────────────────────────────────── */}
+              <div
+                id="onboarding-health-badge"
+                title={healthBadge.title}
+                aria-label={healthBadge.title}
+                role="status"
+                className={`hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium select-none ${
+                  isDarkMode
+                    ? 'bg-gray-800 text-gray-300'
+                    : 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${healthBadge.dot}`} />
+                {healthBadge.label}
               <div>
                 <h1 className="text-xl font-bold text-[var(--color-primary)]">
                   {t('header.title')}
@@ -860,6 +915,11 @@ function StellarChatInterfaceContent() {
             </div>
             {queuedReadables > 0 && isOnline && (
               <button
+                id="onboarding-settings"
+                onClick={() => setShowSettings(true)}
+                title={t('header.settings_title')}
+                aria-label={t('header.settings_aria_label')}
+                className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
                 onClick={() => void processQueue()}
                 className="px-2 py-1 bg-white/50 hover:bg-white/80 rounded border border-current font-medium transition-colors"
               >
@@ -968,6 +1028,23 @@ function StellarChatInterfaceContent() {
                   >
                     {t('common.deposit_xlm')}
                   </button>
+                </div>
+              ) : (
+                <button
+                  id="onboarding-wallet-connect"
+                  onClick={() => {
+                    const installedWallets = availableWallets.filter(w => w.isInstalled);
+                    if (installedWallets.length > 1) {
+                      setShowWalletPicker(true);
+                    } else {
+                      connect();
+                    }
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-sm font-medium rounded-lg transition-all"
+                >
+                  <Wallet className="w-4 h-4" />
+                  {t('header.connect_freighter')}
+                </button>
                 </>
               )}
             </span>
@@ -1142,6 +1219,17 @@ function StellarChatInterfaceContent() {
         <UserSettings
           isOpen={showSettings}
           onClose={() => setShowSettings(false)}
+          onResetOnboarding={() => {
+            resetOnboarding();
+            setShowOnboarding(true);
+            setShowSettings(false);
+          }}
+        />
+
+        {/* Wallet picker */}
+        <WalletPicker
+          isOpen={showWalletPicker}
+          onClose={() => setShowWalletPicker(false)}
         />
 
         {/* Network status modal (issue #1030) */}
@@ -1156,6 +1244,12 @@ function StellarChatInterfaceContent() {
           onClose={() => setIsReceiptDrawerOpen(false)}
           transactions={txHistory}
           onClearHistory={clearTxHistory}
+        />
+
+        {/* Onboarding coach marks */}
+        <Onboarding
+          isOpen={showOnboarding}
+          onClose={() => setShowOnboarding(false)}
         />
 
         {/* Session expired banner */}

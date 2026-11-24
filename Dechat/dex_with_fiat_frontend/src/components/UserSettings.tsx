@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { X, Check, Plus, Trash2, Edit2 } from 'lucide-react';
+import { X, Check, Plus, Trash2, Edit2, RotateCcw } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useTranslation, SupportedLocale } from '@/contexts/TranslationContext';
 import {
@@ -21,9 +21,10 @@ import { useWatchlist } from '@/hooks/useWatchlist';
 interface UserSettingsProps {
   isOpen: boolean;
   onClose: () => void;
+  onResetOnboarding?: () => void;
 }
 
-export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
+export default function UserSettings({ isOpen, onClose, onResetOnboarding }: UserSettingsProps) {
   const { isDarkMode } = useTheme();
   const { locale, setLocale } = useTranslation();
   const enableConversionReminders = useFeatureFlag('enableConversionReminders');
@@ -610,6 +611,39 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                 );
               })}
             </ul>
+          </section>
+
+          {/* Onboarding section */}
+          <section
+            className={`pt-6 border-t ${featureFlagSectionDividerBorderClass(isDarkMode)}`}
+          >
+            <h3
+              className={`text-xs font-semibold uppercase tracking-wider mb-3 ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-500'
+              }`}
+            >
+              Help
+            </h3>
+            <p
+              className={`text-xs mb-4 ${
+                isDarkMode ? 'text-gray-500' : 'text-gray-400'
+              }`}
+            >
+              Learn how to use the application features
+            </p>
+            {onResetOnboarding && (
+              <button
+                onClick={onResetOnboarding}
+                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  isDarkMode
+                    ? 'bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200'
+                }`}
+              >
+                <RotateCcw className="w-4 h-4" />
+                Replay onboarding tour
+              </button>
+            )}
           </section>
 
           {/* High-Value Transfer Security section */}
