@@ -11,16 +11,17 @@ export const test = base.extend<{ checkCsp: void }>({
         },
       );
       await context.addInitScript(() => {
-        const report = (
-          window as typeof window & {
-            __recordCspViolation: (
-              directive: string,
-              blockedUri: string,
-            ) => Promise<void>;
-          }
-        ).__recordCspViolation;
+        const browserWindow = window as typeof window & {
+          __recordCspViolation: (
+            directive: string,
+            blockedUri: string,
+          ) => Promise<void>;
+        };
         document.addEventListener('securitypolicyviolation', (event) => {
-          void report(event.effectiveDirective, event.blockedURI);
+          void browserWindow.__recordCspViolation(
+            event.effectiveDirective,
+            event.blockedURI,
+          );
         });
       });
 
