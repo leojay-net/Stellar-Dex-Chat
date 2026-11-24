@@ -558,7 +558,10 @@ export default function LandingPage() {
             <div className="grid md:grid-cols-2 gap-12">
               <div>
                 <h3 className="text-2xl font-semibold mb-6 flex items-center text-[var(--color-text-primary)]">
-                  <Network className="w-6 h-6 mr-3 text-blue-500" aria-hidden="true" />
+                  <Network
+                    className="w-6 h-6 mr-3 text-blue-500"
+                    aria-hidden="true"
+                  />
                   Stellar Assets
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -589,7 +592,10 @@ export default function LandingPage() {
 
               <div>
                 <h3 className="text-2xl font-semibold mb-6 flex items-center text-[var(--color-text-primary)]">
-                  <Globe className="w-6 h-6 mr-3 text-green-500" aria-hidden="true" />
+                  <Globe
+                    className="w-6 h-6 mr-3 text-green-500"
+                    aria-hidden="true"
+                  />
                   Fiat Currencies
                 </h3>
                 <div className="grid grid-cols-2 gap-4">

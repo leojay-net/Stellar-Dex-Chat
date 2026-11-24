@@ -56,7 +56,7 @@ describe('AdminGuard', () => {
     render(
       <AdminGuard>
         <div data-testid="protected-content">Secret content</div>
-      </AdminGuard>
+      </AdminGuard>,
     );
 
     expect(await screen.findByTestId('landing-page')).toBeInTheDocument();
@@ -65,31 +65,39 @@ describe('AdminGuard', () => {
 
   it('shows error if connected address has invalid format (Zod validation)', async () => {
     vi.mocked(useStellarWallet).mockReturnValue({
-      connection: { address: 'invalid-address-not-starting-with-g-or-correct-length' },
+      connection: {
+        address: 'invalid-address-not-starting-with-g-or-correct-length',
+      },
     } as any);
 
     render(
       <AdminGuard>
         <div data-testid="protected-content">Secret content</div>
-      </AdminGuard>
+      </AdminGuard>,
     );
 
-    expect(await screen.findByText('Invalid wallet address format. Access denied.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Invalid wallet address format. Access denied.'),
+    ).toBeInTheDocument();
   });
 
   it('shows error if contract admin address has invalid format (Zod validation)', async () => {
     vi.mocked(useStellarWallet).mockReturnValue({
-      connection: { address: 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUV2' }, // 56 chars
+      connection: {
+        address: 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUV2',
+      }, // 56 chars
     } as any);
     vi.mocked(getAdmin).mockResolvedValue('invalid-admin-address');
 
     render(
       <AdminGuard>
         <div data-testid="protected-content">Secret content</div>
-      </AdminGuard>
+      </AdminGuard>,
     );
 
-    expect(await screen.findByText('Invalid contract configuration. Access denied.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Invalid contract configuration. Access denied.'),
+    ).toBeInTheDocument();
   });
 
   it('renders children after the matching wallet establishes an admin session', async () => {
@@ -98,7 +106,9 @@ describe('AdminGuard', () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(Response.json({ nonce }))
-      .mockResolvedValueOnce(Response.json({ account_id: validAddr, sequence: '1' }))
+      .mockResolvedValueOnce(
+        Response.json({ account_id: validAddr, sequence: '1' }),
+      )
       .mockResolvedValueOnce(Response.json({ success: true }));
     vi.stubGlobal('fetch', fetchMock);
     vi.mocked(signTransaction).mockResolvedValue({
@@ -113,7 +123,7 @@ describe('AdminGuard', () => {
     render(
       <AdminGuard>
         <div data-testid="protected-content">Secret content</div>
-      </AdminGuard>
+      </AdminGuard>,
     );
 
     expect(await screen.findByTestId('protected-content')).toBeInTheDocument();
@@ -131,14 +141,19 @@ describe('AdminGuard', () => {
       '/api/admin/auth/nonce',
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ nonce, signature: 'signed-fixture', address: validAddr }),
+        body: JSON.stringify({
+          nonce,
+          signature: 'signed-fixture',
+          address: validAddr,
+        }),
       }),
     );
   });
 
   it('renders landing page when valid connected address does not match valid admin address', async () => {
     const userAddr = 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUV2';
-    const adminAddr = 'GBCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW2';
+    const adminAddr =
+      'GBCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW2';
     vi.mocked(useStellarWallet).mockReturnValue({
       connection: { address: userAddr },
     } as any);
@@ -147,14 +162,15 @@ describe('AdminGuard', () => {
     render(
       <AdminGuard>
         <div data-testid="protected-content">Secret content</div>
-      </AdminGuard>
+      </AdminGuard>,
     );
 
     expect(await screen.findByTestId('landing-page')).toBeInTheDocument();
   });
 
   it('shows error message when getAdmin throws', async () => {
-    const validAddr = 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUV2';
+    const validAddr =
+      'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUV2';
     vi.mocked(useStellarWallet).mockReturnValue({
       connection: { address: validAddr },
     } as any);
@@ -163,7 +179,7 @@ describe('AdminGuard', () => {
     render(
       <AdminGuard>
         <div data-testid="protected-content">Secret content</div>
-      </AdminGuard>
+      </AdminGuard>,
     );
 
     expect(await screen.findByText('RPC failure')).toBeInTheDocument();

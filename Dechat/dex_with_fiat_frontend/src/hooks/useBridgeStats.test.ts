@@ -51,7 +51,11 @@ describe('useBridgeStats', () => {
 
     function StatsSnapshot() {
       const { balance, loading } = useBridgeStats();
-      return React.createElement('output', null, `${balance ?? 'empty'}:${loading}`);
+      return React.createElement(
+        'output',
+        null,
+        `${balance ?? 'empty'}:${loading}`,
+      );
     }
 
     expect(renderToString(React.createElement(StatsSnapshot))).toBe(
@@ -63,7 +67,9 @@ describe('useBridgeStats', () => {
   it('does not update state after unmount', async () => {
     let resolveBalance!: (v: bigint) => void;
     mockGetContractBalance.mockReturnValue(
-      new Promise<bigint>((resolve) => { resolveBalance = resolve; }),
+      new Promise<bigint>((resolve) => {
+        resolveBalance = resolve;
+      }),
     );
     mockGetBridgeLimit.mockResolvedValue(1000n);
     mockGetTotalDeposited.mockResolvedValue(500n);
@@ -86,8 +92,16 @@ describe('useBridgeStats', () => {
     let resolveSecond!: (v: bigint) => void;
 
     mockGetContractBalance
-      .mockReturnValueOnce(new Promise<bigint>((r) => { resolveFirst = r; }))
-      .mockReturnValueOnce(new Promise<bigint>((r) => { resolveSecond = r; }));
+      .mockReturnValueOnce(
+        new Promise<bigint>((r) => {
+          resolveFirst = r;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise<bigint>((r) => {
+          resolveSecond = r;
+        }),
+      );
     mockGetBridgeLimit.mockResolvedValue(1000n);
     mockGetTotalDeposited.mockResolvedValue(500n);
 
@@ -133,10 +147,14 @@ describe('useBridgeStats', () => {
 
     try {
       const { unmount } = renderHook(() => useBridgeStats());
-      expect(events.some((e) => e.detail?.event === 'bridge_stats_mounted')).toBe(true);
+      expect(
+        events.some((e) => e.detail?.event === 'bridge_stats_mounted'),
+      ).toBe(true);
 
       await waitFor(() => {
-        expect(events.some((e) => e.detail?.event === 'bridge_stats_fetch_success')).toBe(true);
+        expect(
+          events.some((e) => e.detail?.event === 'bridge_stats_fetch_success'),
+        ).toBe(true);
       });
 
       unmount();

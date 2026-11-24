@@ -14,7 +14,9 @@ interface SplitViewComparisonWrapperProps {
   sessions: ChatSession[];
 }
 
-export default function SplitViewComparisonWrapper(props: SplitViewComparisonWrapperProps) {
+export default function SplitViewComparisonWrapper(
+  props: SplitViewComparisonWrapperProps,
+) {
   return (
     <Suspense fallback={null}>
       <SplitViewComparison {...props} />

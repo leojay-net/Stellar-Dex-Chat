@@ -72,7 +72,6 @@ export interface ChatMachineContext {
   previousState: ChatState | null;
 }
 
-
 /**
  * Guards for conditional transitions
  */
@@ -92,7 +91,9 @@ class ChatGuards {
   /**
    * Has reached sufficient message count for auto-triggering
    */
-  static hasReachedMessageThreshold = (context: ChatMachineContext): boolean => {
+  static hasReachedMessageThreshold = (
+    context: ChatMachineContext,
+  ): boolean => {
     return context.messageCount >= 3;
   };
 
@@ -140,7 +141,11 @@ function getInitialContext(): ChatMachineContext {
 /**
  * Create and configure the chat state machine
  */
-export function createChatStateMachine(): StateMachine<ChatState, ChatEvent, ChatMachineContext> {
+export function createChatStateMachine(): StateMachine<
+  ChatState,
+  ChatEvent,
+  ChatMachineContext
+> {
   const config: StateMachineConfig<ChatState, ChatEvent, ChatMachineContext> = {
     initial: ChatState.UNINITIALIZED,
     context: getInitialContext(),
@@ -338,7 +343,9 @@ export async function copyChatStateSnapshot(
     return false;
   }
   try {
-    await navigator.clipboard.writeText(formatChatStateSnapshot(state, context));
+    await navigator.clipboard.writeText(
+      formatChatStateSnapshot(state, context),
+    );
     return true;
   } catch {
     return false;
@@ -404,10 +411,13 @@ export function createDebouncedDispatcher(
     dispatch(event: ChatEvent): void {
       pendingEvent = event;
       clearTimer();
-      timer = setTimeout(() => {
-        timer = null;
-        applyPending();
-      }, Math.max(0, delayMs));
+      timer = setTimeout(
+        () => {
+          timer = null;
+          applyPending();
+        },
+        Math.max(0, delayMs),
+      );
     },
     flush(): boolean {
       clearTimer();

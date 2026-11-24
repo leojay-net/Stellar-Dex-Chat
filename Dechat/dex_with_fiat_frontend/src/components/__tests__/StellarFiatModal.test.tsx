@@ -1,5 +1,11 @@
 import React from 'react';
-import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import {
+  act,
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+} from '@testing-library/react';
 import { vi, type Mock } from 'vitest';
 import StellarFiatModal from '../StellarFiatModal';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -137,7 +143,9 @@ describe('StellarFiatModal', () => {
   });
 
   it('shows an error state when the transaction fails', async () => {
-    mockedContract.depositToContract.mockRejectedValueOnce(new Error('Network failure'));
+    mockedContract.depositToContract.mockRejectedValueOnce(
+      new Error('Network failure'),
+    );
 
     const { getByRole } = render(
       React.createElement(StellarFiatModal, {
@@ -289,7 +297,9 @@ describe('StellarFiatModal skeleton loading state', () => {
     );
 
     // The skeleton should be rendered (SkeletonPayout renders skeleton elements)
-    const skeletonElements = container.querySelectorAll('[class*="animate-pulse"]');
+    const skeletonElements = container.querySelectorAll(
+      '[class*="animate-pulse"]',
+    );
     expect(skeletonElements.length).toBeGreaterThan(0);
   });
 
@@ -343,26 +353,26 @@ describe('StellarFiatModal fee simulation debounce', () => {
 
     // Simulate typing "1000.5" character by character
     const input = getByRole('spinbutton') as HTMLInputElement;
-    
+
     // Type '0' -> "10"
     fireEvent.change(input, { target: { value: '10' } });
     await advanceTimers(100);
-    
+
     // Type '0' -> "100"
     fireEvent.change(input, { target: { value: '100' } });
     await advanceTimers(100);
-    
+
     // Type '0' -> "1000"
     fireEvent.change(input, { target: { value: '1000' } });
     await advanceTimers(100);
-    
+
     // Type '.' -> "1000."
     fireEvent.change(input, { target: { value: '1000.' } });
     await advanceTimers(100);
-    
+
     // Type '5' -> "1000.5"
     fireEvent.change(input, { target: { value: '1000.5' } });
-    
+
     // Advance past the debounce delay (300ms)
     await advanceTimers(350);
 
@@ -408,11 +418,19 @@ describe('StellarFiatModal fee simulation debounce', () => {
     const input = getByRole('spinbutton');
     fireEvent.change(input, { target: { value: '20' } });
     await advanceTimers(300);
-    expect(simulate).toHaveBeenNthCalledWith(1, 'GABCDEF1234567890', 200_000_000n);
+    expect(simulate).toHaveBeenNthCalledWith(
+      1,
+      'GABCDEF1234567890',
+      200_000_000n,
+    );
 
     fireEvent.change(input, { target: { value: '40' } });
     await advanceTimers(300);
-    expect(simulate).toHaveBeenNthCalledWith(2, 'GABCDEF1234567890', 400_000_000n);
+    expect(simulate).toHaveBeenNthCalledWith(
+      2,
+      'GABCDEF1234567890',
+      400_000_000n,
+    );
     expect(screen.getByText('0.0000300 XLM')).toBeInTheDocument();
 
     await act(async () => {

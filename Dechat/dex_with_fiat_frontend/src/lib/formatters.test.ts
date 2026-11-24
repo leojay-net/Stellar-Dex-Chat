@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { formatCurrency, formatXlm, formatPercent, formatRelativeTime } from './formatters';
+import {
+  formatCurrency,
+  formatXlm,
+  formatPercent,
+  formatRelativeTime,
+} from './formatters';
 
 describe('formatters', () => {
   it('formats currency per locale', () => {
@@ -20,7 +25,9 @@ describe('formatters', () => {
 
   it('formats relative time', () => {
     const now = 1_000_000_000_000;
-    expect(formatRelativeTime(now - 3 * 60_000, now, 'en-US')).toBe('3 minutes ago');
+    expect(formatRelativeTime(now - 3 * 60_000, now, 'en-US')).toBe(
+      '3 minutes ago',
+    );
     expect(formatRelativeTime(now - 3 * 60_000, now, 'fr-FR')).toContain('3');
   });
 });

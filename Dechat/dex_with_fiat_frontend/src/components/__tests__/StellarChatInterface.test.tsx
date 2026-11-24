@@ -14,7 +14,9 @@ vi.mock('@/contexts/TranslationContext', () => ({
 }));
 
 vi.mock('@/contexts/UserPreferencesContext', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/contexts/UserPreferencesContext')>()),
+  ...(await importOriginal<
+    typeof import('@/contexts/UserPreferencesContext')
+  >()),
   useUserPreferences: () => ({ fiatCurrency: 'NGN' }),
 }));
 
@@ -45,7 +47,12 @@ vi.mock('@/contexts/StellarWalletContext', () => ({
 
 vi.mock('@/hooks/useChat', () => ({
   default: () => ({
-    messages: [] as { id: string; role: string; content: string; timestamp: Date }[],
+    messages: [] as {
+      id: string;
+      role: string;
+      content: string;
+      timestamp: Date;
+    }[],
     isLoading: false,
     sendMessage: vi.fn(),
     cancelPendingRequest: vi.fn(),
@@ -141,10 +148,16 @@ vi.mock('@/lib/stellarContract', () => ({
 vi.mock('@/components/ChatHistorySidebar', () => ({ default: () => null }));
 vi.mock('@/components/ChatInput', () => ({ default: () => null }));
 vi.mock('@/components/ChatMessages', () => ({ default: () => null }));
-vi.mock('@/components/WalletConnectionTimeline', () => ({ default: () => null }));
+vi.mock('@/components/WalletConnectionTimeline', () => ({
+  default: () => null,
+}));
 vi.mock('@/components/ReceiptDrawerWrapper', () => ({ default: () => null }));
-vi.mock('@/components/ui/skeleton/SkeletonChat', () => ({ default: () => null }));
-vi.mock('@/components/ui/skeleton/SkeletonSidebar', () => ({ default: () => null }));
+vi.mock('@/components/ui/skeleton/SkeletonChat', () => ({
+  default: () => null,
+}));
+vi.mock('@/components/ui/skeleton/SkeletonSidebar', () => ({
+  default: () => null,
+}));
 let mockNotificationsCenterThrows = true;
 
 vi.mock('@/components/NotificationsCenterWrapper', () => ({
@@ -155,12 +168,20 @@ vi.mock('@/components/NotificationsCenterWrapper', () => ({
     return null;
   },
 }));
-vi.mock('@/components/StellarFiatModalWrapper', () => ({ default: () => null }));
-vi.mock('@/components/BankDetailsModalWrapper', () => ({ default: () => null }));
+vi.mock('@/components/StellarFiatModalWrapper', () => ({
+  default: () => null,
+}));
+vi.mock('@/components/BankDetailsModalWrapper', () => ({
+  default: () => null,
+}));
 vi.mock('@/components/UserSettingsWrapper', () => ({ default: () => null }));
-vi.mock('@/components/SplitViewComparisonWrapper', () => ({ default: () => null }));
+vi.mock('@/components/SplitViewComparisonWrapper', () => ({
+  default: () => null,
+}));
 vi.mock('@/components/ChatSearchPanelWrapper', () => ({ default: () => null }));
-vi.mock('@/components/NetworkStatusModalWrapper', () => ({ default: () => null }));
+vi.mock('@/components/NetworkStatusModalWrapper', () => ({
+  default: () => null,
+}));
 
 describe('StellarChatInterface', () => {
   beforeEach(() => {
@@ -212,7 +233,9 @@ describe('StellarChatInterface', () => {
     // Allow NotificationsCenterWrapper to render normally
     mockNotificationsCenterThrows = false;
 
-    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const consoleWarnSpy = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined);
 
     render(<StellarChatInterface />);
 
@@ -220,8 +243,8 @@ describe('StellarChatInterface', () => {
     expect(screen.getByText('common.offline_detected')).toBeTruthy();
 
     // Verify no hydration warning was logged
-    const hydrationWarnings = consoleWarnSpy.mock.calls.filter((call: unknown[]) =>
-      call[0]?.toString().includes('hydration'),
+    const hydrationWarnings = consoleWarnSpy.mock.calls.filter(
+      (call: unknown[]) => call[0]?.toString().includes('hydration'),
     );
     expect(hydrationWarnings).toHaveLength(0);
 
@@ -268,7 +291,10 @@ describe('StellarChatInterface', () => {
 
       expect(mockAddToast).toHaveBeenCalledTimes(1);
       expect(mockAddToast).toHaveBeenLastCalledWith(
-        expect.objectContaining({ message: 'common.offline_detected', variant: 'warning' }),
+        expect.objectContaining({
+          message: 'common.offline_detected',
+          variant: 'warning',
+        }),
       );
 
       setOnline(true);
@@ -277,7 +303,10 @@ describe('StellarChatInterface', () => {
 
       expect(mockAddToast).toHaveBeenCalledTimes(2);
       expect(mockAddToast).toHaveBeenLastCalledWith(
-        expect.objectContaining({ message: 'common.online', variant: 'success' }),
+        expect.objectContaining({
+          message: 'common.online',
+          variant: 'success',
+        }),
       );
     });
 

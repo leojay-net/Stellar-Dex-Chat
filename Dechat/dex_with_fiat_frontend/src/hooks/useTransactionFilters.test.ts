@@ -130,13 +130,11 @@ describe('useTransactionFilters', () => {
   });
 
   it('exposes the same accessible chip tone resolver through the hook', () => {
-    const { result } = renderHook(() =>
-      useTransactionFilters(transactions),
-    );
+    const { result } = renderHook(() => useTransactionFilters(transactions));
 
-    expect(
-      result.current.getFilterChipTone('status', 'pending', true),
-    ).toEqual(getAccessibleFilterChipTone('status', 'pending', true));
+    expect(result.current.getFilterChipTone('status', 'pending', true)).toEqual(
+      getAccessibleFilterChipTone('status', 'pending', true),
+    );
   });
 
   it('applies pending filter state immediately before debounce flush', () => {
@@ -191,7 +189,10 @@ describe('useTransactionFilters', () => {
       });
 
       // Optimistic: both statuses applied immediately.
-      expect(result.current.filterState.status).toEqual(['failed', 'completed']);
+      expect(result.current.filterState.status).toEqual([
+        'failed',
+        'completed',
+      ]);
       expect(result.current.filteredTransactions).toHaveLength(2);
 
       act(() => {
@@ -201,7 +202,9 @@ describe('useTransactionFilters', () => {
       expect(result.current.filterState.status).toEqual(['failed']);
       expect(result.current.filteredTransactions).toHaveLength(1);
       expect(result.current.isSyncingFilters).toBe(false);
-      expect(result.current.filterSyncError?.message).toBe('navigation blocked');
+      expect(result.current.filterSyncError?.message).toBe(
+        'navigation blocked',
+      );
     });
 
     it('clears a previous sync error on the next filter change', () => {
@@ -235,7 +238,10 @@ describe('useTransactionFilters', () => {
         result.current.toggleFilter('status', 'failed');
       });
 
-      expect(result.current.filterState.status).toEqual(['completed', 'failed']);
+      expect(result.current.filterState.status).toEqual([
+        'completed',
+        'failed',
+      ]);
       expect(result.current.filteredTransactions).toHaveLength(2);
     });
 
@@ -299,7 +305,9 @@ describe('useTransactionFilters', () => {
     rerender({ entries: [...transactions] });
     rerender({ entries: transactions.slice(0, 1) });
 
-    const keydownAdds = addListener.mock.calls.filter(([type]) => type === 'keydown');
+    const keydownAdds = addListener.mock.calls.filter(
+      ([type]) => type === 'keydown',
+    );
     expect(keydownAdds).toHaveLength(1);
     const registeredHandler = keydownAdds[0]?.[1];
 
@@ -312,10 +320,14 @@ describe('useTransactionFilters', () => {
 
 describe('dark mode fallback for filter chip tones (issue #671)', () => {
   it('leaves classes untouched when a dark variant is already present', () => {
-    const className = 'bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-200';
-    expect(ensureDarkModeClasses(className, DARK_MODE_FALLBACK_CLASSES.chipClassName)).toBe(
-      className,
-    );
+    const className =
+      'bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-200';
+    expect(
+      ensureDarkModeClasses(
+        className,
+        DARK_MODE_FALLBACK_CLASSES.chipClassName,
+      ),
+    ).toBe(className);
   });
 
   it('appends fallback dark classes when none are present', () => {
@@ -330,9 +342,9 @@ describe('dark mode fallback for filter chip tones (issue #671)', () => {
   });
 
   it('returns only the fallback classes for an empty className', () => {
-    expect(ensureDarkModeClasses('', DARK_MODE_FALLBACK_CLASSES.countClassName)).toBe(
-      DARK_MODE_FALLBACK_CLASSES.countClassName,
-    );
+    expect(
+      ensureDarkModeClasses('', DARK_MODE_FALLBACK_CLASSES.countClassName),
+    ).toBe(DARK_MODE_FALLBACK_CLASSES.countClassName);
   });
 
   it('backfills dark-mode classes on a tone missing them', () => {
@@ -347,7 +359,9 @@ describe('dark mode fallback for filter chip tones (issue #671)', () => {
   it('keeps built-in palette tones (which already define dark variants) unchanged', () => {
     const tone = getAccessibleFilterChipTone('status', 'completed', true);
     // Built-in tones already ship dark: classes, so no fallback should be appended.
-    expect(tone.chipClassName).not.toContain(DARK_MODE_FALLBACK_CLASSES.chipClassName);
+    expect(tone.chipClassName).not.toContain(
+      DARK_MODE_FALLBACK_CLASSES.chipClassName,
+    );
     expect(tone.chipClassName).toContain('dark:');
     expect(tone.countClassName).toContain('dark:');
   });

@@ -107,6 +107,8 @@ describe('validateStellarFiatModalForm', () => {
   });
 
   it('contractRecipientSchema accepts a plain G... address', () => {
-    expect(contractRecipientSchema.safeParse(VALID_G_ADDRESS).success).toBe(true);
+    expect(contractRecipientSchema.safeParse(VALID_G_ADDRESS).success).toBe(
+      true,
+    );
   });
 });

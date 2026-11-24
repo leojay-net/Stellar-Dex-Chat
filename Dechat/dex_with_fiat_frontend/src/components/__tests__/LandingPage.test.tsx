@@ -42,20 +42,28 @@ describe('LandingPage – accessibility', () => {
 
   it('wraps primary content in a labeled main landmark', () => {
     render(<LandingPage />);
-    expect(screen.getByRole('main', { name: /DexFiat product overview/i })).toBeDefined();
+    expect(
+      screen.getByRole('main', { name: /DexFiat product overview/i }),
+    ).toBeDefined();
   });
 
   it('labels the Stellar Expert external link for screen readers', () => {
     render(<LandingPage />);
     expect(
-      screen.getByRole('link', { name: /View Stellar Testnet on Stellar Expert/i }),
+      screen.getByRole('link', {
+        name: /View Stellar Testnet on Stellar Expert/i,
+      }),
     ).toBeDefined();
   });
 
   it('labels footer social links', () => {
     render(<LandingPage />);
-    expect(screen.getByRole('link', { name: /DexFiat on Twitter/i })).toBeDefined();
-    expect(screen.getByRole('link', { name: /DexFiat on GitHub/i })).toBeDefined();
+    expect(
+      screen.getByRole('link', { name: /DexFiat on Twitter/i }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole('link', { name: /DexFiat on GitHub/i }),
+    ).toBeDefined();
   });
 
   it('labels each testimonial star rating for screen readers', () => {
@@ -66,7 +74,9 @@ describe('LandingPage – accessibility', () => {
 
   it('hides decorative icons from assistive technology', () => {
     const { container } = render(<LandingPage />);
-    const decorativeIcons = container.querySelectorAll('svg[aria-hidden="true"]');
+    const decorativeIcons = container.querySelectorAll(
+      'svg[aria-hidden="true"]',
+    );
     expect(decorativeIcons.length).toBeGreaterThan(0);
   });
 
@@ -87,7 +97,9 @@ describe('LandingPage – keyboard shortcuts (#1185)', () => {
 
   it('navigates to /chat when "g" is pressed', () => {
     const push = vi.fn();
-    vi.mocked(useRouter).mockReturnValue({ push } as unknown as ReturnType<typeof useRouter>);
+    vi.mocked(useRouter).mockReturnValue({ push } as unknown as ReturnType<
+      typeof useRouter
+    >);
 
     render(<LandingPage />);
     fireEvent.keyDown(window, { key: 'g' });
@@ -108,9 +120,9 @@ describe('LandingPage – keyboard shortcuts (#1185)', () => {
   it('honors the single-key preference for navigation and theme shortcuts', () => {
     const push = vi.fn();
     const toggleDarkMode = vi.fn();
-    vi.mocked(useRouter).mockReturnValue(
-      { push } as unknown as ReturnType<typeof useRouter>,
-    );
+    vi.mocked(useRouter).mockReturnValue({ push } as unknown as ReturnType<
+      typeof useRouter
+    >);
     vi.mocked(useTheme).mockReturnValue({ isDarkMode: false, toggleDarkMode });
 
     render(<LandingPage />);
@@ -139,7 +151,10 @@ describe('LandingPage – contract address (#1511)', () => {
   it('links the contract address to Stellar Expert explorer', () => {
     render(<LandingPage />);
     const contractLink = screen.getByText(CONTRACT_ID).closest('a');
-    expect(contractLink).toHaveAttribute('href', `https://stellar.expert/explorer/testnet/contract/${CONTRACT_ID}`);
+    expect(contractLink).toHaveAttribute(
+      'href',
+      `https://stellar.expert/explorer/testnet/contract/${CONTRACT_ID}`,
+    );
     expect(contractLink).toHaveAttribute('target', '_blank');
     expect(contractLink).toHaveAttribute('rel', 'noopener noreferrer');
   });

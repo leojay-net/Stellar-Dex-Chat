@@ -50,7 +50,9 @@ const PAGE_LIGHT = '#f4f7fb';
 const PAGE_DARK = '#020617';
 
 function relativeLuminance(hex: string): number {
-  const channels = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const channels = [1, 3, 5].map(
+    (i) => parseInt(hex.slice(i, i + 2), 16) / 255,
+  );
   const [r, g, b] = channels.map((c) =>
     c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4,
   );
@@ -59,13 +61,17 @@ function relativeLuminance(hex: string): number {
 
 /** WCAG 2.1 contrast ratio between two sRGB hex colours. */
 function contrastRatio(a: string, b: string): number {
-  const [hi, lo] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x);
+  const [hi, lo] = [relativeLuminance(a), relativeLuminance(b)].sort(
+    (x, y) => y - x,
+  );
   return (hi + 0.05) / (lo + 0.05);
 }
 
 /** Extracts the Tailwind `text-*` colour class applied to an element. */
 function textColorOf(el: HTMLElement): string {
-  const match = Array.from(el.classList).find((c) => /^text-(white|[a-z]+-\d{2,3})$/.test(c));
+  const match = Array.from(el.classList).find((c) =>
+    /^text-(white|[a-z]+-\d{2,3})$/.test(c),
+  );
   if (!match) throw new Error(`no text colour class on ${el.outerHTML}`);
   return TAILWIND[match.replace(/^text-/, '')];
 }
@@ -94,14 +100,28 @@ describe('contrastRatio helper', () => {
   });
 
   it('confirms the previous link colour failed AA on the light bubble', () => {
-    expect(contrastRatio(TAILWIND['blue-400'], TAILWIND['gray-100'])).toBeLessThan(AA_TEXT);
-    expect(contrastRatio(TAILWIND['gray-400'], TAILWIND['gray-100'])).toBeLessThan(AA_TEXT);
+    expect(
+      contrastRatio(TAILWIND['blue-400'], TAILWIND['gray-100']),
+    ).toBeLessThan(AA_TEXT);
+    expect(
+      contrastRatio(TAILWIND['gray-400'], TAILWIND['gray-100']),
+    ).toBeLessThan(AA_TEXT);
   });
 });
 
 describe.each([
-  { mode: 'light', isDarkMode: false, bubble: TAILWIND['gray-100'], page: PAGE_LIGHT },
-  { mode: 'dark', isDarkMode: true, bubble: TAILWIND['gray-800'], page: PAGE_DARK },
+  {
+    mode: 'light',
+    isDarkMode: false,
+    bubble: TAILWIND['gray-100'],
+    page: PAGE_LIGHT,
+  },
+  {
+    mode: 'dark',
+    isDarkMode: true,
+    bubble: TAILWIND['gray-800'],
+    page: PAGE_DARK,
+  },
 ])('Message colour contrast ($mode mode)', ({ isDarkMode, bubble, page }) => {
   beforeEach(() => {
     theme.isDarkMode = isDarkMode;
@@ -112,21 +132,32 @@ describe.each([
 
     const link = screen.getByTestId('message-link');
     expect(link).toHaveClass('underline');
-    expect(contrastRatio(textColorOf(link), bubble)).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(textColorOf(link), bubble)).toBeGreaterThanOrEqual(
+      AA_TEXT,
+    );
   });
 
   it('renders the pending placeholder with AA contrast', () => {
-    renderMessage(assistantMessage({ content: '', metadata: { status: 'pending' } } as Partial<ChatMessage>));
+    renderMessage(
+      assistantMessage({
+        content: '',
+        metadata: { status: 'pending' },
+      } as Partial<ChatMessage>),
+    );
 
     const loading = screen.getByTestId('message-loading');
-    expect(contrastRatio(textColorOf(loading), bubble)).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(textColorOf(loading), bubble)).toBeGreaterThanOrEqual(
+      AA_TEXT,
+    );
   });
 
   it('renders the timestamp with AA contrast on the page background', () => {
     renderMessage(assistantMessage());
 
     const timestamp = screen.getByTestId('message-timestamp');
-    expect(contrastRatio(textColorOf(timestamp), page)).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(textColorOf(timestamp), page)).toBeGreaterThanOrEqual(
+      AA_TEXT,
+    );
   });
 
   it('renders delivery receipts that meet non-text contrast', () => {
@@ -138,7 +169,9 @@ describe.each([
       metadata: { deliveredAt: new Date('2026-01-01T00:00:01Z') },
     } as ChatMessage);
 
-    const receipt = screen.getByLabelText('Delivered') as unknown as HTMLElement;
+    const receipt = screen.getByLabelText(
+      'Delivered',
+    ) as unknown as HTMLElement;
     const colorClass = (receipt.getAttribute('class') ?? '')
       .split(/\s+/)
       .find((c) => c.startsWith('text-'));
@@ -161,7 +194,9 @@ describe('Message colour contrast (user bubble)', () => {
 
     const loading = screen.getByTestId('message-loading');
     expect(loading).toHaveClass('text-white');
-    expect(contrastRatio(TAILWIND.white, TAILWIND['blue-600'])).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(
+      contrastRatio(TAILWIND.white, TAILWIND['blue-600']),
+    ).toBeGreaterThanOrEqual(AA_TEXT);
   });
 
   it('keeps links readable on the error bubble', () => {
@@ -177,6 +212,8 @@ describe('Message colour contrast (user bubble)', () => {
     );
 
     const link = screen.getByTestId('message-link');
-    expect(contrastRatio(textColorOf(link), TAILWIND['red-50'])).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(
+      contrastRatio(textColorOf(link), TAILWIND['red-50']),
+    ).toBeGreaterThanOrEqual(AA_TEXT);
   });
 });

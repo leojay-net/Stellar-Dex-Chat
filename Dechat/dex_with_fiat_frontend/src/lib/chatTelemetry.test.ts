@@ -128,7 +128,11 @@ describe('Event payload shapes', () => {
 
   it('tx_confirm has correct schema', async () => {
     const promise = captureNextEvent<TxConfirmPayload>();
-    chatTelemetry.txConfirm({ assetCode: 'XLM', amountXlm: 10, network: 'TESTNET' });
+    chatTelemetry.txConfirm({
+      assetCode: 'XLM',
+      amountXlm: 10,
+      network: 'TESTNET',
+    });
     const event = await promise;
 
     expect(event.name).toBe('tx_confirm');
@@ -184,7 +188,6 @@ describe('Avatar contrast helpers', () => {
   it('switches to a darker avatar text color when light text is not accessible', () => {
     expect(getAccessibleAvatarTextColor('#F3F4F6', '#FFFFFF')).toBe('#111827');
   });
-
 });
 
 describe('Telemetry motion variants', () => {
@@ -218,8 +221,14 @@ describe('getTelemetryMotionVariants (issue #674)', () => {
   });
 
   it('animates errors with more emphasis than info events', () => {
-    const info = getTelemetryMotionVariants({ reducedMotion: false, intent: 'info' });
-    const error = getTelemetryMotionVariants({ reducedMotion: false, intent: 'error' });
+    const info = getTelemetryMotionVariants({
+      reducedMotion: false,
+      intent: 'info',
+    });
+    const error = getTelemetryMotionVariants({
+      reducedMotion: false,
+      intent: 'error',
+    });
     expect((error.hidden as { y: number }).y).toBeGreaterThan(
       (info.hidden as { y: number }).y,
     );
@@ -386,8 +395,12 @@ describe('Error boundary behavior', () => {
   it('handles invalid color values in normalizeHexColor gracefully', () => {
     expect(calculateContrastRatio('invalid', '#FFFFFF')).toBeNull();
     expect(calculateContrastRatio('#FFFFFF', 'invalid')).toBeNull();
-    expect(calculateContrastRatio(null as unknown as any, '#FFFFFF')).toBeNull();
-    expect(calculateContrastRatio('#FFFFFF', null as unknown as any)).toBeNull();
+    expect(
+      calculateContrastRatio(null as unknown as any, '#FFFFFF'),
+    ).toBeNull();
+    expect(
+      calculateContrastRatio('#FFFFFF', null as unknown as any),
+    ).toBeNull();
   });
 
   it('handles malformed color values gracefully', () => {

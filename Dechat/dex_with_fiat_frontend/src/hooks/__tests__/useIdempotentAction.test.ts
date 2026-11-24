@@ -3,7 +3,7 @@ import { vi, describe, beforeEach, afterEach, it, expect } from 'vitest';
 import { useIdempotentAction } from '../useIdempotentAction';
 
 describe('useIdempotentAction', () => {
-  const deferred = <T,>() => {
+  const deferred = <T>() => {
     let resolve!: (value: T) => void;
     const promise = new Promise<T>((res) => {
       resolve = res;
@@ -31,7 +31,9 @@ describe('useIdempotentAction', () => {
     });
 
     expect(mockAction).toHaveBeenCalledTimes(1);
-    expect(mockAction).toHaveBeenCalledWith(expect.stringContaining('test_action_'));
+    expect(mockAction).toHaveBeenCalledWith(
+      expect.stringContaining('test_action_'),
+    );
     expect(actionResult).toBe('success');
   });
 
@@ -179,7 +181,9 @@ describe('useIdempotentAction', () => {
   });
 
   it('should log suppressed duplicates when enabled', async () => {
-    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const consoleWarnSpy = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => {});
     const { result } = renderHook(() =>
       useIdempotentAction({ cooldownMs: 1000, logSuppressed: true }),
     );
@@ -203,7 +207,9 @@ describe('useIdempotentAction', () => {
   });
 
   it('should not log suppressed duplicates when disabled', async () => {
-    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const consoleWarnSpy = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => {});
     const { result } = renderHook(() =>
       useIdempotentAction({ cooldownMs: 1000, logSuppressed: false }),
     );
@@ -221,7 +227,9 @@ describe('useIdempotentAction', () => {
   });
 
   it('should generate unique idempotency keys', async () => {
-    const { result } = renderHook(() => useIdempotentAction({ cooldownMs: 100 }));
+    const { result } = renderHook(() =>
+      useIdempotentAction({ cooldownMs: 100 }),
+    );
     const capturedKeys: string[] = [];
     const mockAction = vi.fn((key: string) => {
       capturedKeys.push(key);
@@ -295,7 +303,9 @@ describe('useIdempotentAction', () => {
     const { result } = renderHook(() =>
       useIdempotentAction({ cooldownMs: 500 }),
     );
-    const mockAction = vi.fn<(idempotencyKey: string) => Promise<string>>().mockResolvedValue('success');
+    const mockAction = vi
+      .fn<(idempotencyKey: string) => Promise<string>>()
+      .mockResolvedValue('success');
 
     let results!: Array<string | null>;
     await act(async () => {

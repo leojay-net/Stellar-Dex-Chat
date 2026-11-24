@@ -4,7 +4,11 @@ import { useState, useEffect, useRef, useCallback, useId } from 'react';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import { useSingleKeyShortcuts } from '@/contexts/UserPreferencesContext';
 import { fetchTickerData, TickerData } from '@/lib/cryptoPriceService';
-import { formatCurrency, formatPercent, formatRelativeTime } from '@/lib/formatters';
+import {
+  formatCurrency,
+  formatPercent,
+  formatRelativeTime,
+} from '@/lib/formatters';
 
 interface PriceTickerProps {
   symbols?: string[];
@@ -42,7 +46,8 @@ export default function PriceTicker({
   const itemsPerPage = 5;
   const totalPages = Math.max(1, Math.ceil(symbols.length / itemsPerPage));
 
-  const formatPrice = (price: number) => formatCurrency(price, currency, locale);
+  const formatPrice = (price: number) =>
+    formatCurrency(price, currency, locale);
 
   const formatChange = (change: number | undefined) => {
     if (change === undefined || change === null) return 'N/A%';
@@ -77,10 +82,14 @@ export default function PriceTicker({
       } else {
         setError(true);
         if (hasPreviousDataRef.current) setIsStale(true);
-        const delay = Math.min(1000 * Math.pow(2, retryCountRef.current), 30000);
+        const delay = Math.min(
+          1000 * Math.pow(2, retryCountRef.current),
+          30000,
+        );
         retryCountRef.current++;
         retryTimeoutRef.current = setTimeout(() => {
-          if (isMounted.current && fetchPricesRef.current) void fetchPricesRef.current();
+          if (isMounted.current && fetchPricesRef.current)
+            void fetchPricesRef.current();
         }, delay);
       }
     } catch (err) {
@@ -91,7 +100,8 @@ export default function PriceTicker({
       const delay = Math.min(1000 * Math.pow(2, retryCountRef.current), 30000);
       retryCountRef.current++;
       retryTimeoutRef.current = setTimeout(() => {
-        if (isMounted.current && fetchPricesRef.current) void fetchPricesRef.current();
+        if (isMounted.current && fetchPricesRef.current)
+          void fetchPricesRef.current();
       }, delay);
     } finally {
       if (isMounted.current) setIsLoading(false);
@@ -202,7 +212,13 @@ export default function PriceTicker({
           className={`w-2 h-2 rounded-full transition-colors duration-300 ${
             isStale ? 'bg-yellow-400' : error ? 'bg-red-500' : 'bg-green-500'
           }`}
-          aria-label={isStale ? 'Stale data — reconnecting' : error ? 'Data unavailable' : 'Live'}
+          aria-label={
+            isStale
+              ? 'Stale data — reconnecting'
+              : error
+                ? 'Data unavailable'
+                : 'Live'
+          }
         />
       </div>
 
@@ -318,12 +334,18 @@ export default function PriceTicker({
       )}
 
       {isStale && (
-        <p className="text-yellow-500 dark:text-yellow-400 text-[10px] mt-2 text-center" aria-live="polite">
+        <p
+          className="text-yellow-500 dark:text-yellow-400 text-[10px] mt-2 text-center"
+          aria-live="polite"
+        >
           Prices may be stale — retrying&hellip;
         </p>
       )}
       {lastUpdated !== null && (
-        <p className="theme-text-secondary text-[10px] mt-2 text-center opacity-60" data-testid="last-updated">
+        <p
+          className="theme-text-secondary text-[10px] mt-2 text-center opacity-60"
+          data-testid="last-updated"
+        >
           Updated {formatRelativeTime(lastUpdated, now, locale)}
         </p>
       )}

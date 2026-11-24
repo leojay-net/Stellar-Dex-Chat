@@ -4,7 +4,9 @@ import { setTelemetryConsent, type ChatEvent } from '@/lib/chatTelemetry';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { useOnlineStatus } from './useOnlineStatus';
 
-vi.mock('@/hooks/useToast', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
+vi.mock('@/hooks/useToast', () => ({
+  useToast: () => ({ addToast: vi.fn() }),
+}));
 vi.mock('@/lib/clientSession', () => ({
   getOrCreateClientSessionId: () => 'session-1',
 }));
@@ -43,13 +45,18 @@ describe('status telemetry hooks', () => {
   });
 
   it('emits a structured payment-status event without exposing payment values', async () => {
-    const { usePaystackWebhookStatus } = await import('./usePaystackWebhookStatus');
+    const { usePaystackWebhookStatus } =
+      await import('./usePaystackWebhookStatus');
     renderHook(() => usePaystackWebhookStatus());
     const eventPromise = captureEvent();
 
     act(() => {
       MockEventSource.latest?.onmessage?.({
-        data: JSON.stringify({ reference: 'payment-ref', status: 'success', amount: 1200 }),
+        data: JSON.stringify({
+          reference: 'payment-ref',
+          status: 'success',
+          amount: 1200,
+        }),
       } as MessageEvent);
     });
 
@@ -65,7 +72,10 @@ describe('status telemetry hooks', () => {
   });
 
   it('emits the online state in both light and dark theme documents', async () => {
-    Object.defineProperty(window.navigator, 'onLine', { configurable: true, value: false });
+    Object.defineProperty(window.navigator, 'onLine', {
+      configurable: true,
+      value: false,
+    });
 
     for (const theme of ['light', 'dark']) {
       localStorage.setItem('theme', theme);

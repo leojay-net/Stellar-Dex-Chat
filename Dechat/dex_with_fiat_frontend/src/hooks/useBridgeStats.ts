@@ -115,9 +115,12 @@ function dispatchTelemetry(
       ...detail,
     };
     window.dispatchEvent(
-      new CustomEvent<BridgeStatsTelemetryDetail>(BRIDGE_STATS_TELEMETRY_EVENT, {
-        detail: payload,
-      }),
+      new CustomEvent<BridgeStatsTelemetryDetail>(
+        BRIDGE_STATS_TELEMETRY_EVENT,
+        {
+          detail: payload,
+        },
+      ),
     );
   } catch {
     // Swallow: a broken telemetry sink must never break the hook.
@@ -228,7 +231,8 @@ export default function useBridgeStats(): BridgeStats {
         error: msg,
       });
     } finally {
-      if (isMountedRef.current && fetchId === fetchIdRef.current) setLoading(false);
+      if (isMountedRef.current && fetchId === fetchIdRef.current)
+        setLoading(false);
     }
   }, []);
 

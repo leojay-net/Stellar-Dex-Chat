@@ -20,7 +20,9 @@ describe('ReceiptQrCode', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     const qrcode = await import('qrcode');
-    mockToDataURL = qrcode.default.toDataURL as unknown as ReturnType<typeof vi.fn>;
+    mockToDataURL = qrcode.default.toDataURL as unknown as ReturnType<
+      typeof vi.fn
+    >;
     mockToDataURL.mockResolvedValue('data:image/png;base64,qr');
   });
 
@@ -40,7 +42,9 @@ describe('ReceiptQrCode', () => {
     render(<ReceiptQrCode value="abc" label="Verify transaction" />);
 
     await waitFor(() => {
-      expect(screen.getByRole('img', { name: 'Verify transaction' })).toBeInTheDocument();
+      expect(
+        screen.getByRole('img', { name: 'Verify transaction' }),
+      ).toBeInTheDocument();
     });
   });
 });

@@ -42,7 +42,10 @@ export function requireAdminAuth(request: Request): Response | null {
     : null;
 
   // Basic check: match against secret (header is preferred) - for automation
-  if (configuredSecret && (headerToken === configuredSecret || bearerToken === configuredSecret)) {
+  if (
+    configuredSecret &&
+    (headerToken === configuredSecret || bearerToken === configuredSecret)
+  ) {
     return null;
   }
 
@@ -53,11 +56,11 @@ export function requireAdminAuth(request: Request): Response | null {
     if (sessionMatch) {
       const sessionToken = sessionMatch[1];
       const session = sessions.get(sessionToken);
-      
+
       if (session && session.expires > Date.now()) {
         return null; // Valid session
       }
-      
+
       // Session expired or invalid, delete it
       sessions.delete(sessionToken);
     }
