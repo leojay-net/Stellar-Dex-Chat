@@ -17,6 +17,29 @@ permissions:
   contents: read
 
 jobs:
+  unused-dependencies:
+    name: Check unused dependencies
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: Dechat/stellar-contracts
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable
+        with:
+          toolchain: stable
+
+      - name: Install cargo-machete
+        run: cargo install --locked cargo-machete
+
+      - name: Check unused dependencies
+        run: cargo machete
+
   fmt:
     name: Check formatting
     runs-on: ubuntu-latest

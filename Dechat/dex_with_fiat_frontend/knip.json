@@ -1,0 +1,7 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/app/**/{default,error,forbidden,global-error,layout,loading,not-found,page,route,template,unauthorized}.{js,jsx,ts,tsx}"
+  ],
+  "ignoreDependencies": ["eslint", "eslint-config-next"]
+}
