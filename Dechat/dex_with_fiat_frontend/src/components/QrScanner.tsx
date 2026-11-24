@@ -14,6 +14,10 @@ function extractStellarAddress(raw: string): string | null {
   return null;
 }
 
+interface NativeQrDetector {
+  detect(source: HTMLVideoElement): Promise<Array<{ rawValue: string }>>;
+}
+
 interface QrScannerProps {
   onScan: (address: string) => void;
   onClose: () => void;
@@ -60,9 +64,7 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
   useEffect(() => {
     if (!scanning) return;
 
-    let detector: {
-      detect: (src: HTMLVideoElement) => Promise<Array<{ rawValue: string }>>;
-    } | null = null;
+    let detector: NativeQrDetector | null = null;
     let jsQR:
       | ((
           data: Uint8ClampedArray,
@@ -75,15 +77,17 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
     let active = true;
 
     async function init() {
-      // Prefer native BarcodeDetector
-      if ('BarcodeDetector' in window) {
+      const { BarcodeDetector } = window as Window & {
+        BarcodeDetector?: {
+          new (options: { formats: string[] }): NativeQrDetector;
+          getSupportedFormats(): Promise<string[]>;
+        };
+      };
+      if (BarcodeDetector) {
         try {
-          // @ts-expect-error – BarcodeDetector not yet in TS lib
-          const supported: string[] =
-            await window.BarcodeDetector.getSupportedFormats();
+          const supported = await BarcodeDetector.getSupportedFormats();
           if (supported.includes('qr_code')) {
-            // @ts-expect-error – BarcodeDetector is not yet in TypeScript's DOM library.
-            detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+            detector = new BarcodeDetector({ formats: ['qr_code'] });
           }
         } catch {
           // fall through to jsQR
