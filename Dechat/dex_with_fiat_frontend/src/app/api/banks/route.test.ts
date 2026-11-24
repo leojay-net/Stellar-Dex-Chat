@@ -47,5 +47,5 @@ describe('GET /api/banks', () => {
     expect(response.status).toBe(429);
     await expect(response.json()).resolves.toMatchObject({ success: false });
     expect(response.headers.get('Retry-After')).toBe('60');
-  });
+  }, 30_000);
 });

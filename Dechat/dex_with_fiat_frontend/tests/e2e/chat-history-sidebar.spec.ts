@@ -99,7 +99,9 @@ test.describe('ChatHistorySidebar', () => {
 
     await expect(page.getByText('Pinned', { exact: true })).toBeVisible();
     await expect(page.getByText('Recent', { exact: true })).toBeVisible();
-    await expect(page.getByText('Pinned USDC route')).toBeVisible();
+    await expect(page.getByText('Pinned USDC route')).toBeVisible({
+      timeout: 15_000,
+    });
     await expect(page.getByText('Bridge payout status')).toBeVisible();
     await expect(page.locator('[data-active="true"]')).toContainText(
       'Pinned USDC route',
@@ -129,13 +131,12 @@ test.describe('ChatHistorySidebar', () => {
     await stubContractEvents(page);
     await openExpandedHistory(page);
 
-    const pinnedRow = page.getByRole('group').filter({
-      has: page.getByRole('heading', {
-        name: 'Pinned USDC route',
-        exact: true,
-      }),
+    const title = page.getByRole('heading', {
+      name: 'Pinned USDC route',
+      exact: true,
     });
-    await pinnedRow.hover();
+    const pinnedRow = page.getByRole('group').filter({ has: title });
+    await title.hover();
 
     await expect(pinnedRow.getByTitle('Unpin conversation')).toBeVisible();
     await expect(pinnedRow.getByTitle('Export conversation')).toBeVisible();

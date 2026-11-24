@@ -1314,6 +1314,7 @@ Closes #1724, #1725, #1726, #1728
 - **frontend:** Apply the existing Prettier rules
 - **frontend:** Finish browser test formatting and stabilize offline input
 - **frontend:** Pin Playwright to Ubuntu 24.04
+- **changelog:** Update changelog [skip ci]
 
 ### Deprecated
 

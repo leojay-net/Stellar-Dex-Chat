@@ -1,5 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures';
+import { test, expect, type Page } from '@playwright/test';
+import { fullKeyboardTabKey } from './helpers';
 
 const COINGECKO_OK_FIXTURE = {
   stellar: { usd: 0.11, usd_24h_change: 2.34 },
@@ -229,7 +231,9 @@ test.describe('PriceTicker E2E Coverage', () => {
   test.describe('Keyboard navigation', () => {
     test('tab reaches ticker region and pagination controls', async ({
       page,
+      browserName,
     }) => {
+      const tabKey = fullKeyboardTabKey(browserName);
       await stubCoinGeckoOk(page);
       await gotoHarness(
         page,
@@ -240,7 +244,7 @@ test.describe('PriceTicker E2E Coverage', () => {
       await expect(ticker).toBeVisible({ timeout: 10_000 });
 
       // Focus body then Tab sequentially to reach ticker region (h1 -> ticker -> prev -> next)
-      await page.keyboard.press('Tab'); // h1 or first focusable
+      await page.keyboard.press(tabKey); // h1 or first focusable
       // Press Tab until ticker is focused (max 5 presses)
       for (let i = 0; i < 6; i++) {
         const activeTestId = await page.evaluate(() =>
@@ -249,7 +253,7 @@ test.describe('PriceTicker E2E Coverage', () => {
         if (activeTestId === 'price-ticker') {
           break;
         }
-        await page.keyboard.press('Tab');
+        await page.keyboard.press(tabKey);
       }
       await expect(ticker).toBeFocused();
 
@@ -274,7 +278,7 @@ test.describe('PriceTicker E2E Coverage', () => {
 
       await ticker.focus();
       // Disabled Previous is skipped; Tab goes to Next on page 1
-      await page.keyboard.press('Tab');
+      await page.keyboard.press(tabKey);
       await expect(
         page.getByRole('button', { name: 'Next price page' }),
       ).toBeFocused();
@@ -284,12 +288,12 @@ test.describe('PriceTicker E2E Coverage', () => {
       await page.keyboard.press('ArrowRight');
       await expect(page.getByText('2 / 2')).toBeVisible();
       await ticker.focus();
-      await page.keyboard.press('Tab');
+      await page.keyboard.press(tabKey);
       await expect(
         page.getByRole('button', { name: 'Previous price page' }),
       ).toBeFocused();
       // Next is disabled on page 2, so Tab from Previous exits ticker; verify we can Shift+Tab back
-      await page.keyboard.press('Shift+Tab');
+      await page.keyboard.press(`Shift+${tabKey}`);
       await expect(ticker).toBeFocused();
 
       // Return to page 1 and verify Shift+Tab from Next returns to ticker (Next is enabled there)
@@ -297,11 +301,11 @@ test.describe('PriceTicker E2E Coverage', () => {
       await page.keyboard.press('ArrowLeft');
       await expect(page.getByText('1 / 2')).toBeVisible();
       await ticker.focus();
-      await page.keyboard.press('Tab');
+      await page.keyboard.press(tabKey);
       await expect(
         page.getByRole('button', { name: 'Next price page' }),
       ).toBeFocused();
-      await page.keyboard.press('Shift+Tab');
+      await page.keyboard.press(`Shift+${tabKey}`);
       await expect(ticker).toBeFocused();
     });
 
@@ -345,7 +349,9 @@ test.describe('PriceTicker E2E Coverage', () => {
 
     test('pagination reachable via keyboard Arrow keys without mouse', async ({
       page,
+      browserName,
     }) => {
+      const tabKey = fullKeyboardTabKey(browserName);
       await stubCoinGeckoOk(page);
       await gotoHarness(
         page,
@@ -366,7 +372,7 @@ test.describe('PriceTicker E2E Coverage', () => {
       // Verify Enter activates focused pagination button (disable Previous skip handled)
       // On page 1 disabled Previous is skipped, so single Tab reaches Next
       await ticker.focus();
-      await page.keyboard.press('Tab');
+      await page.keyboard.press(tabKey);
       await expect(
         page.getByRole('button', { name: 'Next price page' }),
       ).toBeFocused();
