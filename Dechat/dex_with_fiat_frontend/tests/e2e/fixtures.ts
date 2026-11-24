@@ -12,7 +12,7 @@ export const test = base.extend<{ checkCsp: void }>({
       );
       await context.addInitScript(() => {
         const report = (
-          window as Window & {
+          window as typeof window & {
             __recordCspViolation: (
               directive: string,
               blockedUri: string,

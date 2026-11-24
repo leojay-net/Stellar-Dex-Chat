@@ -500,7 +500,7 @@ test.describe('LandingPage E2E Coverage', () => {
     });
 
     test('should render with theme toggle working despite section errors', async ({
-      browser,
+      page,
     }) => {
       await page.goto('/', { waitUntil: 'load' });
 

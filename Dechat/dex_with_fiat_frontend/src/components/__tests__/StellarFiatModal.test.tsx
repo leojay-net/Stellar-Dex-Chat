@@ -163,8 +163,8 @@ describe('StellarFiatModal fiat estimate cancellation pattern (Issue #709)', () 
     });
 
     // Run the async work
-    const asyncWork = fetchPromise.then(() => {
-      setState();
+    const asyncWork = fetchPromise.then((value) => {
+      setState(value);
     });
 
     // Simulate unmount before the fetch completes
@@ -300,7 +300,7 @@ describe('StellarFiatModal fee simulation debounce', () => {
 
   it('debounces fee simulation when typing multi-character amount', async () => {
     const mockedContract = await import('@/lib/stellarContract');
-    mockedContract.simulateDeposit.mockClear();
+    vi.mocked(mockedContract.simulateDeposit).mockClear();
 
     const { getByRole } = render(
       React.createElement(StellarFiatModal, {
@@ -344,7 +344,7 @@ describe('StellarFiatModal fee simulation debounce', () => {
 
   it('cancels in-flight simulation when amount changes', async () => {
     const mockedContract = await import('@/lib/stellarContract');
-    mockedContract.simulateDeposit.mockClear();
+    vi.mocked(mockedContract.simulateDeposit).mockClear();
 
     const { getByRole } = render(
       React.createElement(StellarFiatModal, {

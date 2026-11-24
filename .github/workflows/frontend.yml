@@ -2,13 +2,13 @@ name: Frontend CI
 
 # ── Job graph ────────────────────────────────────────────────────────────────
 #
-#   lint ──────────────────────────────────────────────────────────┐
-#   build ─────────────────────────────────────────────────────────┤──► e2e
+#   lint
+#   build ───────────────────────────────────────────────────────────► e2e
 #   unit-tests (matrix ×4, parallel) ──► coverage-merge ──────────┘
 #
 # build and unit-tests are independent: a test failure does not hide a build
-# failure and vice-versa.  e2e waits only for build + lint so it starts as
-# soon as the app compiles, without waiting for unit tests.
+# failure and vice-versa. E2E waits for the build so browser coverage is
+# reported independently of static checks and unit tests.
 
 on:
   pull_request:
@@ -145,6 +145,7 @@ jobs:
         with:
           name: vitest-blob-${{ matrix.shard }}
           path: Dechat/dex_with_fiat_frontend/.vitest-reports/
+          include-hidden-files: true
           retention-days: 1
 
       # Upload per-shard coverage-summary.json so coverage-merge has something
@@ -259,11 +260,11 @@ jobs:
           The saving is roughly `sum(shards) - max(shards)`.
           SUMMARY
 
-  # ── 5. Playwright E2E — waits only for build + lint ──────────────────────
+  # ── 5. Playwright E2E ──────────────────────
   e2e:
     name: Playwright E2E Tests
-    runs-on: ubuntu-latest
-    needs: [build, lint]
+    runs-on: ubuntu-24.04
+    needs: build
 
     defaults:
       run:

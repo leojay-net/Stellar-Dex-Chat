@@ -14,6 +14,8 @@ vi.mock('@/hooks/useCurrencyConversion', () => ({
     fiatCurrency: 'USD',
     isLoading: false,
     hasError: false,
+    isStale: false,
+    forceRefresh: vi.fn().mockResolvedValue(undefined),
   })),
 }));
 
@@ -119,7 +121,8 @@ describe('TransactionAmountDisplay', () => {
       fiatCurrency: 'USD',
       isLoading: false,
       hasError: false,
-      forceRefresh: vi.fn(),
+      isStale: false,
+      forceRefresh: vi.fn().mockResolvedValue(undefined),
     });
 
     const { rerender } = render(
@@ -135,7 +138,8 @@ describe('TransactionAmountDisplay', () => {
       fiatCurrency: 'USD',
       isLoading: false,
       hasError: false,
-      forceRefresh: vi.fn(),
+      isStale: false,
+      forceRefresh: vi.fn().mockResolvedValue(undefined),
     });
 
     await act(async () => {
@@ -339,7 +343,8 @@ describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
       fiatCurrency: 'USD',
       originalAmount: 100,
       originalCurrency: 'XLM',
-      forceRefresh: vi.fn(),
+      isStale: false,
+      forceRefresh: vi.fn().mockResolvedValue(undefined),
     });
 
     render(<TransactionAmountDisplay amount={100} asset="XLM" />);
@@ -362,7 +367,8 @@ describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
       fiatCurrency: 'USD',
       originalAmount: 100,
       originalCurrency: 'XLM',
-      forceRefresh: vi.fn(),
+      isStale: false,
+      forceRefresh: vi.fn().mockResolvedValue(undefined),
     });
 
     const { rerender } = render(
@@ -377,7 +383,8 @@ describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
       fiatCurrency: 'USD',
       originalAmount: 200,
       originalCurrency: 'XLM',
-      forceRefresh: vi.fn(),
+      isStale: false,
+      forceRefresh: vi.fn().mockResolvedValue(undefined),
     });
 
     await act(async () => {
@@ -403,7 +410,8 @@ describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
       fiatCurrency: 'USD',
       originalAmount: 50,
       originalCurrency: 'XLM',
-      forceRefresh: vi.fn(),
+      isStale: false,
+      forceRefresh: vi.fn().mockResolvedValue(undefined),
     });
 
     render(<TransactionAmountDisplay amount={50} asset="XLM" />);
@@ -428,7 +436,8 @@ describe('TransactionAmountDisplay - optimistic UI (#839)', () => {
       fiatCurrency: 'USD',
       originalAmount: 100,
       originalCurrency: 'XLM',
-      forceRefresh: vi.fn(),
+      isStale: false,
+      forceRefresh: vi.fn().mockResolvedValue(undefined),
     });
 
     render(<TransactionAmountDisplay amount={100} asset="XLM" />);

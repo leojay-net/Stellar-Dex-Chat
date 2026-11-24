@@ -138,9 +138,7 @@ export class SensitiveTermsManager {
   /**
    * Find all sensitive terms in text
    */
-  findSensitiveTerms(
-    text: string,
-  ): Array<{
+  findSensitiveTerms(text: string): Array<{
     term: string;
     index: number;
     length: number;

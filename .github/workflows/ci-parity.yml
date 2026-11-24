@@ -14,7 +14,7 @@ permissions:
 jobs:
   make-ci:
     name: Run make ci
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
       GEMINI_API_KEY: PLACEHOLDER

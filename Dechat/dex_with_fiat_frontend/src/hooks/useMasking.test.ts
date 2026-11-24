@@ -97,7 +97,7 @@ describe('useMasking', () => {
       renderHook(() =>
         useMasking(text, {
           enabled: true,
-          customTerms: customManager as unknown as typeof SensitiveTermsManager,
+          customTerms: customManager,
         }),
       );
 
@@ -227,7 +227,7 @@ describe('useMasking', () => {
             text: 'Hello',
             options: {
               enabled: true,
-              customTerms: manager1 as unknown as typeof SensitiveTermsManager,
+              customTerms: manager1,
             },
           },
         },
@@ -241,7 +241,7 @@ describe('useMasking', () => {
         text: 'Hello',
         options: {
           enabled: true,
-          customTerms: manager2 as unknown as typeof SensitiveTermsManager,
+          customTerms: manager2,
         },
       });
 
@@ -306,7 +306,7 @@ describe('useMasking', () => {
             text: 'Hello',
             options: {
               enabled: true,
-              customTerms: manager1 as unknown as typeof SensitiveTermsManager,
+              customTerms: manager1,
             },
           },
         },
@@ -316,7 +316,7 @@ describe('useMasking', () => {
         text: 'World',
         options: {
           enabled: true,
-          customTerms: manager2 as unknown as typeof SensitiveTermsManager,
+          customTerms: manager2,
         },
       });
 
@@ -382,7 +382,7 @@ describe('useMasking', () => {
       renderHook(() =>
         useMasking('test', {
           enabled: true,
-          customTerms: customManager as unknown as typeof SensitiveTermsManager,
+          customTerms: customManager,
         }),
       );
 
