@@ -12,11 +12,16 @@ describe('ccipExplorer retry helpers', () => {
   });
 
   it('retries a failing operation with exponential backoff and eventually succeeds', async () => {
-    const operation = vi.fn()
+    const operation = vi
+      .fn()
       .mockRejectedValueOnce(new Error('network fail'))
       .mockResolvedValueOnce('ok');
 
-    const promise = retryWithBackoff(operation, { retries: 2, minDelayMs: 100, factor: 2 });
+    const promise = retryWithBackoff(operation, {
+      retries: 2,
+      minDelayMs: 100,
+      factor: 2,
+    });
 
     await vi.advanceTimersByTimeAsync(100);
     await expect(promise).resolves.toBe('ok');
@@ -25,7 +30,8 @@ describe('ccipExplorer retry helpers', () => {
 
   it('fetchWithRetry retries fetch when the first request fails', async () => {
     const response = new Response('ok', { status: 200 });
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       .mockRejectedValueOnce(new Error('timeout'))
       .mockResolvedValueOnce(response);
 

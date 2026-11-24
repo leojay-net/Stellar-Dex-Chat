@@ -23,7 +23,12 @@ import { enforceAdminIpAllowlist } from '@/lib/security';
 import { AuditEntry, AuditLogFilter } from '@/types';
 import { requireAdminAuth } from '../admin/_utils/requireAdminAuth';
 
-const sortKeySchema = z.enum(['timestamp', 'actionType', 'status', 'adminAddress']);
+const sortKeySchema = z.enum([
+  'timestamp',
+  'actionType',
+  'status',
+  'adminAddress',
+]);
 const sortOrderSchema = z.enum(['asc', 'desc']);
 
 export async function GET(request: NextRequest) {
@@ -65,7 +70,7 @@ export async function GET(request: NextRequest) {
       if (Number.isNaN(parsed.getTime())) {
         return NextResponse.json(
           { error: 'Invalid startDate format. Use ISO 8601 format.' },
-          { status: 400 }
+          { status: 400 },
         );
       }
       filter.startDate = parsed;
@@ -77,7 +82,7 @@ export async function GET(request: NextRequest) {
       if (Number.isNaN(parsed.getTime())) {
         return NextResponse.json(
           { error: 'Invalid endDate format. Use ISO 8601 format.' },
-          { status: 400 }
+          { status: 400 },
         );
       }
       filter.endDate = parsed;
@@ -102,8 +107,11 @@ export async function GET(request: NextRequest) {
       const result = sortKeySchema.safeParse(rawSortKey);
       if (!result.success) {
         return NextResponse.json(
-          { error: 'Invalid sortKey. Must be one of: timestamp, actionType, status, adminAddress' },
-          { status: 400 }
+          {
+            error:
+              'Invalid sortKey. Must be one of: timestamp, actionType, status, adminAddress',
+          },
+          { status: 400 },
         );
       }
       sortKey = result.data;
@@ -114,7 +122,7 @@ export async function GET(request: NextRequest) {
       if (!result.success) {
         return NextResponse.json(
           { error: 'Invalid sortOrder. Must be asc or desc' },
-          { status: 400 }
+          { status: 400 },
         );
       }
       sortOrder = result.data;
@@ -129,7 +137,8 @@ export async function GET(request: NextRequest) {
 
       switch (sortKey) {
         case 'timestamp':
-          comparison = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+          comparison =
+            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
           break;
         case 'actionType':
           comparison = a.actionType.localeCompare(b.actionType);
@@ -161,13 +170,13 @@ export async function GET(request: NextRequest) {
           'Cache-Control': 'no-store, no-cache, must-revalidate',
           'Content-Type': 'application/json',
         },
-      }
+      },
     );
   } catch (error) {
     console.error('Error retrieving audit entries:', error);
     return NextResponse.json(
       { error: 'Failed to retrieve audit entries' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -176,20 +185,20 @@ export async function GET(request: NextRequest) {
 export async function POST() {
   return NextResponse.json(
     { error: 'Method not allowed. This endpoint is read-only.' },
-    { status: 405 }
+    { status: 405 },
   );
 }
 
 export async function PUT() {
   return NextResponse.json(
     { error: 'Method not allowed. This endpoint is read-only.' },
-    { status: 405 }
+    { status: 405 },
   );
 }
 
 export async function DELETE() {
   return NextResponse.json(
     { error: 'Method not allowed. This endpoint is read-only.' },
-    { status: 405 }
+    { status: 405 },
   );
 }

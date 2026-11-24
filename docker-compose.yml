@@ -1,16 +1,13 @@
 services:
   # Soroban local network using Stellar quickstart image
   soroban-local-net:
-    image: stellar/quickstart:testing
+    image: stellar/quickstart:testing@sha256:228ce30e9e523213c0ed15ec0069283017a183f8745c4676b24c017f311046bf
     container_name: stellar-dex-soroban-local
     ports:
       - "8000:8000"   # Horizon API
       - "11626:11626" # Stellar Core peer port
       - "11625:11625" # Stellar Core admin port
-    environment:
-      - NETWORK=standalone
-      - ENABLE_SOROBAN_RPC=true
-    command: --standalone --enable-soroban-rpc
+    command: --local --enable core,horizon,rpc
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/"]
       interval: 10s
@@ -34,7 +31,7 @@ services:
       - /app/.next
     environment:
       - NODE_ENV=development
-      - NEXT_PUBLIC_STELLAR_RPC_URL=http://soroban-local-net:8000/soroban/rpc
+      - NEXT_PUBLIC_STELLAR_RPC_URL=http://soroban-local-net:8000/rpc
       - NEXT_PUBLIC_STELLAR_HORIZON_URL=http://soroban-local-net:8000
       - NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT=${NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT}
       - NEXT_PUBLIC_XLM_SAC_CONTRACT=${NEXT_PUBLIC_XLM_SAC_CONTRACT}

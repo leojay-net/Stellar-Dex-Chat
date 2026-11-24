@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-const { GET } = await import('./route');
+const { GET, HEAD } = await import('./route');
 
 describe('GET /api/health', () => {
   it('returns 200 with status ok', async () => {
@@ -13,4 +13,11 @@ describe('GET /api/health', () => {
     // timestamp should be a valid ISO date
     expect(Number.isNaN(new Date(body.timestamp).getTime())).toBe(false);
   });
+});
+
+it('answers HEAD with an uncached response and no body', () => {
+  const response = HEAD();
+  expect(response.status).toBe(200);
+  expect(response.headers.get('Cache-Control')).toBe('no-store');
+  expect(response.body).toBeNull();
 });

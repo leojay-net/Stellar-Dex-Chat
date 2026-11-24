@@ -1,5 +1,10 @@
-import { test, expect, type Page } from '@playwright/test';
-import { connectMockWallet, installMockWalletBridge, MOCK_WALLET_ADDRESS } from './helpers';
+import { expect, type Page } from '@playwright/test';
+import { test } from './fixtures';
+import {
+  connectMockWallet,
+  installMockWalletBridge,
+  MOCK_WALLET_ADDRESS,
+} from './helpers';
 
 /**
  * E2E tests for ChatInput component.
@@ -24,7 +29,11 @@ async function stubChatApi(page: Page) {
         extractedData: {},
         requiredQuestions: [],
         suggestedResponse: 'Stub response.',
-        guardrail: { triggered: false, category: 'unsupported_request', reason: '' },
+        guardrail: {
+          triggered: false,
+          category: 'unsupported_request',
+          reason: '',
+        },
       }),
     });
   });
@@ -164,7 +173,11 @@ test.describe('ChatInput', () => {
             extractedData: {},
             requiredQuestions: [],
             suggestedResponse: 'OK',
-            guardrail: { triggered: false, category: 'unsupported_request', reason: '' },
+            guardrail: {
+              triggered: false,
+              category: 'unsupported_request',
+              reason: '',
+            },
           }),
         });
       });
@@ -198,11 +211,17 @@ test.describe('ChatInput', () => {
       await page.getByTestId('chat-input-send').click();
 
       await expect(
-        page.getByText('Wallet disconnected. Reconnect to continue.'),
+        page.locator('span').and(
+          page.getByText('Wallet disconnected. Reconnect to continue.', {
+            exact: true,
+          }),
+        ),
       ).toBeVisible({ timeout: 5_000 });
     });
 
-    test('wallet warning disappears after wallet reconnects', async ({ page }) => {
+    test('wallet warning disappears after wallet reconnects', async ({
+      page,
+    }) => {
       await stubChatApi(page);
       await page.goto(TEST_URL);
       await page.waitForLoadState('domcontentloaded');
@@ -212,7 +231,11 @@ test.describe('ChatInput', () => {
       await textarea.fill('Hi');
       await page.getByTestId('chat-input-send').click();
       await expect(
-        page.getByText('Wallet disconnected. Reconnect to continue.'),
+        page.locator('span').and(
+          page.getByText('Wallet disconnected. Reconnect to continue.', {
+            exact: true,
+          }),
+        ),
       ).toBeVisible({ timeout: 5_000 });
 
       // Now connect the wallet
@@ -220,13 +243,19 @@ test.describe('ChatInput', () => {
 
       // Warning should clear
       await expect(
-        page.getByText('Wallet disconnected. Reconnect to continue.'),
+        page.locator('span').and(
+          page.getByText('Wallet disconnected. Reconnect to continue.', {
+            exact: true,
+          }),
+        ),
       ).toBeHidden({ timeout: 5_000 });
     });
   });
 
   test.describe('Command palette', () => {
-    test('typing / shows the command suggestions dropdown', async ({ page }) => {
+    test('typing / shows the command suggestions dropdown', async ({
+      page,
+    }) => {
       await gotoHarness(page);
 
       const textarea = page.getByTestId('chat-input-textarea');
@@ -294,12 +323,20 @@ test.describe('ChatInput', () => {
       await expect(textarea).toBeFocused();
     });
 
-    test('Tab reaches the send button', async ({ page }) => {
+    test('the enabled send button can be focused and activated with Enter', async ({
+      page,
+    }) => {
       await gotoHarness(page);
 
-      const sendBtn = page.getByTestId('chat-input-send');
-      await sendBtn.focus();
-      await expect(sendBtn).toBeFocused();
+      await page.getByTestId('chat-input-textarea').fill('Ready to send');
+      const sendButton = page.getByTestId('chat-input-send');
+      await expect(sendButton).toBeEnabled();
+      await sendButton.focus();
+      await expect(sendButton).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(page.getByTestId('sent-message').first()).toContainText(
+        'Ready to send',
+      );
     });
 
     test('Tab reaches the emoji button', async ({ page }) => {
@@ -310,7 +347,9 @@ test.describe('ChatInput', () => {
       await expect(emojiBtn).toBeFocused();
     });
 
-    test('Ctrl+Enter sends the message without clicking the button', async ({ page }) => {
+    test('Ctrl+Enter sends the message without clicking the button', async ({
+      page,
+    }) => {
       await gotoHarness(page);
 
       const textarea = page.getByTestId('chat-input-textarea');
@@ -323,7 +362,9 @@ test.describe('ChatInput', () => {
       );
     });
 
-    test('Enter selects highlighted command in suggestion dropdown', async ({ page }) => {
+    test('Enter selects highlighted command in suggestion dropdown', async ({
+      page,
+    }) => {
       await gotoHarness(page);
 
       const textarea = page.getByTestId('chat-input-textarea');

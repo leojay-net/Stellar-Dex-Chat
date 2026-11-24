@@ -95,7 +95,10 @@ export const saveDraft = (sessionId: string, content: string): void => {
  * @see {@link clearDraft} - Explicitly clear a draft
  * @see {@link clearExpiredDrafts} - Clean up old drafts
  */
-export const getDraft = (sessionId: string, ttlSeconds: number = DEFAULT_TTL): string | null => {
+export const getDraft = (
+  sessionId: string,
+  ttlSeconds: number = DEFAULT_TTL,
+): string | null => {
   if (typeof window === 'undefined' || !sessionId) return null;
 
   const item = localStorage.getItem(`${DRAFT_PREFIX}${sessionId}`);
@@ -116,7 +119,7 @@ export const getDraft = (sessionId: string, ttlSeconds: number = DEFAULT_TTL): s
     console.error('Failed to parse draft', e);
     return null;
   }
-}
+};
 
 /**
  * Clears a specific message draft from localStorage.
@@ -156,7 +159,7 @@ export const clearDraft = (sessionId: string): void => {
   } catch (e) {
     console.error('Failed to clear draft from localStorage', e);
   }
-}
+};
 
 /**
  * Clears all drafts that have expired based on their timestamp.
@@ -214,4 +217,4 @@ export const clearExpiredDrafts = (ttlSeconds: number = DEFAULT_TTL): void => {
   }
 
   keysToRemove.forEach((key) => localStorage.removeItem(key));
-}
+};

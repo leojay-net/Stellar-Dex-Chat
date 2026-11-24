@@ -8,15 +8,13 @@ import {
   toBaseAccount,
 } from './stellarAddress';
 
-// A real Ed25519 Stellar keypair used as fixtures (never use in production).
+// Encoded 32-byte public-key fixture generated with the Stellar SDK.
 const VALID_G_ADDRESS =
-  'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
+  'GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H';
 
 // A real muxed address derived from the base account above with id=1.
-// Generated offline via MuxedAccount.fromAddress(...).
-// base: GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN  id: 1
 const VALID_M_ADDRESS =
-  'MA7QYNF7SOWQ3GLR2BGMZEHXR776YZEUT2QZVE7VDTSXKOROVPMUSGAAAAAAAAAPCIBVZA';
+  'MAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAAAAAAAAAAAAFQGI';
 
 describe('isValidPublicKey', () => {
   it('accepts a valid G... address', () => {

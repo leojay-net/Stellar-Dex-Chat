@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from './fixtures';
 
 const MOCK_BANKS = [
   {
@@ -66,7 +67,9 @@ async function mockBankApis(page: import('@playwright/test').Page) {
 
 async function gotoBankDetailsStep2(page: import('@playwright/test').Page) {
   const dialog = page.getByRole('dialog', { name: /fiat payout/i });
-  await expect(dialog.getByRole('button', { name: 'Access Bank' })).toBeVisible();
+  await expect(
+    dialog.getByRole('button', { name: 'Access Bank' }),
+  ).toBeVisible();
   await dialog.getByRole('button', { name: 'Access Bank' }).click();
   await dialog.getByRole('button', { name: /^next$/i }).click();
   await expect(page.getByPlaceholder('0000000000')).toBeVisible();
@@ -118,7 +121,9 @@ test.describe('BankDetailsModal — Step 1: bank selection', () => {
     const searchInput = dialog.getByPlaceholder(/search banks/i);
     await searchInput.fill('Zenith');
     await expect(searchInput).toHaveValue('Zenith');
-    await expect(dialog.getByRole('button', { name: 'Zenith Bank' })).toBeVisible();
+    await expect(
+      dialog.getByRole('button', { name: 'Zenith Bank' }),
+    ).toBeVisible();
     await expect(
       dialog.getByRole('button', { name: 'Access Bank' }),
     ).not.toBeVisible();
@@ -210,7 +215,9 @@ test.describe('BankDetailsModal — Step 3: confirm payout', () => {
     ).toBeVisible();
   });
 
-  test('payout note field accepts text up to 160 characters', async ({ page }) => {
+  test('payout note field accepts text up to 160 characters', async ({
+    page,
+  }) => {
     const noteField = page.getByPlaceholder(/optional note/i);
     if (await noteField.isVisible()) {
       await noteField.fill('A'.repeat(160));
@@ -236,7 +243,9 @@ test.describe('BankDetailsModal — Step 4: success state', () => {
 });
 
 test.describe('BankDetailsModal — idempotency guard', () => {
-  test('rapid double-click on confirm does not submit twice', async ({ page }) => {
+  test('rapid double-click on confirm does not submit twice', async ({
+    page,
+  }) => {
     await mockBankApis(page);
 
     let callCount = 0;

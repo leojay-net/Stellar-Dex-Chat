@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from './fixtures';
 import { mockSorobanRpc, MOCK_WALLET_ADDRESS } from './helpers';
 
 test.describe('Payout Form and Mocked Transfer Initiation', () => {
@@ -34,18 +35,20 @@ test.describe('Payout Form and Mocked Transfer Initiation', () => {
   });
 
   test('should accept valid Stellar address format', async ({ page }) => {
-    await page
-      .locator('input[placeholder="G..."]')
-      .fill(MOCK_WALLET_ADDRESS);
+    await page.locator('input[placeholder="G..."]').fill(MOCK_WALLET_ADDRESS);
     await page.locator('input[type="number"]').fill('0.5');
-    await expect(page.getByRole('button', { name: /^withdraw$/i })).toBeEnabled();
+    await expect(
+      page.getByRole('button', { name: /^withdraw$/i }),
+    ).toBeEnabled();
   });
 
   test('should allow withdrawal to self when recipient is blank', async ({
     page,
   }) => {
     await page.locator('input[type="number"]').fill('1.0');
-    await expect(page.getByRole('button', { name: /^withdraw$/i })).toBeEnabled();
+    await expect(
+      page.getByRole('button', { name: /^withdraw$/i }),
+    ).toBeEnabled();
   });
 
   test('should show success state via demo control', async ({ page }) => {
@@ -54,11 +57,17 @@ test.describe('Payout Form and Mocked Transfer Initiation', () => {
     await expect(page.getByText('Transaction Confirmed!')).toBeVisible();
   });
 
-  test('should disable submit for empty withdrawal amount', async ({ page }) => {
-    await expect(page.getByRole('button', { name: /^withdraw$/i })).toBeDisabled();
+  test('should disable submit for empty withdrawal amount', async ({
+    page,
+  }) => {
+    await expect(
+      page.getByRole('button', { name: /^withdraw$/i }),
+    ).toBeDisabled();
   });
 
-  test('should display correct wallet info for withdrawal', async ({ page }) => {
+  test('should display correct wallet info for withdrawal', async ({
+    page,
+  }) => {
     const walletInfo = page.locator('[data-testid="wallet-info"]');
     await expect(walletInfo).toBeVisible();
     await expect(walletInfo).toContainText(
@@ -89,7 +98,9 @@ test.describe('Payout Form — disconnected wallet', () => {
   test('should disable withdrawal when wallet is not connected', async ({
     page,
   }) => {
-    await expect(page.getByRole('button', { name: /^withdraw$/i })).toBeDisabled();
+    await expect(
+      page.getByRole('button', { name: /^withdraw$/i }),
+    ).toBeDisabled();
     await expect(
       page.getByText(/connect your freighter wallet to continue/i),
     ).toBeVisible();

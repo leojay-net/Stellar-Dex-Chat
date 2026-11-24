@@ -1,12 +1,12 @@
 import {
-    SensitiveTermConfig,
-    SensitiveTermsManager,
+  SensitiveTermConfig,
+  SensitiveTermsManager,
 } from '@/lib/sensitiveTerms';
 import {
-    generateMask,
-    getMaskingStats,
-    MaskingStyle,
-    maskText,
+  generateMask,
+  getMaskingStats,
+  MaskingStyle,
+  maskText,
 } from '@/lib/textMasking';
 import { beforeEach, describe, expect, it } from 'vitest';
 
@@ -205,7 +205,8 @@ describe('Text Masking', () => {
     });
 
     it('should handle large text efficiently', () => {
-      const largeText = 'This is a message. '.repeat(1000) + 'This is damn annoying.';
+      const largeText =
+        'This is a message. '.repeat(1000) + 'This is damn annoying.';
       const startTime = performance.now();
       const masked = maskText(largeText, manager, 'asterisk');
       const endTime = performance.now();

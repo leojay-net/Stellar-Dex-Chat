@@ -117,8 +117,8 @@ export default function AdminDashboard() {
   }, [reconciliationRecords]);
 
   useEffect(() => {
-    fetchMetrics();
-    const interval = setInterval(fetchMetrics, 30000);
+    void fetchMetrics();
+    const interval = setInterval(() => void fetchMetrics(), 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -184,7 +184,7 @@ export default function AdminDashboard() {
   );
 
   useEffect(() => {
-    fetchAuditLogs(auditPage, actionFilter);
+    void fetchAuditLogs(auditPage, actionFilter);
   }, [fetchAuditLogs, auditPage, actionFilter]);
 
   const fetchMetrics = async () => {
@@ -292,14 +292,14 @@ export default function AdminDashboard() {
   const handlePageChange = (newPage: number) => {
     // Optimistic UI: update page immediately
     setAuditPage(newPage);
-    fetchAuditLogs(newPage, actionFilter, true);
+    void fetchAuditLogs(newPage, actionFilter, true);
   };
 
   const handleFilterChange = (newFilter: string) => {
     // Optimistic UI: update filter and reset to page 1 immediately
     setActionFilter(newFilter);
     setAuditPage(1);
-    fetchAuditLogs(1, newFilter, true);
+    void fetchAuditLogs(1, newFilter, true);
   };
 
   const _handleClearAuditLogs = async () => {
@@ -332,7 +332,10 @@ export default function AdminDashboard() {
 
   if (loadingMetrics) {
     return (
-      <main className="min-h-screen theme-app p-8" aria-label="Admin dashboard loading">
+      <main
+        className="min-h-screen theme-app p-8"
+        aria-label="Admin dashboard loading"
+      >
         <div className="max-w-7xl mx-auto space-y-6">
           <SkeletonHeader />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -347,11 +350,17 @@ export default function AdminDashboard() {
 
   return (
     <AdminGuard>
-      <main className="min-h-screen theme-app p-8" aria-labelledby="admin-dashboard-heading">
+      <main
+        className="min-h-screen theme-app p-8"
+        aria-labelledby="admin-dashboard-heading"
+      >
         <ErrorBoundary fallback={<AdminErrorFallback />}>
           <div className="max-w-7xl mx-auto">
             <div className="flex justify-between items-center mb-8">
-              <h1 id="admin-dashboard-heading" className="text-3xl font-bold theme-text-primary">
+              <h1
+                id="admin-dashboard-heading"
+                className="text-3xl font-bold theme-text-primary"
+              >
                 Admin Dashboard
               </h1>
               {enableAdminReconciliation && (
@@ -583,7 +592,7 @@ export default function AdminDashboard() {
 
                     <button
                       type="button"
-                      onClick={exportAuditToCSV}
+                      onClick={() => void exportAuditToCSV()}
                       disabled={
                         exportingCsv || auditLoading || auditTotal === 0
                       }
@@ -712,12 +721,13 @@ export default function AdminDashboard() {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
                             <span
-                              className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${entry.result === 'success'
-                                ? 'theme-soft-success'
-                                : entry.result === 'failed'
-                                  ? 'theme-soft-danger'
-                                  : 'theme-soft-warning'
-                                }`}
+                              className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${
+                                entry.result === 'success'
+                                  ? 'theme-soft-success'
+                                  : entry.result === 'failed'
+                                    ? 'theme-soft-danger'
+                                    : 'theme-soft-warning'
+                              }`}
                             >
                               {entry.result}
                             </span>
@@ -729,7 +739,11 @@ export default function AdminDashboard() {
               </div>
 
               {auditLoading && (
-                <div className="px-6 py-8 text-center text-sm theme-text-muted" role="status" aria-live="polite">
+                <div
+                  className="px-6 py-8 text-center text-sm theme-text-muted"
+                  role="status"
+                  aria-live="polite"
+                >
                   Loading audit entries...
                 </div>
               )}
@@ -798,12 +812,25 @@ export default function AdminDashboard() {
 
             {showReauthPrompt && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                <div className="theme-surface rounded-lg shadow-xl p-6 max-w-md mx-4" role="dialog" aria-modal="true" aria-labelledby="reauth-dialog-title" aria-describedby="reauth-dialog-description">
-                  <h3 id="reauth-dialog-title" className="text-lg font-semibold theme-text-primary mb-2">
+                <div
+                  className="theme-surface rounded-lg shadow-xl p-6 max-w-md mx-4"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="reauth-dialog-title"
+                  aria-describedby="reauth-dialog-description"
+                >
+                  <h3
+                    id="reauth-dialog-title"
+                    className="text-lg font-semibold theme-text-primary mb-2"
+                  >
                     Session Expired
                   </h3>
-                  <p id="reauth-dialog-description" className="theme-text-secondary mb-4">
-                    Your admin session has expired. Please refresh the page to re-authenticate.
+                  <p
+                    id="reauth-dialog-description"
+                    className="theme-text-secondary mb-4"
+                  >
+                    Your admin session has expired. Please refresh the page to
+                    re-authenticate.
                   </p>
                   <button
                     type="button"

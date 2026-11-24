@@ -14,7 +14,12 @@ vi.mock('./toastStore', () => ({
   },
 }));
 
-import { AIAssistant, ASSISTANT_ANIMATION_VARIANTS, REDUCED_MOTION_VARIANTS, AnimationVariants } from './aiAssistant';
+import {
+  AIAssistant,
+  ASSISTANT_ANIMATION_VARIANTS,
+  REDUCED_MOTION_VARIANTS,
+  AnimationVariants,
+} from './aiAssistant';
 import type { ChatMessage, AIAnalysisResult } from '@/types';
 
 // ---------- Helpers ----------
@@ -151,7 +156,9 @@ describe('AIAssistant abort signal support', () => {
 
   it('should re-throw AbortError from analyzeUserMessage without logging', async () => {
     const controller = new AbortController();
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
 
     vi.stubGlobal(
       'fetch',
@@ -169,7 +176,11 @@ describe('AIAssistant abort signal support', () => {
 
   it('should pass signal to fetch in generateFollowUpQuestion', async () => {
     const controller = new AbortController();
-    await assistant.generateFollowUpQuestion('query', ['amount'], controller.signal);
+    await assistant.generateFollowUpQuestion(
+      'query',
+      ['amount'],
+      controller.signal,
+    );
 
     expect(fetch).toHaveBeenCalledWith(
       '/api/ai/chat',
@@ -179,7 +190,9 @@ describe('AIAssistant abort signal support', () => {
 
   it('should re-throw AbortError from generateFollowUpQuestion without logging', async () => {
     const controller = new AbortController();
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
 
     vi.stubGlobal(
       'fetch',
@@ -187,7 +200,11 @@ describe('AIAssistant abort signal support', () => {
     );
 
     await expect(
-      assistant.generateFollowUpQuestion('query', ['amount'], controller.signal),
+      assistant.generateFollowUpQuestion(
+        'query',
+        ['amount'],
+        controller.signal,
+      ),
     ).rejects.toThrow('Aborted');
 
     expect(consoleErrorSpy).not.toHaveBeenCalled();
@@ -195,7 +212,9 @@ describe('AIAssistant abort signal support', () => {
   });
 
   it('should return fallback result for non-abort errors in analyzeUserMessage', async () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
     vi.stubGlobal(
       'fetch',
       vi.fn().mockRejectedValue(new Error('Network failure')),
@@ -211,7 +230,9 @@ describe('AIAssistant abort signal support', () => {
 
   it('should toast on network-style fetch failure in analyzeUserMessage', async () => {
     toastAddMock.mockClear();
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
     vi.stubGlobal(
       'fetch',
       vi.fn().mockRejectedValue(new TypeError('Failed to fetch')),
@@ -229,7 +250,9 @@ describe('AIAssistant abort signal support', () => {
 
   it('should toast on network failure in generateFollowUpQuestion', async () => {
     toastAddMock.mockClear();
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
     vi.stubGlobal(
       'fetch',
       vi.fn().mockRejectedValue(new TypeError('Failed to fetch')),
@@ -334,7 +357,8 @@ describe('aiAssistant framer-motion animation', () => {
     });
 
     it('guardrail variant should use spring physics', () => {
-      const transition = ASSISTANT_ANIMATION_VARIANTS.guardrail.animate.transition;
+      const transition =
+        ASSISTANT_ANIMATION_VARIANTS.guardrail.animate.transition;
       expect(transition!.type).toBe('spring');
       expect(transition!.stiffness).toBeGreaterThan(0);
       expect(transition!.damping).toBeGreaterThan(0);
@@ -365,7 +389,9 @@ describe('aiAssistant framer-motion animation', () => {
     });
 
     it('should have a short transition duration', () => {
-      expect(REDUCED_MOTION_VARIANTS.animate.transition!.duration).toBeLessThanOrEqual(0.3);
+      expect(
+        REDUCED_MOTION_VARIANTS.animate.transition!.duration,
+      ).toBeLessThanOrEqual(0.3);
     });
   });
 
@@ -386,7 +412,11 @@ describe('aiAssistant framer-motion animation', () => {
         const analysis = makeAnalysis(intent);
         const result = AIAssistant.getAnimationVariants(analysis);
         // Cast needed because TS can't narrow Record key from AIAnalysisResult['intent']
-        expect(result).toEqual((ASSISTANT_ANIMATION_VARIANTS as Record<string, AnimationVariants>)[intent]);
+        expect(result).toEqual(
+          (ASSISTANT_ANIMATION_VARIANTS as Record<string, AnimationVariants>)[
+            intent
+          ],
+        );
       }
     });
 
@@ -428,7 +458,8 @@ describe('aiAssistant framer-motion animation', () => {
 
       for (const intent of intents) {
         const analysis = makeAnalysis(intent);
-        const variants: AnimationVariants = AIAssistant.getAnimationVariants(analysis);
+        const variants: AnimationVariants =
+          AIAssistant.getAnimationVariants(analysis);
 
         // Structure checks
         expect(variants.initial).toBeDefined();
@@ -439,19 +470,24 @@ describe('aiAssistant framer-motion animation', () => {
     });
 
     it('should produce distinct variants for guardrail vs query intents', () => {
-      const guardrailVariants = AIAssistant.getAnimationVariants(makeAnalysis('guardrail'));
-      const queryVariants = AIAssistant.getAnimationVariants(makeAnalysis('query'));
+      const guardrailVariants = AIAssistant.getAnimationVariants(
+        makeAnalysis('guardrail'),
+      );
+      const queryVariants = AIAssistant.getAnimationVariants(
+        makeAnalysis('query'),
+      );
 
       expect(guardrailVariants).not.toEqual(queryVariants);
     });
 
     it('should produce distinct variants for fiat_conversion vs default', () => {
-      const fcVariants = AIAssistant.getAnimationVariants(makeAnalysis('fiat_conversion'));
+      const fcVariants = AIAssistant.getAnimationVariants(
+        makeAnalysis('fiat_conversion'),
+      );
       const defaultVariants = ASSISTANT_ANIMATION_VARIANTS.default;
 
       expect(fcVariants).not.toEqual(defaultVariants);
     });
-
   });
 });
 
@@ -474,7 +510,8 @@ describe('aiAssistant request retry with exponential backoff', () => {
   it('should retry on network errors in analyzeUserMessage', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn()
+      vi
+        .fn()
         .mockRejectedValueOnce(new TypeError('Failed to fetch'))
         .mockResolvedValue({
           ok: true,
@@ -505,7 +542,9 @@ describe('aiAssistant request retry with exponential backoff', () => {
       vi.fn().mockRejectedValue(new TypeError('Failed to fetch')),
     );
 
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
 
     const promise = assistant.analyzeUserMessage('hello');
     await vi.runAllTimersAsync();
@@ -522,9 +561,9 @@ describe('aiAssistant request retry with exponential backoff', () => {
       vi.fn().mockRejectedValue(new DOMException('Aborted', 'AbortError')),
     );
 
-    await expect(
-      assistant.analyzeUserMessage('hello'),
-    ).rejects.toThrow('Aborted');
+    await expect(assistant.analyzeUserMessage('hello')).rejects.toThrow(
+      'Aborted',
+    );
 
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -532,7 +571,7 @@ describe('aiAssistant request retry with exponential backoff', () => {
   it('should use exponential backoff between retries', async () => {
     const delays: number[] = [];
     const originalSetTimeout = global.setTimeout;
-    
+
     global.setTimeout = vi.fn((callback: any, delay: number) => {
       delays.push(delay);
       return originalSetTimeout(callback, delay);
@@ -540,7 +579,8 @@ describe('aiAssistant request retry with exponential backoff', () => {
 
     vi.stubGlobal(
       'fetch',
-      vi.fn()
+      vi
+        .fn()
         .mockRejectedValueOnce(new TypeError('Failed to fetch'))
         .mockRejectedValueOnce(new TypeError('Failed to fetch'))
         .mockResolvedValue({
@@ -557,7 +597,7 @@ describe('aiAssistant request retry with exponential backoff', () => {
     );
 
     const promise = assistant.analyzeUserMessage('hello');
-    
+
     // Advance timers for retries
     vi.advanceTimersByTime(1000);
     await vi.runAllTimersAsync();
@@ -577,7 +617,8 @@ describe('aiAssistant request retry with exponential backoff', () => {
   it('should retry on network errors in generateFollowUpQuestion', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn()
+      vi
+        .fn()
         .mockRejectedValueOnce(new TypeError('Failed to fetch'))
         .mockResolvedValue({
           ok: true,
@@ -611,7 +652,8 @@ describe('aiAssistant request retry with exponential backoff', () => {
   it('should cap delay at maxDelayMs', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn()
+      vi
+        .fn()
         .mockRejectedValueOnce(new TypeError('Failed to fetch'))
         .mockRejectedValueOnce(new TypeError('Failed to fetch'))
         .mockRejectedValueOnce(new TypeError('Failed to fetch'))
@@ -629,7 +671,7 @@ describe('aiAssistant request retry with exponential backoff', () => {
     );
 
     const promise = assistant.analyzeUserMessage('hello');
-    
+
     // The max delay is 10000ms, so even with exponential backoff, it should not exceed this
     vi.advanceTimersByTime(10000);
     await vi.runAllTimersAsync();
@@ -662,7 +704,7 @@ describe('aiAssistant request retry with exponential backoff', () => {
     );
 
     const promise = assistant.analyzeUserMessage('hello');
-    
+
     // Advance with enough time for retries
     vi.advanceTimersByTime(5000);
     await vi.runAllTimersAsync();

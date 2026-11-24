@@ -1,10 +1,7 @@
 extern crate std;
 
 use super::*;
-use soroban_sdk::{
-    testutils::Address as _,
-    vec, Address, Bytes, Env, Symbol, Vec,
-};
+use soroban_sdk::{testutils::Address as _, vec, Address, Bytes, Env, Symbol, Vec};
 
 fn setup_bridge<'a>(
     env: &Env,
@@ -20,7 +17,15 @@ fn setup_bridge<'a>(
     let contract_id = env.register(FiatBridge, ());
     let bridge = FiatBridgeClient::new(env, &contract_id);
 
-    bridge.init(&admin, &token_addr, &1_000_000_000, &1, signers, &threshold, &0);
+    bridge.init(
+        &admin,
+        &token_addr,
+        &1_000_000_000,
+        &1,
+        signers,
+        &threshold,
+        &0,
+    );
 
     (contract_id, bridge, admin, token_addr)
 }
@@ -158,23 +163,35 @@ fn test_update_multisig_invalid_configurations() {
     let empty_signers = Vec::<Address>::new(&env);
     let op_empty = FiatBridge::build_update_multisig_op(&env, empty_signers, 1);
     let prop_empty = bridge.propose_multisig_action(&s1, &op_empty);
-    assert_eq!(bridge.try_execute_multisig_action(&prop_empty), Err(Ok(Error::InvalidThreshold)));
+    assert_eq!(
+        bridge.try_execute_multisig_action(&prop_empty),
+        Err(Ok(Error::InvalidThreshold))
+    );
 
     // 2. Threshold 0 -> InvalidThreshold
     let op_zero_thresh = FiatBridge::build_update_multisig_op(&env, initial_signers.clone(), 0);
     let prop_zero = bridge.propose_multisig_action(&s1, &op_zero_thresh);
-    assert_eq!(bridge.try_execute_multisig_action(&prop_zero), Err(Ok(Error::InvalidThreshold)));
+    assert_eq!(
+        bridge.try_execute_multisig_action(&prop_zero),
+        Err(Ok(Error::InvalidThreshold))
+    );
 
     // 3. Threshold > signers.len() -> InvalidThreshold
     let op_high_thresh = FiatBridge::build_update_multisig_op(&env, initial_signers.clone(), 5);
     let prop_high = bridge.propose_multisig_action(&s1, &op_high_thresh);
-    assert_eq!(bridge.try_execute_multisig_action(&prop_high), Err(Ok(Error::InvalidThreshold)));
+    assert_eq!(
+        bridge.try_execute_multisig_action(&prop_high),
+        Err(Ok(Error::InvalidThreshold))
+    );
 
     // 4. Duplicate signers -> DuplicateSigner
     let dup_signers = vec![&env, s1.clone(), s1.clone()];
     let op_dup = FiatBridge::build_update_multisig_op(&env, dup_signers, 1);
     let prop_dup = bridge.propose_multisig_action(&s1, &op_dup);
-    assert_eq!(bridge.try_execute_multisig_action(&prop_dup), Err(Ok(Error::DuplicateSigner)));
+    assert_eq!(
+        bridge.try_execute_multisig_action(&prop_dup),
+        Err(Ok(Error::DuplicateSigner))
+    );
 
     // 5. Exceed MAX_SIGNERS (20)
     let mut too_many = Vec::new(&env);
@@ -183,7 +200,10 @@ fn test_update_multisig_invalid_configurations() {
     }
     let op_too_many = FiatBridge::build_update_multisig_op(&env, too_many, 1);
     let prop_too_many = bridge.propose_multisig_action(&s1, &op_too_many);
-    assert_eq!(bridge.try_execute_multisig_action(&prop_too_many), Err(Ok(Error::MaxSignersReached)));
+    assert_eq!(
+        bridge.try_execute_multisig_action(&prop_too_many),
+        Err(Ok(Error::MaxSignersReached))
+    );
 }
 
 #[test]
@@ -212,5 +232,8 @@ fn test_batch_set_limit_op() {
     // Invalid limit <= 0 fails
     let op_invalid = FiatBridge::build_set_limit_op(&env, token_addr, 0);
     let prop_invalid = bridge.propose_multisig_action(&s1, &op_invalid);
-    assert_eq!(bridge.try_execute_multisig_action(&prop_invalid), Err(Ok(Error::ZeroAmount)));
+    assert_eq!(
+        bridge.try_execute_multisig_action(&prop_invalid),
+        Err(Ok(Error::ZeroAmount))
+    );
 }

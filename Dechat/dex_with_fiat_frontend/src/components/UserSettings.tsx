@@ -52,10 +52,11 @@ export default function UserSettings({ isOpen, onClose, onResetOnboarding }: Use
 
   // Beneficiary management states
   const [showAddBeneficiary, setShowAddBeneficiary] = useState(false);
-  const [editingBeneficiary, setEditingBeneficiary] = useState<Beneficiary | null>(null);
+  const [editingBeneficiary, setEditingBeneficiary] =
+    useState<Beneficiary | null>(null);
   const [newBeneficiaryName, setNewBeneficiaryName] = useState('');
   const [newBeneficiaryAddress, setNewBeneficiaryAddress] = useState('');
-  
+
   useAccessibleModal(isOpen, panelRef, onClose);
 
   if (!isOpen) return null;
@@ -71,7 +72,14 @@ export default function UserSettings({ isOpen, onClose, onResetOnboarding }: Use
         renameBeneficiary(editingBeneficiary.id, newBeneficiaryName);
         setEditingBeneficiary(null);
       } else {
-        addBeneficiary(0, 'Unknown Bank', '000', newBeneficiaryAddress, newBeneficiaryAddress, newBeneficiaryName);
+        addBeneficiary(
+          0,
+          'Unknown Bank',
+          '000',
+          newBeneficiaryAddress,
+          newBeneficiaryAddress,
+          newBeneficiaryName,
+        );
       }
       setNewBeneficiaryName('');
       setNewBeneficiaryAddress('');
@@ -176,7 +184,9 @@ export default function UserSettings({ isOpen, onClose, onResetOnboarding }: Use
             </p>
 
             {showAddBeneficiary && (
-              <div className={`p-3 rounded-lg mb-3 border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+              <div
+                className={`p-3 rounded-lg mb-3 border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}
+              >
                 <div className="space-y-3">
                   <div>
                     <label
@@ -273,10 +283,14 @@ export default function UserSettings({ isOpen, onClose, onResetOnboarding }: Use
                       }`}
                     >
                       <div className="min-w-0 flex-1">
-                        <p className={`text-xs font-medium truncate ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>
+                        <p
+                          className={`text-xs font-medium truncate ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+                        >
                           {beneficiary.name}
                         </p>
-                        <p className={`text-[10px] truncate ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                        <p
+                          className={`text-[10px] truncate ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}
+                        >
                           {beneficiary.accountName}
                         </p>
                       </div>
@@ -293,7 +307,9 @@ export default function UserSettings({ isOpen, onClose, onResetOnboarding }: Use
                           <Edit2 className="w-3 h-3" />
                         </button>
                         <button
-                          onClick={() => handleDeleteBeneficiary(beneficiary.id)}
+                          onClick={() =>
+                            handleDeleteBeneficiary(beneficiary.id)
+                          }
                           aria-label={`Delete ${beneficiary.name}`}
                           className={`p-1.5 rounded transition-colors ${
                             isDarkMode
@@ -555,11 +571,16 @@ export default function UserSettings({ isOpen, onClose, onResetOnboarding }: Use
               aria-label="Select language"
               className="space-y-1"
             >
-              {([
-                { code: 'en', label: 'English' },
-                { code: 'fr', label: 'Français' },
-                { code: 'es', label: 'Español' },
-              ] as const satisfies ReadonlyArray<{ code: SupportedLocale; label: string }>).map(({ code, label }) => {
+              {(
+                [
+                  { code: 'en', label: 'English' },
+                  { code: 'fr', label: 'Français' },
+                  { code: 'es', label: 'Español' },
+                ] as const satisfies ReadonlyArray<{
+                  code: SupportedLocale;
+                  label: string;
+                }>
+              ).map(({ code, label }) => {
                 const isSelected = locale === code;
                 return (
                   <li key={code}>
@@ -696,8 +717,11 @@ export default function UserSettings({ isOpen, onClose, onResetOnboarding }: Use
                     }`}
                     aria-label="High-value transfer threshold in XLM"
                   />
-                  <p className={`text-[10px] ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                    Transfers above this amount will require additional confirmation
+                  <p
+                    className={`text-[10px] ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                  >
+                    Transfers above this amount will require additional
+                    confirmation
                   </p>
                 </div>
               )}

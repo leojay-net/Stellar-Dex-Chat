@@ -1,7 +1,9 @@
 import { MuxedAccount, StrKey } from '@stellar/stellar-sdk';
 
 /** A plain `G...` Stellar account address (56 base-32 chars). */
-export type StellarPublicKey = string & { readonly __brand: 'StellarPublicKey' };
+export type StellarPublicKey = string & {
+  readonly __brand: 'StellarPublicKey';
+};
 
 /** A muxed `M...` Stellar account address. */
 export type MuxedAccountAddress = string & {
@@ -41,9 +43,7 @@ export interface MuxedAddressParts {
  * Decodes a muxed `M...` address into its base `G...` account and numeric id.
  * Returns `null` when the input is not a valid muxed address.
  */
-export function decodeMuxedAddress(
-  address: string,
-): MuxedAddressParts | null {
+export function decodeMuxedAddress(address: string): MuxedAddressParts | null {
   if (!isValidMuxedAddress(address)) return null;
   try {
     const muxed = MuxedAccount.fromAddress(address, '0');

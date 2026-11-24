@@ -96,7 +96,7 @@ Defined in `.env.docker` and utilized by `docker-compose.yml`:
 
 | Variable Name | Scope | Default in Docker | Example Value | Description |
 |---|---|---|---|---|
-| `NEXT_PUBLIC_STELLAR_RPC_URL` | Client / Container | `http://localhost:8000/soroban/rpc` | `http://localhost:8000/soroban/rpc` | Points to the local Soroban Quickstart container RPC endpoint. |
+| `NEXT_PUBLIC_STELLAR_RPC_URL` | Client / Container | `http://localhost:8000/rpc` | `http://localhost:8000/rpc` | Points to the local Soroban Quickstart container RPC endpoint. |
 | `NEXT_PUBLIC_STELLAR_HORIZON_URL` | Client / Container | `http://localhost:8000` | `http://localhost:8000` | Points to the local Soroban Quickstart container Horizon endpoint. |
 | `NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT` | Client / Container | _Empty (populate after local deploy)_ | `CAWYXBN4PSVXD7NIYEWVFFIIIEUCC6PUN3IMG3J2WHKDB4NVIISMXBPR` | Deployed contract ID on the local standalone network. |
 | `NEXT_PUBLIC_XLM_SAC_CONTRACT` | Client / Container | _Empty (populate after local deploy)_ | `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` | SAC ID on the local standalone network. |
@@ -173,7 +173,7 @@ The repository includes a complete local Stellar development environment via Doc
 
 3. Verify service health:
    - Frontend: [http://localhost:3000](http://localhost:3000)
-   - Soroban RPC: [http://localhost:8000/soroban/rpc](http://localhost:8000/soroban/rpc)
+   - Soroban RPC: [http://localhost:8000/rpc](http://localhost:8000/rpc)
    - Horizon: [http://localhost:8000](http://localhost:8000)
 
 4. Once contracts are deployed to the local standalone network, update `NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT` and `NEXT_PUBLIC_XLM_SAC_CONTRACT` in `Dechat/dex_with_fiat_frontend/.env.local`.

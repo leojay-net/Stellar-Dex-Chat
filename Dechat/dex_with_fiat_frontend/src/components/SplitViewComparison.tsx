@@ -1,7 +1,20 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { ArrowLeftRight, X, ChevronDown, Copy, Check, Columns2 } from 'lucide-react';
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  useMemo,
+  useCallback,
+} from 'react';
+import {
+  ArrowLeftRight,
+  X,
+  ChevronDown,
+  Copy,
+  Check,
+  Columns2,
+} from 'lucide-react';
 import { ChatSession, ChatMessage } from '@/types';
 import { UseSplitViewReturn } from '@/hooks/useSplitView';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
@@ -27,7 +40,7 @@ interface ThreadPaneProps {
   allSessions: ChatSession[];
   onSelectSession: (id: string) => void;
   onSelectMessage: (id: string | null) => void;
-  onCopyMessage: (content: string) => void;
+  onCopyMessage: (content: string) => Promise<void>;
 }
 
 function ThreadPane({
@@ -198,7 +211,7 @@ function ThreadPane({
 
                   {/* Copy button */}
                   <button
-                    onClick={(e) => handleCopyMessage(e, msg.content, msg.id)}
+                    onClick={(e) => void handleCopyMessage(e, msg.content, msg.id)}
                     className="absolute top-2 right-2 p-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity bg-[var(--color-surface)] hover:bg-[var(--color-surface-elevated)] border border-[var(--color-border)]"
                     aria-label="Copy message to clipboard"
                     title="Copy message"
@@ -444,7 +457,11 @@ export default function SplitViewComparison({
         {isLoading ? (
           <div className="flex flex-1 min-h-0 overflow-hidden flex-col md:flex-row gap-4 p-4">
             {[1, 2].map((index) => (
-              <div key={index} className="flex-1 space-y-4" data-testid="split-view-skeleton">
+              <div
+                key={index}
+                className="flex-1 space-y-4"
+                data-testid="split-view-skeleton"
+              >
                 <Skeleton className="h-10 w-3/4 bg-slate-200 dark:bg-slate-700" />
                 <div className="space-y-3">
                   <Skeleton className="h-16 bg-slate-200 dark:bg-slate-700" />

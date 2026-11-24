@@ -106,20 +106,20 @@ export function useBeneficiaries(options?: { fetchFromApi?: boolean; userId?: st
 
   // Fetch from API with deduplication if enabled
   useEffect(() => {
-    if (!fetchFromApi || typeof window === 'undefined') return;
+    if (!isMounted || !fetchFromApi || typeof window === 'undefined') return;
 
     let cancelled = false;
 
-    (async () => {
+    void (async () => {
       try {
         const data = await fetchBeneficiariesWithDedup(userId);
-        if (!cancelled && isMountedRef.current) {
+        if (!cancelled) {
           setBeneficiaries(Array.isArray(data) ? data : []);
           setIsLoaded(true);
         }
       } catch (error) {
         console.error('Error loading beneficiaries:', error);
-        if (!cancelled && isMountedRef.current) {
+        if (!cancelled) {
           setIsLoaded(true);
         }
       }
@@ -128,11 +128,11 @@ export function useBeneficiaries(options?: { fetchFromApi?: boolean; userId?: st
     return () => {
       cancelled = true;
     };
-  }, [fetchFromApi, userId]);
+  }, [isMounted, fetchFromApi, userId]);
 
   // Load from localStorage if not fetching from API
   useEffect(() => {
-    if (fetchFromApi || typeof window === 'undefined') return;
+    if (!isMounted || fetchFromApi || typeof window === 'undefined') return;
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
@@ -143,7 +143,7 @@ export function useBeneficiaries(options?: { fetchFromApi?: boolean; userId?: st
       setBeneficiaries([]);
     }
     setIsLoaded(true);
-  }, [fetchFromApi]);
+  }, [isMounted, fetchFromApi]);
 
   useEffect(() => {
     if (!isLoaded || typeof window === 'undefined') return;
@@ -207,54 +207,57 @@ export function useBeneficiaries(options?: { fetchFromApi?: boolean; userId?: st
   );
 
   // Keyboard shortcuts handling
-  const handleKeyboardShortcut = useCallback((event: KeyboardEvent) => {
-    const { ctrlKey, shiftKey, key } = event;
+  const handleKeyboardShortcut = useCallback(
+    (event: KeyboardEvent) => {
+      const { ctrlKey, shiftKey, key } = event;
 
-    // Add beneficiary: Ctrl+B
-    if (ctrlKey && !shiftKey && key === 'b') {
-      event.preventDefault();
-      // This would typically trigger a UI action to add beneficiary
-      // For now, we'll just log or provide a callback
-      return 'add';
-    }
-
-    // Focus beneficiaries: Ctrl+Shift+B
-    if (ctrlKey && shiftKey && key === 'B') {
-      event.preventDefault();
-      return 'focus';
-    }
-
-    // Navigation: ArrowUp/ArrowDown when beneficiaries are focused
-    if (key === 'ArrowUp' && selectedIndex > 0) {
-      event.preventDefault();
-      setSelectedIndex(selectedIndex - 1);
-      return 'navigate-up';
-    }
-
-    if (key === 'ArrowDown' && selectedIndex < beneficiaries.length - 1) {
-      event.preventDefault();
-      setSelectedIndex(selectedIndex + 1);
-      return 'navigate-down';
-    }
-
-    // Select: Enter
-    if (key === 'Enter' && selectedIndex >= 0) {
-      event.preventDefault();
-      return 'select';
-    }
-
-    // Delete: Delete key
-    if (key === 'Delete' && selectedIndex >= 0) {
-      event.preventDefault();
-      const beneficiaryToDelete = beneficiaries[selectedIndex];
-      if (beneficiaryToDelete) {
-        deleteBeneficiary(beneficiaryToDelete.id);
+      // Add beneficiary: Ctrl+B
+      if (ctrlKey && !shiftKey && key === 'b') {
+        event.preventDefault();
+        // This would typically trigger a UI action to add beneficiary
+        // For now, we'll just log or provide a callback
+        return 'add';
       }
-      return 'delete';
-    }
 
-    return null;
-  }, [selectedIndex, beneficiaries, deleteBeneficiary]);
+      // Focus beneficiaries: Ctrl+Shift+B
+      if (ctrlKey && shiftKey && key === 'B') {
+        event.preventDefault();
+        return 'focus';
+      }
+
+      // Navigation: ArrowUp/ArrowDown when beneficiaries are focused
+      if (key === 'ArrowUp' && selectedIndex > 0) {
+        event.preventDefault();
+        setSelectedIndex(selectedIndex - 1);
+        return 'navigate-up';
+      }
+
+      if (key === 'ArrowDown' && selectedIndex < beneficiaries.length - 1) {
+        event.preventDefault();
+        setSelectedIndex(selectedIndex + 1);
+        return 'navigate-down';
+      }
+
+      // Select: Enter
+      if (key === 'Enter' && selectedIndex >= 0) {
+        event.preventDefault();
+        return 'select';
+      }
+
+      // Delete: Delete key
+      if (key === 'Delete' && selectedIndex >= 0) {
+        event.preventDefault();
+        const beneficiaryToDelete = beneficiaries[selectedIndex];
+        if (beneficiaryToDelete) {
+          deleteBeneficiary(beneficiaryToDelete.id);
+        }
+        return 'delete';
+      }
+
+      return null;
+    },
+    [selectedIndex, beneficiaries, deleteBeneficiary],
+  );
 
   useEffect(() => {
     if (typeof window === 'undefined') return;

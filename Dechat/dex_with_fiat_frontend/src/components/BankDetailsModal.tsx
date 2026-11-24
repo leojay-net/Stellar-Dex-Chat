@@ -61,7 +61,7 @@ export const bankDetailsSchema = z.object({
       (val) => {
         if (!val || val.trim() === '') return true; // optional field
         const cleaned = val.replace(/\s+/g, '').toUpperCase();
-       
+
         if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(cleaned)) return false;
         return validateIbanMod97(cleaned);
       },
@@ -109,7 +109,6 @@ export interface BankDetailsModalProps {
   xlmAmount: number;
 }
 
-
 const modalVariants = {
   hidden: {
     opacity: 0,
@@ -154,7 +153,6 @@ const stepVariants = {
     },
   },
 };
-
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -333,7 +331,7 @@ export default function BankDetailsModal({
       return;
     }
 
-    const pollInterval = setInterval(async () => {
+    const pollTransfer = async () => {
       try {
         const res = await fetch(`/api/transfer-status/${transferReference}`);
         if (res.ok) {
@@ -366,7 +364,8 @@ export default function BankDetailsModal({
       } catch (err) {
         console.error('Error polling transfer status:', err);
       }
-    }, 5000);
+    };
+    const pollInterval = setInterval(() => void pollTransfer(), 5000);
 
     return () => clearInterval(pollInterval);
   }, [step, transferReference, transferStatus]);
@@ -379,7 +378,9 @@ export default function BankDetailsModal({
     const result = bankDetailsSchema
       .pick({ iban: true })
       .safeParse({ iban: value });
-    return result.success ? '' : (result.error.issues[0]?.message ?? 'Invalid IBAN');
+    return result.success
+      ? ''
+      : (result.error.issues[0]?.message ?? 'Invalid IBAN');
   };
 
   const handleIbanChange = (value: string) => {
@@ -698,6 +699,28 @@ export default function BankDetailsModal({
 
   useAccessibleModal(isOpen, modalRef, handleClose);
 
+  const handleCancelPayout = async () => {
+    try {
+      const res = await fetch(
+        `/api/transfer-status/${transferReference}`,
+        { method: 'POST' },
+      );
+      const json = await res.json();
+      if (json.success) {
+        pushStatusEvent(
+          'cancelled',
+          'Transfer cancelled',
+        );
+        addNotification(
+          'payout_cancelled',
+          'Payout was cancelled successfully.',
+        );
+      }
+    } catch (err) {
+      console.error('Cancel error:', err);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -991,7 +1014,7 @@ export default function BankDetailsModal({
                       setVerifiedAccount(null);
                       setVerifyError('');
                     }}
-                    onBlur={handleVerifyAccount}
+                    onBlur={() => void handleVerifyAccount()}
                     maxLength={10}
                     placeholder="0000000000"
                     className="w-full theme-input border theme-input-border rounded-lg px-4 py-3 placeholder-gray-500 focus:outline-none focus:border-blue-500"
@@ -1001,7 +1024,9 @@ export default function BankDetailsModal({
                 <div className="mb-3">
                   <label className="block text-sm text-gray-400 mb-1">
                     IBAN{' '}
-                    <span className="text-gray-500 text-xs">(optional — for international transfers)</span>
+                    <span className="text-gray-500 text-xs">
+                      (optional — for international transfers)
+                    </span>
                   </label>
                   <input
                     type="text"
@@ -1216,15 +1241,15 @@ export default function BankDetailsModal({
                     )}
                   </div>
 
-                    {lockedQuote?.stale && (
-                      <p
-                        role="status"
-                        className="flex items-center gap-2 text-amber-400 text-xs"
-                      >
-                        <AlertCircle className="w-3 h-3 flex-shrink-0" />
-                        Estimated rate: live market prices are unavailable.
-                      </p>
-                    )}
+                  {lockedQuote?.stale && (
+                    <p
+                      role="status"
+                      className="flex items-center gap-2 text-amber-400 text-xs"
+                    >
+                      <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                      Estimated rate: live market prices are unavailable.
+                    </p>
+                  )}
 
                   {/* Quote lock countdown */}
                   {lockedQuote && (
@@ -1344,7 +1369,7 @@ export default function BankDetailsModal({
                   </button>
                   <button
                     type="button"
-                    onClick={handleConfirmPayout}
+                    onClick={() => void handleConfirmPayout()}
                     disabled={
                       payoutLoading ||
                       isPayoutProcessing ||
@@ -1492,27 +1517,7 @@ export default function BankDetailsModal({
                     <div className="mb-6">
                       <button
                         type="button"
-                        onClick={async () => {
-                          try {
-                            const res = await fetch(
-                              `/api/transfer-status/${transferReference}`,
-                              { method: 'POST' },
-                            );
-                            const json = await res.json();
-                            if (json.success) {
-                              pushStatusEvent(
-                                'cancelled',
-                                'Transfer cancelled',
-                              );
-                              addNotification(
-                                'payout_cancelled',
-                                'Payout was cancelled successfully.',
-                              );
-                            }
-                          } catch (err) {
-                            console.error('Cancel error:', err);
-                          }
-                        }}
+                        onClick={() => void handleCancelPayout()}
                         className="w-full flex items-center justify-center gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 py-3 rounded-lg font-medium transition-colors border border-red-500/20"
                       >
                         <X className="w-4 h-4" /> Cancel Payout

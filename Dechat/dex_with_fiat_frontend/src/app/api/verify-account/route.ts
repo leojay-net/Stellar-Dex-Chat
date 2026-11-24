@@ -92,10 +92,10 @@ export async function POST(request: NextRequest) {
 
     // Use a type-safe narrowing helper instead of an unsafe cast.
     const httpError =
-      error !== null &&
-      typeof error === 'object' &&
-      'response' in error
-        ? (error as { response?: { status?: number; data?: { message?: string } } })
+      error !== null && typeof error === 'object' && 'response' in error
+        ? (error as {
+            response?: { status?: number; data?: { message?: string } };
+          })
         : null;
 
     if (httpError?.response?.status === 422) {

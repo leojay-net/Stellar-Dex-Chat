@@ -28,7 +28,7 @@ describe('TransferTimeline - skeleton loading state', () => {
       <TransferTimeline
         events={[{ status: 'initiated', timestamp: new Date() }]}
         isLoading={false}
-      />
+      />,
     );
 
     expect(screen.queryByTestId('skeleton-timeline')).toBeNull();
@@ -56,7 +56,7 @@ describe('TransferTimeline - skeleton loading state', () => {
           { status: 'pending', timestamp: new Date() },
         ]}
         isLoading={true}
-      />
+      />,
     );
 
     expect(screen.getByTestId('skeleton-timeline')).toBeTruthy();
@@ -68,7 +68,7 @@ describe('TransferTimeline - skeleton loading state', () => {
       <TransferTimeline
         events={[{ status: 'success', timestamp: new Date() }]}
         isLoading={false}
-      />
+      />,
     );
 
     expect(screen.queryByTestId('skeleton-timeline')).toBeNull();

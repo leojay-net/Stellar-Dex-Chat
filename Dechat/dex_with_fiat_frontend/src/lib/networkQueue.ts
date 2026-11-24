@@ -115,12 +115,12 @@ export function resetNetworkQueueForTests(): void {
   notifyListeners();
 }
 
-export function withNetworkReadQueue<T>(
+export async function withNetworkReadQueue<T>(
   task: () => Promise<T>,
   name?: string,
 ): Promise<T> {
-  return new Promise<T>(async (resolve, reject) => {
-    if (typeof window !== 'undefined' && !window.navigator.onLine) {
+  const enqueue = (attempts: number, message: string) =>
+    new Promise<T>((resolve, reject) => {
       const id = nextId++;
       queue.push({
         id,
@@ -128,36 +128,22 @@ export function withNetworkReadQueue<T>(
         task,
         resolve: (value: unknown) => resolve(value as T),
         reject,
-        attempts: 0,
+        attempts,
       });
       notifyListeners();
-      console.warn(`Queued read request [${name || id}] until online.`);
-      return;
-    }
+      console.warn(`${message} [${name || id}].`);
+    });
 
-    try {
-      const result = await task();
-      resolve(result);
-    } catch (error) {
-      if (isNetworkError(error)) {
-        const id = nextId++;
-        queue.push({
-          id,
-          name,
-          task,
-          resolve: (value: unknown) => resolve(value as T),
-          reject,
-          attempts: 1,
-        });
-        notifyListeners();
-        console.warn(
-          `Network read failed, queued request [${name || id}] for retry.`,
-        );
-      } else {
-        reject(error);
-      }
-    } finally {
-      void processQueue();
-    }
-  });
+  if (typeof window !== 'undefined' && !window.navigator.onLine) {
+    return enqueue(0, 'Queued offline read request');
+  }
+
+  try {
+    return await task();
+  } catch (error) {
+    if (!isNetworkError(error)) throw error;
+    return enqueue(1, 'Queued failed read request for retry');
+  } finally {
+    void processQueue();
+  }
 }

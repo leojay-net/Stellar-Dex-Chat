@@ -84,7 +84,8 @@ export default function AuditTable({}: AuditTableProps) {
 
       if (filters.actionType) params.append('actionType', filters.actionType);
       if (filters.status) params.append('status', filters.status);
-      if (filters.adminAddress) params.append('adminAddress', filters.adminAddress);
+      if (filters.adminAddress)
+        params.append('adminAddress', filters.adminAddress);
       if (filters.txHash) params.append('txHash', filters.txHash);
       if (filters.startDate) params.append('startDate', filters.startDate);
       if (filters.endDate) params.append('endDate', filters.endDate);
@@ -96,22 +97,19 @@ export default function AuditTable({}: AuditTableProps) {
 
       const url = `/api/admin-audit?${params.toString()}`;
 
-      const data = await withNetworkReadQueue(
-        async () => {
-          const response = await fetch(url, {
-            signal,
-            credentials: 'include',
-          });
-          if (!response.ok) {
-            throw new Error(`API error: ${response.statusText}`);
-          }
-          return response.json() as Promise<{
-            entries: AuditEntry[];
-            total: number;
-          }>;
-        },
-        'audit-table-fetch',
-      );
+      const data = await withNetworkReadQueue(async () => {
+        const response = await fetch(url, {
+          signal,
+          credentials: 'include',
+        });
+        if (!response.ok) {
+          throw new Error(`API error: ${response.statusText}`);
+        }
+        return response.json() as Promise<{
+          entries: AuditEntry[];
+          total: number;
+        }>;
+      }, 'audit-table-fetch');
 
       setEntries(
         data.entries.map((entry: AuditEntry) => ({
@@ -124,7 +122,9 @@ export default function AuditTable({}: AuditTableProps) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         return;
       }
-      setError(err instanceof Error ? err.message : 'Failed to fetch audit entries');
+      setError(
+        err instanceof Error ? err.message : 'Failed to fetch audit entries',
+      );
       console.error('Audit fetch error:', err);
     } finally {
       if (!signal.aborted) {
@@ -151,7 +151,8 @@ export default function AuditTable({}: AuditTableProps) {
 
     if (prevOnline && !isOnline) {
       addToast({
-        message: "You're offline. Audit entries may not update until you reconnect.",
+        message:
+          "You're offline. Audit entries may not update until you reconnect.",
         severity: 'warning',
         durationMs: 4500,
       });
@@ -206,7 +207,8 @@ export default function AuditTable({}: AuditTableProps) {
       const params = new URLSearchParams();
       if (filters.actionType) params.append('actionType', filters.actionType);
       if (filters.status) params.append('status', filters.status);
-      if (filters.adminAddress) params.append('adminAddress', filters.adminAddress);
+      if (filters.adminAddress)
+        params.append('adminAddress', filters.adminAddress);
       if (filters.txHash) params.append('txHash', filters.txHash);
       if (filters.startDate) params.append('startDate', filters.startDate);
       if (filters.endDate) params.append('endDate', filters.endDate);
@@ -218,12 +220,23 @@ export default function AuditTable({}: AuditTableProps) {
       const response = await fetch(`/api/admin-audit?${params.toString()}`, {
         credentials: 'include',
       });
-      if (!response.ok) throw new Error(`Export failed: ${response.statusText}`);
-      const data = await response.json() as { entries: AuditEntry[]; total: number };
+      if (!response.ok)
+        throw new Error(`Export failed: ${response.statusText}`);
+      const data = (await response.json()) as {
+        entries: AuditEntry[];
+        total: number;
+      };
 
       const CHUNK_SIZE = 500;
       const csvRows: string[] = [
-        ['Timestamp', 'Admin Address', 'Action Type', 'Description', 'TX Hash', 'Status'].join(','),
+        [
+          'Timestamp',
+          'Admin Address',
+          'Action Type',
+          'Description',
+          'TX Hash',
+          'Status',
+        ].join(','),
       ];
 
       const processChunk = (start: number): Promise<void> =>
@@ -232,14 +245,16 @@ export default function AuditTable({}: AuditTableProps) {
             const end = Math.min(start + CHUNK_SIZE, data.entries.length);
             for (let i = start; i < end; i++) {
               const e = data.entries[i];
-              csvRows.push([
-                `"${formatTimestamp(new Date(e.timestamp))}"`,
-                `"${e.adminAddress}"`,
-                `"${getActionTypeDisplay(e.actionType)}"`,
-                `"${(e.actionDescription ?? '').replace(/"/g, '""')}"`,
-                `"${e.txHash ?? ''}"`,
-                `"${e.status}"`,
-              ].join(','));
+              csvRows.push(
+                [
+                  `"${formatTimestamp(new Date(e.timestamp))}"`,
+                  `"${e.adminAddress}"`,
+                  `"${getActionTypeDisplay(e.actionType)}"`,
+                  `"${(e.actionDescription ?? '').replace(/"/g, '""')}"`,
+                  `"${e.txHash ?? ''}"`,
+                  `"${e.status}"`,
+                ].join(','),
+              );
             }
             resolve();
           }, 0);
@@ -258,7 +273,9 @@ export default function AuditTable({}: AuditTableProps) {
               ? `to_${filters.endDate}`
               : new Date().toISOString().slice(0, 10);
 
-      const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const blob = new Blob([csvRows.join('\n')], {
+        type: 'text/csv;charset=utf-8;',
+      });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -314,12 +331,18 @@ export default function AuditTable({}: AuditTableProps) {
 
   const SortIndicator = ({ column }: { column: SortKey }) => {
     if (sortKey !== column) {
-      return <span className="ml-1 text-gray-500" aria-hidden="true">↕</span>;
+      return (
+        <span className="ml-1 text-gray-500" aria-hidden="true">
+          ↕
+        </span>
+      );
     }
     return (
       <span
         className="ml-1 text-blue-400"
-        aria-label={sortOrder === 'asc' ? 'sorted ascending' : 'sorted descending'}
+        aria-label={
+          sortOrder === 'asc' ? 'sorted ascending' : 'sorted descending'
+        }
       >
         {sortOrder === 'asc' ? '↑' : '↓'}
       </span>
@@ -352,30 +375,37 @@ export default function AuditTable({}: AuditTableProps) {
   };
 
   const getStatusBadge = (status: AuditEntry['status']) => {
-    const baseClasses =
-      'px-2 py-1 text-xs font-medium rounded-full';
+    const baseClasses = 'px-2 py-1 text-xs font-medium rounded-full';
     switch (status) {
       case 'success':
         return (
-          <span className={`${baseClasses} bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400`}>
+          <span
+            className={`${baseClasses} bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400`}
+          >
             Success
           </span>
         );
       case 'failed':
         return (
-          <span className={`${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400`}>
+          <span
+            className={`${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400`}
+          >
             Failed
           </span>
         );
       case 'pending':
         return (
-          <span className={`${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400`}>
+          <span
+            className={`${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400`}
+          >
             Pending
           </span>
         );
       default:
         return (
-          <span className={`${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300`}>
+          <span
+            className={`${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300`}
+          >
             {status}
           </span>
         );
@@ -419,7 +449,9 @@ export default function AuditTable({}: AuditTableProps) {
           <span
             aria-label={`${retryQueueCount} audit ${retryQueueCount === 1 ? 'request' : 'requests'} queued for retry`}
           >
-            {retryQueueCount} audit {retryQueueCount === 1 ? 'request' : 'requests'} queued — will retry when online
+            {retryQueueCount} audit{' '}
+            {retryQueueCount === 1 ? 'request' : 'requests'} queued — will retry
+            when online
           </span>
         </div>
       )}
@@ -431,15 +463,16 @@ export default function AuditTable({}: AuditTableProps) {
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
-            <label htmlFor={`${idPrefix}-action`} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label
+              htmlFor={`${idPrefix}-action`}
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+            >
               Action Type
             </label>
             <select
               id={`${idPrefix}-action`}
               value={filters.actionType}
-              onChange={(e) =>
-                handleFilterChange('actionType', e.target.value)
-              }
+              onChange={(e) => handleFilterChange('actionType', e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
               <option value="">All Types</option>
@@ -452,7 +485,10 @@ export default function AuditTable({}: AuditTableProps) {
           </div>
 
           <div>
-            <label htmlFor={`${idPrefix}-status`} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label
+              htmlFor={`${idPrefix}-status`}
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+            >
               Status
             </label>
             <select
@@ -469,7 +505,10 @@ export default function AuditTable({}: AuditTableProps) {
           </div>
 
           <div>
-            <label htmlFor={`${idPrefix}-admin`} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label
+              htmlFor={`${idPrefix}-admin`}
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+            >
               Admin Address
             </label>
             <input
@@ -485,7 +524,10 @@ export default function AuditTable({}: AuditTableProps) {
           </div>
 
           <div>
-            <label htmlFor={`${idPrefix}-tx`} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label
+              htmlFor={`${idPrefix}-tx`}
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+            >
               Transaction Hash
             </label>
             <input
@@ -499,22 +541,26 @@ export default function AuditTable({}: AuditTableProps) {
           </div>
 
           <div>
-            <label htmlFor={`${idPrefix}-start`} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label
+              htmlFor={`${idPrefix}-start`}
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+            >
               Start Date (from)
             </label>
             <input
               id={`${idPrefix}-start`}
               type="date"
               value={filters.startDate}
-              onChange={(e) =>
-                handleFilterChange('startDate', e.target.value)
-              }
+              onChange={(e) => handleFilterChange('startDate', e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             />
           </div>
 
           <div>
-            <label htmlFor={`${idPrefix}-end`} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label
+              htmlFor={`${idPrefix}-end`}
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+            >
               End Date (to)
             </label>
             <input
@@ -535,14 +581,14 @@ export default function AuditTable({}: AuditTableProps) {
             Reset Filters
           </button>
           <button
-            onClick={fetchAuditEntries}
+            onClick={() => void fetchAuditEntries()}
             disabled={loading}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 font-medium"
           >
             {loading ? 'Loading...' : 'Refresh'}
           </button>
           <button
-            onClick={handleExportCSV}
+            onClick={() => void handleExportCSV()}
             disabled={isExporting || loading}
             className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 font-medium"
             aria-label="Export filtered audit entries as CSV"
@@ -562,26 +608,57 @@ export default function AuditTable({}: AuditTableProps) {
       {/* Audit Table */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
         {loading ? (
-          <table className="w-full" aria-label="Loading audit entries" aria-busy="true">
+          <table
+            className="w-full"
+            aria-label="Loading audit entries"
+            aria-busy="true"
+          >
             <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">Timestamp</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">Admin</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">Action</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">Description</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">TX Hash</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                  Timestamp
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                  Admin
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                  Action
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                  Description
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                  TX Hash
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                  Status
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i} className="animate-pulse motion-reduce:animate-none">
-                  <td className="px-6 py-4"><Skeleton className="h-4 w-36" /></td>
-                  <td className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
-                  <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>
-                  <td className="px-6 py-4"><Skeleton className="h-4 w-48" /></td>
-                  <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>
-                  <td className="px-6 py-4"><Skeleton className="h-6 w-16 rounded-full" /></td>
+                <tr
+                  key={i}
+                  className="animate-pulse motion-reduce:animate-none"
+                >
+                  <td className="px-6 py-4">
+                    <Skeleton className="h-4 w-36" />
+                  </td>
+                  <td className="px-6 py-4">
+                    <Skeleton className="h-4 w-24" />
+                  </td>
+                  <td className="px-6 py-4">
+                    <Skeleton className="h-4 w-20" />
+                  </td>
+                  <td className="px-6 py-4">
+                    <Skeleton className="h-4 w-48" />
+                  </td>
+                  <td className="px-6 py-4">
+                    <Skeleton className="h-4 w-20" />
+                  </td>
+                  <td className="px-6 py-4">
+                    <Skeleton className="h-6 w-16 rounded-full" />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -589,7 +666,9 @@ export default function AuditTable({}: AuditTableProps) {
         ) : entries.length === 0 ? (
           <div className="p-8 text-center text-gray-500 dark:text-gray-400">
             <p className="text-lg mb-2">No audit entries found</p>
-            <p className="text-sm">Try adjusting your filters or check back later</p>
+            <p className="text-sm">
+              Try adjusting your filters or check back later
+            </p>
           </div>
         ) : (
           <table className="w-full">

@@ -61,12 +61,14 @@ export function findFAQMatch(message: string): FAQEntry | null {
   const normalized = message.toLowerCase().trim();
 
   for (const entry of FAQ_DATA) {
-    if (entry.questions.some((q) => {
-      // Use word boundaries. Escape any regex characters just in case, though questions are mostly alphanumeric.
-      const escaped = q.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const regex = new RegExp(`\\b${escaped}\\b`, 'i');
-      return regex.test(normalized);
-    })) {
+    if (
+      entry.questions.some((q) => {
+        // Use word boundaries. Escape any regex characters just in case, though questions are mostly alphanumeric.
+        const escaped = q.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+        return regex.test(normalized);
+      })
+    ) {
       return entry;
     }
   }

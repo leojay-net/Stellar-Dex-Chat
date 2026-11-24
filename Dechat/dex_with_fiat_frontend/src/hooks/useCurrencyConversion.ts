@@ -68,74 +68,77 @@ export function useCurrencyConversion(
     return symbolMap[code.toLowerCase()] || '';
   }, []);
 
-  const convertAmount = useCallback(async (forceRefresh = false) => {
-    if (!amount || amount <= 0 || !tokenSymbol) {
-      setFiatAmount(null);
-      setIsStale(false);
-      return;
-    }
-
-    setIsLoading(true);
-    setHasError(false);
-
-    try {
-      const cacheKey = getRateCacheKey(tokenSymbol, fiatCurrency);
-      const cachedRate = rateCache.get(cacheKey);
-      const now = Date.now();
-      let price: number | undefined;
-      let stale = false;
-
-      if (!forceRefresh && cachedRate && cachedRate.expiresAt > now) {
-        price = cachedRate.price;
-        stale = cachedRate.stale;
-      } else {
-        const result = await fetchCryptoPrices([tokenSymbol], [fiatCurrency]);
-
-        // Guard: component may have unmounted while the fetch was in-flight.
-        if (!isMountedRef.current) return;
-
-        price =
-          result.prices?.[tokenSymbol.toUpperCase()]?.[
-            fiatCurrency.toLowerCase()
-          ];
-        stale = result.stale;
-
-        if (typeof price === 'number') {
-          rateCache.set(cacheKey, {
-            price,
-            stale,
-            expiresAt: now + RATE_CACHE_TTL_MS,
-          });
-        }
+  const convertAmount = useCallback(
+    async (forceRefresh = false) => {
+      if (!amount || amount <= 0 || !tokenSymbol) {
+        setFiatAmount(null);
+        setIsStale(false);
+        return;
       }
 
-      if (!isMountedRef.current) return;
+      setIsLoading(true);
+      setHasError(false);
 
-      if (typeof price === 'number') {
-        const converted = amount * price;
-        setFiatAmount(converted);
-        setIsStale(stale);
-        setHasError(false);
-      } else {
+      try {
+        const cacheKey = getRateCacheKey(tokenSymbol, fiatCurrency);
+        const cachedRate = rateCache.get(cacheKey);
+        const now = Date.now();
+        let price: number | undefined;
+        let stale = false;
+
+        if (!forceRefresh && cachedRate && cachedRate.expiresAt > now) {
+          price = cachedRate.price;
+          stale = cachedRate.stale;
+        } else {
+          const result = await fetchCryptoPrices([tokenSymbol], [fiatCurrency]);
+
+          // Guard: component may have unmounted while the fetch was in-flight.
+          if (!isMountedRef.current) return;
+
+          price =
+            result.prices?.[tokenSymbol.toUpperCase()]?.[
+              fiatCurrency.toLowerCase()
+            ];
+          stale = result.stale;
+
+          if (typeof price === 'number') {
+            rateCache.set(cacheKey, {
+              price,
+              stale,
+              expiresAt: now + RATE_CACHE_TTL_MS,
+            });
+          }
+        }
+
+        if (!isMountedRef.current) return;
+
+        if (typeof price === 'number') {
+          const converted = amount * price;
+          setFiatAmount(converted);
+          setIsStale(stale);
+          setHasError(false);
+        } else {
+          setFiatAmount(null);
+          setIsStale(false);
+          setHasError(true);
+        }
+      } catch (error) {
+        console.error('Currency conversion error:', error);
+        if (!isMountedRef.current) return;
         setFiatAmount(null);
         setIsStale(false);
         setHasError(true);
+      } finally {
+        if (isMountedRef.current) {
+          setIsLoading(false);
+        }
       }
-    } catch (error) {
-      console.error('Currency conversion error:', error);
-      if (!isMountedRef.current) return;
-      setFiatAmount(null);
-      setIsStale(false);
-      setHasError(true);
-    } finally {
-      if (isMountedRef.current) {
-        setIsLoading(false);
-      }
-    }
-  }, [amount, tokenSymbol, fiatCurrency]);
+    },
+    [amount, tokenSymbol, fiatCurrency],
+  );
 
   useEffect(() => {
-    convertAmount();
+    void convertAmount();
   }, [convertAmount]);
 
   const forceRefresh = useCallback(() => convertAmount(true), [convertAmount]);
@@ -160,7 +163,16 @@ export function useCurrencyConversion(
     });
 
     return `${isStale ? '~ ' : ''}${amount} ${tokenSymbol} ≈ ${symbol}${formattedFiat} ${fiatCurrency.toUpperCase()}`;
-  }, [amount, tokenSymbol, fiatCurrency, fiatAmount, isLoading, hasError, isStale, getCurrencySymbolForCode]);
+  }, [
+    amount,
+    tokenSymbol,
+    fiatCurrency,
+    fiatAmount,
+    isLoading,
+    hasError,
+    isStale,
+    getCurrencySymbolForCode,
+  ]);
 
   return {
     originalAmount: amount || 0,

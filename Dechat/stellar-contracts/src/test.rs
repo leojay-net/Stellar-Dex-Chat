@@ -5174,16 +5174,14 @@ fn test_two_withdrawal_requests_exceeding_deposit_are_rejected() {
     assert_eq!(bridge.get_user_available_balance(&user, &token_addr), 300);
 
     // Request withdrawal for 200 - should succeed
-    let id1 = bridge
-        .request_withdrawal(&user, &200, &token_addr, &None, &0);
+    let id1 = bridge.request_withdrawal(&user, &200, &token_addr, &None, &0);
     assert_eq!(bridge.get_user_available_balance(&user, &token_addr), 100);
 
     // Available balance is 100 (300 - 200)
     assert_eq!(bridge.get_user_available_balance(&user, &token_addr), 100);
 
     // Request 100 should succeed (exactly available)
-    let id2 = bridge
-        .request_withdrawal(&user, &100, &token_addr, &None, &0);
+    let id2 = bridge.request_withdrawal(&user, &100, &token_addr, &None, &0);
     assert_eq!(bridge.get_user_available_balance(&user, &token_addr), 0);
 
     // Any further request would fail with InsufficientFunds

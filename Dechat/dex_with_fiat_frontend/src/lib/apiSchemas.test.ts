@@ -27,7 +27,8 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
     });
 
     it('should retry on network errors', async () => {
-      const fn = vi.fn()
+      const fn = vi
+        .fn()
         .mockRejectedValueOnce(new TypeError('Failed to fetch'))
         .mockResolvedValue('success');
 
@@ -58,17 +59,18 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
     });
 
     it('should use exponential backoff', async () => {
-      const fn = vi.fn()
+      const fn = vi
+        .fn()
         .mockRejectedValueOnce(new TypeError('Failed to fetch'))
         .mockRejectedValueOnce(new TypeError('Failed to fetch'))
         .mockResolvedValue('success');
 
       const promise = withRetry(fn, { initialDelayMs: 100, maxRetries: 2 });
-      
+
       // Advance timers for first retry
       vi.advanceTimersByTime(100);
       await vi.runAllTimersAsync();
-      
+
       // Advance timers for second retry
       vi.advanceTimersByTime(200);
       await vi.runAllTimersAsync();
@@ -79,13 +81,15 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
 
     it('should not retry on non-retryable errors', async () => {
       const fn = vi.fn().mockRejectedValue(new Error('Validation error'));
-      
+
       await expect(withRetry(fn)).rejects.toThrow('Validation error');
       expect(fn).toHaveBeenCalledTimes(1);
     });
 
     it('should not retry on AbortError', async () => {
-      const fn = vi.fn().mockRejectedValue(new DOMException('Aborted', 'AbortError'));
+      const fn = vi
+        .fn()
+        .mockRejectedValue(new DOMException('Aborted', 'AbortError'));
 
       await expect(withRetry(fn)).rejects.toThrow(
         expect.objectContaining({ name: 'AbortError' }),
@@ -94,13 +98,14 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
     });
 
     it('should respect custom retryable error function', async () => {
-      const fn = vi.fn()
+      const fn = vi
+        .fn()
         .mockRejectedValueOnce(new Error('Custom error'))
         .mockResolvedValue('success');
 
       const config: RetryConfig = {
-        retryableErrors: (error: unknown) => 
-          error instanceof Error && error.message === 'Custom error'
+        retryableErrors: (error: unknown) =>
+          error instanceof Error && error.message === 'Custom error',
       };
 
       const promise = withRetry(fn, config);
@@ -111,7 +116,8 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
     });
 
     it('should cap delay at maxDelayMs', async () => {
-      const fn = vi.fn()
+      const fn = vi
+        .fn()
         .mockRejectedValueOnce(new TypeError('Failed to fetch'))
         .mockRejectedValueOnce(new TypeError('Failed to fetch'))
         .mockResolvedValue('success');
@@ -119,15 +125,15 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
       const config: RetryConfig = {
         initialDelayMs: 1000,
         maxDelayMs: 1500,
-        maxRetries: 2
+        maxRetries: 2,
       };
 
       const promise = withRetry(fn, config);
-      
+
       // First retry should be ~1000ms
       vi.advanceTimersByTime(1000);
       await vi.runAllTimersAsync();
-      
+
       // Second retry should be capped at 1500ms (not 2000ms)
       vi.advanceTimersByTime(1500);
       await vi.runAllTimersAsync();
@@ -148,7 +154,8 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
       }) as typeof global.setTimeout;
       global.setTimeout = spy;
 
-      const fn = vi.fn()
+      const fn = vi
+        .fn()
         .mockRejectedValueOnce(new TypeError('Failed to fetch'))
         .mockResolvedValue('success');
 
@@ -177,9 +184,17 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
     });
 
     it('should retry on 500 status code', async () => {
-      global.fetch = vi.fn()
-        .mockResolvedValueOnce({ ok: false, status: 500, statusText: 'Internal Server Error' } as Response)
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ data: 'test' }) } as Response);
+      global.fetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          statusText: 'Internal Server Error',
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ data: 'test' }),
+        } as Response);
 
       const promise = fetchWithRetry('https://api.example.com/test');
       await vi.runAllTimersAsync();
@@ -190,9 +205,17 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
     });
 
     it('should retry on 503 status code', async () => {
-      global.fetch = vi.fn()
-        .mockResolvedValueOnce({ ok: false, status: 503, statusText: 'Service Unavailable' } as Response)
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ data: 'test' }) } as Response);
+      global.fetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 503,
+          statusText: 'Service Unavailable',
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ data: 'test' }),
+        } as Response);
 
       const promise = fetchWithRetry('https://api.example.com/test');
       await vi.runAllTimersAsync();
@@ -203,9 +226,17 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
     });
 
     it('should retry on 429 status code (rate limit)', async () => {
-      global.fetch = vi.fn()
-        .mockResolvedValueOnce({ ok: false, status: 429, statusText: 'Too Many Requests' } as Response)
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ data: 'test' }) } as Response);
+      global.fetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 429,
+          statusText: 'Too Many Requests',
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ data: 'test' }),
+        } as Response);
 
       const promise = fetchWithRetry('https://api.example.com/test');
       await vi.runAllTimersAsync();
@@ -222,7 +253,9 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
         statusText: 'Not Found',
       } as Response);
 
-      await expect(fetchWithRetry('https://api.example.com/test')).rejects.toThrow('HTTP 404');
+      await expect(
+        fetchWithRetry('https://api.example.com/test'),
+      ).rejects.toThrow('HTTP 404');
       expect(fetch).toHaveBeenCalledTimes(1);
     });
 
@@ -233,7 +266,9 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
         statusText: 'Bad Request',
       } as Response);
 
-      await expect(fetchWithRetry('https://api.example.com/test')).rejects.toThrow('HTTP 400');
+      await expect(
+        fetchWithRetry('https://api.example.com/test'),
+      ).rejects.toThrow('HTTP 400');
       expect(fetch).toHaveBeenCalledTimes(1);
     });
 
@@ -250,19 +285,34 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
       };
 
       await fetchWithRetry('https://api.example.com/test', options);
-      expect(fetch).toHaveBeenCalledWith('https://api.example.com/test', options);
+      expect(fetch).toHaveBeenCalledWith(
+        'https://api.example.com/test',
+        options,
+      );
     });
 
     it('should use custom retryable status codes', async () => {
-      global.fetch = vi.fn()
-        .mockResolvedValueOnce({ ok: false, status: 418, statusText: "I'm a teapot" } as Response)
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ data: 'test' }) } as Response);
+      global.fetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 418,
+          statusText: "I'm a teapot",
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ data: 'test' }),
+        } as Response);
 
       const config: RetryConfig = {
         retryableStatusCodes: [418],
       };
 
-      const promise = fetchWithRetry('https://api.example.com/test', {}, config);
+      const promise = fetchWithRetry(
+        'https://api.example.com/test',
+        {},
+        config,
+      );
       await vi.runAllTimersAsync();
       const result = await promise;
 
@@ -285,12 +335,13 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
     });
 
     it('should use default initialDelayMs of 1000', async () => {
-      const fn = vi.fn()
+      const fn = vi
+        .fn()
         .mockRejectedValueOnce(new TypeError('Failed to fetch'))
         .mockResolvedValue('success');
 
       const promise = withRetry(fn);
-      
+
       // Advance by default initial delay
       vi.advanceTimersByTime(1000);
       await vi.runAllTimersAsync();
@@ -299,17 +350,18 @@ describe('apiSchemas - Request Retry with Exponential Backoff', () => {
     });
 
     it('should use default backoffMultiplier of 2', async () => {
-      const fn = vi.fn()
+      const fn = vi
+        .fn()
         .mockRejectedValueOnce(new TypeError('Failed to fetch'))
         .mockRejectedValueOnce(new TypeError('Failed to fetch'))
         .mockResolvedValue('success');
 
       const promise = withRetry(fn, { initialDelayMs: 100 });
-      
+
       // First retry: 100ms
       vi.advanceTimersByTime(100);
       await vi.runAllTimersAsync();
-      
+
       // Second retry: 200ms (100 * 2)
       vi.advanceTimersByTime(200);
       await vi.runAllTimersAsync();

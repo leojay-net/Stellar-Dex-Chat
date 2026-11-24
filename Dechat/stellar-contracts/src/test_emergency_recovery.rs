@@ -128,7 +128,8 @@ fn test_trigger_emergency_recovery_without_address_fails() {
 
     // Inactivity threshold passes without setting recovery address
     let last_admin = bridge.get_last_admin_action_ledger();
-    env.ledger().set_sequence_number(last_admin + DEFAULT_INACTIVITY_THRESHOLD + 1);
+    env.ledger()
+        .set_sequence_number(last_admin + DEFAULT_INACTIVITY_THRESHOLD + 1);
 
     let result = bridge.try_trigger_emergency_recovery();
     assert_eq!(result, Err(Ok(Error::NoEmergencyRecoveryAddress)));
@@ -149,7 +150,8 @@ fn test_admin_action_resets_inactivity_timer() {
     let initial_admin_ledger = bridge.get_last_admin_action_ledger();
 
     // Advance ledger almost to threshold
-    env.ledger().set_sequence_number(initial_admin_ledger + 1_000 - 10);
+    env.ledger()
+        .set_sequence_number(initial_admin_ledger + 1_000 - 10);
 
     // Admin performs an action (e.g., set_cooldown)
     bridge.set_cooldown(&100);
@@ -164,7 +166,8 @@ fn test_admin_action_resets_inactivity_timer() {
     assert_eq!(result, Err(Ok(Error::InactivityThresholdNotReached)));
 
     // Advancing past the NEW threshold succeeds
-    env.ledger().set_sequence_number(updated_admin_ledger + 1_000 + 1);
+    env.ledger()
+        .set_sequence_number(updated_admin_ledger + 1_000 + 1);
     let result_success = bridge.try_trigger_emergency_recovery();
     assert_eq!(result_success, Ok(Ok(())));
 }
@@ -206,7 +209,8 @@ fn test_trigger_emergency_recovery_denied_address_rejected() {
     bridge.deny_address(&recovery);
 
     let last_admin = bridge.get_last_admin_action_ledger();
-    env.ledger().set_sequence_number(last_admin + MIN_INACTIVITY_THRESHOLD + 1);
+    env.ledger()
+        .set_sequence_number(last_admin + MIN_INACTIVITY_THRESHOLD + 1);
 
     let result = bridge.try_trigger_emergency_recovery();
     assert_eq!(result, Err(Ok(Error::AddressDenied)));

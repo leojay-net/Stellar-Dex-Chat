@@ -3,10 +3,10 @@ name: Deploy FiatBridge to Futurenet
 on:
   push:
     branches:
-      - 'release/**'
+      - "release/**"
     paths:
-      - 'Dechat/stellar-contracts/**'
-      - '.github/workflows/deploy-futurenet.yml'
+      - "Dechat/stellar-contracts/**"
+      - ".github/workflows/deploy-futurenet.yml"
 
 permissions:
   contents: read
@@ -17,7 +17,7 @@ jobs:
     name: Deploy to Futurenet
     runs-on: ubuntu-latest
     environment: futurenet
-    
+
     defaults:
       run:
         working-directory: Dechat/stellar-contracts
@@ -54,12 +54,12 @@ jobs:
         env:
           FUTURENET_ADMIN_SECRET_KEY: ${{ secrets.FUTURENET_ADMIN_SECRET_KEY }}
           FUTURENET_RPC_URL: https://rpc-futurenet.stellar.org
-          FUTURENET_NETWORK_PASSPHRASE: 'Test SDF Future Network ; April 2020'
+          FUTURENET_NETWORK_PASSPHRASE: "Test SDF Future Network ; April 2020"
           OUTPUT_FILE: ./contract_id_futurenet.txt
         run: |
           chmod +x ./scripts/deploy_fiat_bridge_futurenet.sh
           ./scripts/deploy_fiat_bridge_futurenet.sh
-          
+
           # Pass outputs to GitHub Actions context
           CONTRACT_ID=$(cat "$OUTPUT_FILE")
           echo "contract_id=$CONTRACT_ID" >> $GITHUB_OUTPUT
@@ -79,7 +79,7 @@ jobs:
           script: |
             const status = '${{ job.status }}' === 'success' ? 'success' : 'failure';
             const conclusion = status === 'success' ? '✅ Deployment successful' : '❌ Deployment failed';
-            
+
             github.rest.repos.createDeployment({
               owner: context.repo.owner,
               repo: context.repo.repo,

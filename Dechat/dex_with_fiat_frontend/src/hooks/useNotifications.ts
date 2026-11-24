@@ -1,10 +1,15 @@
 import { useSyncExternalStore } from 'react';
 import { toastStore, ToastSeverity } from '@/lib/toastStore';
 
-function dispatchNotificationTelemetry(event: string, detail?: Record<string, unknown>) {
+function dispatchNotificationTelemetry(
+  event: string,
+  detail?: Record<string, unknown>,
+) {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(
-      new CustomEvent('notification_telemetry', { detail: { event, ...detail } }),
+      new CustomEvent('notification_telemetry', {
+        detail: { event, ...detail },
+      }),
     );
   }
 }
@@ -155,6 +160,7 @@ export function useNotifications() {
     markAllAsRead: notificationStore.markAllAsRead.bind(notificationStore),
     clearNotifications:
       notificationStore.clearNotifications.bind(notificationStore),
-    setNotifications: notificationStore.setNotifications.bind(notificationStore),
+    setNotifications:
+      notificationStore.setNotifications.bind(notificationStore),
   };
 }

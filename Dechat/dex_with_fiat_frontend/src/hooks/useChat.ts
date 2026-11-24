@@ -63,7 +63,9 @@ const useChat = () => {
   const [hasHydrated, setHasHydrated] = useState(false);
 
   // State machine for chat lifecycle
-  const machineRef = useRef<ReturnType<typeof createChatStateMachine>>(createChatStateMachine());
+  const machineRef = useRef<ReturnType<typeof createChatStateMachine>>(
+    createChatStateMachine(),
+  );
   const [stateUpdateTrigger, setStateUpdateTrigger] = useState(0);
 
   // Additional state for admin and transaction callback
@@ -73,7 +75,8 @@ const useChat = () => {
   >(null);
 
   // Transaction status – updated via SSE or polling fallback
-  const [transactionStatus, setTransactionStatus] = useState<PaymentStatusEvent | null>(null);
+  const [transactionStatus, setTransactionStatus] =
+    useState<PaymentStatusEvent | null>(null);
 
   // SSE connection and polling fallback refs
   const sseRef = useRef<EventSource | null>(null);
@@ -119,10 +122,11 @@ I'm your AI specialist for seamless XLM-to-fiat conversions on Stellar. I can he
 **Track transactions** from start to completion on Stellar Expert
 **Optimize timing** for better conversion rates
 
-${connection.isConnected
-        ? `**Freighter Connected**: Ready to check your XLM portfolio and start conversions!`
-        : `**Connect Freighter** to get started with personalized XLM portfolio analysis.`
-      }
+${
+  connection.isConnected
+    ? `**Freighter Connected**: Ready to check your XLM portfolio and start conversions!`
+    : `**Connect Freighter** to get started with personalized XLM portfolio analysis.`
+}
 
 What would you like to do today? I'm here to make your XLM-to-fiat journey smooth and profitable!`,
       timestamp: new Date(),
@@ -137,7 +141,9 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
   const [isLoading, setIsLoading] = useState(false);
   const aiAssistant = useMemo(() => new AIAssistant(), []);
   const activeRequestControllerRef = useRef<AbortController | null>(null);
-  const transactionReadyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const transactionReadyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const messagesRef = useRef<ChatMessage[]>([]);
   const queuedSendsRef = useRef<QueuedSend[]>([]);
   const replayingQueueRef = useRef(false);
@@ -180,7 +186,7 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
 
     const startPolling = () => {
       stopPolling();
-      pollIntervalRef.current = setInterval(async () => {
+      const pollPaymentStatus = async () => {
         const reference =
           machineRef.current.getState().context.pendingTransactionData?.transactionId;
         if (!reference) return;
@@ -189,7 +195,10 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
             `/api/transfer-status/${encodeURIComponent(reference)}`,
           );
           if (res.ok) {
-            const json = (await res.json()) as { success: boolean; data?: PaymentStatusEvent };
+            const json = (await res.json()) as {
+              success: boolean;
+              data?: PaymentStatusEvent;
+            };
             if (json.success && json.data) {
               handleStatusEvent(json.data);
             }
@@ -197,7 +206,11 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
         } catch {
           // network failure during polling — retry on next tick
         }
-      }, POLL_INTERVAL_MS);
+      };
+      pollIntervalRef.current = setInterval(
+        () => void pollPaymentStatus(),
+        POLL_INTERVAL_MS,
+      );
     };
 
     if (typeof EventSource === 'undefined') {
@@ -209,7 +222,9 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
 
       es.onmessage = (event) => {
         try {
-          const payload = JSON.parse(event.data as string) as PaymentStatusEvent;
+          const payload = JSON.parse(
+            event.data as string,
+          ) as PaymentStatusEvent;
           handleStatusEvent(payload);
         } catch {
           // malformed SSE data — ignore
@@ -229,8 +244,8 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
       sseRef.current = null;
       stopPolling();
     };
-  // Re-run only when the session changes so the connection tracks the right session.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Re-run only when the session changes so the connection tracks the right session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSessionId]);
 
   const appendCancelledMessage = useCallback((content: string) => {
@@ -275,24 +290,26 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
   useEffect(() => {
     if (!hasHydrated) return;
     const machine = machineRef.current;
-    const machineState = machine.getState();
+    if (machine.getState().state !== ChatState.UNINITIALIZED) return;
+    if (currentSessionId && !currentSession) return;
 
-    if (machineState.state === ChatState.UNINITIALIZED) {
-      if (currentSession && currentSession.messages.length > 0) {
-        setMessages(currentSession.messages);
-        machine.transition(ChatEvent.INITIALIZE_SESSION);
-        createNewSession(currentSession.messages);
-      } else if (!currentSessionId) {
-        setMessages([]);
-        createNewSession([]);
-        machine.transition(ChatEvent.INITIALIZE_SESSION);
-      }
+    machine.transition(ChatEvent.INITIALIZE_SESSION);
+    if (currentSession?.messages.length) {
+      setMessages(currentSession.messages);
+      createNewSession(currentSession.messages);
+    } else if (!currentSessionId) {
+      createNewSession([]);
     }
+    machine.transition(ChatEvent.LOAD_SESSION);
   }, [currentSession, currentSessionId, createNewSession, hasHydrated]);
 
   // Persist messages to session
   useEffect(() => {
-    if (machineRef.current.getState().state !== ChatState.UNINITIALIZED && currentSessionId && messages.length > 0) {
+    if (
+      machineRef.current.getState().state !== ChatState.UNINITIALIZED &&
+      currentSessionId &&
+      messages.length > 0
+    ) {
       updateCurrentSession(messages);
     }
   }, [messages, currentSessionId, updateCurrentSession]);
@@ -315,44 +332,47 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
     return false;
   }, []);
 
-  const markMessageFailed = useCallback((pendingAssistantId: string, optimisticUserId?: string) => {
-    setMessages((prev: ChatMessage[]) =>
-      prev.map((m) =>
-        m.id === pendingAssistantId
-          ? {
-              ...m,
-              content:
-                'Sorry, I encountered an error processing your request. Please try again.',
-              // Setting error here ensures hasError=true in the Message component so
-              // the red border and retry UI render for assistant messages, not just
-              // for the user's optimistic bubble (bug #758).
-              error: {
-                message: 'Failed to get a response. Please try again.',
-                timestamp: new Date(),
-                retryAttempts: m.error?.retryAttempts ?? 0,
-              },
-              metadata: {
-                ...m.metadata,
-                status: 'failed',
-              },
-            }
-          : m.id === optimisticUserId
-          ? {
-              ...m,
-              error: {
-                message: 'Message failed to send. Please try again.',
-                timestamp: new Date(),
-                retryAttempts: m.error?.retryAttempts ?? 0,
-              },
-              metadata: {
-                ...m.metadata,
-                status: 'failed',
-              },
-            }
-          : m,
-      ),
-    );
-  }, []);
+  const markMessageFailed = useCallback(
+    (pendingAssistantId: string, optimisticUserId?: string) => {
+      setMessages((prev: ChatMessage[]) =>
+        prev.map((m) =>
+          m.id === pendingAssistantId
+            ? {
+                ...m,
+                content:
+                  'Sorry, I encountered an error processing your request. Please try again.',
+                // Setting error here ensures hasError=true in the Message component so
+                // the red border and retry UI render for assistant messages, not just
+                // for the user's optimistic bubble (bug #758).
+                error: {
+                  message: 'Failed to get a response. Please try again.',
+                  timestamp: new Date(),
+                  retryAttempts: m.error?.retryAttempts ?? 0,
+                },
+                metadata: {
+                  ...m.metadata,
+                  status: 'failed',
+                },
+              }
+            : m.id === optimisticUserId
+              ? {
+                  ...m,
+                  error: {
+                    message: 'Message failed to send. Please try again.',
+                    timestamp: new Date(),
+                    retryAttempts: m.error?.retryAttempts ?? 0,
+                  },
+                  metadata: {
+                    ...m.metadata,
+                    status: 'failed',
+                  },
+                }
+              : m,
+        ),
+      );
+    },
+    [],
+  );
 
   const analyzeAndRespond = useCallback(
     async (
@@ -413,11 +433,12 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
       }
 
       // Check if we have minimal transaction data
-      const hasMinimalTransactionData =
-        !!(pendingTransactionData &&
-          (pendingTransactionData.tokenIn ||
-            pendingTransactionData.amountIn ||
-            pendingTransactionData.fiatAmount));
+      const hasMinimalTransactionData = !!(
+        pendingTransactionData &&
+        (pendingTransactionData.tokenIn ||
+          pendingTransactionData.amountIn ||
+          pendingTransactionData.fiatAmount)
+      );
 
       // Determine if clarification is needed
       const needsClarification =
@@ -562,7 +583,6 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
           m.id === optimisticUserId
             ? {
                 ...m,
-                content: enhancedResponse,
                 metadata: {
                   ...m.metadata,
                   status: 'sent',
@@ -693,7 +713,8 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
               content: record.content,
               optimisticUserId: record.optimisticUserId,
               pendingAssistantId: record.pendingAssistantId,
-              machineSnapshot: record.machineSnapshot as QueuedSend['machineSnapshot'],
+              machineSnapshot:
+                record.machineSnapshot as QueuedSend['machineSnapshot'],
             });
           });
         setQueuedMessageCount(queuedSendsRef.current.length);
@@ -712,7 +733,10 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
 
       // Only proceed if in valid state
       if (!machine.canTransition(ChatEvent.SEND_MESSAGE)) {
-        console.warn('Cannot send message in current state:', machineState.state);
+        console.warn(
+          'Cannot send message in current state:',
+          machineState.state,
+        );
         return;
       }
 
@@ -846,11 +870,7 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
         }
       }
     },
-    [
-      analyzeAndRespond,
-      isLikelyNetworkError,
-      markMessageFailed,
-    ],
+    [analyzeAndRespond, isLikelyNetworkError, markMessageFailed],
   );
 
   const clearChat = useCallback(() => {
@@ -916,9 +936,11 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
       messageCount: machineState.context.messageCount,
       hasUserCancelled: machineState.context.hasUserCancelled,
       pendingTransactionData: machineState.context.pendingTransactionData,
-      shouldTriggerTransaction: machineState.state === ChatState.TRANSACTION_TRIGGERED,
+      shouldTriggerTransaction:
+        machineState.state === ChatState.TRANSACTION_TRIGGERED,
       isAdmin,
-      awaitingClarification: machineState.state === ChatState.AWAITING_CLARIFICATION,
+      awaitingClarification:
+        machineState.state === ChatState.AWAITING_CLARIFICATION,
       clarificationQuestion: machineState.context.clarificationQuestion,
     };
     // stateUpdateTrigger is intentionally included to force re-computation when machine state changes

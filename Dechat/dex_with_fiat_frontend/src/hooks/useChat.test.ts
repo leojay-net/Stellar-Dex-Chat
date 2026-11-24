@@ -4,7 +4,9 @@ import { createRoot } from 'react-dom/client';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+(
+  globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 type UseChatHook = typeof import('./useChat').default;
 
@@ -53,9 +55,10 @@ vi.mock('@/contexts/StellarWalletContext', () => ({
 }));
 
 vi.mock('./chatStateMachine', async () => {
-  const actual = await vi.importActual<typeof import('./chatStateMachine')>(
-    './chatStateMachine',
-  );
+  const actual =
+    await vi.importActual<typeof import('./chatStateMachine')>(
+      './chatStateMachine',
+    );
 
   return {
     ...actual,
@@ -99,9 +102,11 @@ async function setupHook() {
   let api: ReturnType<UseChatHook> | null = null;
   let renderError: unknown = null;
   const capturedConsoleErrors: unknown[][] = [];
-  const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...args) => {
-    capturedConsoleErrors.push(args);
-  });
+  const consoleErrorSpy = vi
+    .spyOn(console, 'error')
+    .mockImplementation((...args) => {
+      capturedConsoleErrors.push(args);
+    });
 
   function Harness() {
     const value = useChat();
@@ -168,7 +173,8 @@ describe('Message Retry UX', () => {
         });
 
         const pendingUser = hook.api.messages[hook.api.messages.length - 2];
-        const pendingAssistant = hook.api.messages[hook.api.messages.length - 1];
+        const pendingAssistant =
+          hook.api.messages[hook.api.messages.length - 1];
 
         expect(pendingUser).toMatchObject({
           role: 'user',
@@ -194,7 +200,11 @@ describe('Message Retry UX', () => {
         const sentUser = hook.api.messages[hook.api.messages.length - 2];
         const sentAssistant = hook.api.messages[hook.api.messages.length - 1];
 
-        expect(sentUser?.metadata?.status).toBe('sent');
+        expect(sentUser).toMatchObject({
+          role: 'user',
+          content: 'Hello',
+          metadata: { status: 'sent' },
+        });
         expect(sentAssistant).toMatchObject({
           role: 'assistant',
           content: 'ok',
@@ -316,7 +326,10 @@ describe('Message Retry UX', () => {
 
       expect(messageWithPayload.originalPayload).toBeDefined();
       expect(messageWithPayload.originalPayload?.content).toBe('Send message');
-      expect(messageWithPayload.originalPayload?.conversationContext?.isWalletConnected).toBe(true);
+      expect(
+        messageWithPayload.originalPayload?.conversationContext
+          ?.isWalletConnected,
+      ).toBe(true);
     });
 
     it('should track retry attempts incrementally', () => {
@@ -389,8 +402,12 @@ describe('Message Retry UX', () => {
         },
       };
 
-      expect(messageToRetry.originalPayload?.content).toEqual(messageToRetry.content);
-      expect(messageToRetry.originalPayload?.conversationContext?.messageCount).toBe(5);
+      expect(messageToRetry.originalPayload?.content).toEqual(
+        messageToRetry.content,
+      );
+      expect(
+        messageToRetry.originalPayload?.conversationContext?.messageCount,
+      ).toBe(5);
     });
 
     it('should handle retry with no original payload gracefully', () => {
@@ -553,7 +570,9 @@ describe('Message Retry UX', () => {
         },
       };
 
-      expect(failedMessage.error?.timestamp.getTime()).toBe(errorTime.getTime());
+      expect(failedMessage.error?.timestamp.getTime()).toBe(
+        errorTime.getTime(),
+      );
     });
   });
 
@@ -610,7 +629,9 @@ describe('Message Retry UX', () => {
         },
       };
 
-      expect(failedMessage.originalPayload?.conversationContext).toEqual(conversationContext);
+      expect(failedMessage.originalPayload?.conversationContext).toEqual(
+        conversationContext,
+      );
     });
 
     it('should show retry UI only for user messages with errors', () => {
@@ -633,7 +654,8 @@ describe('Message Retry UX', () => {
         timestamp: new Date(),
       };
 
-      const shouldShowRetry = (msg: ChatMessage) => msg.role === 'user' && !!msg.error;
+      const shouldShowRetry = (msg: ChatMessage) =>
+        msg.role === 'user' && !!msg.error;
 
       expect(shouldShowRetry(failedUserMessage)).toBe(true);
       expect(shouldShowRetry(normalAssistantMessage)).toBe(false);
@@ -667,9 +689,7 @@ describe('Message Retry UX', () => {
           isWalletConnected: true,
           walletAddress: '0xuser',
           messageCount: 2,
-          previousMessages: [
-            { role: 'user', content: 'Hello' },
-          ],
+          previousMessages: [{ role: 'user', content: 'Hello' }],
         },
       };
 
@@ -687,7 +707,9 @@ describe('Message Retry UX', () => {
       };
 
       // Original payload is complete and preserved
-      expect(failedMessage.originalPayload?.content).toBe(originalPayload.content);
+      expect(failedMessage.originalPayload?.content).toBe(
+        originalPayload.content,
+      );
       expect(failedMessage.originalPayload?.conversationContext).toBeDefined();
     });
 
@@ -810,10 +832,9 @@ describe('useChat flow state transitions', () => {
 
     expect(harness.api.isLoading).toBe(false);
     expect(
-      harness.api.messages[harness.api.messages.length - 1]?.metadata?.requestStatus,
-    ).toBe(
-      'cancelled',
-    );
+      harness.api.messages[harness.api.messages.length - 1]?.metadata
+        ?.requestStatus,
+    ).toBe('cancelled');
 
     harness.cleanup();
   });
@@ -867,8 +888,12 @@ describe('useChat flow state transitions', () => {
     warnSpy.mockRestore();
 
     expect(bailed).toBe(false);
-    expect(harness.api.conversationState.pendingTransactionData?.tokenIn).toBe('XLM');
-    expect(harness.api.conversationState.pendingTransactionData?.amountIn).toBe('10');
+    expect(harness.api.conversationState.pendingTransactionData?.tokenIn).toBe(
+      'XLM',
+    );
+    expect(harness.api.conversationState.pendingTransactionData?.amountIn).toBe(
+      '10',
+    );
 
     harness.cleanup();
   });
@@ -951,16 +976,32 @@ describe('useChat race condition regression (#530)', () => {
   it('concurrent sends produce unique message IDs — no ID collision', async () => {
     // Both resolves immediately so two sends can race
     analyzeQueue = [
-      { intent: 'query', confidence: 0.99, extractedData: {}, requiredQuestions: [], suggestedResponse: 'resp A' },
-      { intent: 'query', confidence: 0.99, extractedData: {}, requiredQuestions: [], suggestedResponse: 'resp B' },
+      {
+        intent: 'query',
+        confidence: 0.99,
+        extractedData: {},
+        requiredQuestions: [],
+        suggestedResponse: 'resp A',
+      },
+      {
+        intent: 'query',
+        confidence: 0.99,
+        extractedData: {},
+        requiredQuestions: [],
+        suggestedResponse: 'resp B',
+      },
     ];
 
     const harness = await setupHook();
     await flushEffects(1);
 
-    await act(async () => { await harness.api.sendMessage('msg A'); });
+    await act(async () => {
+      await harness.api.sendMessage('msg A');
+    });
     await flushEffects(2);
-    await act(async () => { await harness.api.sendMessage('msg B'); });
+    await act(async () => {
+      await harness.api.sendMessage('msg B');
+    });
     await flushEffects(2);
 
     const ids = harness.api.messages.map((m) => m.id);
@@ -977,10 +1018,14 @@ describe('useChat race condition regression (#530)', () => {
     const harness = await setupHook();
     await flushEffects(1);
 
-    act(() => { void harness.api.sendMessage('slow request'); });
+    act(() => {
+      void harness.api.sendMessage('slow request');
+    });
 
     // Cancel immediately — before React has flushed the isLoading=true state
-    act(() => { harness.api.cancelPendingRequest(); });
+    act(() => {
+      harness.api.cancelPendingRequest();
+    });
 
     await flushEffects(2);
 
@@ -993,18 +1038,34 @@ describe('useChat race condition regression (#530)', () => {
 
   it('stale sendMessage closure does not re-use a previous AbortController', async () => {
     analyzeQueue = [
-      { intent: 'query', confidence: 0.99, extractedData: {}, requiredQuestions: [], suggestedResponse: 'first' },
-      { intent: 'query', confidence: 0.99, extractedData: {}, requiredQuestions: [], suggestedResponse: 'second' },
+      {
+        intent: 'query',
+        confidence: 0.99,
+        extractedData: {},
+        requiredQuestions: [],
+        suggestedResponse: 'first',
+      },
+      {
+        intent: 'query',
+        confidence: 0.99,
+        extractedData: {},
+        requiredQuestions: [],
+        suggestedResponse: 'second',
+      },
     ];
 
     const harness = await setupHook();
     await flushEffects(1);
 
-    await act(async () => { await harness.api.sendMessage('first'); });
+    await act(async () => {
+      await harness.api.sendMessage('first');
+    });
     await flushEffects(2);
 
     // Second send must not throw or leave isLoading stuck
-    await act(async () => { await harness.api.sendMessage('second'); });
+    await act(async () => {
+      await harness.api.sendMessage('second');
+    });
     await flushEffects(2);
 
     expect(harness.api.isLoading).toBe(false);
@@ -1032,8 +1093,12 @@ describe('useChat memory leak regression (#663)', () => {
     const harness = await setupHook();
     await flushEffects(1);
 
-    act(() => { void harness.api.sendMessage('slow'); });
-    act(() => { harness.api.cancelPendingRequest(); });
+    act(() => {
+      void harness.api.sendMessage('slow');
+    });
+    act(() => {
+      harness.api.cancelPendingRequest();
+    });
 
     await flushEffects(2);
 
@@ -1073,21 +1138,31 @@ describe('useChat memory leak regression (#663)', () => {
     vi.useFakeTimers();
 
     const onReady = vi.fn();
-    act(() => { harness.api.setTransactionReadyCallback(onReady); });
+    act(() => {
+      harness.api.setTransactionReadyCallback(onReady);
+    });
 
     await flushEffects(1);
-    await act(async () => { await harness.api.sendMessage('deposit'); });
+    await act(async () => {
+      await harness.api.sendMessage('deposit');
+    });
     await flushEffects(1);
-    await act(async () => { await harness.api.sendMessage('NGN'); });
+    await act(async () => {
+      await harness.api.sendMessage('NGN');
+    });
     await flushEffects(1);
-    await act(async () => { await harness.api.sendMessage('5'); });
+    await act(async () => {
+      await harness.api.sendMessage('5');
+    });
     await flushEffects(1);
 
     // Unmount BEFORE the 1-second timer fires
     harness.cleanup();
 
     // Advance past the timer window
-    act(() => { vi.advanceTimersByTime(2000); });
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
 
     // The callback must NOT have been called after unmount
     expect(onReady).not.toHaveBeenCalled();

@@ -20,10 +20,12 @@ export default defineConfig({
     },
     {
       name: 'firefox',
+      grepInvert: /@chromium-only/,
       use: { ...devices['Desktop Firefox'] },
     },
     {
       name: 'webkit',
+      grepInvert: /@chromium-only/,
       use: { ...devices['Desktop Safari'] },
     },
   ],
