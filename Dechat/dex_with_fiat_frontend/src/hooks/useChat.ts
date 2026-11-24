@@ -580,7 +580,6 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
           m.id === optimisticUserId
             ? {
                 ...m,
-                content: enhancedResponse,
                 metadata: {
                   ...m.metadata,
                   status: 'sent',

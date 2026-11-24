@@ -22,14 +22,18 @@ function searchInput(page: Page) {
 
 test.describe('ChatSearchPanel', () => {
   test.describe('Happy path', () => {
-    test('search panel renders with keyword input visible', async ({ page }) => {
+    test('search panel renders with keyword input visible', async ({
+      page,
+    }) => {
       await gotoHarness(page);
 
       const input = searchInput(page);
       await expect(input).toBeVisible({ timeout: 5_000 });
     });
 
-    test('empty state shows "Type to search messages" prompt', async ({ page }) => {
+    test('empty state shows "Type to search messages" prompt', async ({
+      page,
+    }) => {
       await gotoHarness(page);
 
       await expect(page.getByText('Type to search messages')).toBeVisible({
@@ -43,10 +47,14 @@ test.describe('ChatSearchPanel', () => {
       await searchInput(page).fill('XLM');
 
       // Should find the Alpha session whose message contains "XLM"
-      await expect(page.getByText('Alpha XLM swap')).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByText('Alpha XLM swap')).toBeVisible({
+        timeout: 5_000,
+      });
     });
 
-    test('search results show session title, role and date', async ({ page }) => {
+    test('search results show session title, role and date', async ({
+      page,
+    }) => {
       await gotoHarness(page);
 
       await searchInput(page).fill('swap');
@@ -60,7 +68,9 @@ test.describe('ChatSearchPanel', () => {
       await expect(result.getByText(/You/)).toBeVisible();
     });
 
-    test('clicking a result fires onSelectResult with correct IDs', async ({ page }) => {
+    test('clicking a result fires onSelectResult with correct IDs', async ({
+      page,
+    }) => {
       await gotoHarness(page);
 
       await searchInput(page).fill('XLM');
@@ -80,7 +90,9 @@ test.describe('ChatSearchPanel', () => {
       await searchInput(page).fill('swap');
 
       // Should show "1 result" or "N results"
-      await expect(page.getByText(/\d+ result/)).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByText(/\d+ result/)).toBeVisible({
+        timeout: 5_000,
+      });
     });
 
     test('highlights search term inside the snippet', async ({ page }) => {
@@ -97,12 +109,16 @@ test.describe('ChatSearchPanel', () => {
   });
 
   test.describe('Empty / no-results state', () => {
-    test('shows "No messages found" when query matches nothing', async ({ page }) => {
+    test('shows "No messages found" when query matches nothing', async ({
+      page,
+    }) => {
       await gotoHarness(page);
 
       await searchInput(page).fill('zzz_no_match_xyz');
 
-      await expect(page.getByText('No messages found')).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByText('No messages found')).toBeVisible({
+        timeout: 5_000,
+      });
     });
 
     test('result count is 0 when no matches', async ({ page }) => {
@@ -134,18 +150,19 @@ test.describe('ChatSearchPanel', () => {
     test('wallet address filter narrows results', async ({ page }) => {
       await gotoHarness(page);
 
-      // Type a keyword first to get results
-      await searchInput(page).fill('swap');
-      await expect(page.getByText('Alpha XLM swap')).toBeVisible({ timeout: 5_000 });
+      // Both the Alpha and Bridge fixtures match this keyword.
+      await searchInput(page).fill('e');
+      const results = page.getByRole('option');
+      await expect(results).toHaveCount(2);
 
-      // Open advanced filters and enter the wallet address from fixture
+      // Open advanced filters and enter the Alpha fixture's wallet address.
       await page.getByRole('button', { name: /advanced filters/i }).click();
-      await page.getByLabel('Filter by wallet address').fill(
-        'GBEFLW6RTALNHCL7HW2INWB4ASHZ7E6MF6E2IOIIMBVEAU2B2B4XLRQW',
-      );
+      await page
+        .getByLabel('Filter by wallet address')
+        .fill('GBEFLW6RTALNHCL7HW2INWB4ASHZ7E6MF6E2IOIIMBVEAU2B2B4XLRQW');
 
-      // Alpha session should still appear (it has this wallet address)
-      await expect(page.getByText('Alpha XLM swap')).toBeVisible({ timeout: 5_000 });
+      await expect(results).toHaveCount(1);
+      await expect(results.first()).toContainText('Alpha XLM swap');
     });
 
     test('date-from filter is reachable', async ({ page }) => {
@@ -172,7 +189,7 @@ test.describe('ChatSearchPanel', () => {
       await gotoHarness(page);
 
       await searchInput(page).fill('swap');
-      await expect(page.getByText('Alpha XLM swap')).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByRole('option')).toHaveCount(2);
 
       // Clear button appears when any filter is set
       const clearBtn = page.getByTitle('Clear filters');
@@ -198,7 +215,9 @@ test.describe('ChatSearchPanel', () => {
       await expect(searchInput(page)).toBeHidden({ timeout: 3_000 });
     });
 
-    test('Open Search button re-opens the panel after close', async ({ page }) => {
+    test('Open Search button re-opens the panel after close', async ({
+      page,
+    }) => {
       await gotoHarness(page);
 
       await page.getByRole('button', { name: /close search/i }).click();
@@ -307,12 +326,15 @@ test.describe('ChatSearchPanel', () => {
       await gotoHarness(page);
 
       await searchInput(page).fill('bridge');
-      await expect(page.getByText('Bridge deposit status')).toBeVisible({
-        timeout: 5_000,
-      });
+      await expect(
+        page.getByRole('button', { name: /^Bridge deposit status/ }),
+      ).toBeVisible();
 
       const apiRequests = externalRequests.filter(
-        (url) => !url.includes('_next') && !url.includes('fonts.') && !url.includes('cdn.'),
+        (url) =>
+          !url.includes('_next') &&
+          !url.includes('fonts.') &&
+          !url.includes('cdn.'),
       );
       expect(apiRequests.length).toBe(0);
     });

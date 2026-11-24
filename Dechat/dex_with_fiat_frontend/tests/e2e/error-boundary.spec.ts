@@ -166,7 +166,7 @@ test.describe('ErrorBoundary', () => {
       ).toBeVisible({ timeout: 5_000 });
 
       // Click somewhere neutral to defocus buttons, then press 'r'
-      await page.locator('h1').click();
+      await page.getByRole('heading', { name: 'ErrorBoundary Test Harness' }).click();
       await page.keyboard.press('r');
 
       await expect(page.getByTestId('child-content')).toBeVisible({ timeout: 5_000 });
@@ -180,7 +180,7 @@ test.describe('ErrorBoundary', () => {
         page.getByRole('heading', { name: 'Something went wrong.' }),
       ).toBeVisible({ timeout: 5_000 });
 
-      await page.locator('h1').click();
+      await page.getByRole('heading', { name: 'ErrorBoundary Test Harness' }).click();
       await page.keyboard.press('R');
 
       await expect(page.getByTestId('child-content')).toBeVisible({ timeout: 5_000 });
@@ -209,7 +209,7 @@ test.describe('ErrorBoundary', () => {
       // No error thrown — child content visible
       await expect(page.getByTestId('child-content')).toBeVisible();
 
-      await page.locator('h1').click();
+      await page.getByRole('heading', { name: 'ErrorBoundary Test Harness' }).click();
       await page.keyboard.press('r');
 
       // Child should still be visible (shortcut is a no-op)

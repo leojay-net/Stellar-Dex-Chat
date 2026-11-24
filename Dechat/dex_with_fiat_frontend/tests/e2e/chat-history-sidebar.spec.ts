@@ -78,7 +78,9 @@ async function openExpandedHistory(page: Page) {
 }
 
 test.describe('ChatHistorySidebar', () => {
-  test('shows the empty history and contract activity states', async ({ page }) => {
+  test('shows the empty history and contract activity states', async ({
+    page,
+  }) => {
     await stubContractEvents(page);
     await openExpandedHistory(page);
 
@@ -87,13 +89,15 @@ test.describe('ChatHistorySidebar', () => {
     await expect(page.getByTitle('New Conversation')).toBeVisible();
   });
 
-  test('renders pinned and recent sessions from local storage', async ({ page }) => {
+  test('renders pinned and recent sessions from local storage', async ({
+    page,
+  }) => {
     await seedChatHistory(page);
     await stubContractEvents(page);
     await openExpandedHistory(page);
 
-    await expect(page.getByText('Pinned')).toBeVisible();
-    await expect(page.getByText('Recent')).toBeVisible();
+    await expect(page.getByText('Pinned', { exact: true })).toBeVisible();
+    await expect(page.getByText('Recent', { exact: true })).toBeVisible();
     await expect(page.getByText('Pinned USDC route')).toBeVisible();
     await expect(page.getByText('Bridge payout status')).toBeVisible();
     await expect(page.locator('[data-active="true"]')).toContainText(
@@ -101,7 +105,9 @@ test.describe('ChatHistorySidebar', () => {
     );
   });
 
-  test('filters sessions and clears an empty search result', async ({ page }) => {
+  test('filters sessions and clears an empty search result', async ({
+    page,
+  }) => {
     await seedChatHistory(page);
     await stubContractEvents(page);
     await openExpandedHistory(page);
@@ -122,12 +128,20 @@ test.describe('ChatHistorySidebar', () => {
     await stubContractEvents(page);
     await openExpandedHistory(page);
 
-    await page.getByText('Pinned USDC route').hover();
+    const pinnedRow = page.getByRole('group').filter({
+      has: page.getByRole('heading', {
+        name: 'Pinned USDC route',
+        exact: true,
+      }),
+    });
+    await pinnedRow.hover();
 
-    await expect(page.getByTitle('Unpin conversation')).toBeVisible();
-    await expect(page.getByTitle('Export conversation')).toBeVisible();
-    await expect(page.getByTitle('Delete conversation')).toBeVisible();
-    await expect(page.getByLabel('Reorder pinned down')).toBeVisible();
+    await expect(pinnedRow.getByTitle('Unpin conversation')).toBeVisible();
+    await expect(pinnedRow.getByTitle('Export conversation')).toBeVisible();
+    await expect(pinnedRow.getByTitle('Delete conversation')).toBeVisible();
+    await expect(
+      pinnedRow.getByRole('button', { name: 'Reorder pinned down' }),
+    ).toBeVisible();
   });
 
   test('keeps saved history visible when contract activity fails to load', async ({

@@ -35,7 +35,7 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
       await expect(modal).toBeVisible();
 
       // Verify elements for connected state
-      await expect(page.getByText('Connected')).toBeVisible();
+      await expect(page.getByText('Connected', { exact: true })).toBeVisible();
       await expect(page.getByText(/Wallet is connected to the Stellar testnet network/i)).toBeVisible();
 
       // Verify green dot indicator
@@ -44,9 +44,9 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
 
       // Verify wallet details section
       await expect(page.getByText('Address')).toBeVisible();
-      await expect(page.getByText('Network')).toBeVisible();
+      await expect(page.getByText('Network', { exact: true })).toBeVisible();
       await expect(page.getByText('Expected')).toBeVisible();
-      await expect(page.getByText(EXPECTED_NETWORK)).toBeVisible();
+      await expect(page.getByRole('dialog').locator('dd').last()).toHaveText(new RegExp(EXPECTED_NETWORK, 'i'));
 
       await context.close();
     });
@@ -67,7 +67,7 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
       
       const modal = page.getByRole('dialog', { name: /network status/i });
       await expect(modal).toBeVisible({ timeout: 10000 });
-      await expect(page.getByText('Connected')).toBeVisible();
+      await expect(page.getByText('Connected', { exact: true })).toBeVisible();
 
       await context.close();
     });
@@ -102,20 +102,12 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
       const context = await browser.newContext();
       const page = await context.newPage();
 
-      const testAddress = 'GABCDEFGHIJKLMNOPQRSTUVWXYZ123456';
-      await page.addInitScript((addr) => {
-        (window as any).__NETWORK_STATE = {
-          connection: { isConnected: true, address: addr, network: 'testnet' },
-          isNetworkMismatch: false,
-          isDarkMode: false,
-        };
-      }, testAddress);
-
       await page.goto('/test-network-modal-connected');
-      
-      // Address should be formatted as GABCDE...Z123
-      const addressDisplay = page.locator('dd').filter({ hasText: /GAB.*123/ });
-      await expect(addressDisplay).toBeVisible();
+
+      const addressDisplay = page.getByRole('dialog').locator('dd').first();
+      await expect(addressDisplay).toHaveText(
+        `${CONNECTED_ADDRESS.slice(0, 6)}…${CONNECTED_ADDRESS.slice(-4)}`,
+      );
 
       await context.close();
     });
@@ -167,8 +159,8 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
       
       // Verify details section is visible
       await expect(page.getByText('Address')).toBeVisible();
-      await expect(page.getByText('public')).toBeVisible();
-      await expect(page.getByText(EXPECTED_NETWORK)).toBeVisible();
+      await expect(page.getByText(/^public$/i)).toBeVisible();
+      await expect(page.getByRole('dialog').locator('dd').last()).toHaveText(new RegExp(EXPECTED_NETWORK, 'i'));
 
       await context.close();
     });
@@ -310,7 +302,7 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
 
       // Click backdrop
       const backdrop = page.locator('[aria-hidden="true"]').first();
-      await backdrop.click();
+      await backdrop.click({ position: { x: 8, y: 8 } });
 
       // Modal should be hidden
       await expect(modal).not.toBeVisible();

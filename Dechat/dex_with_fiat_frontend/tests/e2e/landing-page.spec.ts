@@ -38,7 +38,7 @@ test.describe('LandingPage E2E Coverage', () => {
 
       // Wait for hero section to be visible
       const heroHeading = page.getByRole('heading', {
-        name: /Welcome to your Personal USDT-to-Fiat/i,
+        name: /XLM-to-Fiat Bridge/i,
       });
       await expect(heroHeading).toBeVisible({ timeout: 5000 });
 
@@ -57,21 +57,16 @@ test.describe('LandingPage E2E Coverage', () => {
       // Wait for hero to be visible
       await expect(
         page.getByRole('heading', {
-          name: /Welcome to your Personal USDT-to-Fiat/i,
+          name: /XLM-to-Fiat Bridge/i,
         }),
       ).toBeVisible({ timeout: 5000 });
 
       // Find and click Get Started button
       const getStartedBtn = page.getByRole('button', {
-        name: /Get Started|Get started|get started/i,
+        name: /Start Bridging/i,
       });
-      if (await getStartedBtn.isVisible()) {
-        await getStartedBtn.click();
-
-        // Should navigate to /chat
-        await page.waitForURL(/\/chat/, { timeout: 5000 });
-        expect(page.url()).toContain('/chat');
-      }
+      await getStartedBtn.click();
+      await expect(page).toHaveURL(/\/chat/);
 
       await context.close();
     });
@@ -110,7 +105,7 @@ test.describe('LandingPage E2E Coverage', () => {
 
       // Get Started button should still work
       const getStartedBtn = page.getByRole('button', {
-        name: /Get Started|get started/i,
+        name: /Start Bridging/i,
       });
       await expect(getStartedBtn).toBeVisible();
 
@@ -124,16 +119,12 @@ test.describe('LandingPage E2E Coverage', () => {
       await page.goto('/', { waitUntil: 'load' });
 
       // Scroll down to features section
-      await page.locator('text=Soroban Smart Contracts').scrollIntoViewIfNeeded();
+      const features = page.getByRole('region', { name: 'Why Choose DexFiat on Stellar' });
+      const soroban = features.getByRole('heading', { name: 'Soroban Smart Contracts' });
+      await soroban.scrollIntoViewIfNeeded();
+      await expect(soroban).toBeVisible();
 
-      // Features should be visible
-      const featuresSection = page.locator('text=Soroban Smart Contracts');
-      await expect(featuresSection).toBeVisible();
-
-      // Verify at least one feature description
-      const featureDesc = page.locator(
-        'text=FiatBridge contract built on Stellar Soroban',
-      );
+      const featureDesc = features.getByText(/FiatBridge contract built on Stellar Soroban/);
       await expect(featureDesc).toBeVisible();
 
       await context.close();
@@ -164,7 +155,7 @@ test.describe('LandingPage E2E Coverage', () => {
       await page.goto('/', { waitUntil: 'load' });
 
       const heroHeading = page.getByRole('heading', {
-        name: /Welcome to your Personal USDT-to-Fiat/i,
+        name: /XLM-to-Fiat Bridge/i,
       });
       await expect(heroHeading).toBeVisible({ timeout: 10000 });
 
@@ -179,12 +170,12 @@ test.describe('LandingPage E2E Coverage', () => {
 
       await expect(
         page.getByRole('heading', {
-          name: /Welcome to your Personal USDT-to-Fiat/i,
+          name: /XLM-to-Fiat Bridge/i,
         }),
       ).toBeVisible({ timeout: 10000 });
 
       const getStartedBtn = page.getByRole('button', {
-        name: /Get Started|get started/i,
+        name: /Start Bridging/i,
       });
       if (await getStartedBtn.isVisible()) {
         await getStartedBtn.click();
@@ -203,7 +194,7 @@ test.describe('LandingPage E2E Coverage', () => {
       await page.goto('/', { waitUntil: 'load' });
 
       const heroHeading = page.getByRole('heading', {
-        name: /Welcome to your Personal USDT-to-Fiat/i,
+        name: /XLM-to-Fiat Bridge/i,
       });
       await expect(heroHeading).toBeVisible({ timeout: 10000 });
 
@@ -218,12 +209,12 @@ test.describe('LandingPage E2E Coverage', () => {
 
       await expect(
         page.getByRole('heading', {
-          name: /Welcome to your Personal USDT-to-Fiat/i,
+          name: /XLM-to-Fiat Bridge/i,
         }),
       ).toBeVisible({ timeout: 10000 });
 
       const getStartedBtn = page.getByRole('button', {
-        name: /Get Started|get started/i,
+        name: /Start Bridging/i,
       });
       if (await getStartedBtn.isVisible()) {
         await getStartedBtn.click();
@@ -290,7 +281,7 @@ test.describe('LandingPage E2E Coverage', () => {
 
       // Click Get Started (navigation)
       const getStartedBtn = page.getByRole('button', {
-        name: /Get Started|get started/i,
+        name: /Start Bridging/i,
       });
       if (await getStartedBtn.isVisible()) {
         await getStartedBtn.click();
@@ -331,7 +322,7 @@ test.describe('LandingPage E2E Coverage', () => {
       await page.locator('main').first().click();
 
       // Press 'G' to launch
-      await page.keyboard.press('shift+g');
+      await page.keyboard.press('Shift+G');
 
       // Should navigate to chat
       await page.waitForURL(/\/chat/, { timeout: 5000 });
@@ -418,7 +409,7 @@ test.describe('LandingPage E2E Coverage', () => {
 
       // Focus Get Started button
       const getStartedBtn = page.getByRole('button', {
-        name: /Get Started|get started/i,
+        name: /Start Bridging/i,
       });
 
       if (await getStartedBtn.isVisible()) {
@@ -555,7 +546,7 @@ test.describe('LandingPage E2E Coverage', () => {
 
       // At least Get Started button should be functional
       const getStartedBtn = page.getByRole('button', {
-        name: /Get Started|get started/i,
+        name: /Start Bridging/i,
       });
       if (await getStartedBtn.isVisible()) {
         await expect(getStartedBtn).toBeEnabled();
