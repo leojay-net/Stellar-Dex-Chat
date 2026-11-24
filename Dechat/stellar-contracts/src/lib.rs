@@ -430,7 +430,7 @@ pub struct ReceiptIssuedEvent {
 
 #[contractevent]
 #[derive(Clone, Debug)]
-pub struct ReceiptIndexOutOfBoundsEvent {
+pub struct ReceiptIndexBoundsEvent {
     pub version: u32,
     pub index: u64,
     pub receipt_count: u64,
@@ -4536,7 +4536,7 @@ impl FiatBridge {
         if idx >= max_receipts {
             // Out-of-bounds index: return None rather than reading past the
             // known receipt range.
-            ReceiptIndexOutOfBoundsEvent {
+            ReceiptIndexBoundsEvent {
                 version: EVENT_VERSION,
                 index: idx,
                 receipt_count: max_receipts,

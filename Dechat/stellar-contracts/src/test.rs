@@ -5463,7 +5463,7 @@ fn test_withdraw_fees_edge_case_stale_nonce() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1000);
+    let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1000);
     let user = Address::generate(&env);
     let recipient = Address::generate(&env);
     token_sac.mint(&user, &1000);
