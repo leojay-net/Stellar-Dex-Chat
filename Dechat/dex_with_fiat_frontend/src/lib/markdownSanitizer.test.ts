@@ -126,7 +126,7 @@ describe('sanitizeText', () => {
   });
 
   it('escapes single quotes', () => {
-    expect(sanitizeText("it's fine")).toBe("it&#x27;s fine");
+    expect(sanitizeText("it's fine")).toBe('it&#x27;s fine');
   });
 
   it('returns empty string for null/undefined', () => {

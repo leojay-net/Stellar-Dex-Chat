@@ -39,7 +39,7 @@ describe('useTransactionFilters Telemetry', () => {
 
   it('tracks filter_toggle when a filter is toggled', () => {
     const { result } = renderHook(() => useTransactionFilters(transactions));
-    
+
     act(() => {
       result.current.toggleFilter('status', 'completed');
     });
@@ -53,7 +53,7 @@ describe('useTransactionFilters Telemetry', () => {
 
   it('tracks filter_clear_all when all filters are cleared', () => {
     const { result } = renderHook(() => useTransactionFilters(transactions));
-    
+
     act(() => {
       result.current.clearAllFilters();
     });
@@ -63,7 +63,7 @@ describe('useTransactionFilters Telemetry', () => {
 
   it('tracks filter_cycle when a filter is cycled', () => {
     const { result } = renderHook(() => useTransactionFilters(transactions));
-    
+
     act(() => {
       // Need to have options to cycle
       result.current.toggleFilter('status', 'completed');
@@ -73,12 +73,12 @@ describe('useTransactionFilters Telemetry', () => {
     vi.clearAllMocks();
 
     act(() => {
-        // This will cycle to empty if it's the only option, or to next
-        // Since 'completed' is the only option in our mock data:
-        // First call selects 'completed', second clear it.
-        // Wait, cycleFilterCategory uses filterStats.
+      // This will cycle to empty if it's the only option, or to next
+      // Since 'completed' is the only option in our mock data:
+      // First call selects 'completed', second clear it.
+      // Wait, cycleFilterCategory uses filterStats.
     });
-    
+
     // Test toggle first as it's easier to verify behavior in isolation
   });
 
@@ -91,7 +91,7 @@ describe('useTransactionFilters Telemetry', () => {
           key: 'x',
           ctrlKey: true,
           shiftKey: true,
-        })
+        }),
       );
     });
 

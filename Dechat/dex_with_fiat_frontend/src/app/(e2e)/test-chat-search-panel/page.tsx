@@ -79,7 +79,10 @@ export default function TestChatSearchPanelPage() {
       )}
 
       {isOpen && (
-        <div className="border rounded-xl overflow-hidden" style={{ height: '500px' }}>
+        <div
+          className="border rounded-xl overflow-hidden"
+          style={{ height: '500px' }}
+        >
           <ChatSearchPanel
             sessions={SESSIONS}
             onSelectResult={(sessionId, messageId) =>

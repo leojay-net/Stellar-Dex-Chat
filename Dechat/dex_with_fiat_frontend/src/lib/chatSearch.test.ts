@@ -104,7 +104,10 @@ describe('splitByHighlights', () => {
 
   it('handles multiple highlights', () => {
     const text = 'abc def abc';
-    const highlights: Array<[number, number]> = [[0, 3], [8, 11]];
+    const highlights: Array<[number, number]> = [
+      [0, 3],
+      [8, 11],
+    ];
     const result = splitByHighlights(text, highlights);
     expect(result).toEqual([
       { text: 'abc', highlight: true },
@@ -294,8 +297,12 @@ describe('searchChatHistory – date range', () => {
 // ---------------------------------------------------------------------------
 
 describe('debounce', () => {
-  beforeEach(() => { vi.useFakeTimers(); });
-  afterEach(() => { vi.useRealTimers(); });
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it('calls fn after the delay', () => {
     const fn = vi.fn();

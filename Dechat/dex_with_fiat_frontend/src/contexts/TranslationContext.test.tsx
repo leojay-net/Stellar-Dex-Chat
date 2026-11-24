@@ -72,7 +72,9 @@ describe('TranslationContext', () => {
     });
 
     // A key that is very unlikely to exist in any locale file.
-    expect(result.current.t('this.key.does.not.exist')).toBe('this.key.does.not.exist');
+    expect(result.current.t('this.key.does.not.exist')).toBe(
+      'this.key.does.not.exist',
+    );
   });
 
   it('t() interpolates params into the resolved string', () => {

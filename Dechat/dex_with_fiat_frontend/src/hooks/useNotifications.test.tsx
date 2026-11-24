@@ -16,7 +16,8 @@ function captureNotificationTelemetry(): Promise<NotificationTelemetryDetail> {
   return new Promise((resolve) => {
     window.addEventListener(
       'notification_telemetry',
-      (event) => resolve((event as CustomEvent<NotificationTelemetryDetail>).detail),
+      (event) =>
+        resolve((event as CustomEvent<NotificationTelemetryDetail>).detail),
       { once: true },
     );
   });

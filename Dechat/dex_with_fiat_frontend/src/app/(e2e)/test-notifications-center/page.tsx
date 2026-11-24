@@ -5,7 +5,9 @@ import NotificationsCenter from '@/components/NotificationsCenter';
 import { notificationStore, AppNotification } from '@/hooks/useNotifications';
 
 export default function TestNotificationsCenterPage() {
-  const [scenario, setScenario] = useState<'empty' | 'with-notifications' | 'all-read' | 'mixed'>('empty');
+  const [scenario, setScenario] = useState<
+    'empty' | 'with-notifications' | 'all-read' | 'mixed'
+  >('empty');
 
   useEffect(() => {
     switch (scenario) {
@@ -14,9 +16,18 @@ export default function TestNotificationsCenterPage() {
         break;
       case 'with-notifications':
         notificationStore.clearNotifications();
-        notificationStore.addNotification('tx_submit', 'Transaction submitted to network');
-        notificationStore.addNotification('payout_pending', 'Payout of 100 USDC is pending');
-        notificationStore.addNotification('risk_warning', 'High slippage detected on XLM/USDC');
+        notificationStore.addNotification(
+          'tx_submit',
+          'Transaction submitted to network',
+        );
+        notificationStore.addNotification(
+          'payout_pending',
+          'Payout of 100 USDC is pending',
+        );
+        notificationStore.addNotification(
+          'risk_warning',
+          'High slippage detected on XLM/USDC',
+        );
         break;
       case 'all-read':
         notificationStore.clearNotifications();
@@ -38,8 +49,14 @@ export default function TestNotificationsCenterPage() {
         break;
       case 'mixed':
         notificationStore.clearNotifications();
-        notificationStore.addNotification('tx_submit', 'Transaction submitted to network');
-        notificationStore.addNotification('tx_confirm', 'Transaction confirmed on ledger');
+        notificationStore.addNotification(
+          'tx_submit',
+          'Transaction submitted to network',
+        );
+        notificationStore.addNotification(
+          'tx_confirm',
+          'Transaction confirmed on ledger',
+        );
         const readNotif: AppNotification = {
           id: 'read-3',
           type: 'payout_success',
@@ -47,7 +64,10 @@ export default function TestNotificationsCenterPage() {
           timestamp: Date.now() - 10800000,
           read: true,
         };
-        notificationStore.setNotifications([readNotif, ...notificationStore.getSnapshot()]);
+        notificationStore.setNotifications([
+          readNotif,
+          ...notificationStore.getSnapshot(),
+        ]);
         break;
     }
   }, [scenario]);
@@ -55,7 +75,9 @@ export default function TestNotificationsCenterPage() {
   return (
     <main className="min-h-screen p-6 bg-[var(--background)]">
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-lg font-semibold mb-4">NotificationsCenter Test Harness</h1>
+        <h1 className="text-lg font-semibold mb-4">
+          NotificationsCenter Test Harness
+        </h1>
         <div className="mb-6 flex gap-2 flex-wrap">
           <button
             onClick={() => setScenario('empty')}

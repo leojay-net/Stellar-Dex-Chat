@@ -28,7 +28,9 @@ function mockSystemPrefersDark(matches: boolean) {
 }
 
 /** Keeps the guard in its loading state by never resolving the admin lookup. */
-function renderLoading(wrapper?: React.ComponentType<{ children: React.ReactNode }>) {
+function renderLoading(
+  wrapper?: React.ComponentType<{ children: React.ReactNode }>,
+) {
   vi.mocked(useStellarWallet).mockReturnValue({
     connection: { address: VALID_ADDR },
   } as any);
@@ -84,31 +86,46 @@ describe('AdminGuard dark mode fallback', () => {
     mockSystemPrefersDark(true);
     renderLoading(themeWrapper(false));
 
-    expect(screen.getByTestId('admin-guard-loading')).toHaveAttribute('data-theme', 'light');
+    expect(screen.getByTestId('admin-guard-loading')).toHaveAttribute(
+      'data-theme',
+      'light',
+    );
   });
 
   it('follows a dark ThemeContext', () => {
     renderLoading(themeWrapper(true));
 
-    expect(screen.getByTestId('admin-guard-loading')).toHaveAttribute('data-theme', 'dark');
+    expect(screen.getByTestId('admin-guard-loading')).toHaveAttribute(
+      'data-theme',
+      'dark',
+    );
   });
 
   it('prefers the data-theme attribute on <html> over context and system', () => {
     document.documentElement.setAttribute('data-theme', 'dark');
     renderLoading(themeWrapper(false));
 
-    expect(screen.getByTestId('admin-guard-loading')).toHaveAttribute('data-theme', 'dark');
+    expect(screen.getByTestId('admin-guard-loading')).toHaveAttribute(
+      'data-theme',
+      'dark',
+    );
   });
 
   it('reacts when data-theme on <html> changes after mount', async () => {
     renderLoading();
-    expect(screen.getByTestId('admin-guard-loading')).toHaveAttribute('data-theme', 'light');
+    expect(screen.getByTestId('admin-guard-loading')).toHaveAttribute(
+      'data-theme',
+      'light',
+    );
 
     await act(async () => {
       document.documentElement.setAttribute('data-theme', 'dark');
     });
 
-    expect(screen.getByTestId('admin-guard-loading')).toHaveAttribute('data-theme', 'dark');
+    expect(screen.getByTestId('admin-guard-loading')).toHaveAttribute(
+      'data-theme',
+      'dark',
+    );
   });
 
   it('applies the fallback scheme to the error screen', async () => {

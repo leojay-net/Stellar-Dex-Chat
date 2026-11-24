@@ -22,14 +22,11 @@ async function mockChatApi(page: Page): Promise<void> {
   });
 }
 
-test.describe('Offline reconnect queue', () => {
+test.describe('Offline reconnect queue', { tag: '@chromium-only' }, () => {
   test('@slow connect -> offline send -> reconnect replays queued message', async ({
     page,
     context,
-    browserName,
   }) => {
-    test.skip(browserName !== 'chromium', 'CDP network emulation requires Chromium.');
-
     await mockChatApi(page);
     await gotoChatConnected(page);
 
@@ -38,6 +35,7 @@ test.describe('Offline reconnect queue', () => {
 
     const queuedMessage = 'check xlm market rates';
     await messageInput.fill(queuedMessage);
+    await expect(messageInput).toBeFocused();
 
     const client = await context.newCDPSession(page);
     await client.send('Network.enable');
@@ -49,12 +47,14 @@ test.describe('Offline reconnect queue', () => {
       connectionType: 'none',
     });
 
-    await messageInput.press('Enter');
+    await page.keyboard.press('Control+Enter');
 
     await expect(
-      page.getByText(
-        'Offline detected. Read-only operations are queued and will retry when online.',
-      ),
+      page
+        .getByRole('main')
+        .getByText(
+          'Offline detected. Read-only operations are queued and will retry when online.',
+        ),
     ).toBeVisible({ timeout: 10_000 });
 
     await client.send('Network.emulateNetworkConditions', {
@@ -65,12 +65,25 @@ test.describe('Offline reconnect queue', () => {
       connectionType: 'wifi',
     });
 
-    await expect(page.getByText('Back online. Replaying actions...')).toBeVisible({
+    await expect(
+      page.getByRole('main').getByText('Back online. Replaying actions...'),
+    ).toBeVisible({
       timeout: 10_000,
     });
 
-    await expect(page.getByText(queuedMessage)).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText('Back online. Replaying actions...')).toBeHidden({
+    await expect(
+      page
+        .getByRole('group', { name: 'Your message' })
+        .getByText(queuedMessage, { exact: true }),
+    ).toBeVisible({ timeout: 10_000 });
+    await expect(
+      page
+        .getByRole('group', { name: 'Assistant message' })
+        .getByText('Queued message delivered after reconnect.'),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('main').getByText('Back online. Replaying actions...'),
+    ).toBeHidden({
       timeout: 15_000,
     });
   });

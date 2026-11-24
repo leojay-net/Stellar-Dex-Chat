@@ -653,7 +653,12 @@ export interface AuditEntry {
    * - `user_update`      — a user record change
    * - `settings_change`  — a system settings change
    */
-  actionType: 'deposit' | 'payout' | 'reconciliation' | 'user_update' | 'settings_change';
+  actionType:
+    | 'deposit'
+    | 'payout'
+    | 'reconciliation'
+    | 'user_update'
+    | 'settings_change';
   /** Free-text description of what was done. */
   actionDescription: string;
   /** On-chain transaction hash, if applicable. */

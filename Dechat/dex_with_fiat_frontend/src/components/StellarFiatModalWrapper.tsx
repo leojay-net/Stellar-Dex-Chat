@@ -19,7 +19,9 @@ interface StellarFiatModalWrapperProps {
   messages?: ChatMessage[];
 }
 
-export default function StellarFiatModalWrapper(props: StellarFiatModalWrapperProps) {
+export default function StellarFiatModalWrapper(
+  props: StellarFiatModalWrapperProps,
+) {
   return (
     <Suspense fallback={null}>
       <StellarFiatModal {...props} />

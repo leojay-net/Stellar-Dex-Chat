@@ -31,14 +31,17 @@ describe('getOrCreateClientSessionId', () => {
   it('regression: stays consistent across calls even when sessionStorage.setItem throws (e.g. private-browsing quota errors)', async () => {
     // Simulate a browser environment where writes to sessionStorage throw
     // (Safari private mode, exhausted quota, sandboxed iframe, etc).
-    vi.spyOn(window.sessionStorage.__proto__, 'setItem').mockImplementation(() => {
-      throw new DOMException('QuotaExceededError');
-    });
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const { getOrCreateClientSessionId, clientSessionUsedFallbackStorage } = await import(
-      './clientSession'
+    vi.spyOn(window.sessionStorage.__proto__, 'setItem').mockImplementation(
+      () => {
+        throw new DOMException('QuotaExceededError');
+      },
     );
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+
+    const { getOrCreateClientSessionId, clientSessionUsedFallbackStorage } =
+      await import('./clientSession');
 
     const first = getOrCreateClientSessionId();
     const second = getOrCreateClientSessionId();

@@ -2,12 +2,15 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Bell, Check, Trash2, X } from 'lucide-react';
+import { isEditableShortcutTarget } from '@/lib/keyboardShortcuts';
+import { useSingleKeyShortcuts } from '@/contexts/UserPreferencesContext';
 import { useNotifications, AppNotification } from '@/hooks/useNotifications';
 
 export default function NotificationsCenter() {
   // Track if component has mounted to prevent hydration mismatches
   const [isMounted, setIsMounted] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const singleKeyShortcuts = useSingleKeyShortcuts();
   const {
     notifications,
     unreadCount,
@@ -55,15 +58,22 @@ export default function NotificationsCenter() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Ignore shortcuts when focus is inside an input/textarea
-      const tag = (event.target as HTMLElement).tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (isEditableShortcutTarget(event.target)) return;
 
       if (event.key === 'Escape') {
         setIsOpen(false);
         return;
       }
-      if (!isOpen) return;
+      if (
+        !isOpen ||
+        !singleKeyShortcuts ||
+        event.defaultPrevented ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey
+      ) {
+        return;
+      }
       if (event.key === 'm' || event.key === 'M') {
         handleMarkAllAsRead();
       } else if (event.key === 'd' || event.key === 'D') {
@@ -72,7 +82,12 @@ export default function NotificationsCenter() {
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, handleMarkAllAsRead, handleClearNotifications]);
+  }, [
+    isOpen,
+    singleKeyShortcuts,
+    handleMarkAllAsRead,
+    handleClearNotifications,
+  ]);
 
   const formatTime = (ts: number) => {
     const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });

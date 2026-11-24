@@ -40,7 +40,8 @@ function recordTelemetry() {
     names: () => records.map((r) => r.event),
     find: (name: string) => records.find((r) => r.event === name),
     filter: (name: string) => records.filter((r) => r.event === name),
-    stop: () => window.removeEventListener(BRIDGE_STATS_TELEMETRY_EVENT, handler),
+    stop: () =>
+      window.removeEventListener(BRIDGE_STATS_TELEMETRY_EVENT, handler),
   };
 }
 
@@ -141,8 +142,12 @@ describe('useBridgeStats telemetry', () => {
     await act(() => result.current.refetchStats());
     telemetry.stop();
 
-    expect(telemetry.find('bridge_stats_fetch_start')?.trigger).toBe('programmatic');
-    expect(telemetry.find('bridge_stats_fetch_success')?.trigger).toBe('programmatic');
+    expect(telemetry.find('bridge_stats_fetch_start')?.trigger).toBe(
+      'programmatic',
+    );
+    expect(telemetry.find('bridge_stats_fetch_success')?.trigger).toBe(
+      'programmatic',
+    );
   });
 
   it('emits manual_refresh and tags the resulting fetch as manual', async () => {
@@ -157,7 +162,9 @@ describe('useBridgeStats telemetry', () => {
 
     expect(telemetry.names()).toContain('bridge_stats_manual_refresh');
     expect(telemetry.find('bridge_stats_fetch_start')?.trigger).toBe('manual');
-    expect(telemetry.find('bridge_stats_fetch_success')?.trigger).toBe('manual');
+    expect(telemetry.find('bridge_stats_fetch_success')?.trigger).toBe(
+      'manual',
+    );
   });
 
   it('emits fetch_error with the message and no success record when the read fails', async () => {
@@ -182,8 +189,16 @@ describe('useBridgeStats telemetry', () => {
     let resolveSecond!: (v: bigint) => void;
 
     mockGetContractBalance
-      .mockReturnValueOnce(new Promise<bigint>((r) => { resolveFirst = r; }))
-      .mockReturnValueOnce(new Promise<bigint>((r) => { resolveSecond = r; }));
+      .mockReturnValueOnce(
+        new Promise<bigint>((r) => {
+          resolveFirst = r;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise<bigint>((r) => {
+          resolveSecond = r;
+        }),
+      );
     mockGetBridgeLimit.mockResolvedValue(1000n);
     mockGetTotalDeposited.mockResolvedValue(500n);
 

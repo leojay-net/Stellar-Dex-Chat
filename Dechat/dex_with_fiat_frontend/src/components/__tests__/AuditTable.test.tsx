@@ -1,7 +1,14 @@
 import '@testing-library/jest-dom/vitest';
 import React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { cleanup, render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  fireEvent,
+  act,
+} from '@testing-library/react';
 import AuditTable from '../AuditTable';
 import { toastStore } from '@/lib/toastStore';
 
@@ -23,7 +30,10 @@ vi.mock('@/hooks/useOnlineStatus', async () => {
       });
       useEffect(() => {
         const h = () =>
-          setSnap({ isOnline: onlineStore.isOnline, wasOffline: onlineStore.wasOffline });
+          setSnap({
+            isOnline: onlineStore.isOnline,
+            wasOffline: onlineStore.wasOffline,
+          });
         window.addEventListener(_ONLINE_EVT, h);
         return () => window.removeEventListener(_ONLINE_EVT, h);
       }, []);
@@ -31,7 +41,7 @@ vi.mock('@/hooks/useOnlineStatus', async () => {
         ...snap,
         resetWasOffline: useCallback(() => {
           onlineStore.wasOffline = false;
-          setSnap(s => ({ ...s, wasOffline: false }));
+          setSnap((s) => ({ ...s, wasOffline: false }));
         }, []),
       };
     },
@@ -46,8 +56,6 @@ function setOnlineStatus(isOnline: boolean) {
     window.dispatchEvent(new Event(_ONLINE_EVT));
   });
 }
-
-
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -88,14 +96,21 @@ describe('AuditTable', () => {
 
   it('renders skeleton rows while loading and hides them once data arrives', async () => {
     let resolveFetch!: (value: unknown) => void;
-    const fetchPromise = new Promise((resolve) => { resolveFetch = resolve; });
+    const fetchPromise = new Promise((resolve) => {
+      resolveFetch = resolve;
+    });
 
-    vi.stubGlobal('fetch', vi.fn(() => fetchPromise));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => fetchPromise),
+    );
 
     render(React.createElement(AuditTable));
 
     // While the fetch is in-flight the table should be in aria-busy state
-    const busyTable = await waitFor(() => screen.getByRole('table', { name: /loading audit entries/i }));
+    const busyTable = await waitFor(() =>
+      screen.getByRole('table', { name: /loading audit entries/i }),
+    );
     expect(busyTable).toHaveAttribute('aria-busy', 'true');
 
     // Skeleton cells are present (5 rows × 6 cells = 30 skeleton divs)
@@ -110,7 +125,9 @@ describe('AuditTable', () => {
     });
 
     // The skeleton table should no longer be in the DOM
-    expect(screen.queryByRole('table', { name: /loading audit entries/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('table', { name: /loading audit entries/i }),
+    ).not.toBeInTheDocument();
   });
 
   it('does not apply stale fetch results after a newer request (abort)', async () => {
@@ -184,10 +201,15 @@ describe('AuditTable', () => {
   });
 
   it('shows a warning toast when the browser goes offline while open', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => makeSuccessResponse()));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => makeSuccessResponse()),
+    );
     const addToastSpy = vi.spyOn(toastStore, 'addToast');
     render(React.createElement(AuditTable));
-    await waitFor(() => expect(screen.getByText('real-row')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText('real-row')).toBeInTheDocument(),
+    );
 
     setOnlineStatus(false);
 
@@ -203,10 +225,15 @@ describe('AuditTable', () => {
   });
 
   it('shows a success toast when coming back online after offline', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => makeSuccessResponse()));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => makeSuccessResponse()),
+    );
     const addToastSpy = vi.spyOn(toastStore, 'addToast');
     render(React.createElement(AuditTable));
-    await waitFor(() => expect(screen.getByText('real-row')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText('real-row')).toBeInTheDocument(),
+    );
 
     setOnlineStatus(false);
     await waitFor(() => expect(addToastSpy).toHaveBeenCalled());
@@ -234,7 +261,10 @@ describe('AuditTable', () => {
       get: () => false,
     });
 
-    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {}))); // never resolves
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise(() => {})),
+    ); // never resolves
 
     render(React.createElement(AuditTable));
 
@@ -259,7 +289,10 @@ describe('AuditTable', () => {
       get: () => isOnline,
     });
 
-    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise(() => {})),
+    );
 
     render(React.createElement(AuditTable));
 
@@ -298,8 +331,13 @@ describe('AuditTable', () => {
     });
 
     let resolveFetch!: (value: unknown) => void;
-    const fetchPromise = new Promise((resolve) => { resolveFetch = resolve; });
-    vi.stubGlobal('fetch', vi.fn(() => fetchPromise));
+    const fetchPromise = new Promise((resolve) => {
+      resolveFetch = resolve;
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => fetchPromise),
+    );
 
     render(React.createElement(AuditTable));
 
@@ -318,9 +356,12 @@ describe('AuditTable', () => {
     });
 
     // Data should eventually render
-    await waitFor(() => {
-      expect(screen.getByText('real-row')).toBeInTheDocument();
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(screen.getByText('real-row')).toBeInTheDocument();
+      },
+      { timeout: 3000 },
+    );
 
     // And the banner should be gone
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
@@ -354,7 +395,10 @@ describe('AuditTable', () => {
       get: () => isOnline,
     });
 
-    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise(() => {})),
+    );
 
     render(React.createElement(AuditTable));
 
@@ -373,7 +417,10 @@ describe('AuditTable', () => {
   // ── ARIA live-region announcements (#1177) ──────────────────────────────
 
   it('exposes a role-free polite live region that does not collide with role="status"', async () => {
-    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(makeSuccessResponse())));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(makeSuccessResponse())),
+    );
 
     render(React.createElement(AuditTable));
 
@@ -389,8 +436,13 @@ describe('AuditTable', () => {
 
   it('announces the loading state and then the result count', async () => {
     let resolveFetch!: (value: unknown) => void;
-    const fetchPromise = new Promise((resolve) => { resolveFetch = resolve; });
-    vi.stubGlobal('fetch', vi.fn(() => fetchPromise));
+    const fetchPromise = new Promise((resolve) => {
+      resolveFetch = resolve;
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => fetchPromise),
+    );
 
     render(React.createElement(AuditTable));
 
@@ -448,7 +500,14 @@ describe('AuditTable', () => {
   it('announces fetch errors', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => Promise.resolve({ ok: false, status: 500, statusText: 'Server Error', json: async () => ({}) })),
+      vi.fn(() =>
+        Promise.resolve({
+          ok: false,
+          status: 500,
+          statusText: 'Server Error',
+          json: async () => ({}),
+        }),
+      ),
     );
 
     render(React.createElement(AuditTable));
@@ -461,7 +520,10 @@ describe('AuditTable', () => {
   });
 
   it('disables the skeleton pulse animation under prefers-reduced-motion', async () => {
-    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise(() => {})),
+    );
 
     render(React.createElement(AuditTable));
 
@@ -473,7 +535,10 @@ describe('AuditTable', () => {
   });
 
   it('associates filter labels with their controls via htmlFor and id', async () => {
-    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(makeSuccessResponse())));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(makeSuccessResponse())),
+    );
     render(React.createElement(AuditTable));
 
     expect(screen.getByLabelText('Action Type')).toBeInTheDocument();

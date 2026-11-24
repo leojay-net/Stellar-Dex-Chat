@@ -33,7 +33,11 @@ export default function TestChatInputPage() {
       {/* Sent-messages log for test assertions */}
       <ul data-testid="sent-messages" className="flex-1 mb-4 space-y-1">
         {messages.map((m, i) => (
-          <li key={i} data-testid="sent-message" className="text-sm border rounded p-2">
+          <li
+            key={i}
+            data-testid="sent-message"
+            className="text-sm border rounded p-2"
+          >
             {m}
           </li>
         ))}

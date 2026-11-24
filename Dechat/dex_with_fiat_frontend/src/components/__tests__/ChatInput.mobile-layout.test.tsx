@@ -60,10 +60,12 @@ describe('ChatInput mobile layout', () => {
     mockUseMediaQuery.mockReturnValue(false);
     render(React.createElement(ChatInput, defaultProps));
 
-    expect(screen.getByTestId('chat-input-form').getAttribute('data-mobile-layout')).toBe(
-      'inline',
+    expect(
+      screen.getByTestId('chat-input-form').getAttribute('data-mobile-layout'),
+    ).toBe('inline');
+    expect(screen.getByTestId('chat-input-controls').className).toContain(
+      'items-end',
     );
-    expect(screen.getByTestId('chat-input-controls').className).toContain('items-end');
     expect(screen.getByTestId('chat-input-send').className).toContain('w-12');
   });
 
@@ -71,11 +73,13 @@ describe('ChatInput mobile layout', () => {
     mockUseMediaQuery.mockReturnValue(true);
     render(React.createElement(ChatInput, defaultProps));
 
-    expect(screen.getByTestId('chat-input-form').getAttribute('data-mobile-layout')).toBe(
-      'stacked',
-    );
+    expect(
+      screen.getByTestId('chat-input-form').getAttribute('data-mobile-layout'),
+    ).toBe('stacked');
     expect(screen.getByTestId('chat-input-form').className).toContain('sticky');
-    expect(screen.getByTestId('chat-input-controls').className).toContain('flex-col');
+    expect(screen.getByTestId('chat-input-controls').className).toContain(
+      'flex-col',
+    );
     expect(screen.getByTestId('chat-input-send').className).toContain('w-full');
   });
 

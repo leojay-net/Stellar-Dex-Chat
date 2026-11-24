@@ -4,12 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
-const {
-  fetchCryptoPrices,
-  getTokenPrice,
-  clearPriceCache,
-  fetchTickerData,
-} = await import('./cryptoPriceService');
+const { fetchCryptoPrices, getTokenPrice, clearPriceCache, fetchTickerData } =
+  await import('./cryptoPriceService');
 
 describe('cryptoPriceService', () => {
   beforeEach(() => {

@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
-import OfflineStatusBanner, { BANNER_SCROLL_MARGIN_PX } from './OfflineStatusBanner';
+import OfflineStatusBanner, {
+  BANNER_SCROLL_MARGIN_PX,
+} from './OfflineStatusBanner';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 vi.mock('@/hooks/useOnlineStatus', () => ({
@@ -53,11 +55,11 @@ function rect(top: number, height: number): DOMRect {
   } as DOMRect;
 }
 
-
 function stubLayout(focusedTop: number) {
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
     function (this: HTMLElement) {
-      if (this.dataset.testid === 'offline-status-banner') return rect(0, BANNER_HEIGHT);
+      if (this.dataset.testid === 'offline-status-banner')
+        return rect(0, BANNER_HEIGHT);
       if (this.dataset.testid === 'focus-target') return rect(focusedTop, 32);
       return rect(0, 0);
     },
@@ -113,7 +115,9 @@ describe('OfflineStatusBanner - auto-scroll', () => {
     render(<OfflineStatusBanner />);
 
     expect(screen.getByTestId('offline-status-banner')).toBeInTheDocument();
-    expect(document.documentElement.style.scrollPaddingTop).toBe(`${BANNER_HEIGHT}px`);
+    expect(document.documentElement.style.scrollPaddingTop).toBe(
+      `${BANNER_HEIGHT}px`,
+    );
   });
 
   it('restores the previous scroll-padding-top once the banner hides', () => {
@@ -126,7 +130,9 @@ describe('OfflineStatusBanner - auto-scroll', () => {
     act(() => {
       vi.advanceTimersByTime(300);
     });
-    expect(document.documentElement.style.scrollPaddingTop).toBe(`${BANNER_HEIGHT}px`);
+    expect(document.documentElement.style.scrollPaddingTop).toBe(
+      `${BANNER_HEIGHT}px`,
+    );
 
     isOnline = true;
     rerender(<OfflineStatusBanner />);
@@ -134,7 +140,9 @@ describe('OfflineStatusBanner - auto-scroll', () => {
       vi.advanceTimersByTime(500);
     });
 
-    expect(screen.queryByTestId('offline-status-banner')).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('offline-status-banner'),
+    ).not.toBeInTheDocument();
     expect(document.documentElement.style.scrollPaddingTop).toBe('12px');
   });
 
@@ -170,7 +178,9 @@ describe('OfflineStatusBanner - auto-scroll', () => {
 
     render(<OfflineStatusBanner />);
 
-    expect(scrollBy).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'auto' }));
+    expect(scrollBy).toHaveBeenCalledWith(
+      expect.objectContaining({ behavior: 'auto' }),
+    );
   });
 
   it('does not scroll when the focused element is already clear of the banner', () => {
@@ -211,7 +221,9 @@ describe('OfflineStatusBanner - auto-scroll', () => {
       vi.advanceTimersByTime(300);
     });
 
-    expect(screen.queryByTestId('offline-status-banner')).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('offline-status-banner'),
+    ).not.toBeInTheDocument();
     expect(document.documentElement.style.scrollPaddingTop).toBe('');
     expect(scrollBy).not.toHaveBeenCalled();
   });

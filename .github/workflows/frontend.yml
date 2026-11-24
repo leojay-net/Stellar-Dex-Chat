@@ -60,14 +60,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Prettier check
-        run: pnpm check
-
-      - name: Type check
-        run: pnpm tsc --noEmit
-
       - name: Lint
         run: pnpm lint
+
+      - name: Type check
+        run: pnpm typecheck
+
+      - name: Prettier check
+        run: pnpm check
 
   # ── 2. Next.js build (independent of unit tests) ──────────────────────────
   build:
@@ -132,17 +132,47 @@ jobs:
       - name: Run unit tests (shard ${{ matrix.shard }}/4)
         run: |
           pnpm vitest run \
-            --coverage \
+            --coverage.enabled \
             --maxWorkers=1 \
             --pool=forks \
             --no-file-parallelism \
             --reporter=blob \
             --reporter=dot \
+            --reporter=junit \
+            --outputFile.junit="$RUNNER_TEMP/vitest-junit.xml" \
             --coverage.reporter=json-summary \
-            --coverage.clean \
             --shard=${{ matrix.shard }}/4
         env:
           NODE_OPTIONS: --max-old-space-size=8192
+          VITEST_COVERAGE_SHARD: "true"
+
+      - name: Summarize unit test results
+        if: always()
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import os
+          from html import escape
+          from pathlib import Path
+          from xml.etree import ElementTree
+
+          print(f"## Vitest shard {os.environ['SHARD']}/4")
+          report = Path(os.environ["RUNNER_TEMP"]) / "vitest-junit.xml"
+          if not report.exists():
+              print("JUnit report unavailable. See the test step log.")
+          else:
+              cases = list(ElementTree.parse(report).iter("testcase"))
+              failures = [
+                  case for case in cases
+                  if case.find("failure") is not None or case.find("error") is not None
+              ]
+              skipped = sum(case.find("skipped") is not None for case in cases)
+              print(f"{len(cases) - len(failures) - skipped} passed, {len(failures)} failed, {skipped} skipped.")
+              for case in failures:
+                  name = " › ".join(case.get(field, "") for field in ("classname", "name"))
+                  print(f"- <code>{escape(' '.join(name.split()))}</code>")
+          PY
 
       # Upload the vitest blob so coverage-merge can reconstruct full coverage.
       # The blob lands in .vitest-reports/ by vitest convention.
@@ -152,16 +182,8 @@ jobs:
         with:
           name: vitest-blob-${{ matrix.shard }}
           path: Dechat/dex_with_fiat_frontend/.vitest-reports/
-          retention-days: 1
-
-      # Upload per-shard coverage-summary.json so coverage-merge has something
-      # to work with even if --mergeReports fails.
-      - name: Upload coverage summary
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: coverage-summary-${{ matrix.shard }}
-          path: Dechat/dex_with_fiat_frontend/coverage/coverage-summary.json
+          include-hidden-files: true
+          if-no-files-found: error
           retention-days: 1
 
   # ── 4. Merge coverage blobs, produce report, write job summary ────────────
@@ -171,7 +193,7 @@ jobs:
     needs: unit-tests
     # Run when shards finish (pass or fail) so we always produce coverage data.
     # Skip only if the unit-tests job itself was skipped (e.g. path filter).
-    if: needs.unit-tests.result != 'skipped'
+    if: ${{ !cancelled() && needs.unit-tests.result != 'skipped' }}
 
     defaults:
       run:
@@ -206,13 +228,10 @@ jobs:
         run: |
           pnpm vitest run \
             --mergeReports \
-            --coverage \
+            --coverage.enabled \
             --reporter=default
         env:
           NODE_OPTIONS: --max-old-space-size=4096
-        # NOTE: coverage.thresholds are not configured in vitest.config.ts yet.
-        # The numbers below (stmt 70%, branch 65%, fn 70%, lines 70%) are targets
-        # only; this step does not fail on low coverage until thresholds are added.
 
       # Build the JSON consumed by coverage-comment.yml.
       - name: Generate coverage report artifact
@@ -235,7 +254,7 @@ jobs:
               branches: total.branches.pct,
               functions: total.functions.pct,
               lines: total.lines.pct,
-              targets: { statements: 70, branches: 65, functions: 70, lines: 70 },
+              targets: require('./coverage-thresholds.json'),
             };
             fs.writeFileSync('frontend-coverage-report.json', JSON.stringify(report));
           "
@@ -249,33 +268,11 @@ jobs:
           path: Dechat/dex_with_fiat_frontend/frontend-coverage-report.json
           retention-days: 7
 
-      # ── Job summary: before/after wall-clock comparison ──────────────────
-      # Before: 4 shards × ~N minutes sequential = total serial time.
-      # After:  longest shard (parallel) + merge time = total wall-clock time.
-      - name: Write job summary
-        if: always()
-        run: |
-          cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
-          ## Unit test timing
-
-          Shards ran in parallel. To see wall-clock times, check each
-          "Unit tests (shard N/4)" job in the Actions UI.
-
-          ### Before vs after wall-clock
-
-          **Before** — sequential shards in one job:
-          `wall-clock = shard1 + shard2 + shard3 + shard4 + merge`
-
-          **After** — parallel matrix + separate merge job:
-          `wall-clock = max(shard1, shard2, shard3, shard4) + merge`
-
-          The saving is roughly `sum(shards) - max(shards)`.
-          SUMMARY
-
   # ── 5. Playwright E2E — waits only for build + lint ──────────────────────
   e2e:
     name: Playwright E2E Tests
-    runs-on: ubuntu-latest
+    # The pinned Playwright version does not support Ubuntu 26.04.
+    runs-on: ubuntu-24.04
     needs: [build, lint]
 
     defaults:
@@ -315,6 +312,9 @@ jobs:
 
       - name: Build for E2E
         run: pnpm build
+        env:
+          # Next.js inlines this public flag into the browser bundle at build time.
+          NEXT_PUBLIC_E2E: "true"
 
       - name: Run Playwright E2E tests
         run: pnpm test:e2e

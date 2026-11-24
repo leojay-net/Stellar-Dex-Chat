@@ -58,7 +58,11 @@ export function isSafeUrl(url: string | undefined | null): boolean {
   const trimmed = url.trim();
 
   // Relative URLs are fine
-  if (trimmed.startsWith('/') || trimmed.startsWith('#') || trimmed.startsWith('.')) {
+  if (
+    trimmed.startsWith('/') ||
+    trimmed.startsWith('#') ||
+    trimmed.startsWith('.')
+  ) {
     return true;
   }
 
