@@ -1,5 +1,14 @@
 version: 2
 updates:
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    allow:
+      - dependency-name: "stellar/quickstart"
+    labels:
+      - "dependencies"
+
   # ── Cargo (Stellar smart contracts) ───────────────────────────────────────
   - package-ecosystem: "cargo"
     directory: "/Dechat/stellar-contracts"

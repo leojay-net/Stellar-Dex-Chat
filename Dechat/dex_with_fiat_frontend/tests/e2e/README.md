@@ -83,3 +83,9 @@ The tests use mocked Freighter wallet API to simulate:
 ✅ **Add e2e test for payout form and mocked transfer initiation**
 
 All tests provide clear validation output and cover both success and error scenarios for each feature.
+
+## Content Security Policy
+
+Import the shared `test` fixture from `./fixtures`. It records browser CSP
+violations before page scripts run and fails the test if any were reported.
+CI runs these flows against a production build.

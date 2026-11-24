@@ -277,7 +277,9 @@ fn test_deposit_after_migration_creates_escrow() {
     bridge.deposit(&user, &300, &token_addr, &Bytes::new(&env), &0, &0, &None);
 
     // The deposit made after migration must have an escrow record immediately
-    let escrow1 = bridge.get_escrow_record(&1).expect("post-migration deposit must have escrow record");
+    let escrow1 = bridge
+        .get_escrow_record(&1)
+        .expect("post-migration deposit must have escrow record");
     assert_eq!(escrow1.depositor, user);
     assert_eq!(escrow1.token, token_addr);
     assert_eq!(escrow1.amount, 300);

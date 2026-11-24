@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from './fixtures';
 import { gotoChatConnected, MOCK_WALLET_ADDRESS } from './helpers';
 
 test.describe('Wallet Connect UI Path', () => {

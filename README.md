@@ -17,7 +17,7 @@ docker compose up
 
 The services will be available at:
 - Frontend: http://localhost:3000
-- Soroban RPC: http://localhost:8000/soroban/rpc
+- Soroban RPC: http://localhost:8000/rpc
 - Horizon API: http://localhost:8000
 
 ## Documentation
