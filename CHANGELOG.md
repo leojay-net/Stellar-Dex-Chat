@@ -1322,6 +1322,9 @@ Closes #1724, #1725, #1726, #1728
 - **frontend:** Extend flaky CI timeouts #1756
 - **changelog:** Update changelog [skip ci]
 - **e2e:** Account for browser keyboard focus behavior
+- **changelog:** Update changelog [skip ci]
+- Format frontend and workflow baseline
+- **contracts:** Apply cargo fmt
 
 ### Deprecated
 
