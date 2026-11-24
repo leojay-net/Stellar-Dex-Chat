@@ -14,6 +14,15 @@ function extractStellarAddress(raw: string): string | null {
   return null;
 }
 
+interface BarcodeDetectorInstance {
+  detect(video: HTMLVideoElement): Promise<{ rawValue: string }[]>;
+}
+
+interface BarcodeDetectorConstructor {
+  new (options: { formats: string[] }): BarcodeDetectorInstance;
+  getSupportedFormats(): Promise<string[]>;
+}
+
 interface QrScannerProps {
   onScan: (address: string) => void;
   onClose: () => void;
@@ -60,9 +69,7 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
   useEffect(() => {
     if (!scanning) return;
 
-    let detector: {
-      detect: (src: HTMLVideoElement) => Promise<Array<{ rawValue: string }>>;
-    } | null = null;
+    let detector: BarcodeDetectorInstance | null = null;
     let jsQR:
       | ((
           data: Uint8ClampedArray,
@@ -76,14 +83,14 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
 
     async function init() {
       // Prefer native BarcodeDetector
-      if ('BarcodeDetector' in window) {
+      const { BarcodeDetector } = window as Window & {
+        BarcodeDetector?: BarcodeDetectorConstructor;
+      };
+      if (BarcodeDetector) {
         try {
-          // @ts-expect-error – BarcodeDetector not yet in TS lib
-          const supported: string[] =
-            await window.BarcodeDetector.getSupportedFormats();
+          const supported = await BarcodeDetector.getSupportedFormats();
           if (supported.includes('qr_code')) {
-            // @ts-expect-error
-            detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+            detector = new BarcodeDetector({ formats: ['qr_code'] });
           }
         } catch {
           // fall through to jsQR
@@ -93,11 +100,8 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
       // JS fallback: dynamic import keeps bundle size low
       if (!detector) {
         try {
-          const mod = await import(
-            'jsqr' as never /* avoids TS import warning */
-          );
-          // @ts-expect-error – dynamic import
-          jsQR = mod.default ?? mod;
+          const { default: decodeQr } = await import('jsqr');
+          jsQR = decodeQr;
           canvas = document.createElement('canvas');
           ctx = canvas.getContext('2d');
         } catch {

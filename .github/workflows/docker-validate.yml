@@ -59,13 +59,31 @@ jobs:
 
       - name: Check for pinned stellar/quickstart image
         run: |
-          if grep -q 'stellar/quickstart:latest' docker-compose.yml; then
-            echo "❌ ERROR: stellar/quickstart image should be pinned to a specific tag, not 'latest'"
-            echo "   Example: stellar/quickstart:testing or stellar/quickstart:soroban-dev"
+          if ! docker compose config --images | grep -Eq '^stellar/quickstart:[^@]+@sha256:[a-f0-9]{64}$'; then
+            echo "Pin stellar/quickstart to an immutable sha256 digest."
             exit 1
           fi
 
-          echo "✅ stellar/quickstart image is pinned"
+      - name: Smoke-test pinned Quickstart
+        shell: bash
+        run: |
+          docker compose up --wait --wait-timeout 120 soroban-local-net
+          curl --fail --silent --show-error http://localhost:8000/ > /dev/null
+          for attempt in {1..24}; do
+            if curl --fail --silent --show-error --max-time 3 http://localhost:8000/rpc \
+              -H 'Content-Type: application/json' \
+              -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' | jq -e '.result.status == "healthy"'; then
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 1
+
+      - name: Stop Quickstart
+        if: always()
+        run: |
+          docker compose logs --tail 100 soroban-local-net
+          docker compose down
 
       - name: Verify no obsolete version key
         run: |

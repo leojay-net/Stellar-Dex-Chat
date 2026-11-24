@@ -1,0 +1,51 @@
+name: Local CI parity
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - Makefile
+      - .github/workflows/ci-parity.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  make-ci:
+    name: Run make ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GEMINI_API_KEY: PLACEHOLDER
+      PAYSTACK_SECRET_KEY: PLACEHOLDER
+      PAYOUT_PROVIDER: paystack
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          package_json_file: Dechat/dex_with_fiat_frontend/package.json
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: Dechat/dex_with_fiat_frontend/pnpm-lock.yaml
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+          targets: wasm32v1-none
+      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+        with:
+          workspaces: Dechat/stellar-contracts -> target
+      - name: Install frontend dependencies and browsers
+        working-directory: Dechat/dex_with_fiat_frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium firefox webkit
+      - name: Install contract tooling
+        run: |
+          cargo install --locked stellar-cli --version 28.0.0
+          cargo install --locked cargo-deny --version 0.20.2
+      - run: make ci

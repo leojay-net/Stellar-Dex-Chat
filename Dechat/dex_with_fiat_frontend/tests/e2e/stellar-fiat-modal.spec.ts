@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from './fixtures';
 import { mockSorobanRpc, MOCK_WALLET_ADDRESS } from './helpers';
 
 test.describe('StellarFiatModal E2E Tests', () => {

@@ -1,24 +1,64 @@
-.PHONY: ci frontend-typecheck frontend-lint frontend-build frontend-test frontend-e2e contracts-test
+# Keep the validation targets below aligned with frontend.yml and contracts.yml.
+# CI calls these same targets. GitHub-specific reporting stays in the workflows.
+# Use Node 24 and the pnpm version in the frontend package.json. Install the
+# frontend dependencies and Playwright browsers before running make ci.
+# Contracts require stable Rust, rustfmt, clippy, wasm32v1-none, Stellar CLI
+# 28.0.0 and cargo-deny 0.20.2 (the version in the contract CI action).
+FRONTEND := Dechat/dex_with_fiat_frontend
+CONTRACTS := Dechat/stellar-contracts
+PNPM := pnpm --dir $(FRONTEND)
+WASM := $(CONTRACTS)/target/wasm32v1-none/release/stellar_contracts.optimized.wasm
+MAX_WASM_BYTES ?= 98500
 
-# Reproduces the validation matrix used by the pull-request workflows.
-ci: frontend-typecheck frontend-lint frontend-build frontend-test frontend-e2e contracts-test
+.PHONY: ci frontend-check frontend-typecheck frontend-lint frontend-build frontend-test \
+	frontend-coverage-merge frontend-e2e-build frontend-e2e contracts-fmt \
+	contracts-test contracts-clippy contracts-build contracts-size contracts-deny
+
+.NOTPARALLEL: ci
+ci: frontend-check frontend-typecheck frontend-lint frontend-build frontend-test \
+	frontend-e2e-build frontend-e2e contracts-fmt contracts-test contracts-clippy \
+	contracts-build contracts-size contracts-deny
+
+frontend-check:
+	$(PNPM) check
 
 frontend-typecheck:
-	pnpm --dir Dechat/dex_with_fiat_frontend typecheck
+	$(PNPM) typecheck
 
 frontend-lint:
-	pnpm --dir Dechat/dex_with_fiat_frontend lint
+	$(PNPM) lint
 
 frontend-build:
-	pnpm --dir Dechat/dex_with_fiat_frontend build
+	$(PNPM) build
 
 frontend-test:
-	pnpm --dir Dechat/dex_with_fiat_frontend test:coverage
+	NODE_OPTIONS=--max-old-space-size=8192 $(PNPM) test:coverage $(if $(SHARD),--reporter=blob --reporter=dot --coverage.reporter=json-summary --coverage.clean --shard=$(SHARD))
+
+frontend-coverage-merge:
+	NODE_OPTIONS=--max-old-space-size=4096 $(PNPM) test:coverage:merge
+
+frontend-e2e-build:
+	NEXT_PUBLIC_E2E=true $(PNPM) build
 
 frontend-e2e:
-	pnpm --dir Dechat/dex_with_fiat_frontend test:e2e
+	CI=true $(PNPM) test:e2e
+
+contracts-fmt:
+	cd $(CONTRACTS) && cargo fmt --all -- --check
 
 contracts-test:
-	cargo test --manifest-path Dechat/stellar-contracts/Cargo.toml
-	cargo build --manifest-path Dechat/stellar-contracts/Cargo.toml --target wasm32-unknown-unknown --release
-	cargo clippy --manifest-path Dechat/stellar-contracts/Cargo.toml --all-targets --all-features -- -D warnings
+	cd $(CONTRACTS) && cargo test
+
+contracts-clippy:
+	cd $(CONTRACTS) && cargo clippy --all-targets --all-features -- -D warnings
+
+contracts-build:
+	cd $(CONTRACTS) && stellar contract build
+
+contracts-size:
+	@size=$$(wc -c < "$(WASM)") && \
+		echo "Contract WASM size: $$size bytes (limit $(MAX_WASM_BYTES))" && \
+		test "$$size" -le "$(MAX_WASM_BYTES)"
+
+contracts-deny:
+	cargo deny --manifest-path $(CONTRACTS)/Cargo.toml check licenses advisories bans sources
