@@ -448,7 +448,6 @@ Repo Avatar
 
 ### Fixed
 
-- Frontend maintenance batch for issues #1770, #1773, #1774, and #1775
 - Add missing Ledger import and fix sequence_number field name in tests
 - Integrate receipt system with allowlist branch
 - Properly integrate multi-token + receipt system features
@@ -1304,6 +1303,8 @@ Repo Avatar
 Closes #1724, #1725, #1726, #1728
 - **changelog:** Update changelog [skip ci]
 - Ignore temporary PR description files
+- **changelog:** Update changelog [skip ci]
+- **frontend:** Update changelog for maintenance batch
 
 ### Deprecated
 
