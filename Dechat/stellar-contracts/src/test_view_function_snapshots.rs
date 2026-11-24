@@ -7,10 +7,10 @@
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     token::{Client as TokenClient, StellarAssetClient},
-    vec, Address, Env,
+    vec, Address, Bytes, Env,
 };
 
-use crate::{FiatBridge, FiatBridgeClient, Receipt};
+use crate::{FiatBridge, FiatBridgeClient};
 
 fn setup(env: &Env) -> (FiatBridgeClient, Address, Address, TokenClient) {
     let contract_id = env.register(FiatBridge, ());
@@ -31,6 +31,25 @@ fn setup(env: &Env) -> (FiatBridgeClient, Address, Address, TokenClient) {
     (client, admin, token_addr, token)
 }
 
+fn make_deposit(
+    env: &Env,
+    client: &FiatBridgeClient,
+    token_addr: &Address,
+    depositor: &Address,
+    amount: i128,
+) {
+    StellarAssetClient::new(env, token_addr).mint(depositor, &amount);
+    client.deposit(
+        depositor,
+        &amount,
+        token_addr,
+        &Bytes::new(env),
+        &0,
+        &0,
+        &None,
+    );
+}
+
 /// Snapshot test for get_receipt_by_index return shape.
 /// Verifies that Receipt struct fields remain stable and in expected format.
 #[test]
@@ -39,38 +58,34 @@ fn snapshot_get_receipt_by_index() {
     env.mock_all_auths();
     env.ledger().with_mut(|l| l.sequence_number = 500);
 
-    let (client, admin, _token_addr, _token) = setup(&env);
+    let (client, _admin, token_addr, _token) = setup(&env);
 
     let depositor = Address::generate(&env);
     let deposit_amount: i128 = 1_000_000;
 
     // Make a deposit to create a receipt
-    client.deposit(&depositor, &deposit_amount);
+    make_deposit(&env, &client, &token_addr, &depositor, deposit_amount);
 
     // Get the receipt by index
-    let receipt = client.get_receipt_by_index(&0u64);
+    let receipt = client
+        .get_receipt_by_index(&0u64)
+        .expect("Receipt at index 0 should exist");
 
-    // Verify the receipt is Some and has expected structure
-    assert!(receipt.is_some(), "Receipt at index 0 should exist");
+    // Verify Receipt has the current contract fields
+    let _id = receipt.id.clone();
+    let _depositor_addr = receipt.depositor.clone();
+    let _receipt_token = receipt.token.clone();
+    let _amount = receipt.amount;
+    let _ledger = receipt.ledger;
+    let _reference = receipt.reference.clone();
+    let _memo_hash = receipt.memo_hash.clone();
 
-    if let Some(receipt_data) = receipt {
-        // Verify Receipt has expected fields by accessing them
-        let _idx = receipt_data.idx;
-        let _depositor_addr = receipt_data.depositor;
-        let _amount = receipt_data.amount;
-        let _timestamp = receipt_data.timestamp;
-        let _tx_hash = receipt_data.tx_hash;
-
-        // Snapshot assertions on field values
-        assert_eq!(receipt_data.idx, 0, "Receipt index should be 0");
-        assert_eq!(receipt_data.depositor, depositor, "Depositor should match");
-        assert_eq!(receipt_data.amount, deposit_amount, "Amount should match");
-        assert!(receipt_data.timestamp > 0, "Timestamp should be set");
-        assert!(
-            !receipt_data.tx_hash.is_empty(),
-            "Tx hash should not be empty"
-        );
-    }
+    assert_eq!(receipt.depositor, depositor, "Depositor should match");
+    assert_eq!(receipt.token, token_addr, "Token should match");
+    assert_eq!(receipt.amount, deposit_amount, "Amount should match");
+    assert_eq!(receipt.ledger, 500, "Ledger should be recorded");
+    assert!(receipt.reference.is_empty(), "Reference should be empty");
+    assert!(receipt.memo_hash.is_none(), "Memo hash should be absent");
 }
 
 /// Snapshot test for get_receipt_by_index with non-existent index.
@@ -80,7 +95,7 @@ fn snapshot_get_receipt_by_index_nonexistent() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (client, _admin, _token_addr, _token) = setup(&env);
+    let (client, _admin, token_addr, _token) = setup(&env);
 
     // Try to get a receipt that doesn't exist
     let receipt = client.get_receipt_by_index(&999u64);
@@ -100,7 +115,7 @@ fn snapshot_get_accrued_fees() {
     env.mock_all_auths();
     env.ledger().with_mut(|l| l.sequence_number = 500);
 
-    let (client, admin, token_addr, _token) = setup(&env);
+    let (client, _admin, token_addr, _token) = setup(&env);
 
     let initial_fees = client.get_accrued_fees(&token_addr);
 
@@ -111,7 +126,7 @@ fn snapshot_get_accrued_fees() {
     // Make a deposit to accrue some fees (assuming 1% fee rate)
     let depositor = Address::generate(&env);
     let deposit_amount: i128 = 1_000_000;
-    client.deposit(&depositor, &deposit_amount);
+    make_deposit(&env, &client, &token_addr, &depositor, deposit_amount);
 
     // Get updated fees
     let updated_fees = client.get_accrued_fees(&token_addr);
@@ -125,44 +140,29 @@ fn snapshot_get_accrued_fees() {
 }
 
 /// Snapshot test for get_total_deposited return shape and value.
-/// Verifies total deposit tracking returns Result<i128, Error> with correct semantics.
+/// Verifies total deposit tracking returns i128 with correct semantics.
 #[test]
 fn snapshot_get_total_deposited() {
     let env = Env::default();
     env.mock_all_auths();
     env.ledger().with_mut(|l| l.sequence_number = 500);
 
-    let (client, _admin, _token_addr, _token) = setup(&env);
+    let (client, _admin, token_addr, _token) = setup(&env);
 
     let initial_total = client.get_total_deposited();
-
-    // Verify return type is Result<i128, Error>
-    assert!(
-        initial_total.is_ok(),
-        "get_total_deposited should return Ok for initial state"
-    );
-    assert_eq!(
-        initial_total.unwrap_or(0),
-        0,
-        "Initial total deposited should be 0"
-    );
+    assert_eq!(initial_total, 0, "Initial total deposited should be 0");
 
     // Make a deposit
     let depositor = Address::generate(&env);
     let deposit_amount: i128 = 1_000_000;
-    client.deposit(&depositor, &deposit_amount);
+    make_deposit(&env, &client, &token_addr, &depositor, deposit_amount);
 
     // Get updated total
     let updated_total = client.get_total_deposited();
 
     // Verify total increased
-    assert!(
-        updated_total.is_ok(),
-        "get_total_deposited should return Ok"
-    );
     assert_eq!(
-        updated_total.unwrap_or(0),
-        deposit_amount,
+        updated_total, deposit_amount,
         "Total deposited should equal the deposit amount"
     );
 }
@@ -175,7 +175,7 @@ fn snapshot_get_total_deposited_cumulative() {
     env.mock_all_auths();
     env.ledger().with_mut(|l| l.sequence_number = 500);
 
-    let (client, _admin, _token_addr, _token) = setup(&env);
+    let (client, _admin, token_addr, _token) = setup(&env);
 
     let depositor1 = Address::generate(&env);
     let depositor2 = Address::generate(&env);
@@ -183,17 +183,17 @@ fn snapshot_get_total_deposited_cumulative() {
     let deposit2 = 2_000_000i128;
 
     // First deposit
-    client.deposit(&depositor1, &deposit1);
+    make_deposit(&env, &client, &token_addr, &depositor1, deposit1);
     let total_after_first = client.get_total_deposited();
-    assert_eq!(total_after_first.unwrap_or(0), deposit1);
+    assert_eq!(total_after_first, deposit1);
 
     // Second deposit
-    client.deposit(&depositor2, &deposit2);
+    make_deposit(&env, &client, &token_addr, &depositor2, deposit2);
     let total_after_second = client.get_total_deposited();
 
     // Verify cumulative total
     assert_eq!(
-        total_after_second.unwrap_or(0),
+        total_after_second,
         deposit1 + deposit2,
         "Total deposited should be sum of all deposits"
     );
@@ -207,16 +207,13 @@ fn snapshot_receipt_field_immutability() {
     env.mock_all_auths();
     env.ledger().with_mut(|l| l.sequence_number = 500);
 
-    let (client, _admin, _token_addr, _token) = setup(&env);
+    let (client, _admin, token_addr, _token) = setup(&env);
 
     let depositor = Address::generate(&env);
     let deposit_amount: i128 = 1_000_000;
 
-    // Record initial timestamp
-    let block_timestamp = env.ledger().timestamp();
-
     // Make deposit
-    client.deposit(&depositor, &deposit_amount);
+    make_deposit(&env, &client, &token_addr, &depositor, deposit_amount);
 
     // Retrieve receipt
     let receipt = client
@@ -224,18 +221,12 @@ fn snapshot_receipt_field_immutability() {
         .expect("Receipt should exist");
 
     // Verify receipt fields are immutable and match what we set
-    assert_eq!(receipt.idx, 0, "Index should be 0 for first receipt");
+    assert_eq!(receipt.token, token_addr, "Token should match");
     assert_eq!(receipt.depositor, depositor, "Depositor should match");
     assert_eq!(receipt.amount, deposit_amount, "Amount should match");
-    assert!(
-        receipt.timestamp >= block_timestamp,
-        "Timestamp should be >= block time"
-    );
+    assert_eq!(receipt.ledger, 500, "Ledger should be recorded");
 
     // Verify we can read fields multiple times (immutability check)
-    let receipt_idx_again = client.get_receipt_by_index(&0u64).unwrap().idx;
-    assert_eq!(
-        receipt_idx_again, 0,
-        "Receipt index should be same on repeated reads"
-    );
+    let receipt_id_again = client.get_receipt_by_index(&0u64).unwrap().id;
+    assert_eq!(receipt_id_again, receipt.id, "Receipt ID should be stable");
 }

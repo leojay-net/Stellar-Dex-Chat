@@ -4145,15 +4145,22 @@ impl FiatBridge {
         Ok(())
     }
 
-    pub fn withdraw_fees_batch(env: Env, to: Address, tokens: Vec<Address>) -> Result<(), Error> {
+    /// Withdraw accrued fees for multiple tokens using the shared fee-withdrawal nonce.
+    ///
+    /// Only the admin may call this entrypoint; `nonce` must match the current admin nonce.
+    pub fn withdraw_fees_batch(
+        env: Env,
+        to: Address,
+        tokens: Vec<Address>,
+        nonce: u64,
+    ) -> Result<(), Error> {
         // ── Issue #1041: emit telemetry event
         Self::emit_telemetry(&env, Symbol::new(&env, "withdraw_fees_batch"));
 
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::FeeRecipient)
-            .unwrap_or(to);
+        let admin = Self::require_admin(&env)?;
+        let nonce_key = DataKey::FeeWithdrawalNonceByCaller(admin.clone());
+        let current_nonce: u64 = env.storage().instance().get(&nonce_key).unwrap_or(0);
+        Self::check_nonce(current_nonce, nonce)?;
 
         // ── Issue #1044: use fee_recipient if set, otherwise use the provided 'to' address
         let recipient = env
@@ -4187,6 +4194,8 @@ impl FiatBridge {
             // Issue #1383: check invariants after each fee withdrawal to prevent draining depositor funds
             Self::check_invariants(&env, &token)?;
         }
+
+        Self::validate_and_increment_fee_withdrawal_nonce(&env, &admin, nonce)?;
 
         Ok(())
     }
