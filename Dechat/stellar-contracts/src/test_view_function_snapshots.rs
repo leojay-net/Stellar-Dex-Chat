@@ -66,7 +66,10 @@ fn snapshot_get_receipt_by_index() {
         assert_eq!(receipt_data.depositor, depositor, "Depositor should match");
         assert_eq!(receipt_data.amount, deposit_amount, "Amount should match");
         assert!(receipt_data.timestamp > 0, "Timestamp should be set");
-        assert!(!receipt_data.tx_hash.is_empty(), "Tx hash should not be empty");
+        assert!(
+            !receipt_data.tx_hash.is_empty(),
+            "Tx hash should not be empty"
+        );
     }
 }
 
@@ -114,7 +117,10 @@ fn snapshot_get_accrued_fees() {
     let updated_fees = client.get_accrued_fees(&token_addr);
 
     // Verify fees increased
-    assert!(updated_fees > initial_fees, "Fees should increase after deposit");
+    assert!(
+        updated_fees > initial_fees,
+        "Fees should increase after deposit"
+    );
     assert!(updated_fees > 0, "Fees should be positive after deposit");
 }
 
@@ -150,7 +156,10 @@ fn snapshot_get_total_deposited() {
     let updated_total = client.get_total_deposited();
 
     // Verify total increased
-    assert!(updated_total.is_ok(), "get_total_deposited should return Ok");
+    assert!(
+        updated_total.is_ok(),
+        "get_total_deposited should return Ok"
+    );
     assert_eq!(
         updated_total.unwrap_or(0),
         deposit_amount,
@@ -210,7 +219,9 @@ fn snapshot_receipt_field_immutability() {
     client.deposit(&depositor, &deposit_amount);
 
     // Retrieve receipt
-    let receipt = client.get_receipt_by_index(&0u64).expect("Receipt should exist");
+    let receipt = client
+        .get_receipt_by_index(&0u64)
+        .expect("Receipt should exist");
 
     // Verify receipt fields are immutable and match what we set
     assert_eq!(receipt.idx, 0, "Index should be 0 for first receipt");

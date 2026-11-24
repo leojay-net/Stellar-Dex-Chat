@@ -478,6 +478,14 @@ pub struct FeeAccruedEvent {
 
 #[contractevent]
 #[derive(Clone, Debug)]
+pub struct FeeRecipientSetEvent {
+    pub version: u32,
+    pub old_recipient: Option<Address>,
+    pub new_recipient: Option<Address>,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
 pub struct RefundEvent {
     pub version: u32,
     pub receipt_id: BytesN<32>,
@@ -1060,9 +1068,13 @@ pub struct FiatBridge;
 impl FiatBridge {
     // ── Issue #1041: telemetry helper ───────────────────────────────────
     fn emit_telemetry(env: &Env, function_name: Symbol) {
-        TelemetryEvent { version: EVENT_VERSION, function_name }.publish(env);
+        TelemetryEvent {
+            version: EVENT_VERSION,
+            function_name,
+        }
+        .publish(env);
     }
-    
+
     pub fn init(
         env: Env,
         admin: Address,
@@ -1075,7 +1087,7 @@ impl FiatBridge {
     ) -> Result<(), Error> {
         // ── Issue #1041: emit telemetry event
         Self::emit_telemetry(&env, Symbol::new(&env, "init"));
-        
+
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(Error::AlreadyInitialized);
         }
@@ -1260,7 +1272,7 @@ impl FiatBridge {
     ) -> Result<BytesN<32>, Error> {
         // ── Issue #1041: emit telemetry event
         Self::emit_telemetry(&env, Symbol::new(&env, "deposit"));
-        
+
         env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
         Self::validate_memo_hash(&env, &memo_hash)?;
         from.require_auth();
@@ -4136,7 +4148,7 @@ impl FiatBridge {
     pub fn withdraw_fees_batch(env: Env, to: Address, tokens: Vec<Address>) -> Result<(), Error> {
         // ── Issue #1041: emit telemetry event
         Self::emit_telemetry(&env, Symbol::new(&env, "withdraw_fees_batch"));
-        
+
         let admin: Address = env
             .storage()
             .instance()
@@ -4370,45 +4382,6 @@ impl FiatBridge {
             .get(&DataKey::SlippageThreshold)
             .unwrap_or(0)
     }
-    
-    // ── Issue #1044: fee recipient management ───────────────────────────
-    pub fn set_fee_recipient(env: Env, recipient: Address) -> Result<(), Error> {
-        // ── Issue #1041: emit telemetry event
-        Self::emit_telemetry(&env, Symbol::new(&env, "set_fee_recipient"));
-        
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(Error::NotInitialized)?;
-        admin.require_auth();
-        
-        env.storage().instance().set(&DataKey::FeeRecipient, &recipient);
-        Ok(())
-    }
-    
-    pub fn get_fee_recipient(env: Env) -> Option<Address> {
-        env.storage().instance().get(&DataKey::FeeRecipient)
-    }
-    
-    pub fn get_receipt_by_index(env: Env, idx: u64) -> Option<Receipt> {
-        let max_receipts: u64 = env.storage().instance().get(&DataKey::ReceiptCounter).unwrap_or(0);
-        if idx >= max_receipts {
-            // Circuit breaker: emit event and return None to prevent out-of-bounds
-            // execution and excessive compute cycles
-            ReceiptOobEvent { version: EVENT_VERSION }.publish(&env);
-            return None;
-        }
-        let receipt_hash: BytesN<32> = env
-            .storage()
-            .temporary()
-            .get(&DataKey::ReceiptIndex(idx))?;
-        env.storage()
-            .instance()
-            .get(&DataKey::SlippageThreshold)
-            .unwrap_or(0)
-    }
-
     /// Set the protocol-wide maximum slippage, in basis points (BPS).
     ///
     /// 1 BPS = 0.01%, so 10000 BPS = 100%. When non-zero, [`deposit`](FiatBridge::deposit)
@@ -5156,41 +5129,6 @@ impl FiatBridge {
         env: Env,
         operations: Vec<BatchAdminOp>,
     ) -> Result<BatchResult, Error> {
-        // ── Issue #1041: emit telemetry event
-        Self::emit_telemetry(&env, Symbol::new(&env, "execute_batch_admin"));
-        
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::ReceiptCounter)
-            .unwrap_or(0);
-
-        if cursor > receipt_counter {
-            return Err(Error::InvalidAmount);
-        }
-
-        env.storage()
-            .instance()
-            .set(&DataKey::EscrowMigrationCursor, &cursor);
-
-        if cursor < receipt_counter {
-            env.storage()
-                .instance()
-                .set(&DataKey::EscrowStorageVersion, &0u32);
-        } else {
-            env.storage()
-                .instance()
-                .set(&DataKey::EscrowStorageVersion, &ESCROW_STORAGE_VERSION);
-        }
-
-        Ok(())
-    }
-
-    // ── Batched Admin Operations ──────────────────────────────────────────
-    pub fn execute_batch_admin(
-        env: Env,
-        operations: Vec<BatchAdminOp>,
-    ) -> Result<BatchResult, Error> {
         let admin = Self::require_admin(&env)?;
 
         // Issue #841: reject if admin has been granted the operator role (role confusion)
@@ -5308,7 +5246,11 @@ impl FiatBridge {
             env.storage()
                 .instance()
                 .set(&DataKey::SlippageThreshold, &threshold_bps);
-            SlippageThresholdSetEvent { version: EVENT_VERSION, threshold_bps }.publish(env);
+            SlippageThresholdSetEvent {
+                version: EVENT_VERSION,
+                threshold_bps,
+            }
+            .publish(env);
             Ok(())
         } else if *op_name == Symbol::new(env, "set_limit") {
             let (token, limit) = if let Ok(args) = SetLimitArgs::from_xdr(env, &op.payload) {

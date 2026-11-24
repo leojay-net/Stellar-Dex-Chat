@@ -20,36 +20,45 @@ const COACH_MARKS: CoachMark[] = [
   {
     id: 'wallet',
     title: 'Connect Your Wallet',
-    description: 'Click here to connect your Stellar wallet using Freighter. You need a connected wallet to make transactions.',
-    targetSelector: '#onboarding-wallet-connect, button[aria-label*="connect"], button[aria-label*="wallet"]',
+    description:
+      'Click here to connect your Stellar wallet using Freighter. You need a connected wallet to make transactions.',
+    targetSelector:
+      '#onboarding-wallet-connect, button[aria-label*="connect"], button[aria-label*="wallet"]',
     position: 'bottom',
   },
   {
     id: 'chat',
     title: 'Chat with the Assistant',
-    description: 'Type your questions here. Try commands like /deposit, /rates, /portfolio, or /help to get started.',
-    targetSelector: '[data-testid="chat-input-textarea"], textarea[placeholder*="Ask"]',
+    description:
+      'Type your questions here. Try commands like /deposit, /rates, /portfolio, or /help to get started.',
+    targetSelector:
+      '[data-testid="chat-input-textarea"], textarea[placeholder*="Ask"]',
     position: 'top',
   },
   {
     id: 'sidebar',
     title: 'Chat History',
-    description: 'Access your previous conversations and continue where you left off.',
-    targetSelector: '#onboarding-sidebar-toggle, button[aria-label*="menu"], button[aria-label*="sidebar"]',
+    description:
+      'Access your previous conversations and continue where you left off.',
+    targetSelector:
+      '#onboarding-sidebar-toggle, button[aria-label*="menu"], button[aria-label*="sidebar"]',
     position: 'right',
   },
   {
     id: 'settings',
     title: 'Settings & Preferences',
-    description: 'Customize your experience: change currency, language, manage beneficiaries, and re-open this tour anytime.',
+    description:
+      'Customize your experience: change currency, language, manage beneficiaries, and re-open this tour anytime.',
     targetSelector: '#onboarding-settings, button[aria-label*="settings"]',
     position: 'left',
   },
   {
     id: 'fees',
     title: 'Transaction Fees',
-    description: 'Stellar transactions have minimal fees. Check the network status badge at the top to see connection health.',
-    targetSelector: '#onboarding-health-badge, [role="status"][title*="API"], [role="status"][title*="Stellar"]',
+    description:
+      'Stellar transactions have minimal fees. Check the network status badge at the top to see connection health.',
+    targetSelector:
+      '#onboarding-health-badge, [role="status"][title*="API"], [role="status"][title*="Stellar"]',
     position: 'bottom',
   },
 ];
@@ -102,20 +111,30 @@ export function useOnboarding() {
   };
 }
 
-export default function Onboarding({ isOpen, onClose, forceShow = false }: OnboardingProps) {
+export default function Onboarding({
+  isOpen,
+  onClose,
+  forceShow = false,
+}: OnboardingProps) {
+  const isVisible = isOpen || forceShow;
   const { isDarkMode } = useTheme();
   const [currentStep, setCurrentStep] = useState(0);
   const [targetElement, setTargetElement] = useState<HTMLElement | null>(null);
-  const [highlightPosition, setHighlightPosition] = useState({ top: 0, left: 0, width: 0, height: 0 });
+  const [highlightPosition, setHighlightPosition] = useState({
+    top: 0,
+    left: 0,
+    width: 0,
+    height: 0,
+  });
   const panelRef = useRef<HTMLDivElement>(null);
 
-  useAccessibleModal(isOpen, panelRef, onClose);
+  useAccessibleModal(isVisible, panelRef, onClose);
 
   const currentMark = COACH_MARKS[currentStep];
 
   // Find and highlight the target element
   useEffect(() => {
-    if (!isOpen || !currentMark) return;
+    if (!isVisible || !currentMark) return;
 
     const findTarget = () => {
       const targets = document.querySelectorAll(currentMark.targetSelector);
@@ -143,7 +162,7 @@ export default function Onboarding({ isOpen, onClose, forceShow = false }: Onboa
       clearTimeout(timeout);
       clearTimeout(retryTimeout);
     };
-  }, [isOpen, currentStep, currentMark]);
+  }, [isVisible, currentStep, currentMark]);
 
   // Scroll target into view
   useEffect(() => {
@@ -193,7 +212,7 @@ export default function Onboarding({ isOpen, onClose, forceShow = false }: Onboa
     }
   };
 
-  if (!isOpen) return null;
+  if (!isVisible) return null;
 
   // Calculate popover position based on target and coach mark position
   const getPopoverPosition = () => {
@@ -241,12 +260,14 @@ export default function Onboarding({ isOpen, onClose, forceShow = false }: Onboa
             isDarkMode ? 'bg-black/70' : 'bg-black/50'
           }`}
         />
-        
+
         {/* Highlight hole */}
         {targetElement && (
           <div
             className={`absolute transition-all duration-300 ease-out border-2 ${
-              isDarkMode ? 'border-blue-400 shadow-[0_0_0_4px_rgba(59,130,246,0.3)]' : 'border-blue-500 shadow-[0_0_0_4px_rgba(59,130,246,0.2)]'
+              isDarkMode
+                ? 'border-blue-400 shadow-[0_0_0_4px_rgba(59,130,246,0.3)]'
+                : 'border-blue-500 shadow-[0_0_0_4px_rgba(59,130,246,0.2)]'
             }`}
             style={{
               top: highlightPosition.top,
@@ -268,7 +289,9 @@ export default function Onboarding({ isOpen, onClose, forceShow = false }: Onboa
         tabIndex={-1}
         onKeyDown={handleKeyDown}
         className={`fixed z-[110] w-80 rounded-xl shadow-2xl transition-all duration-300 ease-out pointer-events-auto focus:outline-none ${
-          isDarkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'
+          isDarkMode
+            ? 'bg-gray-800 border border-gray-700'
+            : 'bg-white border border-gray-200'
         }`}
         style={{
           top: popoverPosition.top,
@@ -307,16 +330,22 @@ export default function Onboarding({ isOpen, onClose, forceShow = false }: Onboa
                 />
               ))}
             </div>
-            <span className={`text-xs font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            <span
+              className={`text-xs font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+            >
               {currentStep + 1} / {COACH_MARKS.length}
             </span>
           </div>
 
           {/* Title and description */}
-          <h3 className={`text-base font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+          <h3
+            className={`text-base font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+          >
             {currentMark.title}
           </h3>
-          <p className={`text-sm leading-relaxed mb-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+          <p
+            className={`text-sm leading-relaxed mb-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
+          >
             {currentMark.description}
           </p>
 
@@ -325,7 +354,9 @@ export default function Onboarding({ isOpen, onClose, forceShow = false }: Onboa
             <button
               onClick={handleSkip}
               className={`text-sm font-medium transition-colors ${
-                isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'
+                isDarkMode
+                  ? 'text-gray-400 hover:text-gray-200'
+                  : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               Skip tour
@@ -348,7 +379,11 @@ export default function Onboarding({ isOpen, onClose, forceShow = false }: Onboa
 
               <button
                 onClick={handleNext}
-                aria-label={currentStep === COACH_MARKS.length - 1 ? 'Complete onboarding' : 'Next step'}
+                aria-label={
+                  currentStep === COACH_MARKS.length - 1
+                    ? 'Complete onboarding'
+                    : 'Next step'
+                }
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   isDarkMode
                     ? 'bg-blue-600 text-white hover:bg-blue-700'
@@ -374,16 +409,40 @@ export default function Onboarding({ isOpen, onClose, forceShow = false }: Onboa
         {/* Arrow pointing to target */}
         <div
           className={`absolute w-3 h-3 transform rotate-45 ${
-            isDarkMode ? 'bg-gray-800 border-r border-b border-gray-700' : 'bg-white border-r border-b border-gray-200'
+            isDarkMode
+              ? 'bg-gray-800 border-r border-b border-gray-700'
+              : 'bg-white border-r border-b border-gray-200'
           }`}
           style={{
-            top: currentMark.position === 'bottom' ? '-6px' : currentMark.position === 'top' ? 'auto' : '50%',
-            bottom: currentMark.position === 'top' ? '-6px' : currentMark.position === 'bottom' ? 'auto' : 'auto',
-            left: currentMark.position === 'right' ? '-6px' : currentMark.position === 'left' ? 'auto' : '50%',
-            right: currentMark.position === 'left' ? '-6px' : currentMark.position === 'right' ? 'auto' : 'auto',
-            transform: currentMark.position === 'top' || currentMark.position === 'bottom'
-              ? 'translateX(-50%) rotate(45deg)'
-              : 'translateY(-50%) rotate(45deg)',
+            top:
+              currentMark.position === 'bottom'
+                ? '-6px'
+                : currentMark.position === 'top'
+                  ? 'auto'
+                  : '50%',
+            bottom:
+              currentMark.position === 'top'
+                ? '-6px'
+                : currentMark.position === 'bottom'
+                  ? 'auto'
+                  : 'auto',
+            left:
+              currentMark.position === 'right'
+                ? '-6px'
+                : currentMark.position === 'left'
+                  ? 'auto'
+                  : '50%',
+            right:
+              currentMark.position === 'left'
+                ? '-6px'
+                : currentMark.position === 'right'
+                  ? 'auto'
+                  : 'auto',
+            transform:
+              currentMark.position === 'top' ||
+              currentMark.position === 'bottom'
+                ? 'translateX(-50%) rotate(45deg)'
+                : 'translateY(-50%) rotate(45deg)',
           }}
         />
       </div>

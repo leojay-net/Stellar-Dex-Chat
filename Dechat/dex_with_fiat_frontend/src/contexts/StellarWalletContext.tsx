@@ -9,27 +9,16 @@ import {
   useMemo,
   ReactNode,
 } from 'react';
-import {
-  isConnected as freighterIsConnected,
-  getAddress,
-  getNetwork,
-  signTransaction,
-  requestAccess,
-  setAllowed,
-} from '@stellar/freighter-api';
-import { Networks } from '@stellar/stellar-sdk';
 import { fetchXlmBalance } from '@/lib/stellarContract';
 import { WalletAdapter, WalletInfo } from '@/lib/wallets/types';
 import {
-  getAllAdapters,
   getAdapterById,
   getAvailableWallets,
   getDefaultAdapter,
-  getSelectedWalletId,
   setSelectedWalletId,
-  clearSelectedWalletId,
 } from '@/lib/wallets';
 
+const TESTNET_PASSPHRASE = 'Test SDF Network ; September 2015';
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const STORAGE_KEY_ADDRESS = 'stellar_address';
 const STORAGE_KEY_INDEX = 'stellar_selected_account_index';
@@ -39,16 +28,22 @@ export const EXPECTED_NETWORK = 'TESTNET';
 
 declare global {
   interface Window {
-    freighter?: {
-      getAccounts?: () => Promise<{ accounts: string[]; error?: string }>;
-      setAllowedBack?: (address: string) => Promise<void>;
-    };
     xBull?: {
       isInstalled?: () => boolean;
-      connect?: () => Promise<{ address: string; network: string; networkPassphrase: string }>;
+      connect?: () => Promise<{
+        address: string;
+        network: string;
+        networkPassphrase: string;
+      }>;
       getAddress?: () => Promise<string>;
-      getNetwork?: () => Promise<{ network: string; networkPassphrase: string }>;
-      signTransaction?: (xdr: string, options?: { address?: string; networkPassphrase?: string }) => Promise<string>;
+      getNetwork?: () => Promise<{
+        network: string;
+        networkPassphrase: string;
+      }>;
+      signTransaction?: (
+        xdr: string,
+        options?: { address?: string; networkPassphrase?: string },
+      ) => Promise<string>;
       disconnect?: () => Promise<void>;
       getAccounts?: () => Promise<string[]>;
       switchAccount?: (address: string) => Promise<void>;
@@ -78,7 +73,7 @@ interface StellarWalletContextType {
   accounts: WalletAccount[];
   selectedAccountIndex: number;
   xlmBalance: string;
-  selectAccount: (index: number) => void;
+  selectAccount: (index: number) => Promise<void>;
   connect: () => Promise<void>;
   disconnect: () => void;
   signTx: (xdr: string) => Promise<string>;
@@ -105,23 +100,9 @@ const defaultConnection: StellarWalletConnection = {
   networkPassphrase: '',
 };
 
-const StellarWalletContext = createContext<StellarWalletContextType>({
-  connection: defaultConnection,
-  accounts: [],
-  selectedAccountIndex: 0,
-  xlmBalance: '',
-  selectAccount: () => {},
-  connect: async () => {},
-  disconnect: () => {},
-  signTx: async () => '',
-  isFreighterInstalled: false,
-  isLoading: false,
-  error: null,
-  sessionExpired: false,
-  clearSessionExpired: () => {},
-  mockConnect: () => {},
-  isNetworkMismatch: false,
-});
+export const StellarWalletContext = createContext<
+  StellarWalletContextType | undefined
+>(undefined);
 
 export function StellarWalletProvider({ children }: { children: ReactNode }) {
   const mockWalletEnabled =
@@ -137,41 +118,60 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
   const [sessionExpired, setSessionExpired] = useState(false);
   const [xlmBalance, setXlmBalance] = useState('');
   const [availableWallets, setAvailableWallets] = useState<WalletInfo[]>([]);
-  const [selectedWalletId, setSelectedWalletIdState] = useState<string | null>(null);
-  const [activeAdapter, setActiveAdapter] = useState<WalletAdapter | null>(null);
+  const [selectedWalletId, setSelectedWalletIdState] = useState<string | null>(
+    null,
+  );
+  const [activeAdapter, setActiveAdapter] = useState<WalletAdapter | null>(
+    null,
+  );
 
-  // Initialize available wallets
   useEffect(() => {
+    let cancelled = false;
     const initWallets = async () => {
-      const wallets = await getAvailableWallets();
-      setAvailableWallets(wallets);
+      try {
+        const wallets = await getAvailableWallets();
+        if (cancelled) return;
+        setAvailableWallets(wallets);
 
-      // Check if Freighter is installed (for backward compatibility)
-      const freighter = wallets.find((w) => w.id === 'freighter');
-      setIsFreighterInstalled(freighter?.isInstalled ?? false);
+        const freighter = wallets.find((wallet) => wallet.id === 'freighter');
+        setIsFreighterInstalled(freighter?.isInstalled ?? false);
 
-      // Get default adapter
-      const adapter = await getDefaultAdapter();
-      if (adapter) {
-        setActiveAdapter(adapter);
-        setSelectedWalletIdState(adapter.id);
+        const adapter = await getDefaultAdapter();
+        if (!cancelled && adapter) {
+          setActiveAdapter(adapter);
+          setSelectedWalletIdState(adapter.id);
+        }
+      } catch (initError) {
+        if (!cancelled) {
+          setError(
+            initError instanceof Error
+              ? initError.message
+              : 'Failed to initialize wallets',
+          );
+        }
       }
     };
-    initWallets();
-    void check();
+    void initWallets();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // Restore session on mount
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY_ADDRESS);
-    const storedIndex = localStorage.getItem(STORAGE_KEY_INDEX);
-    const storedTimestamp = localStorage.getItem(STORAGE_KEY_TIMESTAMP);
-    if (stored && activeAdapter && (await activeAdapter.isInstalled())) {
+    if (!activeAdapter) return;
+    let cancelled = false;
+
+    const restoreSession = async () => {
+      const stored = localStorage.getItem(STORAGE_KEY_ADDRESS);
+      const storedIndex = localStorage.getItem(STORAGE_KEY_INDEX);
+      const storedTimestamp = localStorage.getItem(STORAGE_KEY_TIMESTAMP);
+      if (!stored || !(await activeAdapter.isInstalled())) return;
+
       const connectionTime = storedTimestamp
         ? parseInt(storedTimestamp, 10)
         : 0;
-      const now = Date.now();
-      if (now - connectionTime > SESSION_TTL_MS) {
+      if (Date.now() - connectionTime > SESSION_TTL_MS) {
         localStorage.removeItem(STORAGE_KEY_ADDRESS);
         localStorage.removeItem(STORAGE_KEY_INDEX);
         localStorage.removeItem(STORAGE_KEY_TIMESTAMP);
@@ -182,59 +182,72 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      activeAdapter.getAddress()
-        .then(async (address) => {
-          if (address === stored) {
-            const netResult = await activeAdapter.getNetwork();
-            const accountsResult = await activeAdapter.getAccounts();
-            if (accountsResult.length > 0) {
-              const walletAccounts: WalletAccount[] =
-                accountsResult.map((addr: string, idx: number) => ({
-                  address: addr,
-                  label: `Account ${idx + 1}`,
-                }));
-              setAccounts(walletAccounts);
-              const savedIndex = storedIndex ? parseInt(storedIndex, 10) : 0;
-              const validIndex = Math.min(
-                savedIndex,
-                walletAccounts.length - 1,
-              );
-              setSelectedAccountIndex(validIndex >= 0 ? validIndex : 0);
-            }
-            setConnection({
-              address: address,
-              publicKey: address,
-              isConnected: true,
-              network: netResult.network || 'TESTNET',
-              networkPassphrase: netResult.networkPassphrase || '',
-              walletId: activeAdapter.id,
-              walletName: activeAdapter.name,
-            });
-            fetchXlmBalance(address)
-            fetchXlmBalance(addrResult.address)
-              .then(setXlmBalance)
-              .catch(() => {});
-          }
-        })
-        .catch(() => {});
-    }
+      const address = await activeAdapter.getAddress();
+      if (cancelled || address !== stored) return;
+
+      const [netResult, accountsResult] = await Promise.all([
+        activeAdapter.getNetwork(),
+        activeAdapter.getAccounts(),
+      ]);
+      if (cancelled) return;
+
+      const walletAccounts = accountsResult.map((account, index) => ({
+        address: account,
+        label: `Account ${index + 1}`,
+      }));
+      setAccounts(walletAccounts);
+      const savedIndex = storedIndex ? parseInt(storedIndex, 10) : 0;
+      const validIndex = Math.min(savedIndex, walletAccounts.length - 1);
+      setSelectedAccountIndex(validIndex >= 0 ? validIndex : 0);
+      setConnection({
+        address,
+        publicKey: address,
+        isConnected: true,
+        network: netResult.network || 'TESTNET',
+        networkPassphrase: netResult.networkPassphrase || '',
+        walletId: activeAdapter.id,
+        walletName: activeAdapter.name,
+      });
+
+      const balance = await fetchXlmBalance(address);
+      if (!cancelled) setXlmBalance(balance);
+    };
+
+    void restoreSession().catch((restoreError: unknown) => {
+      if (!cancelled) {
+        setError(
+          restoreError instanceof Error
+            ? restoreError.message
+            : 'Failed to restore wallet session',
+        );
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [activeAdapter]);
 
   const connect = useCallback(async () => {
-    if (!activeAdapter) {
-      setError('No wallet adapter available');
-      return;
-    }
-
     setIsLoading(true);
     setError(null);
     setSessionExpired(false);
     try {
-      const result = await activeAdapter.connect();
+      const adapter = activeAdapter ?? (await getDefaultAdapter());
+      if (!adapter) {
+        setError('No wallet adapter available');
+        return;
+      }
+      if (!activeAdapter) {
+        setActiveAdapter(adapter);
+        setSelectedWalletIdState(adapter.id);
+      }
+
+      const result = await adapter.connect();
 
       const passphrase = result.networkPassphrase;
       if (passphrase !== TESTNET_PASSPHRASE) {
-        setError(`Please switch ${activeAdapter.name} to Testnet`);
+        setError(`Please switch ${adapter.name} to Testnet`);
         setConnection(defaultConnection);
         setAccounts([]);
         setSelectedAccountIndex(0);
@@ -246,7 +259,7 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(STORAGE_KEY_ADDRESS, addr);
       localStorage.setItem(STORAGE_KEY_TIMESTAMP, String(now));
 
-      const accountsResult = await activeAdapter.getAccounts();
+      const accountsResult = await adapter.getAccounts();
       if (accountsResult.length > 0) {
         const walletAccounts: WalletAccount[] = accountsResult.map(
           (a: string, idx: number) => ({
@@ -269,16 +282,14 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
         isConnected: true,
         network: result.network || 'TESTNET',
         networkPassphrase: passphrase,
-        walletId: activeAdapter.id,
-        walletName: activeAdapter.name,
+        walletId: adapter.id,
+        walletName: adapter.name,
       });
       fetchXlmBalance(addr)
         .then(setXlmBalance)
         .catch(() => {});
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : `Failed to connect ${activeAdapter.name}`,
-      );
+      setError(err instanceof Error ? err.message : 'Failed to connect wallet');
     } finally {
       setIsLoading(false);
     }
@@ -374,13 +385,12 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    void syncWallet();
     const interval = setInterval(() => void syncWallet(), 5000);
     return () => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [connection.isConnected, activeAdapter]);
+  }, [connection.address, connection.isConnected, activeAdapter]);
 
   const disconnect = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY_ADDRESS);
@@ -405,7 +415,9 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
         activeAdapter.getNetwork(),
       ]);
       if (!address) {
-        throw new Error(`Unable to verify the active ${activeAdapter.name} account`);
+        throw new Error(
+          `Unable to verify the active ${activeAdapter.name} account`,
+        );
       }
 
       const network = netResult.network;
@@ -512,13 +524,15 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
   const selectWallet = useCallback(async (walletId: string) => {
     const adapter = getAdapterById(walletId);
     if (!adapter) {
-      setError('Wallet not found');
-      return;
+      const message = 'Wallet not found';
+      setError(message);
+      throw new Error(message);
     }
 
     if (!(await adapter.isInstalled())) {
-      setError(`${adapter.name} is not installed`);
-      return;
+      const message = `${adapter.name} is not installed`;
+      setError(message);
+      throw new Error(message);
     }
 
     setActiveAdapter(adapter);
@@ -580,25 +594,7 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <StellarWalletContext.Provider
-      value={{
-        connection,
-        accounts,
-        selectedAccountIndex,
-        xlmBalance,
-        selectAccount,
-        connect,
-        disconnect,
-        signTx,
-        isFreighterInstalled,
-        isLoading,
-        error,
-        sessionExpired,
-        clearSessionExpired,
-        mockConnect,
-        isNetworkMismatch,
-      }}
-    >
+    <StellarWalletContext.Provider value={contextValue}>
       {children}
     </StellarWalletContext.Provider>
   );

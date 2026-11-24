@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 const KEYBOARD_SHORTCUTS = {
   ADD_BENEFICIARY: 'Ctrl+B',
@@ -36,10 +36,7 @@ class RequestDeduplicator {
    * Get or create a promise for the given key.
    * If a request is already in-flight, return the existing promise.
    */
-  async fetch<T>(
-    key: string,
-    fetchFn: () => Promise<T>,
-  ): Promise<T> {
+  async fetch<T>(key: string, fetchFn: () => Promise<T>): Promise<T> {
     // Check if a request is already in-flight
     if (this.inFlightRequests.has(key)) {
       return this.inFlightRequests.get(key) as Promise<T>;
@@ -76,7 +73,9 @@ async function fetchBeneficiariesWithDedup(
 ): Promise<Beneficiary[]> {
   return deduplicator.fetch(`beneficiaries:${userId}`, async () => {
     try {
-      const response = await fetch(`/api/beneficiaries?userId=${encodeURIComponent(userId)}`);
+      const response = await fetch(
+        `/api/beneficiaries?userId=${encodeURIComponent(userId)}`,
+      );
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -90,18 +89,18 @@ async function fetchBeneficiariesWithDedup(
   });
 }
 
-export function useBeneficiaries(options?: { fetchFromApi?: boolean; userId?: string }) {
+export function useBeneficiaries(options?: {
+  fetchFromApi?: boolean;
+  userId?: string;
+}) {
   const { fetchFromApi = false, userId = 'current' } = options || {};
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
-  const isMountedRef = useRef(false);
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-    };
+    setIsMounted(true);
   }, []);
 
   // Fetch from API with deduplication if enabled
