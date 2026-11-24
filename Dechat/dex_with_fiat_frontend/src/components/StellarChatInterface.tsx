@@ -281,7 +281,7 @@ function StellarChatInterfaceContent() {
         setIsAdmin(false);
       }
     };
-    checkAdmin();
+    void checkAdmin();
   }, [connection.isConnected, connection.address]);
 
   useEffect(() => {
@@ -430,7 +430,7 @@ function StellarChatInterfaceContent() {
     (actionId: string, actionType: string, data?: Record<string, unknown>) => {
       switch (actionType) {
         case 'connect_wallet':
-          connect();
+          void connect();
           break;
         case 'confirm_fiat':
           if (isNetworkMismatch) break;
@@ -439,22 +439,22 @@ function StellarChatInterfaceContent() {
           break;
         case 'query':
           if (data?.query) {
-            sendMessage(data.query as string);
+            void sendMessage(data.query as string);
           }
           break;
         case 'check_portfolio':
-          sendMessage('Show me my XLM portfolio and balance');
+          void sendMessage('Show me my XLM portfolio and balance');
           break;
         case 'market_rates':
-          sendMessage(
+          void sendMessage(
             'What are the current XLM market rates and conversion estimates?',
           );
           break;
         case 'learn_more':
-          sendMessage('How does the Stellar FiatBridge work?');
+          void sendMessage('How does the Stellar FiatBridge work?');
           break;
         case 'cancel':
-          sendMessage('Cancel the current transaction');
+          void sendMessage('Cancel the current transaction');
           break;
         default:
           break;

@@ -143,8 +143,8 @@ export default function LandingPage() {
       }
     };
 
-    fetchPrice();
-    const interval = setInterval(fetchPrice, 60000); // Refresh every 60 seconds
+    void fetchPrice();
+    const interval = setInterval(() => void fetchPrice(), 60000); // Refresh every 60 seconds
 
     return () => {
       isActive = false;

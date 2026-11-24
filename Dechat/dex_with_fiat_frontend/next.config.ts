@@ -23,10 +23,6 @@ const connectSrc = Array.from(
       'https://soroban-testnet.stellar.org',
       originOf(process.env.NEXT_PUBLIC_STELLAR_RPC_URL),
       originOf(process.env.NEXT_PUBLIC_STELLAR_HORIZON_URL),
-      // Live prices (lib/cryptoPriceService.ts) and the connectivity probe
-      // (hooks/useOnlineStatus.ts).
-      'https://api.coingecko.com',
-      'https://www.cloudflare.com',
       'wss://*.freighter.app',
     ].filter((v): v is string => Boolean(v)),
   ),
@@ -62,6 +58,14 @@ const nextConfig: NextConfig = {
           {
             key: 'Permissions-Policy',
             value: 'camera=(), microphone=(), geolocation=()',
+          },
+          {
+            key: 'Cross-Origin-Opener-Policy',
+            value: 'same-origin',
+          },
+          {
+            key: 'Cross-Origin-Resource-Policy',
+            value: 'same-origin',
           },
           {
             key: 'Content-Security-Policy',

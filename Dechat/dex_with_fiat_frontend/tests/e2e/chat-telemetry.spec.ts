@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import ts from 'typescript';
-import { test, expect, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+import { test } from './fixtures';
 import type { TargetAndTransition } from 'framer-motion';
 import type { ChatEvent } from '../../src/lib/chatTelemetry';
 

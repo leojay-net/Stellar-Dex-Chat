@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from './fixtures';
 
 /**
  * E2E tests for NetworkStatusModal component
@@ -16,11 +17,8 @@ const EXPECTED_NETWORK = 'testnet';
 test.describe('NetworkStatusModal E2E Coverage', () => {
   test.describe('Connected State', () => {
     test('should display connected status in Chromium with correct elements', async ({
-      browser,
+      page,
     }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
       // Mock the context to return connected state
       await page.addInitScript(() => {
         (window as any).__NETWORK_STATE = {
@@ -58,16 +56,11 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
       await expect(page.getByRole('dialog').locator('dd').last()).toHaveText(
         new RegExp(EXPECTED_NETWORK, 'i'),
       );
-
-      await context.close();
     });
 
     test('should display connected status in Firefox with correct rendering', async ({
-      browser,
+      page,
     }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
       await page.addInitScript(() => {
         (window as any).__NETWORK_STATE = {
           connection: {
@@ -85,16 +78,11 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
       const modal = page.getByRole('dialog', { name: /network status/i });
       await expect(modal).toBeVisible({ timeout: 10000 });
       await expect(page.getByText('Connected', { exact: true })).toBeVisible();
-
-      await context.close();
     });
 
     test('should display connected status in WebKit with correct styling', async ({
-      browser,
+      page,
     }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
       await page.addInitScript(() => {
         (window as any).__NETWORK_STATE = {
           connection: {
@@ -117,34 +105,24 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
       const classAttr = await dialogElement.getAttribute('class');
       expect(classAttr).toContain('fixed');
       expect(classAttr).toContain('rounded-xl');
-
-      await context.close();
     });
 
     test('should show address truncation in connected state', async ({
-      browser,
+      page,
     }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
       await page.goto('/test-network-modal-connected');
 
       const addressDisplay = page.getByRole('dialog').locator('dd').first();
       await expect(addressDisplay).toHaveText(
         `${CONNECTED_ADDRESS.slice(0, 6)}…${CONNECTED_ADDRESS.slice(-4)}`,
       );
-
-      await context.close();
     });
   });
 
   test.describe('Mismatch State', () => {
     test('should display network mismatch status with warning styling', async ({
-      browser,
+      page,
     }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
       await page.addInitScript(() => {
         (window as any).__NETWORK_STATE = {
           connection: {
@@ -172,16 +150,11 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
       // Verify amber/warning indicator
       const statusIndicator = modal.locator('span[class*="bg-amber"]').first();
       await expect(statusIndicator).toBeVisible();
-
-      await context.close();
     });
 
     test('should show full wallet details in mismatch state', async ({
-      browser,
+      page,
     }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
       await page.addInitScript(() => {
         (window as any).__NETWORK_STATE = {
           connection: {
@@ -202,18 +175,13 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
       await expect(page.getByRole('dialog').locator('dd').last()).toHaveText(
         new RegExp(EXPECTED_NETWORK, 'i'),
       );
-
-      await context.close();
     });
   });
 
   test.describe('Disconnected State', () => {
     test('should display disconnected status with error styling', async ({
-      browser,
+      page,
     }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
       await page.addInitScript(() => {
         (window as any).__NETWORK_STATE = {
           connection: { isConnected: false, address: '', network: null },
@@ -241,18 +209,13 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
       // Verify details section is NOT visible
       const detailsSection = modal.locator('dl');
       await expect(detailsSection).not.toBeVisible();
-
-      await context.close();
     });
   });
 
   test.describe('Dark Mode Styling', () => {
     test('should apply dark mode styling when enabled (Chromium)', async ({
-      browser,
+      page,
     }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
       await page.addInitScript(() => {
         (window as any).__NETWORK_STATE = {
           connection: {
@@ -275,16 +238,11 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
       expect(classAttr).toContain('bg-gray-900');
       expect(classAttr).toContain('border-gray-700');
       expect(classAttr).toContain('text-gray-100');
-
-      await context.close();
     });
 
     test('should apply light mode styling when disabled (Chromium)', async ({
-      browser,
+      page,
     }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
       await page.addInitScript(() => {
         (window as any).__NETWORK_STATE = {
           connection: {
@@ -307,18 +265,13 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
       expect(classAttr).toContain('bg-white');
       expect(classAttr).toContain('border-gray-200');
       expect(classAttr).toContain('text-gray-900');
-
-      await context.close();
     });
   });
 
   test.describe('Closing Behavior', () => {
     test('should close modal when close button is clicked', async ({
-      browser,
+      page,
     }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
       await page.addInitScript(() => {
         (window as any).__NETWORK_STATE = {
           connection: {
@@ -342,14 +295,9 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
 
       // Modal should be hidden
       await expect(modal).not.toBeVisible();
-
-      await context.close();
     });
 
-    test('should close modal when backdrop is clicked', async ({ browser }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should close modal when backdrop is clicked', async ({ page }) => {
       await page.addInitScript(() => {
         (window as any).__NETWORK_STATE = {
           connection: {
@@ -373,18 +321,13 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
 
       // Modal should be hidden
       await expect(modal).not.toBeVisible();
-
-      await context.close();
     });
   });
 
   test.describe('Keyboard Navigation', () => {
     test('should allow focus on close button via keyboard', async ({
-      browser,
+      page,
     }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
       await page.addInitScript(() => {
         (window as any).__NETWORK_STATE = {
           connection: {
@@ -412,16 +355,11 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
 
       // Modal should be hidden
       await expect(modal).not.toBeVisible();
-
-      await context.close();
     });
 
     test('should allow keyboard-only navigation through interactive elements', async ({
-      browser,
+      page,
     }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
       await page.addInitScript(() => {
         (window as any).__NETWORK_STATE = {
           connection: {
@@ -448,16 +386,11 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
         () => document.activeElement?.className,
       );
       expect(focused).toBeDefined();
-
-      await context.close();
     });
 
     test('should allow tabbing to all interactive elements', async ({
-      browser,
+      page,
     }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
       await page.addInitScript(() => {
         (window as any).__NETWORK_STATE = {
           connection: {
@@ -481,18 +414,11 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
       // Find all focusable elements
       const focusableElements = await page.locator('button').count();
       expect(focusableElements).toBeGreaterThan(0);
-
-      await context.close();
     });
   });
 
   test.describe('Accessibility', () => {
-    test('should have proper ARIA attributes for dialog', async ({
-      browser,
-    }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should have proper ARIA attributes for dialog', async ({ page }) => {
       await page.addInitScript(() => {
         (window as any).__NETWORK_STATE = {
           connection: {
@@ -519,16 +445,9 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
 
       const ariaLabel = await modal.getAttribute('aria-label');
       expect(ariaLabel).toContain('Network status');
-
-      await context.close();
     });
 
-    test('should have proper backdrop with aria-hidden', async ({
-      browser,
-    }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
+    test('should have proper backdrop with aria-hidden', async ({ page }) => {
       await page.addInitScript(() => {
         (window as any).__NETWORK_STATE = {
           connection: {
@@ -548,18 +467,13 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
 
       const ariaHidden = await backdrop.getAttribute('aria-hidden');
       expect(ariaHidden).toBe('true');
-
-      await context.close();
     });
   });
 
   test.describe('No Real Network Calls', () => {
     test('should not make real API calls when rendering modal', async ({
-      browser,
+      page,
     }) => {
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
       const networkRequests: string[] = [];
       page.on('request', (request) => {
         if (
@@ -595,8 +509,6 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
 
       // Should be no real network calls (or only from page setup)
       expect(stellarApiCalls.length).toBeLessThanOrEqual(1);
-
-      await context.close();
     });
   });
 });

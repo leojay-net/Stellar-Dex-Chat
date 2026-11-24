@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+import { test } from './fixtures';
 
 const modal = (page: Page) => page.getByRole('dialog', { name: 'CCIP Bridge' });
 const pollingMessage = (page: Page) =>

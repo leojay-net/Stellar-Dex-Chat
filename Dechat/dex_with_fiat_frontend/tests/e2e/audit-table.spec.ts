@@ -1,6 +1,8 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+import { test } from './fixtures';
 import {
   connectMockWallet,
+  fullKeyboardTabKey,
   mockAdminAuthentication,
   MOCK_ADMIN_ADDRESS,
 } from './helpers';
@@ -195,18 +197,29 @@ test.describe('Admin audit log', () => {
     expect(download.suggestedFilename()).toMatch(/admin_audit_log_.*\.csv/);
   });
 
-  test('reaches audit controls with the keyboard', async ({ page }) => {
+  test('reaches audit controls with the keyboard', async ({
+    page,
+    browserName,
+  }) => {
     await mockAuditLog(page);
     await openAuditLog(page);
     await table(page)
       .getByRole('cell', { name: 'Withdrawal Approved' })
       .waitFor();
+    const tabKey = fullKeyboardTabKey(browserName);
     await actionFilter(page).focus();
-    await page.keyboard.press('Tab');
+    await page.keyboard.press(tabKey);
     await expect(
       page.getByRole('button', { name: 'Export audit log to CSV file' }),
     ).toBeFocused();
-    await page.keyboard.press('Tab');
+    await page.keyboard.press(tabKey);
+    // Firefox can focus the horizontal scroll container before the first cell.
+    const scrollContainer = table(page).locator('..');
+    if (
+      await scrollContainer.evaluate((node) => node === document.activeElement)
+    ) {
+      await page.keyboard.press(tabKey);
+    }
     await expect(
       table(page).getByRole('button', { name: 'Copy timestamp' }).first(),
     ).toBeFocused();

@@ -154,8 +154,7 @@ fn withdraw_rejects_caller_who_is_neither_admin_nor_operator() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (contract_id, bridge, _admin, token_addr, token_client, token_admin) =
-        setup_bridge(&env);
+    let (contract_id, bridge, _admin, token_addr, token_client, token_admin) = setup_bridge(&env);
     seed_deposit(&env, &bridge, &token_addr, &token_admin, 5_000);
 
     let balance_before = token_client.balance(&contract_id);

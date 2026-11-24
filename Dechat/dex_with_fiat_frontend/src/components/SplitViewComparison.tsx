@@ -40,7 +40,7 @@ interface ThreadPaneProps {
   allSessions: ChatSession[];
   onSelectSession: (id: string) => void;
   onSelectMessage: (id: string | null) => void;
-  onCopyMessage: (content: string) => void;
+  onCopyMessage: (content: string) => Promise<void>;
 }
 
 function ThreadPane({
@@ -211,7 +211,7 @@ function ThreadPane({
 
                   {/* Copy button */}
                   <button
-                    onClick={(e) => handleCopyMessage(e, msg.content, msg.id)}
+                    onClick={(e) => void handleCopyMessage(e, msg.content, msg.id)}
                     className="absolute top-2 right-2 p-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity bg-[var(--color-surface)] hover:bg-[var(--color-surface-elevated)] border border-[var(--color-border)]"
                     aria-label="Copy message to clipboard"
                     title="Copy message"

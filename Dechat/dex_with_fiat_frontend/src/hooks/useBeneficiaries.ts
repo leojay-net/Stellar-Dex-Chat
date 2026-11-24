@@ -110,7 +110,7 @@ export function useBeneficiaries(options?: { fetchFromApi?: boolean; userId?: st
 
     let cancelled = false;
 
-    (async () => {
+    void (async () => {
       try {
         const data = await fetchBeneficiariesWithDedup(userId);
         if (!cancelled) {

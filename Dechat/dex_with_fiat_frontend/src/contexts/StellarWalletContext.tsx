@@ -136,7 +136,7 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
         setIsFreighterInstalled(false);
       }
     };
-    check();
+    void check();
   }, []);
 
   useEffect(() => {
@@ -184,7 +184,9 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
               network: netResult.network || 'TESTNET',
               networkPassphrase: netResult.networkPassphrase || '',
             });
-            fetchXlmBalance(addrResult.address).then(setXlmBalance).catch(() => {});
+            fetchXlmBalance(addrResult.address)
+              .then(setXlmBalance)
+              .catch(() => {});
           }
         })
         .catch(() => {});
@@ -242,7 +244,9 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
         network: netResult.network || 'TESTNET',
         networkPassphrase: passphrase,
       });
-      fetchXlmBalance(addr).then(setXlmBalance).catch(() => {});
+      fetchXlmBalance(addr)
+        .then(setXlmBalance)
+        .catch(() => {});
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'Failed to connect Freighter',
@@ -430,7 +434,9 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
         }));
         localStorage.setItem(STORAGE_KEY_ADDRESS, selectedAccount.address);
         localStorage.setItem(STORAGE_KEY_TIMESTAMP, String(Date.now()));
-        fetchXlmBalance(selectedAccount.address).then(setXlmBalance).catch(() => {});
+        fetchXlmBalance(selectedAccount.address)
+          .then(setXlmBalance)
+          .catch(() => {});
       } catch (err) {
         setError(
           err instanceof Error ? err.message : 'Failed to switch account',

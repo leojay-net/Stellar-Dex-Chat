@@ -2,24 +2,29 @@ name: Frontend CI
 
 # ── Job graph ────────────────────────────────────────────────────────────────
 #
-#   lint ──────────────────────────────────────────────────────────┐
-#   build ─────────────────────────────────────────────────────────┤──► e2e
+#   lint
+#   build ───────────────────────────────────────────────────────────► e2e
 #   unit-tests (matrix ×4, parallel) ──► coverage-merge ──────────┘
 #
 # build and unit-tests are independent: a test failure does not hide a build
-# failure and vice-versa.  e2e waits only for build + lint so it starts as
-# soon as the app compiles, without waiting for unit tests.
+# failure and vice-versa. E2E waits for the build so browser coverage is
+# reported independently of static checks and unit tests.
 
 on:
   pull_request:
     branches: [main]
     paths:
       - "Dechat/dex_with_fiat_frontend/**"
-      - ".github/workflows/frontend.yml"
+      - ".github/workflows/*.yml"
+      - ".github/workflows/*.yaml"
+      - "Makefile"
   push:
     branches: [main]
     paths:
       - "Dechat/dex_with_fiat_frontend/**"
+      - ".github/workflows/*.yml"
+      - ".github/workflows/*.yaml"
+      - "Makefile"
 
 permissions:
   contents: read
@@ -49,7 +54,7 @@ jobs:
 
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
         with:
-          version: 9.15.9
+          package_json_file: Dechat/dex_with_fiat_frontend/package.json
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -58,16 +63,16 @@ jobs:
           cache-dependency-path: Dechat/dex_with_fiat_frontend/pnpm-lock.yaml
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: pnpm lint
+        run: make -C ../.. frontend-lint
 
       - name: Type check
-        run: pnpm typecheck
+        run: make -C ../.. frontend-typecheck
 
       - name: Prettier check
-        run: pnpm check
+        run: make -C ../.. frontend-check
 
   # ── 2. Next.js build (independent of unit tests) ──────────────────────────
   build:
@@ -83,7 +88,7 @@ jobs:
 
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
         with:
-          version: 9.15.9
+          package_json_file: Dechat/dex_with_fiat_frontend/package.json
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -92,10 +97,10 @@ jobs:
           cache-dependency-path: Dechat/dex_with_fiat_frontend/pnpm-lock.yaml
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Build
-        run: pnpm build
+        run: make -C ../.. frontend-build
 
   # ── 3. Unit tests — 4 shards run in parallel ──────────────────────────────
   unit-tests:
@@ -118,7 +123,7 @@ jobs:
 
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
         with:
-          version: 9.15.9
+          package_json_file: Dechat/dex_with_fiat_frontend/package.json
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -127,24 +132,10 @@ jobs:
           cache-dependency-path: Dechat/dex_with_fiat_frontend/pnpm-lock.yaml
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Run unit tests (shard ${{ matrix.shard }}/4)
-        run: |
-          pnpm vitest run \
-            --coverage.enabled \
-            --maxWorkers=1 \
-            --pool=forks \
-            --no-file-parallelism \
-            --reporter=blob \
-            --reporter=dot \
-            --reporter=junit \
-            --outputFile.junit="$RUNNER_TEMP/vitest-junit.xml" \
-            --coverage.reporter=json-summary \
-            --shard=${{ matrix.shard }}/4
-        env:
-          NODE_OPTIONS: --max-old-space-size=8192
-          VITEST_COVERAGE_SHARD: "true"
+        run: make -C ../.. frontend-test SHARD=${{ matrix.shard }}/4 JUNIT_REPORT="$RUNNER_TEMP/vitest-junit.xml"
 
       - name: Summarize unit test results
         if: always()
@@ -186,6 +177,15 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      # Keep each shard’s coverage summary available for troubleshooting.
+      - name: Upload coverage summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage-summary-${{ matrix.shard }}
+          path: Dechat/dex_with_fiat_frontend/coverage/coverage-summary.json
+          retention-days: 1
+
   # ── 4. Merge coverage blobs, produce report, write job summary ────────────
   coverage-merge:
     name: Coverage merge & report
@@ -204,7 +204,7 @@ jobs:
 
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
         with:
-          version: 9.15.9
+          package_json_file: Dechat/dex_with_fiat_frontend/package.json
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -213,7 +213,7 @@ jobs:
           cache-dependency-path: Dechat/dex_with_fiat_frontend/pnpm-lock.yaml
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       # Download all four blob artifacts into .vitest-reports/ so vitest can
       # find them with its default --mergeReports path.
@@ -225,13 +225,7 @@ jobs:
           merge-multiple: true
 
       - name: Merge reports and regenerate coverage
-        run: |
-          pnpm vitest run \
-            --mergeReports \
-            --coverage.enabled \
-            --reporter=default
-        env:
-          NODE_OPTIONS: --max-old-space-size=4096
+        run: make -C ../.. frontend-coverage-merge
 
       # Build the JSON consumed by coverage-comment.yml.
       - name: Generate coverage report artifact
@@ -268,12 +262,35 @@ jobs:
           path: Dechat/dex_with_fiat_frontend/frontend-coverage-report.json
           retention-days: 7
 
-  # ── 5. Playwright E2E — waits only for build + lint ──────────────────────
+      # ── Job summary: before/after wall-clock comparison ──────────────────
+      # Before: 4 shards × ~N minutes sequential = total serial time.
+      # After:  longest shard (parallel) + merge time = total wall-clock time.
+      - name: Write job summary
+        if: always()
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          ## Unit test timing
+
+          Shards ran in parallel. To see wall-clock times, check each
+          "Unit tests (shard N/4)" job in the Actions UI.
+
+          ### Before vs after wall-clock
+
+          **Before** — sequential shards in one job:
+          `wall-clock = shard1 + shard2 + shard3 + shard4 + merge`
+
+          **After** — parallel matrix + separate merge job:
+          `wall-clock = max(shard1, shard2, shard3, shard4) + merge`
+
+          The saving is roughly `sum(shards) - max(shards)`.
+          SUMMARY
+
+  # ── 5. Playwright E2E ──────────────────────────────────────────────────
   e2e:
     name: Playwright E2E Tests
-    # The pinned Playwright version does not support Ubuntu 26.04.
     runs-on: ubuntu-24.04
-    needs: [build, lint]
+    # The pinned Playwright version does not support Ubuntu 26.04.
+    needs: build
 
     defaults:
       run:
@@ -284,7 +301,7 @@ jobs:
 
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
         with:
-          version: 9.15.9
+          package_json_file: Dechat/dex_with_fiat_frontend/package.json
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -293,7 +310,7 @@ jobs:
           cache-dependency-path: Dechat/dex_with_fiat_frontend/pnpm-lock.yaml
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Cache Playwright browsers
         id: playwright-cache
@@ -311,13 +328,10 @@ jobs:
         run: pnpm exec playwright install-deps chromium firefox webkit
 
       - name: Build for E2E
-        run: pnpm build
-        env:
-          # Next.js inlines this public flag into the browser bundle at build time.
-          NEXT_PUBLIC_E2E: "true"
+        run: make -C ../.. frontend-e2e-build
 
       - name: Run Playwright E2E tests
-        run: pnpm test:e2e
+        run: make -C ../.. frontend-e2e
         env:
           NEXT_PUBLIC_STELLAR_CONTRACT_ID: ${{ env.NEXT_PUBLIC_STELLAR_CONTRACT_ID }}
           NEXT_PUBLIC_XLM_SAC_ID: ${{ env.NEXT_PUBLIC_XLM_SAC_ID }}

@@ -1,0 +1,9 @@
+# Generated dependencies, build output, and test reports.
+node_modules/
+.next/
+next-env.d.ts
+coverage/
+.vitest-reports/
+playwright-report/
+test-results/
+pnpm-lock.yaml

@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from './fixtures';
 
 test.describe('Mobile Bottom-Sheet for Wallet Actions', () => {
   test.describe('Mobile viewport (< 640px)', () => {
