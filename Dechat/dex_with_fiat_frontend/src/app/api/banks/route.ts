@@ -9,7 +9,11 @@ const PAYSTACK_SECRET_KEY = env.PAYSTACK_SECRET_KEY;
 const RATE_LIMIT = { maxRequests: 30, windowMs: 60_000 };
 
 export async function GET(request: NextRequest) {
-  const limited = applyRateLimit(getClientIp(request), '/api/banks', RATE_LIMIT);
+  const limited = applyRateLimit(
+    getClientIp(request),
+    '/api/banks',
+    RATE_LIMIT,
+  );
   if (limited) return limited;
 
   const traceContext = telemetry.extractTraceFromHeaders(
@@ -32,7 +36,10 @@ export async function GET(request: NextRequest) {
       telemetry.addLog(span.spanId, 'warn', 'Banks query validation failed', {
         errors: validationResult.error.issues,
       });
-      telemetry.finishSpan(span.spanId, { success: false, error: 'Invalid request' });
+      telemetry.finishSpan(span.spanId, {
+        success: false,
+        error: 'Invalid request',
+      });
 
       const response = NextResponse.json(
         {

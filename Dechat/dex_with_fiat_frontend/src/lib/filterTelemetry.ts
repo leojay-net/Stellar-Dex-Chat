@@ -16,7 +16,11 @@
  * {@link filterTelemetry} for the public surface.
  */
 
-import { TELEMETRY_SCHEMA_VERSION, getTelemetryConsent, ChatEvent } from './chatTelemetry';
+import {
+  TELEMETRY_SCHEMA_VERSION,
+  getTelemetryConsent,
+  ChatEvent,
+} from './chatTelemetry';
 
 /**
  * Names of the filter events dispatched on the `chat:telemetry` channel.
@@ -98,17 +102,14 @@ export interface FilterShortcutPayload {
  *   can never break the filter UI. The trade-off is that delivery failures are
  *   silent — do not use this channel for anything the app depends on.
  */
-function emit<P extends object>(
-  name: FilterEventName,
-  payload: P,
-): void {
+function emit<P extends object>(name: FilterEventName, payload: P): void {
   try {
     if (!getTelemetryConsent()) return;
 
     const event: ChatEvent = {
-        // We cast name as ChatEventName to satisfy the ChatEvent type if needed,
-        // or we could define a more generic TelemetryEvent type.
-        // For now, let's keep it compatible with existing listeners.
+      // We cast name as ChatEventName to satisfy the ChatEvent type if needed,
+      // or we could define a more generic TelemetryEvent type.
+      // For now, let's keep it compatible with existing listeners.
       name: name as unknown as ChatEvent['name'],
       version: TELEMETRY_SCHEMA_VERSION,
       timestamp: Date.now(),

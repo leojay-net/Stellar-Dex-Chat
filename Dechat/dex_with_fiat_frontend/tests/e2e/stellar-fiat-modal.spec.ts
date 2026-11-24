@@ -20,7 +20,9 @@ test.describe('StellarFiatModal E2E Tests', () => {
       ).toBeVisible();
     });
 
-    test('should close modal when close button is clicked', async ({ page }) => {
+    test('should close modal when close button is clicked', async ({
+      page,
+    }) => {
       await page.getByRole('button', { name: 'Close' }).click();
       await expect(page.getByRole('dialog')).not.toBeVisible();
     });
@@ -35,18 +37,24 @@ test.describe('StellarFiatModal E2E Tests', () => {
 
     test('should disable submit for invalid amount', async ({ page }) => {
       await page.locator('input[type="number"]').first().fill('-5');
-      await expect(page.getByRole('button', { name: /^deposit$/i })).toBeDisabled();
+      await expect(
+        page.getByRole('button', { name: /^deposit$/i }),
+      ).toBeDisabled();
     });
 
     test('should disable submit for zero amount', async ({ page }) => {
       await page.locator('input[type="number"]').first().fill('0');
-      await expect(page.getByRole('button', { name: /^deposit$/i })).toBeDisabled();
+      await expect(
+        page.getByRole('button', { name: /^deposit$/i }),
+      ).toBeDisabled();
     });
 
     test('should update amount with preset buttons', async ({ page }) => {
       const dialog = page.getByRole('dialog', { name: /deposit to bridge/i });
       await dialog.getByRole('button', { name: '5', exact: true }).click();
-      await expect(dialog.locator('input[type="number"]').first()).toHaveValue('5');
+      await expect(dialog.locator('input[type="number"]').first()).toHaveValue(
+        '5',
+      );
     });
   });
 

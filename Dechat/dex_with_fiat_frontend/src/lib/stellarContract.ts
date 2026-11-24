@@ -362,9 +362,9 @@ export async function getContractBalance(): Promise<bigint> {
 
 /**
  * Returns the authorized admin address of the contract.
- * 
+ *
  * @returns {Promise<string>} The Stellar public key of the current admin.
- * 
+ *
  * **Authentication Architecture:**
  * The bridge contract stores the admin address in its instance storage.
  * All sensitive administrative operations (e.g., withdrawals, setting limits)
@@ -459,8 +459,9 @@ export async function fetchXlmBalance(publicKey: string): Promise<string> {
   try {
     const account = await horizonServer.loadAccount(publicKey);
     const native = account.balances.find(
-      (b: Horizon.HorizonApi.BalanceLine): b is Horizon.HorizonApi.BalanceLineNative =>
-        b.asset_type === 'native',
+      (
+        b: Horizon.HorizonApi.BalanceLine,
+      ): b is Horizon.HorizonApi.BalanceLineNative => b.asset_type === 'native',
     );
     return native ? parseFloat(native.balance).toFixed(2) : '0.00';
   } catch {

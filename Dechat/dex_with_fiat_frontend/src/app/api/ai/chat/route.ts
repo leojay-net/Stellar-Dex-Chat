@@ -3,10 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { serverEnv as env } from '@/lib/serverEnv';
 import { parseMessage, mergeParserWithAI } from '@/lib/messageParser';
 import { findFAQMatch } from '@/lib/faq';
-import {
-  AIAnalysisResult,
-  GuardrailCategory,
-} from '@/types';
+import { AIAnalysisResult, GuardrailCategory } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Guardrail helpers (mirrors AIAssistant logic but runs server-side)
@@ -173,8 +170,7 @@ function parseAIResponse(response: string): AIAnalysisResult {
         confidence: parsed.confidence || 0.5,
         extractedData,
         requiredQuestions:
-          parsed.confidence < LOW_CONFIDENCE_THRESHOLD &&
-          requiredQuestions[0]
+          parsed.confidence < LOW_CONFIDENCE_THRESHOLD && requiredQuestions[0]
             ? [requiredQuestions[0]]
             : requiredQuestions,
         suggestedResponse:
@@ -203,7 +199,7 @@ function parseAIResponse(response: string): AIAnalysisResult {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json() as {
+    const body = (await request.json()) as {
       message: string;
       context?: Record<string, unknown>;
     };
@@ -239,7 +235,9 @@ export async function POST(request: NextRequest) {
 
     // 2. Deterministic parser (moved before FAQ so we can skip FAQ on transactions)
     const parserResult = parseMessage(message);
-    const isTransactional = !!(parserResult.amount || parserResult.fiatCurrency);
+    const isTransactional = !!(
+      parserResult.amount || parserResult.fiatCurrency
+    );
 
     // 3. Check local FAQ knowledge base
     if (!isTransactional) {

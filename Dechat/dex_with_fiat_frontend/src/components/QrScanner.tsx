@@ -47,7 +47,9 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
     } catch (err) {
       const e = err as DOMException;
       if (e.name === 'NotAllowedError') {
-        setError('Camera permission denied. Please allow camera access and try again.');
+        setError(
+          'Camera permission denied. Please allow camera access and try again.',
+        );
       } else {
         setError('Unable to access camera: ' + e.message);
       }
@@ -58,8 +60,16 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
   useEffect(() => {
     if (!scanning) return;
 
-    let detector: { detect: (src: HTMLVideoElement) => Promise<Array<{ rawValue: string }>> } | null = null;
-    let jsQR: ((data: Uint8ClampedArray, w: number, h: number) => { data: string } | null) | null = null;
+    let detector: {
+      detect: (src: HTMLVideoElement) => Promise<Array<{ rawValue: string }>>;
+    } | null = null;
+    let jsQR:
+      | ((
+          data: Uint8ClampedArray,
+          w: number,
+          h: number,
+        ) => { data: string } | null)
+      | null = null;
     let canvas: HTMLCanvasElement | null = null;
     let ctx: CanvasRenderingContext2D | null = null;
     let active = true;
@@ -69,7 +79,8 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
       if ('BarcodeDetector' in window) {
         try {
           // @ts-expect-error – BarcodeDetector not yet in TS lib
-          const supported: string[] = await window.BarcodeDetector.getSupportedFormats();
+          const supported: string[] =
+            await window.BarcodeDetector.getSupportedFormats();
           if (supported.includes('qr_code')) {
             // @ts-expect-error
             detector = new window.BarcodeDetector({ formats: ['qr_code'] });
@@ -82,7 +93,9 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
       // JS fallback: dynamic import keeps bundle size low
       if (!detector) {
         try {
-          const mod = await import('jsqr' as never /* avoids TS import warning */);
+          const mod = await import(
+            'jsqr' as never /* avoids TS import warning */
+          );
           // @ts-expect-error – dynamic import
           jsQR = mod.default ?? mod;
           canvas = document.createElement('canvas');
@@ -150,7 +163,10 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
       <div className="relative bg-black rounded-2xl overflow-hidden w-80 max-w-[90vw]">
         <button
-          onClick={() => { stopCamera(); onClose(); }}
+          onClick={() => {
+            stopCamera();
+            onClose();
+          }}
           aria-label="Close QR scanner"
           className="absolute top-3 right-3 z-10 text-white/80 hover:text-white"
         >

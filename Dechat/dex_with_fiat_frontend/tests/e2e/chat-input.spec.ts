@@ -1,5 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
-import { connectMockWallet, installMockWalletBridge, MOCK_WALLET_ADDRESS } from './helpers';
+import {
+  connectMockWallet,
+  installMockWalletBridge,
+  MOCK_WALLET_ADDRESS,
+} from './helpers';
 
 /**
  * E2E tests for ChatInput component.
@@ -24,7 +28,11 @@ async function stubChatApi(page: Page) {
         extractedData: {},
         requiredQuestions: [],
         suggestedResponse: 'Stub response.',
-        guardrail: { triggered: false, category: 'unsupported_request', reason: '' },
+        guardrail: {
+          triggered: false,
+          category: 'unsupported_request',
+          reason: '',
+        },
       }),
     });
   });
@@ -164,7 +172,11 @@ test.describe('ChatInput', () => {
             extractedData: {},
             requiredQuestions: [],
             suggestedResponse: 'OK',
-            guardrail: { triggered: false, category: 'unsupported_request', reason: '' },
+            guardrail: {
+              triggered: false,
+              category: 'unsupported_request',
+              reason: '',
+            },
           }),
         });
       });
@@ -202,7 +214,9 @@ test.describe('ChatInput', () => {
       ).toBeVisible({ timeout: 5_000 });
     });
 
-    test('wallet warning disappears after wallet reconnects', async ({ page }) => {
+    test('wallet warning disappears after wallet reconnects', async ({
+      page,
+    }) => {
       await stubChatApi(page);
       await page.goto(TEST_URL);
       await page.waitForLoadState('domcontentloaded');
@@ -226,7 +240,9 @@ test.describe('ChatInput', () => {
   });
 
   test.describe('Command palette', () => {
-    test('typing / shows the command suggestions dropdown', async ({ page }) => {
+    test('typing / shows the command suggestions dropdown', async ({
+      page,
+    }) => {
       await gotoHarness(page);
 
       const textarea = page.getByTestId('chat-input-textarea');
@@ -310,7 +326,9 @@ test.describe('ChatInput', () => {
       await expect(emojiBtn).toBeFocused();
     });
 
-    test('Ctrl+Enter sends the message without clicking the button', async ({ page }) => {
+    test('Ctrl+Enter sends the message without clicking the button', async ({
+      page,
+    }) => {
       await gotoHarness(page);
 
       const textarea = page.getByTestId('chat-input-textarea');
@@ -323,7 +341,9 @@ test.describe('ChatInput', () => {
       );
     });
 
-    test('Enter selects highlighted command in suggestion dropdown', async ({ page }) => {
+    test('Enter selects highlighted command in suggestion dropdown', async ({
+      page,
+    }) => {
       await gotoHarness(page);
 
       const textarea = page.getByTestId('chat-input-textarea');

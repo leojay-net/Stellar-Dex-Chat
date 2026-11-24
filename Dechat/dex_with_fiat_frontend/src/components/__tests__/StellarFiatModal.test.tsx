@@ -110,7 +110,9 @@ describe('StellarFiatModal', () => {
   });
 
   it('shows an error state when the transaction fails', async () => {
-    mockedContract.depositToContract.mockRejectedValueOnce(new Error('Network failure'));
+    mockedContract.depositToContract.mockRejectedValueOnce(
+      new Error('Network failure'),
+    );
 
     const { getByRole } = render(
       React.createElement(StellarFiatModal, {
@@ -264,7 +266,9 @@ describe('StellarFiatModal skeleton loading state', () => {
     );
 
     // The skeleton should be rendered (SkeletonPayout renders skeleton elements)
-    const skeletonElements = container.querySelectorAll('[class*="animate-pulse"]');
+    const skeletonElements = container.querySelectorAll(
+      '[class*="animate-pulse"]',
+    );
     expect(skeletonElements.length).toBeGreaterThan(0);
   });
 
@@ -311,26 +315,26 @@ describe('StellarFiatModal fee simulation debounce', () => {
 
     // Simulate typing "1000.5" character by character
     const input = getByRole('spinbutton') as HTMLInputElement;
-    
+
     // Type '0' -> "10"
     fireEvent.change(input, { target: { value: '10' } });
     await vi.advanceTimersByTimeAsync(100);
-    
+
     // Type '0' -> "100"
     fireEvent.change(input, { target: { value: '100' } });
     await vi.advanceTimersByTimeAsync(100);
-    
+
     // Type '0' -> "1000"
     fireEvent.change(input, { target: { value: '1000' } });
     await vi.advanceTimersByTimeAsync(100);
-    
+
     // Type '.' -> "1000."
     fireEvent.change(input, { target: { value: '1000.' } });
     await vi.advanceTimersByTimeAsync(100);
-    
+
     // Type '5' -> "1000.5"
     fireEvent.change(input, { target: { value: '1000.5' } });
-    
+
     // Advance past the debounce delay (300ms)
     await vi.advanceTimersByTimeAsync(350);
 
@@ -353,18 +357,18 @@ describe('StellarFiatModal fee simulation debounce', () => {
     await vi.runAllTimersAsync();
 
     const input = getByRole('spinbutton') as HTMLInputElement;
-    
+
     // Change amount to trigger first simulation
     fireEvent.change(input, { target: { value: '20' } });
     await vi.advanceTimersByTimeAsync(100);
-    
+
     // Change amount again before debounce fires
     fireEvent.change(input, { target: { value: '30' } });
     await vi.advanceTimersByTimeAsync(100);
-    
+
     // Change amount again
     fireEvent.change(input, { target: { value: '40' } });
-    
+
     // Advance past the debounce delay
     await vi.advanceTimersByTimeAsync(350);
 

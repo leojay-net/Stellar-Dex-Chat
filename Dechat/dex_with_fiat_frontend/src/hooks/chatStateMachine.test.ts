@@ -1,12 +1,12 @@
 import { TransactionData } from '@/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-    ChatEvent,
-    ChatGuards,
-    ChatMachineContext,
-    ChatState,
+  ChatEvent,
+  ChatGuards,
+  ChatMachineContext,
+  ChatState,
   copyChatStateSnapshot,
-    createChatStateMachine,
+  createChatStateMachine,
   createDebouncedDispatcher,
   DEFAULT_DISPATCH_DEBOUNCE_MS,
   formatChatStateSnapshot,
@@ -512,7 +512,11 @@ describe('ChatStateMachine', () => {
         const context: ChatMachineContext = {
           messageCount: 0,
           hasUserCancelled: false,
-          pendingTransactionData: { type: 'fiat_conversion', tokenIn: 'XLM', amountIn: '100' },
+          pendingTransactionData: {
+            type: 'fiat_conversion',
+            tokenIn: 'XLM',
+            amountIn: '100',
+          },
           needsClarification: false,
           clarificationQuestion: null,
           errorMessage: null,
@@ -604,7 +608,10 @@ describe('ChatStateMachine', () => {
 
     it('should support partial context updates', () => {
       machine.transition(ChatEvent.INITIALIZE_SESSION);
-      const transactionData: TransactionData = { type: 'fiat_conversion', tokenIn: 'XLM' };
+      const transactionData: TransactionData = {
+        type: 'fiat_conversion',
+        tokenIn: 'XLM',
+      };
       machine.updateContext({
         messageCount: 3,
         pendingTransactionData: transactionData,
@@ -637,7 +644,11 @@ describe('ChatStateMachine', () => {
       expect(machine.transition(ChatEvent.SEND_MESSAGE)).toBe(true);
       machine.updateContext({
         messageCount: 2,
-        pendingTransactionData: { type: 'fiat_conversion', tokenIn: 'XLM', amountIn: '100' },
+        pendingTransactionData: {
+          type: 'fiat_conversion',
+          tokenIn: 'XLM',
+          amountIn: '100',
+        },
       });
       expect(machine.transition(ChatEvent.ANALYSIS_COMPLETE)).toBe(true);
 
@@ -659,7 +670,11 @@ describe('ChatStateMachine', () => {
       machine.transition(ChatEvent.SEND_MESSAGE);
       machine.transition(ChatEvent.ANALYSIS_COMPLETE);
       machine.updateContext({
-        pendingTransactionData: { type: 'fiat_conversion', tokenIn: 'XLM', amountIn: '100' },
+        pendingTransactionData: {
+          type: 'fiat_conversion',
+          tokenIn: 'XLM',
+          amountIn: '100',
+        },
       });
       machine.transition(ChatEvent.TRIGGER_TRANSACTION);
 
@@ -696,7 +711,7 @@ describe('chatStateMachine race condition regression (#590)', () => {
     machineA.transition(ChatEvent.INITIALIZE_SESSION);
     machineA.transition(ChatEvent.SEND_MESSAGE);
     machineA.transition(ChatEvent.ANALYSIS_COMPLETE); // → ANALYZING
-    machineA.transition(ChatEvent.ENCOUNTER_ERROR);   // → ERROR
+    machineA.transition(ChatEvent.ENCOUNTER_ERROR); // → ERROR
     machineA.updateContext({ errorMessage: 'A failed' });
 
     const machineB = createChatStateMachine();
@@ -751,7 +766,10 @@ describe('chatStateMachine clipboard snapshot helpers', () => {
       lastEventTime: Date.now(),
       previousState: null,
     };
-    const copied = await copyChatStateSnapshot(ChatState.SENDING_MESSAGE, context);
+    const copied = await copyChatStateSnapshot(
+      ChatState.SENDING_MESSAGE,
+      context,
+    );
     expect(copied).toBe(true);
     expect(writeText).toHaveBeenCalledTimes(1);
   });

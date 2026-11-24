@@ -30,7 +30,9 @@ test.describe('LandingPage E2E Coverage', () => {
   });
 
   test.describe('Happy Path - Chromium', () => {
-    test('should load and display landing page sections', async ({ browser }) => {
+    test('should load and display landing page sections', async ({
+      browser,
+    }) => {
       const context = await browser.newContext();
       const page = await context.newPage();
 
@@ -48,7 +50,9 @@ test.describe('LandingPage E2E Coverage', () => {
       await context.close();
     });
 
-    test('should navigate to chat on Get Started button click', async ({ browser }) => {
+    test('should navigate to chat on Get Started button click', async ({
+      browser,
+    }) => {
       const context = await browser.newContext();
       const page = await context.newPage();
 
@@ -124,7 +128,9 @@ test.describe('LandingPage E2E Coverage', () => {
       await page.goto('/', { waitUntil: 'load' });
 
       // Scroll down to features section
-      await page.locator('text=Soroban Smart Contracts').scrollIntoViewIfNeeded();
+      await page
+        .locator('text=Soroban Smart Contracts')
+        .scrollIntoViewIfNeeded();
 
       // Features should be visible
       const featuresSection = page.locator('text=Soroban Smart Contracts');
@@ -146,7 +152,9 @@ test.describe('LandingPage E2E Coverage', () => {
       await page.goto('/', { waitUntil: 'load' });
 
       // Scroll to steps section
-      await page.locator('text=Install & Connect Freighter').scrollIntoViewIfNeeded();
+      await page
+        .locator('text=Install & Connect Freighter')
+        .scrollIntoViewIfNeeded();
 
       // Steps should be visible
       const step1 = page.locator('text=Install & Connect Freighter');
@@ -157,7 +165,9 @@ test.describe('LandingPage E2E Coverage', () => {
   });
 
   test.describe('Happy Path - Firefox', () => {
-    test('should load and display landing page in Firefox', async ({ browser }) => {
+    test('should load and display landing page in Firefox', async ({
+      browser,
+    }) => {
       const context = await browser.newContext();
       const page = await context.newPage();
 
@@ -196,7 +206,9 @@ test.describe('LandingPage E2E Coverage', () => {
   });
 
   test.describe('Happy Path - WebKit', () => {
-    test('should load and display landing page in WebKit', async ({ browser }) => {
+    test('should load and display landing page in WebKit', async ({
+      browser,
+    }) => {
       const context = await browser.newContext();
       const page = await context.newPage();
 
@@ -326,7 +338,9 @@ test.describe('LandingPage E2E Coverage', () => {
       await context.close();
     });
 
-    test('should launch app via G (capital) keyboard shortcut', async ({ browser }) => {
+    test('should launch app via G (capital) keyboard shortcut', async ({
+      browser,
+    }) => {
       const context = await browser.newContext();
       const page = await context.newPage();
 
@@ -345,7 +359,9 @@ test.describe('LandingPage E2E Coverage', () => {
       await context.close();
     });
 
-    test('should not trigger shortcuts while typing in input', async ({ browser }) => {
+    test('should not trigger shortcuts while typing in input', async ({
+      browser,
+    }) => {
       const context = await browser.newContext();
       const page = await context.newPage();
 
@@ -369,23 +385,25 @@ test.describe('LandingPage E2E Coverage', () => {
       await context.close();
     });
 
-    test('should allow tab navigation through interactive elements', async ({ browser }) => {
+    test('should allow tab navigation through interactive elements', async ({
+      browser,
+    }) => {
       const context = await browser.newContext();
       const page = await context.newPage();
 
       await page.goto('/', { waitUntil: 'load' });
 
       // Get initial focused element
-      let focusedElement = await page.evaluate(() =>
-        document.activeElement?.tagName,
+      let focusedElement = await page.evaluate(
+        () => document.activeElement?.tagName,
       );
 
       // Tab to move focus
       await page.keyboard.press('Tab');
 
       // Focus should move
-      const newFocusedElement = await page.evaluate(() =>
-        document.activeElement?.tagName,
+      const newFocusedElement = await page.evaluate(
+        () => document.activeElement?.tagName,
       );
 
       // Both can be valid focus points
@@ -395,7 +413,9 @@ test.describe('LandingPage E2E Coverage', () => {
       await context.close();
     });
 
-    test('should reach theme button via keyboard navigation', async ({ browser }) => {
+    test('should reach theme button via keyboard navigation', async ({
+      browser,
+    }) => {
       const context = await browser.newContext();
       const page = await context.newPage();
 
@@ -420,7 +440,9 @@ test.describe('LandingPage E2E Coverage', () => {
       await context.close();
     });
 
-    test('should reach Get Started button via keyboard', async ({ browser }) => {
+    test('should reach Get Started button via keyboard', async ({
+      browser,
+    }) => {
       const context = await browser.newContext();
       const page = await context.newPage();
 
@@ -541,7 +563,9 @@ test.describe('LandingPage E2E Coverage', () => {
   });
 
   test.describe('No Real Network Calls', () => {
-    test('should not make real API calls to external services', async ({ browser }) => {
+    test('should not make real API calls to external services', async ({
+      browser,
+    }) => {
       const context = await browser.newContext();
       const page = await context.newPage();
 
@@ -571,7 +595,9 @@ test.describe('LandingPage E2E Coverage', () => {
       // Price calls should not reach external APIs (they should be mocked/aborted)
       const priceApiCalls = externalCalls.filter(
         (url) =>
-          url.includes('ticker') || url.includes('coingecko') || url.includes('price'),
+          url.includes('ticker') ||
+          url.includes('coingecko') ||
+          url.includes('price'),
       );
 
       // All external calls should be handled (not completed to real APIs)

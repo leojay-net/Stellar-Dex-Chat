@@ -15,7 +15,10 @@ function capturePaginationTelemetry(): Promise<SessionPaginationTelemetryDetail>
   return new Promise((resolve) => {
     window.addEventListener(
       'session_pagination_telemetry',
-      (event) => resolve((event as CustomEvent<SessionPaginationTelemetryDetail>).detail),
+      (event) =>
+        resolve(
+          (event as CustomEvent<SessionPaginationTelemetryDetail>).detail,
+        ),
       { once: true },
     );
   });
@@ -40,7 +43,9 @@ describe('useSessionPagination telemetry', () => {
 
   it('dispatches load-more telemetry after user requests more items', async () => {
     vi.useFakeTimers();
-    const { result } = renderHook(() => useSessionPagination(['one', 'two', 'three'], 1));
+    const { result } = renderHook(() =>
+      useSessionPagination(['one', 'two', 'three'], 1),
+    );
     const eventPromise = capturePaginationTelemetry();
 
     act(() => {

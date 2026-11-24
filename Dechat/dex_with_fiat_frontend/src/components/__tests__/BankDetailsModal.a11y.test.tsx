@@ -51,7 +51,11 @@ vi.mock('@/lib/clientSession', () => ({
 describe('BankDetailsModal accessibility', () => {
   it('renders a polite live region for announcements', () => {
     render(
-      <BankDetailsModal isOpen={true} onClose={() => undefined} xlmAmount={100} />,
+      <BankDetailsModal
+        isOpen={true}
+        onClose={() => undefined}
+        xlmAmount={100}
+      />,
     );
 
     const liveRegion = screen.getByRole('status');

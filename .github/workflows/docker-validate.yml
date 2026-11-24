@@ -36,12 +36,12 @@ jobs:
             echo "   Should be: ./Dechat/dex_with_fiat_frontend"
             exit 1
           fi
-          
+
           if ! grep -q './Dechat/dex_with_fiat_frontend' docker-compose.yml; then
             echo "❌ ERROR: docker-compose.yml does not reference ./Dechat/dex_with_fiat_frontend"
             exit 1
           fi
-          
+
           echo "✅ docker-compose.yml uses correct Dechat/ paths"
 
       - name: Verify environment variable names match env.ts
@@ -54,7 +54,7 @@ jobs:
             echo "   NEXT_PUBLIC_STELLAR_NETWORK is not used (remove it)"
             exit 1
           fi
-          
+
           echo "✅ Environment variable names are correct"
 
       - name: Check for pinned stellar/quickstart image
@@ -64,7 +64,7 @@ jobs:
             echo "   Example: stellar/quickstart:testing or stellar/quickstart:soroban-dev"
             exit 1
           fi
-          
+
           echo "✅ stellar/quickstart image is pinned"
 
       - name: Verify no obsolete version key
@@ -74,5 +74,5 @@ jobs:
             echo "   The version key is deprecated in Compose V2 and should be removed"
             exit 1
           fi
-          
+
           echo "✅ No obsolete version key found"

@@ -51,7 +51,7 @@ describe('AdminGuard', () => {
     render(
       <AdminGuard>
         <div data-testid="protected-content">Secret content</div>
-      </AdminGuard>
+      </AdminGuard>,
     );
 
     expect(await screen.findByTestId('landing-page')).toBeInTheDocument();
@@ -60,35 +60,44 @@ describe('AdminGuard', () => {
 
   it('shows error if connected address has invalid format (Zod validation)', async () => {
     vi.mocked(useStellarWallet).mockReturnValue({
-      connection: { address: 'invalid-address-not-starting-with-g-or-correct-length' },
+      connection: {
+        address: 'invalid-address-not-starting-with-g-or-correct-length',
+      },
     } as any);
 
     render(
       <AdminGuard>
         <div data-testid="protected-content">Secret content</div>
-      </AdminGuard>
+      </AdminGuard>,
     );
 
-    expect(await screen.findByText('Invalid wallet address format. Access denied.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Invalid wallet address format. Access denied.'),
+    ).toBeInTheDocument();
   });
 
   it('shows error if contract admin address has invalid format (Zod validation)', async () => {
     vi.mocked(useStellarWallet).mockReturnValue({
-      connection: { address: 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUV2' }, // 56 chars
+      connection: {
+        address: 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUV2',
+      }, // 56 chars
     } as any);
     vi.mocked(getAdmin).mockResolvedValue('invalid-admin-address');
 
     render(
       <AdminGuard>
         <div data-testid="protected-content">Secret content</div>
-      </AdminGuard>
+      </AdminGuard>,
     );
 
-    expect(await screen.findByText('Invalid contract configuration. Access denied.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Invalid contract configuration. Access denied.'),
+    ).toBeInTheDocument();
   });
 
   it('renders children when connected address matches admin address exactly', async () => {
-    const validAddr = 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUV2';
+    const validAddr =
+      'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUV2';
     vi.mocked(useStellarWallet).mockReturnValue({
       connection: { address: validAddr },
     } as any);
@@ -97,7 +106,7 @@ describe('AdminGuard', () => {
     render(
       <AdminGuard>
         <div data-testid="protected-content">Secret content</div>
-      </AdminGuard>
+      </AdminGuard>,
     );
 
     expect(await screen.findByTestId('protected-content')).toBeInTheDocument();
@@ -105,7 +114,8 @@ describe('AdminGuard', () => {
 
   it('renders landing page when valid connected address does not match valid admin address', async () => {
     const userAddr = 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUV2';
-    const adminAddr = 'GBCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW2';
+    const adminAddr =
+      'GBCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW2';
     vi.mocked(useStellarWallet).mockReturnValue({
       connection: { address: userAddr },
     } as any);
@@ -114,14 +124,15 @@ describe('AdminGuard', () => {
     render(
       <AdminGuard>
         <div data-testid="protected-content">Secret content</div>
-      </AdminGuard>
+      </AdminGuard>,
     );
 
     expect(await screen.findByTestId('landing-page')).toBeInTheDocument();
   });
 
   it('shows error message when getAdmin throws', async () => {
-    const validAddr = 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUV2';
+    const validAddr =
+      'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUV2';
     vi.mocked(useStellarWallet).mockReturnValue({
       connection: { address: validAddr },
     } as any);
@@ -130,9 +141,13 @@ describe('AdminGuard', () => {
     render(
       <AdminGuard>
         <div data-testid="protected-content">Secret content</div>
-      </AdminGuard>
+      </AdminGuard>,
     );
 
-    expect(await screen.findByText('Failed to verify admin status. Please try again.')).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        'Failed to verify admin status. Please try again.',
+      ),
+    ).toBeInTheDocument();
   });
 });

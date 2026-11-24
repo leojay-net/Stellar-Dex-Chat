@@ -204,43 +204,53 @@ export default function OfflineStatusBanner() {
               ? 'Reconnecting...'
               : 'You are offline. Messages will be sent when you reconnect.'}
           </p>
-          {optimisticPendingCount > 0 && (() => {
-            const totalPages = Math.ceil(optimisticPendingCount / PENDING_PAGE_SIZE);
-            const safePage = Math.min(pendingPage, totalPages);
-            const start = (safePage - 1) * PENDING_PAGE_SIZE + 1;
-            const end = Math.min(safePage * PENDING_PAGE_SIZE, optimisticPendingCount);
-            return (
-              <div className="flex items-center gap-2 mt-0.5">
-                <p className="text-xs text-white/90">
-                  Showing {start}–{end} of {optimisticPendingCount} message
-                  {optimisticPendingCount === 1 ? '' : 's'} waiting to send
-                </p>
-                {totalPages > 1 && (
-                  <div className="flex items-center gap-1">
-                    <button
-                      disabled={safePage <= 1}
-                      onClick={() => setPendingPage((p) => Math.max(1, p - 1))}
-                      className="text-xs text-white/80 disabled:opacity-40 hover:text-white px-1"
-                      aria-label="Previous page of queued messages"
-                    >
-                      ‹
-                    </button>
-                    <span className="text-xs text-white/80">
-                      {safePage}/{totalPages}
-                    </span>
-                    <button
-                      disabled={safePage >= totalPages}
-                      onClick={() => setPendingPage((p) => Math.min(totalPages, p + 1))}
-                      className="text-xs text-white/80 disabled:opacity-40 hover:text-white px-1"
-                      aria-label="Next page of queued messages"
-                    >
-                      ›
-                    </button>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
+          {optimisticPendingCount > 0 &&
+            (() => {
+              const totalPages = Math.ceil(
+                optimisticPendingCount / PENDING_PAGE_SIZE,
+              );
+              const safePage = Math.min(pendingPage, totalPages);
+              const start = (safePage - 1) * PENDING_PAGE_SIZE + 1;
+              const end = Math.min(
+                safePage * PENDING_PAGE_SIZE,
+                optimisticPendingCount,
+              );
+              return (
+                <div className="flex items-center gap-2 mt-0.5">
+                  <p className="text-xs text-white/90">
+                    Showing {start}–{end} of {optimisticPendingCount} message
+                    {optimisticPendingCount === 1 ? '' : 's'} waiting to send
+                  </p>
+                  {totalPages > 1 && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        disabled={safePage <= 1}
+                        onClick={() =>
+                          setPendingPage((p) => Math.max(1, p - 1))
+                        }
+                        className="text-xs text-white/80 disabled:opacity-40 hover:text-white px-1"
+                        aria-label="Previous page of queued messages"
+                      >
+                        ‹
+                      </button>
+                      <span className="text-xs text-white/80">
+                        {safePage}/{totalPages}
+                      </span>
+                      <button
+                        disabled={safePage >= totalPages}
+                        onClick={() =>
+                          setPendingPage((p) => Math.min(totalPages, p + 1))
+                        }
+                        className="text-xs text-white/80 disabled:opacity-40 hover:text-white px-1"
+                        aria-label="Next page of queued messages"
+                      >
+                        ›
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
         </div>
         <div className="shrink-0" aria-hidden="true">
           <AlertTriangle className="w-5 h-5 text-white" />

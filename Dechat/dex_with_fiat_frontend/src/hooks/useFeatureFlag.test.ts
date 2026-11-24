@@ -14,7 +14,11 @@ vi.mock('@/lib/featureFlags', () => ({
   getFeatureFlag: vi.fn(() => false),
   FeatureFlagNameSchema: {
     safeParse: (flag: string) => {
-      const valid = ['enableAdminReconciliation', 'enableConversionReminders', 'enableHaptics'];
+      const valid = [
+        'enableAdminReconciliation',
+        'enableConversionReminders',
+        'enableHaptics',
+      ];
       if (valid.includes(flag)) return { success: true, data: flag };
       return { success: false };
     },
@@ -26,7 +30,9 @@ vi.mock('@/lib/featureFlags', () => ({
   },
 }));
 
-function Harness(props: { flag: 'enableAdminReconciliation' | 'enableConversionReminders' }) {
+function Harness(props: {
+  flag: 'enableAdminReconciliation' | 'enableConversionReminders';
+}) {
   const isEnabled = useFeatureFlag(props.flag);
   return React.createElement('div', null, isEnabled ? 'enabled' : 'disabled');
 }
@@ -36,15 +42,20 @@ describe('useFeatureFlag', () => {
     vi.mocked(getFeatureFlag).mockReturnValue(true);
 
     const serverMarkup = renderToString(
-      React.createElement(Harness, { flag: 'enableAdminReconciliation' })
+      React.createElement(Harness, { flag: 'enableAdminReconciliation' }),
     );
     const container = document.createElement('div');
     container.innerHTML = serverMarkup;
 
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
 
     await act(async () => {
-      hydrateRoot(container, React.createElement(Harness, { flag: 'enableAdminReconciliation' }));
+      hydrateRoot(
+        container,
+        React.createElement(Harness, { flag: 'enableAdminReconciliation' }),
+      );
     });
 
     await waitFor(() => {
@@ -53,8 +64,8 @@ describe('useFeatureFlag', () => {
     expect(serverMarkup).toContain('disabled');
     expect(
       consoleErrorSpy.mock.calls.some((args) =>
-        String(args[0]).toLowerCase().includes('hydration')
-      )
+        String(args[0]).toLowerCase().includes('hydration'),
+      ),
     ).toBe(false);
 
     consoleErrorSpy.mockRestore();
@@ -81,7 +92,9 @@ describe('useFeatureFlag', () => {
     vi.mocked(getFeatureFlag).mockReturnValue(true);
 
     await act(async () => {
-      renderToString(React.createElement(Harness, { flag: 'enableAdminReconciliation' }));
+      renderToString(
+        React.createElement(Harness, { flag: 'enableAdminReconciliation' }),
+      );
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
@@ -89,23 +102,36 @@ describe('useFeatureFlag', () => {
     expect(scrollIntoViewSpy).not.toHaveBeenCalled();
 
     // Test with scrollTargetId
-    function HarnessWithScroll(props: { flag: 'enableAdminReconciliation' | 'enableConversionReminders' }) {
+    function HarnessWithScroll(props: {
+      flag: 'enableAdminReconciliation' | 'enableConversionReminders';
+    }) {
       const isEnabled = useFeatureFlag(props.flag, 'test-target');
-      return React.createElement('div', null, isEnabled ? 'enabled' : 'disabled');
+      return React.createElement(
+        'div',
+        null,
+        isEnabled ? 'enabled' : 'disabled',
+      );
     }
 
     await act(async () => {
       const container = document.createElement('div');
       container.innerHTML = renderToString(
-        React.createElement(HarnessWithScroll, { flag: 'enableAdminReconciliation' }),
+        React.createElement(HarnessWithScroll, {
+          flag: 'enableAdminReconciliation',
+        }),
       );
       hydrateRoot(
         container,
-        React.createElement(HarnessWithScroll, { flag: 'enableAdminReconciliation' }),
+        React.createElement(HarnessWithScroll, {
+          flag: 'enableAdminReconciliation',
+        }),
       );
     });
 
-    expect(scrollIntoViewSpy).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' });
+    expect(scrollIntoViewSpy).toHaveBeenCalledWith({
+      behavior: 'smooth',
+      block: 'center',
+    });
 
     // Cleanup
     document.body.removeChild(mockElement);
@@ -123,7 +149,9 @@ describe('useFeatureFlag – initial state', () => {
 
   it('returns false on first render before layout effect runs', () => {
     vi.mocked(getFeatureFlag).mockReturnValue(true);
-    const { result } = renderHook(() => useFeatureFlag('enableAdminReconciliation'));
+    const { result } = renderHook(() =>
+      useFeatureFlag('enableAdminReconciliation'),
+    );
     // useState initial value is false to avoid SSR hydration mismatch
     // After mount it should resolve to the actual value
     expect(typeof result.current).toBe('boolean');
@@ -131,13 +159,17 @@ describe('useFeatureFlag – initial state', () => {
 
   it('resolves to true when the flag is enabled', async () => {
     vi.mocked(getFeatureFlag).mockReturnValue(true);
-    const { result } = renderHook(() => useFeatureFlag('enableAdminReconciliation'));
+    const { result } = renderHook(() =>
+      useFeatureFlag('enableAdminReconciliation'),
+    );
     expect(result.current).toBe(true);
   });
 
   it('resolves to false when the flag is disabled', () => {
     vi.mocked(getFeatureFlag).mockReturnValue(false);
-    const { result } = renderHook(() => useFeatureFlag('enableAdminReconciliation'));
+    const { result } = renderHook(() =>
+      useFeatureFlag('enableAdminReconciliation'),
+    );
     expect(result.current).toBe(false);
   });
 });
@@ -150,20 +182,25 @@ describe('useFeatureFlag – flag argument changes', () => {
 
   it('updates when switching to a different flag', () => {
     vi.mocked(getFeatureFlag).mockImplementation(
-      (flag: string) => flag === 'enableConversionReminders'
+      (flag: string) => flag === 'enableConversionReminders',
     );
 
     const { result, rerender } = renderHook<
       boolean,
       { flag: 'enableAdminReconciliation' | 'enableConversionReminders' }
     >(
-      ({ flag }: { flag: 'enableAdminReconciliation' | 'enableConversionReminders' }) =>
-        useFeatureFlag(flag),
+      ({
+        flag,
+      }: {
+        flag: 'enableAdminReconciliation' | 'enableConversionReminders';
+      }) => useFeatureFlag(flag),
       {
         initialProps: {
-          flag: 'enableAdminReconciliation' as 'enableAdminReconciliation' | 'enableConversionReminders',
+          flag: 'enableAdminReconciliation' as
+            | 'enableAdminReconciliation'
+            | 'enableConversionReminders',
         },
-      }
+      },
     );
 
     expect(result.current).toBe(false);
@@ -180,19 +217,28 @@ describe('useFeatureFlag – flag argument changes', () => {
       boolean,
       { flag: 'enableAdminReconciliation' | 'enableConversionReminders' }
     >(
-      ({ flag }: { flag: 'enableAdminReconciliation' | 'enableConversionReminders' }) =>
-        useFeatureFlag(flag),
+      ({
+        flag,
+      }: {
+        flag: 'enableAdminReconciliation' | 'enableConversionReminders';
+      }) => useFeatureFlag(flag),
       {
         initialProps: {
-          flag: 'enableAdminReconciliation' as 'enableAdminReconciliation' | 'enableConversionReminders',
+          flag: 'enableAdminReconciliation' as
+            | 'enableAdminReconciliation'
+            | 'enableConversionReminders',
         },
-      }
+      },
     );
 
     rerender({ flag: 'enableConversionReminders' });
 
-    expect(vi.mocked(getFeatureFlag)).toHaveBeenCalledWith('enableAdminReconciliation');
-    expect(vi.mocked(getFeatureFlag)).toHaveBeenCalledWith('enableConversionReminders');
+    expect(vi.mocked(getFeatureFlag)).toHaveBeenCalledWith(
+      'enableAdminReconciliation',
+    );
+    expect(vi.mocked(getFeatureFlag)).toHaveBeenCalledWith(
+      'enableConversionReminders',
+    );
   });
 });
 
@@ -203,26 +249,28 @@ describe('useFeatureFlag – invalid flag name', () => {
   });
 
   it('logs an error and returns false for an unknown flag name', () => {
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
 
     const { result } = renderHook(() =>
-      useFeatureFlag('nonExistentFlag' as 'enableAdminReconciliation')
+      useFeatureFlag('nonExistentFlag' as 'enableAdminReconciliation'),
     );
 
     expect(result.current).toBe(false);
     expect(consoleError).toHaveBeenCalledWith(
-      expect.stringContaining('Invalid feature flag name')
+      expect.stringContaining('Invalid feature flag name'),
     );
 
     consoleError.mockRestore();
   });
 
   it('does not call getFeatureFlag when flag name is invalid', () => {
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
 
-    renderHook(() =>
-      useFeatureFlag('badFlag' as 'enableAdminReconciliation')
-    );
+    renderHook(() => useFeatureFlag('badFlag' as 'enableAdminReconciliation'));
 
     expect(vi.mocked(getFeatureFlag)).not.toHaveBeenCalled();
 
@@ -258,7 +306,9 @@ describe('useFeatureFlag – scroll behaviour', () => {
     el.id = 'target-disabled';
     document.body.appendChild(el);
 
-    renderHook(() => useFeatureFlag('enableAdminReconciliation', 'target-disabled'));
+    renderHook(() =>
+      useFeatureFlag('enableAdminReconciliation', 'target-disabled'),
+    );
 
     expect(scrollIntoView).not.toHaveBeenCalled();
 
@@ -269,7 +319,9 @@ describe('useFeatureFlag – scroll behaviour', () => {
     const scrollIntoView = vi.fn();
     window.HTMLElement.prototype.scrollIntoView = scrollIntoView;
 
-    renderHook(() => useFeatureFlag('enableAdminReconciliation', 'ghost-element-id'));
+    renderHook(() =>
+      useFeatureFlag('enableAdminReconciliation', 'ghost-element-id'),
+    );
 
     expect(scrollIntoView).not.toHaveBeenCalled();
   });

@@ -113,20 +113,32 @@ describe('ChatInput - Keyboard Shortcuts', () => {
 
   it('should toggle command palette with Cmd+K', () => {
     render(<ChatInput {...defaultProps} />);
-    expect(screen.queryByPlaceholderText('Type a command...')).not.toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText('Type a command...'),
+    ).not.toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'k', metaKey: true });
-    expect(screen.getByPlaceholderText('Type a command...')).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText('Type a command...'),
+    ).toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'k', metaKey: true });
-    expect(screen.queryByPlaceholderText('Type a command...')).not.toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText('Type a command...'),
+    ).not.toBeInTheDocument();
   });
 
   it('should toggle command palette with Ctrl+K', () => {
     render(<ChatInput {...defaultProps} />);
-    expect(screen.queryByPlaceholderText('Type a command...')).not.toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText('Type a command...'),
+    ).not.toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
-    expect(screen.getByPlaceholderText('Type a command...')).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText('Type a command...'),
+    ).toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
-    expect(screen.queryByPlaceholderText('Type a command...')).not.toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText('Type a command...'),
+    ).not.toBeInTheDocument();
   });
 
   it('announces successful message submission to assistive tech', async () => {

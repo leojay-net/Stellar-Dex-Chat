@@ -13,11 +13,16 @@ describe('auditLog retry helpers', () => {
   });
 
   it('retries a failed operation and succeeds with exponential backoff', async () => {
-    const operation = vi.fn()
+    const operation = vi
+      .fn()
       .mockRejectedValueOnce(new Error('storage fail'))
       .mockResolvedValueOnce('ok');
 
-    const promise = retryWithBackoff(operation, { retries: 2, minDelayMs: 50, factor: 2 });
+    const promise = retryWithBackoff(operation, {
+      retries: 2,
+      minDelayMs: 50,
+      factor: 2,
+    });
 
     await vi.advanceTimersByTimeAsync(50);
     await expect(promise).resolves.toBe('ok');
@@ -36,7 +41,9 @@ describe('auditLog retry helpers', () => {
 
     await Promise.resolve();
 
-    const stored = JSON.parse(localStorage.getItem('audit_log_entries') ?? '[]');
+    const stored = JSON.parse(
+      localStorage.getItem('audit_log_entries') ?? '[]',
+    );
     expect(stored).toHaveLength(1);
     expect(stored[0]).toMatchObject({
       id: entry.id,

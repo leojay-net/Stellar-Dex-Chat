@@ -19,7 +19,9 @@ function sortSessions(sessions: ChatSession[]): ChatSession[] {
     if (a.pinned && b.pinned) {
       return (b.pinnedAt?.getTime() ?? 0) - (a.pinnedAt?.getTime() ?? 0);
     }
-    return new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime();
+    return (
+      new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()
+    );
   });
 }
 
@@ -107,7 +109,10 @@ describe('Thread pinning ordering', () => {
 
   it('sessions with no pinned field are treated as unpinned', () => {
     const noPinField = makeSession({ lastUpdated: new Date('2024-12-01') });
-    const pinned = makeSession({ pinned: true, pinnedAt: new Date('2024-06-01') });
+    const pinned = makeSession({
+      pinned: true,
+      pinnedAt: new Date('2024-06-01'),
+    });
 
     const sorted = sortSessions([noPinField, pinned]);
 
@@ -137,19 +142,29 @@ describe('Thread pinning ordering', () => {
 
 describe('Race-condition fix: updateCurrentSession functional updater (#1213)', () => {
   it('update is a no-op when currentSessionId is null in latest state', () => {
-    type State = { currentSessionId: string | null; sessions: { id: string; messages: string[] }[] };
-
-    // Simulate the fixed functional updater
-    const updater = (messages: string[]) => (prev: State): State => {
-      if (!prev.currentSessionId) return prev;
-      const idx = prev.sessions.findIndex((s) => s.id === prev.currentSessionId);
-      if (idx === -1) return prev;
-      const updated = [...prev.sessions];
-      updated[idx] = { ...updated[idx], messages };
-      return { ...prev, sessions: updated };
+    type State = {
+      currentSessionId: string | null;
+      sessions: { id: string; messages: string[] }[];
     };
 
-    const state: State = { currentSessionId: null, sessions: [{ id: 'a', messages: [] }] };
+    // Simulate the fixed functional updater
+    const updater =
+      (messages: string[]) =>
+      (prev: State): State => {
+        if (!prev.currentSessionId) return prev;
+        const idx = prev.sessions.findIndex(
+          (s) => s.id === prev.currentSessionId,
+        );
+        if (idx === -1) return prev;
+        const updated = [...prev.sessions];
+        updated[idx] = { ...updated[idx], messages };
+        return { ...prev, sessions: updated };
+      };
+
+    const state: State = {
+      currentSessionId: null,
+      sessions: [{ id: 'a', messages: [] }],
+    };
     const next = updater(['msg'])(state);
 
     // No change because currentSessionId was null at update time
@@ -157,16 +172,23 @@ describe('Race-condition fix: updateCurrentSession functional updater (#1213)', 
   });
 
   it('update targets the correct session even when currentSessionId changed before dispatch', () => {
-    type State = { currentSessionId: string | null; sessions: { id: string; messages: string[] }[] };
-
-    const updater = (messages: string[]) => (prev: State): State => {
-      if (!prev.currentSessionId) return prev;
-      const idx = prev.sessions.findIndex((s) => s.id === prev.currentSessionId);
-      if (idx === -1) return prev;
-      const updated = [...prev.sessions];
-      updated[idx] = { ...updated[idx], messages };
-      return { ...prev, sessions: updated };
+    type State = {
+      currentSessionId: string | null;
+      sessions: { id: string; messages: string[] }[];
     };
+
+    const updater =
+      (messages: string[]) =>
+      (prev: State): State => {
+        if (!prev.currentSessionId) return prev;
+        const idx = prev.sessions.findIndex(
+          (s) => s.id === prev.currentSessionId,
+        );
+        if (idx === -1) return prev;
+        const updated = [...prev.sessions];
+        updated[idx] = { ...updated[idx], messages };
+        return { ...prev, sessions: updated };
+      };
 
     // State has switched to session 'b' by the time the updater runs
     const state: State = {
@@ -179,16 +201,23 @@ describe('Race-condition fix: updateCurrentSession functional updater (#1213)', 
 
     const next = updater(['hello'])(state);
 
-    expect(next.sessions.find((s) => s.id === 'b')?.messages).toEqual(['hello']);
+    expect(next.sessions.find((s) => s.id === 'b')?.messages).toEqual([
+      'hello',
+    ]);
     expect(next.sessions.find((s) => s.id === 'a')?.messages).toEqual([]);
   });
 });
 
 describe('Race-condition fix: loadSession uses sessionsRef (#1213)', () => {
   function makeUpdater(messages: { id: string }[]) {
-    return (prev: { currentSessionId: string | null; sessions: { id: string; messages: { id: string }[] }[] }) => {
+    return (prev: {
+      currentSessionId: string | null;
+      sessions: { id: string; messages: { id: string }[] }[];
+    }) => {
       if (!prev.currentSessionId) return prev;
-      const idx = prev.sessions.findIndex((s) => s.id === prev.currentSessionId);
+      const idx = prev.sessions.findIndex(
+        (s) => s.id === prev.currentSessionId,
+      );
       if (idx === -1) return prev;
       const updated = [...prev.sessions];
       updated[idx] = { ...updated[idx], messages };
@@ -229,12 +258,19 @@ describe('Race-condition fix: loadSession uses sessionsRef (#1213)', () => {
 
       // Stale outer value would be 'a', but we simulate the state having already
       // advanced to 'b' before the updater runs.
-      const freshState = { currentSessionId: 'b', sessions: [sessionA, sessionB] };
+      const freshState = {
+        currentSessionId: 'b',
+        sessions: [sessionA, sessionB],
+      };
 
       const nextState = makeUpdater(newMessages)(freshState);
 
-      expect(nextState.sessions.find((s) => s.id === 'b')?.messages).toEqual(newMessages);
-      expect(nextState.sessions.find((s) => s.id === 'a')?.messages).toEqual([]);
+      expect(nextState.sessions.find((s) => s.id === 'b')?.messages).toEqual(
+        newMessages,
+      );
+      expect(nextState.sessions.find((s) => s.id === 'a')?.messages).toEqual(
+        [],
+      );
     });
 
     it('returns prev unchanged when prev.currentSessionId is null', () => {
@@ -840,7 +876,9 @@ describe('useChatHistory hook', () => {
       });
 
       expect(result.current.searchResults.length).toBeGreaterThan(0);
-      expect(result.current.searchResults[0].messages[0].content).toContain('XLM');
+      expect(result.current.searchResults[0].messages[0].content).toContain(
+        'XLM',
+      );
     });
 
     it('returns empty results when query matches nothing', () => {
@@ -986,7 +1024,9 @@ describe('useChatHistory hook', () => {
       });
 
       expect(result.current.unpinnedSessions).toHaveLength(1);
-      expect(result.current.unpinnedSessions.every((s) => !s.pinned)).toBe(true);
+      expect(result.current.unpinnedSessions.every((s) => !s.pinned)).toBe(
+        true,
+      );
       expect(result.current.pinnedSessions).toHaveLength(1);
     });
 
@@ -1122,7 +1162,9 @@ describe('Cross-tab sync via BroadcastChannel (#1733)', () => {
     });
 
     // Wait for the initial load effect.
-    await act(async () => { vi.runAllTimers(); });
+    await act(async () => {
+      vi.runAllTimers();
+    });
 
     // Simulate another tab writing a session to localStorage.
     const foreign = {
@@ -1146,7 +1188,9 @@ describe('Cross-tab sync via BroadcastChannel (#1733)', () => {
       );
     });
 
-    expect(result.current.sessions.some((s) => s.id === 'foreign-session')).toBe(true);
+    expect(
+      result.current.sessions.some((s) => s.id === 'foreign-session'),
+    ).toBe(true);
   });
 
   it('does not reload when it receives its own tabId', async () => {
@@ -1154,7 +1198,9 @@ describe('Cross-tab sync via BroadcastChannel (#1733)', () => {
       wrapper: ({ children }: { children: React.ReactNode }) => children,
     });
 
-    await act(async () => { vi.runAllTimers(); });
+    await act(async () => {
+      vi.runAllTimers();
+    });
 
     const sessionsBefore = result.current.sessions;
 
@@ -1182,7 +1228,9 @@ describe('Cross-tab sync via BroadcastChannel (#1733)', () => {
       wrapper: ({ children }: { children: React.ReactNode }) => children,
     });
 
-    await act(async () => { vi.runAllTimers(); });
+    await act(async () => {
+      vi.runAllTimers();
+    });
 
     // Write foreign state to localStorage.
     const foreign = {
@@ -1209,6 +1257,8 @@ describe('Cross-tab sync via BroadcastChannel (#1733)', () => {
       );
     });
 
-    expect(result.current.sessions.some((s) => s.id === 'storage-session')).toBe(true);
+    expect(
+      result.current.sessions.some((s) => s.id === 'storage-session'),
+    ).toBe(true);
   });
 });

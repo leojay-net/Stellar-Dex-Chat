@@ -1,6 +1,12 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
+import {
+  render,
+  screen,
+  fireEvent,
+  act,
+  cleanup,
+} from '@testing-library/react';
 import ChatHistorySidebar from '@/components/ChatHistorySidebar';
 import type { ChatSession } from '@/types';
 
@@ -51,10 +57,15 @@ vi.mock('@/contexts/TranslationContext', () => ({
 }));
 
 vi.mock('@/components/PriceTicker', () => ({ default: () => null }));
-vi.mock('@/components/ui/skeleton/SkeletonSidebar', () => ({ default: () => null }));
+vi.mock('@/components/ui/skeleton/SkeletonSidebar', () => ({
+  default: () => null,
+}));
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-function makeSession(id: string, overrides?: Partial<ChatSession>): ChatSession {
+function makeSession(
+  id: string,
+  overrides?: Partial<ChatSession>,
+): ChatSession {
   return {
     id,
     title: `Chat ${id}`,
@@ -67,12 +78,20 @@ function makeSession(id: string, overrides?: Partial<ChatSession>): ChatSession 
 }
 
 /** Render the sidebar and advance past the 800ms loading skeleton */
-async function renderAndLoad(props?: Partial<React.ComponentProps<typeof ChatHistorySidebar>>) {
+async function renderAndLoad(
+  props?: Partial<React.ComponentProps<typeof ChatHistorySidebar>>,
+) {
   const result = render(
-    <ChatHistorySidebar onLoadSession={vi.fn()} isCollapsed={false} {...props} />,
+    <ChatHistorySidebar
+      onLoadSession={vi.fn()}
+      isCollapsed={false}
+      {...props}
+    />,
   );
   // Advance the 800ms loading timer
-  await act(async () => { vi.advanceTimersByTime(900); });
+  await act(async () => {
+    vi.advanceTimersByTime(900);
+  });
   return result;
 }
 
@@ -110,7 +129,9 @@ describe('ChatHistorySidebar', () => {
   });
 
   it('contains long sidebar content without horizontal overflow (#786)', async () => {
-    mockUnpinnedSessions = [makeSession('overflow', { title: 'A'.repeat(300) })];
+    mockUnpinnedSessions = [
+      makeSession('overflow', { title: 'A'.repeat(300) }),
+    ];
     mockAllSessions = mockUnpinnedSessions;
 
     const { container } = await renderAndLoad();
@@ -123,7 +144,9 @@ describe('ChatHistorySidebar', () => {
 
   it('auto-scrolls the active conversation into view when rendered', async () => {
     const scrollIntoView = vi.fn();
-    vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(scrollIntoView);
+    vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(
+      scrollIntoView,
+    );
 
     const sessionA = makeSession('a1');
     const sessionB = makeSession('a2');
@@ -138,7 +161,9 @@ describe('ChatHistorySidebar', () => {
 
   it('re-scrolls the active conversation after the active session changes', async () => {
     const scrollIntoView = vi.fn();
-    vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(scrollIntoView);
+    vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(
+      scrollIntoView,
+    );
 
     const sessionA = makeSession('b1');
     const sessionB = makeSession('b2');
@@ -149,12 +174,16 @@ describe('ChatHistorySidebar', () => {
     const { rerender } = render(
       <ChatHistorySidebar onLoadSession={vi.fn()} isCollapsed={false} />,
     );
-    await act(async () => { vi.advanceTimersByTime(900); });
+    await act(async () => {
+      vi.advanceTimersByTime(900);
+    });
 
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
 
     mockCurrentSessionId = 'b2';
-    rerender(<ChatHistorySidebar onLoadSession={vi.fn()} isCollapsed={false} />);
+    rerender(
+      <ChatHistorySidebar onLoadSession={vi.fn()} isCollapsed={false} />,
+    );
     await act(async () => {});
 
     expect(scrollIntoView).toHaveBeenCalledTimes(2);
@@ -193,7 +222,9 @@ describe('ChatHistorySidebar', () => {
     fireEvent.click(screen.getByText('Delete'));
 
     // Advance past the 5s undo window
-    await act(async () => { vi.advanceTimersByTime(5100); });
+    await act(async () => {
+      vi.advanceTimersByTime(5100);
+    });
 
     expect(mockDeleteSession).toHaveBeenCalledWith('s2');
   });
@@ -211,11 +242,15 @@ describe('ChatHistorySidebar', () => {
     // Click Undo before the timer fires
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
 
-    await act(async () => { vi.advanceTimersByTime(5100); });
+    await act(async () => {
+      vi.advanceTimersByTime(5100);
+    });
 
     expect(mockDeleteSession).not.toHaveBeenCalled();
     expect(screen.queryByText('Conversation deleted')).toBeNull();
-    expect(screen.getByTestId('chat-history-live-region')).toHaveTextContent('Conversation restored.');
+    expect(screen.getByTestId('chat-history-live-region')).toHaveTextContent(
+      'Conversation restored.',
+    );
   });
 
   it('calls togglePin immediately on pin button click', async () => {
@@ -228,7 +263,9 @@ describe('ChatHistorySidebar', () => {
     fireEvent.click(screen.getByTitle('Pin conversation'));
 
     expect(mockTogglePin).toHaveBeenCalledWith('s4');
-    expect(screen.getByTestId('chat-history-live-region')).toHaveTextContent('Conversation pinned.');
+    expect(screen.getByTestId('chat-history-live-region')).toHaveTextContent(
+      'Conversation pinned.',
+    );
   });
 
   it('applies animate-bounce-once class to pin icon and removes it after 600ms', async () => {
@@ -246,7 +283,9 @@ describe('ChatHistorySidebar', () => {
     expect(svg?.getAttribute('class')).toContain('animate-bounce-once');
 
     // After 600ms the animation class should be removed
-    await act(async () => { vi.advanceTimersByTime(700); });
+    await act(async () => {
+      vi.advanceTimersByTime(700);
+    });
     expect(svg?.getAttribute('class')).not.toContain('animate-bounce-once');
   });
 
@@ -267,7 +306,9 @@ describe('ChatHistorySidebar', () => {
     );
 
     // Toast disappears after timeout
-    await act(async () => { vi.advanceTimersByTime(5100); });
+    await act(async () => {
+      vi.advanceTimersByTime(5100);
+    });
     expect(screen.queryByText('History cleared')).toBeNull();
   });
 
@@ -293,7 +334,9 @@ describe('ChatHistorySidebar', () => {
 
     // Row is back and the delete never propagated.
     expect(screen.getByText('Chat drop-1')).toBeInTheDocument();
-    await act(async () => { vi.advanceTimersByTime(5100); });
+    await act(async () => {
+      vi.advanceTimersByTime(5100);
+    });
     expect(mockDeleteSession).not.toHaveBeenCalled();
   });
 
@@ -308,7 +351,9 @@ describe('ChatHistorySidebar', () => {
       target: { value: 'stellar' },
     });
 
-    expect(screen.getByTestId('chat-history-live-region')).toHaveTextContent('0 conversations found');
+    expect(screen.getByTestId('chat-history-live-region')).toHaveTextContent(
+      '0 conversations found',
+    );
   });
 });
 
@@ -344,7 +389,8 @@ describe('ChatHistorySidebar error boundary (#633)', () => {
     }));
     vi.resetModules();
 
-    const { default: ChatHistorySidebarFresh } = await import('@/components/ChatHistorySidebar');
+    const { default: ChatHistorySidebarFresh } =
+      await import('@/components/ChatHistorySidebar');
 
     await act(async () => {
       render(
