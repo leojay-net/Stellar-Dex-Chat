@@ -445,6 +445,8 @@ Repo Avatar
 - **schema:** Accept M... addresses in admin recipient; reject where contract needs G...
 - **chatHistory:** Export channel name and sync message type
 - **useChatHistory:** Sync history across tabs with BroadcastChannel
+- **ci:** Implement sbom, release workflow, editorconfig, and docker dependabot (issues 1-4)
+- **frontend:** Add shortcut help and strengthen test CI
 
 ### Fixed
 
@@ -944,6 +946,9 @@ Repo Avatar
 - **contract:** Gate test_issues_1400_1403 behind cfg(test) and ignore RUSTSEC-2026-0387
 - **frontend:** Repair merge damage, sync lockfile and clear lint/type errors
 - **frontend:** Allow the Soroban RPC, price API and connectivity probe in CSP connect-src
+- **frontend:** Restore unit tests and configure the E2E build
+- **frontend:** Repair browser fixtures and preserve sent chat messages
+- **frontend:** Type the native QR detector without suppressions
 
 ### Changed
 
@@ -1305,6 +1310,10 @@ Closes #1724, #1725, #1726, #1728
 - Ignore temporary PR description files
 - **changelog:** Update changelog [skip ci]
 - **frontend:** Update changelog for maintenance batch
+- **changelog:** Update changelog [skip ci]
+- **frontend:** Apply the existing Prettier rules
+- **frontend:** Finish browser test formatting and stabilize offline input
+- **frontend:** Pin Playwright to Ubuntu 24.04
 
 ### Deprecated
 

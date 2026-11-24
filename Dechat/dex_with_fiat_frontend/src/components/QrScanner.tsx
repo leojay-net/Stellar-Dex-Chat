@@ -14,13 +14,8 @@ function extractStellarAddress(raw: string): string | null {
   return null;
 }
 
-interface BarcodeDetectorInstance {
-  detect(video: HTMLVideoElement): Promise<{ rawValue: string }[]>;
-}
-
-interface BarcodeDetectorConstructor {
-  new (options: { formats: string[] }): BarcodeDetectorInstance;
-  getSupportedFormats(): Promise<string[]>;
+interface NativeQrDetector {
+  detect(source: HTMLVideoElement): Promise<Array<{ rawValue: string }>>;
 }
 
 interface QrScannerProps {
@@ -69,7 +64,7 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
   useEffect(() => {
     if (!scanning) return;
 
-    let detector: BarcodeDetectorInstance | null = null;
+    let detector: NativeQrDetector | null = null;
     let jsQR:
       | ((
           data: Uint8ClampedArray,
@@ -82,9 +77,11 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
     let active = true;
 
     async function init() {
-      // Prefer native BarcodeDetector
       const { BarcodeDetector } = window as Window & {
-        BarcodeDetector?: BarcodeDetectorConstructor;
+        BarcodeDetector?: {
+          new (options: { formats: string[] }): NativeQrDetector;
+          getSupportedFormats(): Promise<string[]>;
+        };
       };
       if (BarcodeDetector) {
         try {
@@ -100,8 +97,7 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
       // JS fallback: dynamic import keeps bundle size low
       if (!detector) {
         try {
-          const { default: decodeQr } = await import('jsqr');
-          jsQR = decodeQr;
+          jsQR = (await import('jsqr')).default;
           canvas = document.createElement('canvas');
           ctx = canvas.getContext('2d');
         } catch {

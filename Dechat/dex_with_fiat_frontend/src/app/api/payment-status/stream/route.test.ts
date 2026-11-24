@@ -120,16 +120,12 @@ describe('GET /api/payment-status/stream', () => {
 
     expect(res.status).toBe(200);
 
-    const reader = res.body?.getReader();
-    const decoder = new TextDecoder();
-
-    // Read the first chunk which should contain the retry line
-    const { value } = await reader!.read();
-    const text = decoder.decode(value);
-
-    expect(text).toContain('retry: 3000');
-
-    // Tear down the stream
-    await res.body?.cancel();
+    const reader = res.body!.getReader();
+    try {
+      const { value } = await reader.read();
+      expect(new TextDecoder().decode(value)).toContain('retry: 3000');
+    } finally {
+      await reader.cancel();
+    }
   });
 });

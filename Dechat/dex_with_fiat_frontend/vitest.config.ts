@@ -1,6 +1,7 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 import { fileURLToPath, URL } from 'node:url';
+import coverageThresholds from './coverage-thresholds.json';
 
 export default defineConfig({
   plugins: [react()],
@@ -12,6 +13,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    allowOnly: false,
     setupFiles: './vitest.setup.ts',
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     testTimeout: 15000,
@@ -28,10 +30,13 @@ export default defineConfig({
     },
     coverage: {
       provider: 'v8',
-      // 'blob' is required for cross-shard merging via `vitest --mergeReports`.
-      // 'json-summary' feeds the coverage-comment workflow.
-      // 'text' keeps local runs readable.
-      reporter: ['text', 'json-summary', 'blob'],
+      reporter: ['text', 'json-summary'],
+      reportOnFailure: true,
+      // CI applies the global floor after merging all four shards.
+      thresholds:
+        process.env.VITEST_COVERAGE_SHARD === 'true'
+          ? undefined
+          : coverageThresholds,
       cleanOnRerun: true,
       exclude: [
         '**/*.{test,spec}.{ts,tsx}',

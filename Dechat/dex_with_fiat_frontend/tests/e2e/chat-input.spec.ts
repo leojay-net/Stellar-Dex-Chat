@@ -211,7 +211,11 @@ test.describe('ChatInput', () => {
       await page.getByTestId('chat-input-send').click();
 
       await expect(
-        page.getByText('Wallet disconnected. Reconnect to continue.'),
+        page.locator('span').and(
+          page.getByText('Wallet disconnected. Reconnect to continue.', {
+            exact: true,
+          }),
+        ),
       ).toBeVisible({ timeout: 5_000 });
     });
 
@@ -227,7 +231,11 @@ test.describe('ChatInput', () => {
       await textarea.fill('Hi');
       await page.getByTestId('chat-input-send').click();
       await expect(
-        page.getByText('Wallet disconnected. Reconnect to continue.'),
+        page.locator('span').and(
+          page.getByText('Wallet disconnected. Reconnect to continue.', {
+            exact: true,
+          }),
+        ),
       ).toBeVisible({ timeout: 5_000 });
 
       // Now connect the wallet
@@ -235,7 +243,11 @@ test.describe('ChatInput', () => {
 
       // Warning should clear
       await expect(
-        page.getByText('Wallet disconnected. Reconnect to continue.'),
+        page.locator('span').and(
+          page.getByText('Wallet disconnected. Reconnect to continue.', {
+            exact: true,
+          }),
+        ),
       ).toBeHidden({ timeout: 5_000 });
     });
   });
@@ -311,12 +323,20 @@ test.describe('ChatInput', () => {
       await expect(textarea).toBeFocused();
     });
 
-    test('Tab reaches the send button', async ({ page }) => {
+    test('the enabled send button can be focused and activated with Enter', async ({
+      page,
+    }) => {
       await gotoHarness(page);
 
-      const sendBtn = page.getByTestId('chat-input-send');
-      await sendBtn.focus();
-      await expect(sendBtn).toBeFocused();
+      await page.getByTestId('chat-input-textarea').fill('Ready to send');
+      const sendButton = page.getByTestId('chat-input-send');
+      await expect(sendButton).toBeEnabled();
+      await sendButton.focus();
+      await expect(sendButton).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(page.getByTestId('sent-message').first()).toContainText(
+        'Ready to send',
+      );
     });
 
     test('Tab reaches the emoji button', async ({ page }) => {

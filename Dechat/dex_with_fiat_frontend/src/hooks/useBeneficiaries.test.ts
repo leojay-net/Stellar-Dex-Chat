@@ -1,3 +1,5 @@
+import { createElement } from 'react';
+import { renderToString } from 'react-dom/server';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { useBeneficiaries } from './useBeneficiaries';
@@ -26,11 +28,11 @@ describe('useBeneficiaries', () => {
 
   // Test 1: Initial state tests
   describe('initial state', () => {
-    it('returns empty beneficiaries array initially', () => {
+    it('loads an empty beneficiaries list when storage has no entries', () => {
       const { result } = renderHook(() => useBeneficiaries());
 
       expect(result.current.beneficiaries).toEqual([]);
-      expect(result.current.isLoaded).toBe(false);
+      expect(result.current.isLoaded).toBe(true);
       expect(result.current.selectedIndex).toBe(-1);
     });
 
@@ -348,19 +350,25 @@ describe('useBeneficiaries', () => {
       );
     });
 
-    it.skip('does not add event listener when window is undefined', () => {
-      // Simulate SSR environment
-      const originalWindow = global.window;
-      Object.defineProperty(global, 'window', { value: undefined });
+    it('renders the initial beneficiaries state without browser storage during SSR', () => {
+      function ServerProbe() {
+        const { beneficiaries, isLoaded } = useBeneficiaries();
+        return createElement(
+          'span',
+          null,
+          `${beneficiaries.length}:${isLoaded}`,
+        );
+      }
 
-      const addEventListenerSpy = vi.spyOn(global, 'addEventListener');
-
-      renderHook(() => useBeneficiaries());
-
-      expect(addEventListenerSpy).not.toHaveBeenCalled();
-
-      // Restore window
-      Object.defineProperty(global, 'window', { value: originalWindow });
+      vi.stubGlobal('window', undefined);
+      try {
+        expect(renderToString(createElement(ServerProbe))).toBe(
+          '<span>0:false</span>',
+        );
+        expect(localStorageMock.getItem).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+      }
     });
   });
 
@@ -560,198 +568,67 @@ describe('useBeneficiaries', () => {
       expect(result.current.selectedIndex).toBe(-1);
     });
 
-    it('handles keyboard shortcuts for add beneficiary (Ctrl+B)', () => {
-      const { result } = renderHook(() => useBeneficiaries());
-      const mockEvent = {
-        ctrlKey: true,
-        shiftKey: false,
-        key: 'b',
-        preventDefault: vi.fn(),
-      } as unknown as KeyboardEvent;
-
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
-
-      expect(mockEvent.preventDefault).toHaveBeenCalled();
-      expect(resultAction).toBe('add');
-    });
-
-    it('handles keyboard shortcuts for focus beneficiaries (Ctrl+Shift+B)', () => {
-      const { result } = renderHook(() => useBeneficiaries());
-      const mockEvent = {
-        ctrlKey: true,
-        shiftKey: true,
-        key: 'B',
-        preventDefault: vi.fn(),
-      } as unknown as KeyboardEvent;
-
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
-
-      expect(mockEvent.preventDefault).toHaveBeenCalled();
-      expect(resultAction).toBe('focus');
-    });
-
-    it('handles keyboard navigation up arrow', () => {
-      const { result } = renderHook(() => useBeneficiaries());
-
-      act(() => {
-        result.current.addBeneficiary(1, 'Bank A', 'BA', '111', 'Account A');
-        result.current.addBeneficiary(2, 'Bank B', 'BB', '222', 'Account B');
-        result.current.selectBeneficiary(1);
+    function pressKey(key: string, modifiers?: KeyboardEventInit) {
+      const event = new KeyboardEvent('keydown', {
+        key,
+        cancelable: true,
+        ...modifiers,
       });
-
-      const mockEvent = {
-        key: 'ArrowUp',
-        preventDefault: vi.fn(),
-      } as unknown as KeyboardEvent;
-
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
-
-      expect(mockEvent.preventDefault).toHaveBeenCalled();
-      expect(resultAction).toBe('navigate-up');
-      expect(result.current.selectedIndex).toBe(0);
-    });
-
-    it('does not navigate up when at first item', () => {
-      const { result } = renderHook(() => useBeneficiaries());
-
       act(() => {
-        result.current.addBeneficiary(1, 'Bank', 'B', '123', 'Account');
-        result.current.selectBeneficiary(0);
+        window.dispatchEvent(event);
       });
+      return event.defaultPrevented;
+    }
 
-      const mockEvent = {
-        key: 'ArrowUp',
-        preventDefault: vi.fn(),
-      } as unknown as KeyboardEvent;
+    it.each([
+      ['b', false],
+      ['B', true],
+    ])('handles Ctrl+%s when shift is %s', (key, shiftKey) => {
+      renderHook(() => useBeneficiaries());
 
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
-
-      expect(resultAction).toBeNull();
-      expect(result.current.selectedIndex).toBe(0);
+      expect(pressKey(key, { ctrlKey: true, shiftKey })).toBe(true);
     });
 
-    it('handles keyboard navigation down arrow', () => {
+    it('moves the selection with arrow keys and stops at either end', () => {
       const { result } = renderHook(() => useBeneficiaries());
-
       act(() => {
         result.current.addBeneficiary(1, 'Bank A', 'BA', '111', 'Account A');
         result.current.addBeneficiary(2, 'Bank B', 'BB', '222', 'Account B');
         result.current.selectBeneficiary(0);
       });
 
-      const mockEvent = {
-        key: 'ArrowDown',
-        preventDefault: vi.fn(),
-      } as unknown as KeyboardEvent;
-
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
-
-      expect(mockEvent.preventDefault).toHaveBeenCalled();
-      expect(resultAction).toBe('navigate-down');
+      expect(pressKey('ArrowUp')).toBe(false);
+      expect(result.current.selectedIndex).toBe(0);
+      expect(pressKey('ArrowDown')).toBe(true);
       expect(result.current.selectedIndex).toBe(1);
-    });
-
-    it('does not navigate down when at last item', () => {
-      const { result } = renderHook(() => useBeneficiaries());
-
-      act(() => {
-        result.current.addBeneficiary(1, 'Bank A', 'BA', '111', 'Account A');
-        result.current.selectBeneficiary(0);
-      });
-
-      const mockEvent = {
-        key: 'ArrowDown',
-        preventDefault: vi.fn(),
-      } as unknown as KeyboardEvent;
-
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
-
-      expect(resultAction).toBeNull();
+      expect(pressKey('ArrowDown')).toBe(false);
+      expect(result.current.selectedIndex).toBe(1);
+      expect(pressKey('ArrowUp')).toBe(true);
       expect(result.current.selectedIndex).toBe(0);
     });
 
-    it('handles enter key to select beneficiary', () => {
+    it('handles Enter and Delete only with a selected beneficiary', () => {
       const { result } = renderHook(() => useBeneficiaries());
-
       act(() => {
         result.current.addBeneficiary(1, 'Bank', 'B', '123', 'Account');
-        result.current.selectBeneficiary(0);
       });
 
-      const mockEvent = {
-        key: 'Enter',
-        preventDefault: vi.fn(),
-      } as unknown as KeyboardEvent;
-
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
-
-      expect(mockEvent.preventDefault).toHaveBeenCalled();
-      expect(resultAction).toBe('select');
-    });
-
-    it('handles delete key to delete selected beneficiary', () => {
-      const { result } = renderHook(() => useBeneficiaries());
-
-      act(() => {
-        result.current.addBeneficiary(1, 'Bank', 'B', '123', 'Account');
-        result.current.selectBeneficiary(0);
-      });
-
+      expect(pressKey('Enter')).toBe(false);
+      expect(pressKey('Delete')).toBe(false);
       expect(result.current.beneficiaries).toHaveLength(1);
 
-      const mockEvent = {
-        key: 'Delete',
-        preventDefault: vi.fn(),
-      } as unknown as KeyboardEvent;
-
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
-
-      expect(mockEvent.preventDefault).toHaveBeenCalled();
-      expect(resultAction).toBe('delete');
+      act(() => {
+        result.current.selectBeneficiary(0);
+      });
+      expect(pressKey('Enter')).toBe(true);
+      expect(pressKey('Delete')).toBe(true);
       expect(result.current.beneficiaries).toHaveLength(0);
     });
 
-    it('does not handle delete key when no beneficiary is selected', () => {
-      const { result } = renderHook(() => useBeneficiaries());
+    it('leaves unhandled keys alone', () => {
+      renderHook(() => useBeneficiaries());
 
-      act(() => {
-        result.current.addBeneficiary(1, 'Bank', 'B', '123', 'Account');
-      });
-
-      const mockEvent = {
-        key: 'Delete',
-        preventDefault: vi.fn(),
-      } as unknown as KeyboardEvent;
-
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
-
-      expect(resultAction).toBeNull();
-      expect(result.current.beneficiaries).toHaveLength(1);
-    });
-
-    it('returns null for unhandled keyboard shortcuts', () => {
-      const { result } = renderHook(() => useBeneficiaries());
-
-      const mockEvent = {
-        ctrlKey: false,
-        shiftKey: false,
-        key: 'Escape',
-        preventDefault: vi.fn(),
-      } as unknown as KeyboardEvent;
-
-      // @ts-expect-error - testing internal function
-      const resultAction = result.current.handleKeyboardShortcut(mockEvent);
-
-      expect(resultAction).toBeNull();
+      expect(pressKey('Escape')).toBe(false);
     });
   });
 

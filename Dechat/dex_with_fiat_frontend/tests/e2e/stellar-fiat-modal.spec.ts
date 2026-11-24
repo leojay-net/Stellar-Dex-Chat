@@ -1,11 +1,18 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
-import { mockSorobanRpc, MOCK_WALLET_ADDRESS } from './helpers';
+import {
+  connectMockWallet,
+  installMockWalletBridge,
+  mockSorobanRpc,
+  MOCK_WALLET_ADDRESS,
+} from './helpers';
 
 test.describe('StellarFiatModal E2E Tests', () => {
   test.beforeEach(async ({ page }) => {
     await mockSorobanRpc(page);
+    await installMockWalletBridge(page);
     await page.goto('/test-stellar-fiat-modal');
+    await connectMockWallet(page);
     const dialog = page.getByRole('dialog', { name: /deposit to bridge/i });
     await dialog.waitFor({ state: 'visible' });
     await expect(dialog.locator('input[type="number"]').first()).toBeVisible({
@@ -75,7 +82,10 @@ test.describe('StellarFiatModal E2E Tests', () => {
       await expect(
         page.getByRole('heading', { name: /withdraw from bridge/i }),
       ).toBeVisible();
-      await expect(page.getByText(/recipient address/i)).toBeVisible();
+      const dialog = page.getByRole('dialog', {
+        name: /withdraw from bridge/i,
+      });
+      await expect(dialog.getByPlaceholder('G...')).toBeVisible();
     });
   });
 });

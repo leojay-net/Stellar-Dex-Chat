@@ -540,7 +540,9 @@ describe('CCIPBridgeModal', () => {
 
       render(<CCIPBridgeModal {...defaultProps} onClose={onClose} />);
 
-      const closeButton = screen.getByLabelText('Close');
+      const closeButton = screen.getByRole('button', {
+        name: 'Close CCIP bridge dialog',
+      });
       fireEvent.click(closeButton);
 
       expect(onClose).toHaveBeenCalledTimes(1);
@@ -549,9 +551,11 @@ describe('CCIPBridgeModal', () => {
     it('has proper ARIA attributes for accessibility', () => {
       render(<CCIPBridgeModal {...defaultProps} />);
 
-      const dialog = screen.getByRole('dialog');
+      const dialog = screen.getByRole('dialog', { name: 'CCIP Bridge' });
       expect(dialog).toHaveAttribute('aria-modal', 'true');
-      expect(dialog).toHaveAttribute('aria-label', 'CCIP bridge transfer');
+      expect(dialog).toHaveAccessibleDescription(
+        'Start a CCIP transfer and monitor its confirmation state.',
+      );
       expect(dialog).toHaveAttribute('tabIndex', '-1');
     });
   });
@@ -765,9 +769,7 @@ describe('CCIPBridgeModal', () => {
 
       fireEvent.click(screen.getByText('Start CCIP Transfer'));
 
-      expect(
-        await screen.findByText('Transaction: 0xabc123def456'),
-      ).toBeInTheDocument();
+      expect(await screen.findByText('0xabc123def456')).toBeInTheDocument();
     });
 
     it('displays transaction hash in success state', async () => {
@@ -786,7 +788,7 @@ describe('CCIPBridgeModal', () => {
       fireEvent.click(screen.getByText('Start CCIP Transfer'));
 
       await screen.findByText('CCIP transfer confirmed');
-      expect(screen.getByText('Transaction: 0xxyz789')).toBeInTheDocument();
+      expect(screen.getByText('0xxyz789')).toBeInTheDocument();
     });
 
     it('displays transaction hash in error state when available', async () => {
@@ -810,7 +812,7 @@ describe('CCIPBridgeModal', () => {
       fireEvent.click(screen.getByText('Start CCIP Transfer'));
 
       await screen.findByText('CCIP transfer error');
-      expect(screen.getByText('Transaction: 0xerror123')).toBeInTheDocument();
+      expect(screen.getByText('0xerror123')).toBeInTheDocument();
     });
   });
 

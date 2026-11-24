@@ -55,7 +55,8 @@ export default function Message({
 }: MessageProps) {
   const { connection } = useStellarWallet();
   const { isDarkMode } = useTheme();
-  const { maskingEnabled, maskingStyle } = useUserPreferences();
+  const { maskingEnabled, maskingStyle, singleKeyShortcutsEnabled } =
+    useUserPreferences();
   const isUser = message.role === 'user';
   const hasError = !!message.error;
   const shouldReduceMotion = useReducedMotion();
@@ -177,16 +178,23 @@ export default function Message({
   const timestamp = toDate(message.timestamp);
 
   const handleMessageKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'r' && !e.ctrlKey && !e.metaKey) {
-      if (hasError) {
-        retry.retryNow();
-      }
-    } else if (e.key === 'Escape') {
-      (e.currentTarget as HTMLElement).blur();
-    } else if (e.key === 'c' && !e.ctrlKey && !e.metaKey) {
-      if (message.metadata?.transactionData?.txHash) {
-        navigator.clipboard.writeText(message.metadata.transactionData.txHash);
-      }
+    if (e.key === 'Escape') {
+      e.currentTarget.blur();
+      return;
+    }
+    if (
+      singleKeyShortcutsEnabled === false ||
+      e.target !== e.currentTarget ||
+      e.altKey ||
+      e.ctrlKey ||
+      e.metaKey
+    ) {
+      return;
+    }
+    if (e.key === 'r' && hasError) {
+      retry.retryNow();
+    } else if (e.key === 'c' && message.metadata?.transactionData?.txHash) {
+      navigator.clipboard.writeText(message.metadata.transactionData.txHash);
     }
   };
 
@@ -199,7 +207,13 @@ export default function Message({
       role="group"
       tabIndex={0}
       aria-label={`${isUser ? 'Your' : 'Assistant'} message`}
-      aria-keyshortcuts={hasError ? 'R C Escape' : 'C Escape'}
+      aria-keyshortcuts={
+        singleKeyShortcutsEnabled === false
+          ? 'Escape'
+          : hasError
+            ? 'R C Escape'
+            : 'C Escape'
+      }
       onKeyDown={handleMessageKeyDown}
       className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-8 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent`}
     >

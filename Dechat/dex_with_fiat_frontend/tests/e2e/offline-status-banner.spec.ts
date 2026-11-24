@@ -76,7 +76,7 @@ test.describe('OfflineStatusBanner', () => {
       });
 
       // No offline banner present
-      const banner = page.getByRole('status');
+      const banner = page.getByTestId('offline-status-banner');
       await expect(banner).toBeHidden({ timeout: 5_000 });
     });
 
@@ -104,7 +104,7 @@ test.describe('OfflineStatusBanner', () => {
 
       await goOffline(page);
 
-      const banner = page.getByRole('status');
+      const banner = page.getByTestId('offline-status-banner');
       await expect(banner).toBeVisible({ timeout: 5_000 });
       await expect(
         page.getByText(
@@ -122,7 +122,7 @@ test.describe('OfflineStatusBanner', () => {
 
       await goOffline(page);
 
-      const banner = page.getByRole('status');
+      const banner = page.getByTestId('offline-status-banner');
       await expect(banner).toBeVisible({ timeout: 5_000 });
 
       await expect(banner).toHaveAttribute('aria-live', 'polite');
@@ -138,17 +138,10 @@ test.describe('OfflineStatusBanner', () => {
 
       await goOffline(page);
 
-      // Seed a pending message count via the offline queue pub/sub
-      await page.evaluate(() => {
-        // Dispatch the internal event that offlineMessageQueue uses
-        window.dispatchEvent(
-          new CustomEvent('__offlineQueueCount__', { detail: 2 }),
-        );
-      });
-
-      // Banner should be visible regardless of count display
-      const banner = page.getByRole('status');
-      await expect(banner).toBeVisible({ timeout: 5_000 });
+      await page.getByRole('button', { name: 'Queue two messages' }).click();
+      await expect(page.getByTestId('offline-status-banner')).toContainText(
+        'Showing 1–2 of 2 messages waiting to send',
+      );
     });
   });
 
@@ -162,7 +155,7 @@ test.describe('OfflineStatusBanner', () => {
 
       // First go offline so wasOffline flag is set
       await goOffline(page);
-      const banner = page.getByRole('status');
+      const banner = page.getByTestId('offline-status-banner');
       await expect(banner).toBeVisible({ timeout: 5_000 });
 
       // Then come back online
@@ -183,7 +176,7 @@ test.describe('OfflineStatusBanner', () => {
       await page.waitForLoadState('domcontentloaded');
 
       await goOffline(page);
-      const banner = page.getByRole('status');
+      const banner = page.getByTestId('offline-status-banner');
       await expect(banner).toBeVisible({ timeout: 5_000 });
 
       await goOnline(page);
@@ -215,13 +208,14 @@ test.describe('OfflineStatusBanner', () => {
 
       // Trigger an online event to force a connectivity check
       await goOffline(page);
+      const banner = page.getByTestId('offline-status-banner');
+      await expect(banner).toBeVisible();
       await goOnline(page);
 
-      // The stub must have intercepted the check — no real request escaped
-      // (We just verify the test ran without errors and the banner behaved)
-      const banner = page.getByRole('status');
-      // After reconnect the banner should eventually hide
       await expect(banner).toBeHidden({ timeout: 5_000 });
+      expect(interceptedUrls).toContain(
+        'https://www.cloudflare.com/cdn-cgi/trace',
+      );
     });
   });
 
@@ -234,7 +228,7 @@ test.describe('OfflineStatusBanner', () => {
       await page.waitForLoadState('domcontentloaded');
 
       await goOffline(page);
-      const banner = page.getByRole('status');
+      const banner = page.getByTestId('offline-status-banner');
       await expect(banner).toBeVisible({ timeout: 5_000 });
 
       // Tab through focusable elements — the banner itself has no interactive
@@ -250,7 +244,9 @@ test.describe('OfflineStatusBanner', () => {
       await page.waitForLoadState('domcontentloaded');
 
       await goOffline(page);
-      await expect(page.getByRole('status')).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByTestId('offline-status-banner')).toBeVisible({
+        timeout: 5_000,
+      });
 
       // Tab several times to confirm focus moves freely past the banner
       for (let i = 0; i < 5; i++) {

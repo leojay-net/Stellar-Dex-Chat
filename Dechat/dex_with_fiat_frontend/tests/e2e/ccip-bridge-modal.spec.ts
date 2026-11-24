@@ -1,18 +1,39 @@
-import { expect } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures';
+
+const modal = (page: Page) => page.getByRole('dialog', { name: 'CCIP Bridge' });
+const pollingMessage = (page: Page) =>
+  modal(page).getByText('Waiting for CCIP confirmation…', { exact: true });
+const closeButton = (page: Page) =>
+  modal(page).getByRole('button', { name: 'Close CCIP bridge dialog' });
+const startButton = (page: Page) =>
+  modal(page).getByRole('button', { name: 'Start CCIP transfer' });
+
+async function chooseMode(page: Page, mode: 'pending' | 'error') {
+  await closeButton(page).click();
+  await page.getByRole('button', { name: `${mode} mode` }).click();
+  await expect(page.getByText(mode, { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Open Modal' }).click();
+  await expect(closeButton(page)).toBeFocused();
+}
+
+async function pauseClock(page: Page) {
+  const time = new Date('2026-01-01T00:00:00Z');
+  await page.clock.install({ time });
+  await page.clock.pauseAt(new Date(time.getTime() + 1000));
+}
 
 test.describe('CCIPBridgeModal E2E Tests', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/test-ccip-bridge-modal');
-    const dialog = page.getByRole('dialog', { name: /ccip bridge/i });
-    await dialog.waitFor({ state: 'visible', timeout: 10_000 });
+    await expect(closeButton(page)).toBeFocused();
   });
 
   test.describe('Modal Opening and Closing', () => {
     test('should open modal on fixture page', async ({ page }) => {
       await expect(page.getByRole('dialog')).toBeVisible();
       await expect(
-        page.getByRole('heading', { name: /ccip bridge/i }),
+        modal(page).getByRole('heading', { name: 'CCIP Bridge', exact: true }),
       ).toBeVisible();
       await expect(
         page.getByText(
@@ -34,10 +55,9 @@ test.describe('CCIPBridgeModal E2E Tests', () => {
       page,
     }) => {
       // Start a transfer
-      await page.getByRole('button', { name: /start ccip transfer/i }).click();
-      await expect(
-        page.getByText(/waiting for ccip confirmation/i),
-      ).toBeVisible();
+      await chooseMode(page, 'pending');
+      await startButton(page).click();
+      await expect(pollingMessage(page)).toBeVisible();
 
       // Close modal
       await page
@@ -58,20 +78,23 @@ test.describe('CCIPBridgeModal E2E Tests', () => {
 
   test.describe('Transfer Initiation', () => {
     test('should start CCIP transfer successfully', async ({ page }) => {
-      await page.getByRole('button', { name: /start ccip transfer/i }).click();
+      await pauseClock(page);
+      await startButton(page).click();
 
       // Should show optimistic UI first
-      await expect(page.getByText(/transfer initiated/i)).toBeVisible({
+      await expect(
+        modal(page).getByText('Transfer Initiated!', { exact: true }),
+      ).toBeVisible({
         timeout: 5_000,
       });
       await expect(
         page.getByText(/processing your ccip transfer request/i),
       ).toBeVisible();
 
+      await page.clock.runFor(500);
+
       // Should transition to polling state
-      await expect(
-        page.getByText(/waiting for ccip confirmation/i),
-      ).toBeVisible({
+      await expect(pollingMessage(page)).toBeVisible({
         timeout: 5_000,
       });
     });
@@ -80,17 +103,20 @@ test.describe('CCIPBridgeModal E2E Tests', () => {
       page,
     }) => {
       // Switch to error mode
-      await page.getByRole('button', { name: /error mode/i }).click();
-      await page.waitForTimeout(100);
+      await chooseMode(page, 'error');
 
-      await page.getByRole('button', { name: /start ccip transfer/i }).click();
+      await startButton(page).click();
 
       // Should show error
-      await expect(page.getByText(/ccip transfer error/i)).toBeVisible({
+      await expect(
+        modal(page).getByText('CCIP transfer error', { exact: true }),
+      ).toBeVisible({
         timeout: 5_000,
       });
       await expect(
-        page.getByText(/failed to initiate ccip transfer/i),
+        modal(page).getByText('Failed to initiate CCIP transfer', {
+          exact: true,
+        }),
       ).toBeVisible();
     });
   });
@@ -98,20 +124,19 @@ test.describe('CCIPBridgeModal E2E Tests', () => {
   test.describe('Transfer Status Polling', () => {
     test('should poll and display PENDING status', async ({ page }) => {
       // Switch to pending mode
-      await page.getByRole('button', { name: /pending mode/i }).click();
-      await page.waitForTimeout(100);
+      await chooseMode(page, 'pending');
 
-      await page.getByRole('button', { name: /start ccip transfer/i }).click();
+      await startButton(page).click();
 
       // Wait for polling state
-      await expect(
-        page.getByText(/waiting for ccip confirmation/i),
-      ).toBeVisible({
+      await expect(pollingMessage(page)).toBeVisible({
         timeout: 5_000,
       });
 
       // Should show pending status
-      await expect(page.getByText(/latest status: pending/i)).toBeVisible({
+      await expect(
+        modal(page).getByText('Latest status: PENDING', { exact: true }),
+      ).toBeVisible({
         timeout: 5_000,
       });
 
@@ -126,20 +151,27 @@ test.describe('CCIPBridgeModal E2E Tests', () => {
 
     test('should transition from PENDING to SUCCESS', async ({ page }) => {
       // Default mode is success
-      await page.getByRole('button', { name: /start ccip transfer/i }).click();
+      await pauseClock(page);
+      await startButton(page).click();
+
+      await page.clock.runFor(500);
 
       // Wait for polling
-      await expect(
-        page.getByText(/waiting for ccip confirmation/i),
-      ).toBeVisible({
+      await expect(pollingMessage(page)).toBeVisible({
         timeout: 5_000,
       });
 
+      await page.clock.runFor(300);
+
       // Should eventually show success
-      await expect(page.getByText(/ccip transfer confirmed/i)).toBeVisible({
+      await expect(
+        modal(page).getByText('CCIP transfer confirmed', { exact: true }),
+      ).toBeVisible({
         timeout: 10_000,
       });
-      await expect(page.getByText(/status: success/i)).toBeVisible();
+      await expect(
+        modal(page).getByText('Status: SUCCESS', { exact: true }),
+      ).toBeVisible();
 
       // Should show success icon
       const successIcon = page.getByTestId('ccip-success-icon');
@@ -147,28 +179,24 @@ test.describe('CCIPBridgeModal E2E Tests', () => {
     });
 
     test('should display transaction hash during polling', async ({ page }) => {
-      await page.getByRole('button', { name: /start ccip transfer/i }).click();
+      await chooseMode(page, 'pending');
+      await startButton(page).click();
 
       // Wait for polling state
-      await expect(
-        page.getByText(/waiting for ccip confirmation/i),
-      ).toBeVisible({
+      await expect(pollingMessage(page)).toBeVisible({
         timeout: 5_000,
       });
 
       // Should show transaction hash
-      await expect(
-        page.getByText(/transaction: 0xabc123def456/i),
-      ).toBeVisible();
+      await expect(modal(page).getByText(/0xabc123def456/i)).toBeVisible();
     });
 
     test('should display explorer link during polling', async ({ page }) => {
-      await page.getByRole('button', { name: /start ccip transfer/i }).click();
+      await chooseMode(page, 'pending');
+      await startButton(page).click();
 
       // Wait for polling state
-      await expect(
-        page.getByText(/waiting for ccip confirmation/i),
-      ).toBeVisible({
+      await expect(pollingMessage(page)).toBeVisible({
         timeout: 5_000,
       });
 
@@ -188,19 +216,21 @@ test.describe('CCIPBridgeModal E2E Tests', () => {
 
   test.describe('Transfer Success State', () => {
     test('should display success state with all details', async ({ page }) => {
-      await page.getByRole('button', { name: /start ccip transfer/i }).click();
+      await startButton(page).click();
 
       // Wait for success
-      await expect(page.getByText(/ccip transfer confirmed/i)).toBeVisible({
+      await expect(
+        modal(page).getByText('CCIP transfer confirmed', { exact: true }),
+      ).toBeVisible({
         timeout: 10_000,
       });
 
       // Check all success elements
       await expect(page.getByTestId('ccip-success-icon')).toBeVisible();
-      await expect(page.getByText(/status: success/i)).toBeVisible();
       await expect(
-        page.getByText(/transaction: 0xabc123def456/i),
+        modal(page).getByText('Status: SUCCESS', { exact: true }),
       ).toBeVisible();
+      await expect(modal(page).getByText(/0xabc123def456/i)).toBeVisible();
 
       // Explorer link should still be present
       const explorerLink = page.getByRole('link', {
@@ -214,28 +244,25 @@ test.describe('CCIPBridgeModal E2E Tests', () => {
   test.describe('Transfer Error Handling', () => {
     test('should display error state with message', async ({ page }) => {
       // Switch to error mode
-      await page.getByRole('button', { name: /error mode/i }).click();
-      await page.waitForTimeout(100);
+      await chooseMode(page, 'error');
 
-      // Need to reopen modal after mode change
-      await page
-        .getByRole('button', { name: /close ccip bridge dialog/i })
-        .click();
-      await page.getByRole('button', { name: /open modal/i }).click();
-
-      await page.getByRole('button', { name: /start ccip transfer/i }).click();
+      await startButton(page).click();
 
       // Wait for error state
-      await expect(page.getByText(/ccip transfer error/i)).toBeVisible({
+      await expect(
+        modal(page).getByText('CCIP transfer error', { exact: true }),
+      ).toBeVisible({
         timeout: 5_000,
       });
 
       // Should show error icon and message
       await expect(
-        page.locator('svg').filter({ hasText: '' }).first(),
+        modal(page).locator('svg.lucide-circle-alert'),
       ).toBeVisible(); // AlertCircle icon
       await expect(
-        page.getByText(/failed to initiate ccip transfer/i),
+        modal(page).getByText('Failed to initiate CCIP transfer', {
+          exact: true,
+        }),
       ).toBeVisible();
     });
   });
@@ -245,20 +272,20 @@ test.describe('CCIPBridgeModal E2E Tests', () => {
       page,
     }) => {
       // Start transfer on ethereum
-      await page.getByRole('button', { name: /pending mode/i }).click();
-      await page.waitForTimeout(100);
+      await chooseMode(page, 'pending');
 
-      await page.getByRole('button', { name: /start ccip transfer/i }).click();
+      await startButton(page).click();
 
       // Wait for polling
-      await expect(
-        page.getByText(/waiting for ccip confirmation/i),
-      ).toBeVisible({
+      await expect(pollingMessage(page)).toBeVisible({
         timeout: 5_000,
       });
 
-      // Change network via URL
-      await page.goto('/test-ccip-bridge-modal?mode=pending&network=polygon');
+      // Change networks without discarding the transfer by reloading the fixture.
+      await page.evaluate(() => {
+        window.history.pushState(null, '', '?mode=pending&network=polygon');
+        window.dispatchEvent(new Event('popstate'));
+      });
 
       // Should show network changed warning
       await expect(page.getByText(/network changed/i)).toBeVisible({
@@ -290,10 +317,11 @@ test.describe('CCIPBridgeModal E2E Tests', () => {
     test('should announce state changes to screen readers', async ({
       page,
     }) => {
-      await page.getByRole('button', { name: /start ccip transfer/i }).click();
+      await chooseMode(page, 'pending');
+      await startButton(page).click();
 
       // Check for live region
-      const liveRegion = page.locator('[role="status"][aria-live="polite"]');
+      const liveRegion = modal(page).getByRole('status');
       await expect(liveRegion).toBeAttached();
 
       // Live region should have content for polling state
@@ -315,30 +343,28 @@ test.describe('CCIPBridgeModal E2E Tests', () => {
     test('should have properly hidden decorative elements', async ({
       page,
     }) => {
-      await page.getByRole('button', { name: /start ccip transfer/i }).click();
+      await chooseMode(page, 'pending');
+      await startButton(page).click();
 
       // Wait for polling with explorer link
-      await expect(
-        page.getByText(/waiting for ccip confirmation/i),
-      ).toBeVisible({
+      await expect(pollingMessage(page)).toBeVisible({
         timeout: 5_000,
       });
 
       // External link icon should be aria-hidden
-      const externalLinkIcon = page.locator('.lucide-external-link').first();
-      if ((await externalLinkIcon.count()) > 0) {
-        await expect(externalLinkIcon).toHaveAttribute('aria-hidden', 'true');
-      }
+      const externalLinkIcon = modal(page)
+        .getByRole('link', { name: 'View transaction in CCIP explorer' })
+        .locator('svg.lucide-external-link');
+      await expect(externalLinkIcon).toHaveAttribute('aria-hidden', 'true');
     });
 
     test('should provide alternative text for transaction hash', async ({
       page,
     }) => {
-      await page.getByRole('button', { name: /start ccip transfer/i }).click();
+      await chooseMode(page, 'pending');
+      await startButton(page).click();
 
-      await expect(
-        page.getByText(/waiting for ccip confirmation/i),
-      ).toBeVisible({
+      await expect(pollingMessage(page)).toBeVisible({
         timeout: 5_000,
       });
 
@@ -352,8 +378,13 @@ test.describe('CCIPBridgeModal E2E Tests', () => {
 
   test.describe('Modal Focus Management', () => {
     test('should trap focus within modal', async ({ page }) => {
-      const dialog = page.getByRole('dialog');
-      await expect(dialog).toBeFocused({ timeout: 2_000 });
+      const close = closeButton(page);
+      const start = startButton(page);
+      await expect(close).toBeFocused();
+      await page.keyboard.press('Shift+Tab');
+      await expect(start).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(close).toBeFocused();
     });
 
     test('should return focus after closing', async ({ page }) => {
@@ -365,8 +396,12 @@ test.describe('CCIPBridgeModal E2E Tests', () => {
         .click();
       await expect(page.getByRole('dialog')).not.toBeVisible();
 
-      // Open button should be visible
-      await expect(openButton).toBeVisible();
+      await openButton.focus();
+      await openButton.press('Enter');
+      await expect(closeButton(page)).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(modal(page)).toBeHidden();
+      await expect(openButton).toBeFocused();
     });
   });
 
@@ -374,32 +409,41 @@ test.describe('CCIPBridgeModal E2E Tests', () => {
     test('should show loading spinner during optimistic state', async ({
       page,
     }) => {
-      await page.getByRole('button', { name: /start ccip transfer/i }).click();
+      await pauseClock(page);
+      await startButton(page).click();
 
       // Should show optimistic UI with checkmark
-      await expect(page.getByText(/transfer initiated/i)).toBeVisible({
+      await expect(
+        modal(page).getByText('Transfer Initiated!', { exact: true }),
+      ).toBeVisible({
         timeout: 5_000,
       });
 
       // Should show loading indicator
-      await expect(page.getByText(/preparing transaction/i)).toBeVisible();
-      await expect(page.locator('.lucide-loader-2').first()).toBeVisible();
+      await expect(
+        modal(page).getByText('Preparing transaction', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        modal(page).locator('svg.lucide-loader-circle'),
+      ).toBeVisible();
     });
 
     test('should display appropriate icons for each state', async ({
       page,
     }) => {
       // Success state
-      await page.getByRole('button', { name: /start ccip transfer/i }).click();
+      await startButton(page).click();
 
-      await expect(page.getByText(/ccip transfer confirmed/i)).toBeVisible({
+      await expect(
+        modal(page).getByText('CCIP transfer confirmed', { exact: true }),
+      ).toBeVisible({
         timeout: 10_000,
       });
 
       // CheckCircle icon should be visible
       const successIcon = page.getByTestId('ccip-success-icon');
       await expect(successIcon).toBeVisible();
-      await expect(successIcon).toHaveClass(/lucide-check-circle/);
+      await expect(successIcon).toHaveClass(/lucide-circle-check-big/);
     });
   });
 
@@ -407,11 +451,10 @@ test.describe('CCIPBridgeModal E2E Tests', () => {
     test('should generate correct explorer URL from transaction hash', async ({
       page,
     }) => {
-      await page.getByRole('button', { name: /start ccip transfer/i }).click();
+      await chooseMode(page, 'pending');
+      await startButton(page).click();
 
-      await expect(
-        page.getByText(/waiting for ccip confirmation/i),
-      ).toBeVisible({
+      await expect(pollingMessage(page)).toBeVisible({
         timeout: 5_000,
       });
 
@@ -426,11 +469,10 @@ test.describe('CCIPBridgeModal E2E Tests', () => {
     });
 
     test('should open explorer link in new tab', async ({ page }) => {
-      await page.getByRole('button', { name: /start ccip transfer/i }).click();
+      await chooseMode(page, 'pending');
+      await startButton(page).click();
 
-      await expect(
-        page.getByText(/waiting for ccip confirmation/i),
-      ).toBeVisible({
+      await expect(pollingMessage(page)).toBeVisible({
         timeout: 5_000,
       });
 
@@ -449,22 +491,27 @@ test.describe('CCIPBridgeModal E2E Tests', () => {
       await page.goto('/test-ccip-bridge-modal?mode=timeout');
 
       // Wait for modal
-      await expect(page.getByRole('dialog')).toBeVisible();
+      await expect(page.getByText('timeout', { exact: true })).toBeVisible();
+      await expect(closeButton(page)).toBeFocused();
 
-      await page.getByRole('button', { name: /start ccip transfer/i }).click();
+      await startButton(page).click();
 
       // Should show polling
-      await expect(
-        page.getByText(/waiting for ccip confirmation/i),
-      ).toBeVisible({
+      await expect(pollingMessage(page)).toBeVisible({
         timeout: 5_000,
       });
 
       // Should eventually timeout (short timeout in test mode)
-      await expect(page.getByText(/ccip transfer error/i)).toBeVisible({
+      await expect(
+        modal(page).getByText('CCIP transfer error', { exact: true }),
+      ).toBeVisible({
         timeout: 10_000,
       });
-      await expect(page.getByText(/timed out after 10 minutes/i)).toBeVisible();
+      await expect(
+        modal(page)
+          .locator('p')
+          .filter({ hasText: /timed out after 10 minutes/i }),
+      ).toBeVisible();
     });
   });
 
@@ -487,15 +534,12 @@ test.describe('CCIPBridgeModal E2E Tests', () => {
     });
 
     test('should handle closing during transfer', async ({ page }) => {
-      await page.getByRole('button', { name: /pending mode/i }).click();
-      await page.waitForTimeout(100);
+      await chooseMode(page, 'pending');
 
-      await page.getByRole('button', { name: /start ccip transfer/i }).click();
+      await startButton(page).click();
 
       // Wait for polling
-      await expect(
-        page.getByText(/waiting for ccip confirmation/i),
-      ).toBeVisible({
+      await expect(pollingMessage(page)).toBeVisible({
         timeout: 5_000,
       });
 

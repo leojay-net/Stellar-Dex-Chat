@@ -123,7 +123,7 @@ describe('SplitViewComparison - Clipboard Copy', () => {
     fireEvent.click(firstCopyButton);
 
     await waitFor(() => {
-      const checkIcon = firstCopyButton.querySelector('svg');
+      const checkIcon = firstCopyButton.querySelector('svg.lucide-check');
       expect(checkIcon).toBeInTheDocument();
     });
   });
@@ -148,7 +148,18 @@ describe('SplitViewComparison - Clipboard Copy', () => {
     });
 
     expect(
-      secondCopyButton.querySelector('[data-lucide="check"]'),
+      firstCopyButton.querySelector('svg.lucide-copy'),
+    ).toBeInTheDocument();
+    expect(
+      secondCopyButton.querySelector('svg.lucide-check'),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(
+      secondCopyButton.querySelector('svg.lucide-copy'),
     ).toBeInTheDocument();
   });
 

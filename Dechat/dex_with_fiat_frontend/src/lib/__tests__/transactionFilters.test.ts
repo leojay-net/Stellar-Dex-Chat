@@ -1,88 +1,90 @@
+import { describe, expect, it } from 'vitest';
 import { filterTransactions } from '@/lib/transactionFilters';
 import type { FilterState, TransactionHistoryEntry } from '@/types';
 
-const mockTransactions: Array<TransactionHistoryEntry & { network: string }> = [
+const transactions: (TransactionHistoryEntry & { network?: string })[] = [
   {
     id: '1',
     kind: 'deposit',
-    asset: 'XLM',
-    network: 'testnet',
     status: 'completed',
-    message: 'Deposit complete',
+    asset: 'XLM',
+    message: 'Deposit completed',
     createdAt: new Date('2023-10-01'),
+    network: 'stellar-testnet',
   },
   {
     id: '2',
     kind: 'payout',
-    asset: 'USDC',
-    network: 'mainnet',
     status: 'pending',
+    asset: 'USDC',
     message: 'Payout pending',
     createdAt: new Date('2023-10-15'),
+    network: 'stellar-mainnet',
   },
   {
     id: '3',
     kind: 'deposit',
+    status: 'failed',
     asset: 'XLM',
-    network: 'mainnet',
-    status: 'completed',
-    message: 'Deposit complete',
+    message: 'Deposit failed',
     createdAt: new Date('2023-11-01'),
   },
 ];
+const emptyFilters: FilterState = { status: [], asset: [], network: [] };
 
 describe('transactionFilters utility', () => {
-  const defaultFilters: FilterState = { status: [], asset: [], network: [] };
-
-  test('returns all transactions when no filters are applied', () => {
-    expect(filterTransactions(mockTransactions, defaultFilters)).toEqual(
-      mockTransactions,
+  it('returns all transactions when no filters are applied', () => {
+    expect(filterTransactions(transactions, emptyFilters)).toEqual(
+      transactions,
     );
   });
 
-  test('filters by status', () => {
-    const filters: FilterState = { ...defaultFilters, status: ['completed'] };
-    expect(filterTransactions(mockTransactions, filters)).toEqual([
-      mockTransactions[0],
-      mockTransactions[2],
-    ]);
-  });
-
-  test('filters by network', () => {
-    const filters: FilterState = { ...defaultFilters, network: ['testnet'] };
-    expect(filterTransactions(mockTransactions, filters)).toEqual([
-      mockTransactions[0],
-    ]);
-  });
-
-  test('filters by asset', () => {
-    const filters: FilterState = { ...defaultFilters, asset: ['USDC'] };
-    expect(filterTransactions(mockTransactions, filters)).toEqual([
-      mockTransactions[1],
-    ]);
-  });
-
-  test('combines filter categories', () => {
+  it('matches either selected status', () => {
     const filters: FilterState = {
-      status: ['completed'],
-      asset: ['XLM'],
-      network: ['mainnet'],
+      ...emptyFilters,
+      status: ['completed', 'failed'],
     };
-    expect(filterTransactions(mockTransactions, filters)).toEqual([
-      mockTransactions[2],
+    expect(filterTransactions(transactions, filters)).toEqual([
+      transactions[0],
+      transactions[2],
     ]);
   });
 
-  test('returns an empty array when no transactions match', () => {
-    const filters: FilterState = {
-      ...defaultFilters,
-      status: ['pending'],
-      asset: ['XLM'],
-    };
-    expect(filterTransactions(mockTransactions, filters)).toEqual([]);
+  it('filters by asset', () => {
+    const filters = { ...emptyFilters, asset: ['USDC'] };
+    expect(filterTransactions(transactions, filters)).toEqual([
+      transactions[1],
+    ]);
   });
 
-  test('handles an empty transaction list', () => {
-    expect(filterTransactions([], defaultFilters)).toEqual([]);
+  it('filters by network and excludes entries without a network', () => {
+    const filters = { ...emptyFilters, network: ['stellar-testnet'] };
+    expect(filterTransactions(transactions, filters)).toEqual([
+      transactions[0],
+    ]);
+  });
+
+  it('requires a match in every selected category', () => {
+    const filters: FilterState = {
+      status: ['pending', 'failed'],
+      asset: ['XLM'],
+      network: [],
+    };
+    expect(filterTransactions(transactions, filters)).toEqual([
+      transactions[2],
+    ]);
+  });
+
+  it('returns an empty array when no transaction matches', () => {
+    const filters: FilterState = {
+      ...emptyFilters,
+      status: ['failed'],
+      asset: ['USDC'],
+    };
+    expect(filterTransactions(transactions, filters)).toEqual([]);
+  });
+
+  it('handles an empty transaction list', () => {
+    expect(filterTransactions([], emptyFilters)).toEqual([]);
   });
 });

@@ -1,68 +1,67 @@
-import { renderHook, act } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import { useTransactionFilters } from '@/hooks/useTransactionFilters';
 import type { TransactionHistoryEntry } from '@/types';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
-  usePathname: () => '/chat',
+  usePathname: () => '/transactions',
   useSearchParams: () => new URLSearchParams(),
 }));
 
-const mockTransactions: TransactionHistoryEntry[] = [
+const transactions: TransactionHistoryEntry[] = [
   {
     id: '1',
     kind: 'deposit',
-    asset: 'XLM',
     status: 'completed',
-    message: 'Deposit complete',
+    asset: 'XLM',
+    message: 'Deposit completed',
     createdAt: new Date('2023-10-01'),
   },
   {
     id: '2',
     kind: 'payout',
-    asset: 'USDC',
     status: 'pending',
+    asset: 'USDC',
     message: 'Payout pending',
-    createdAt: new Date('2023-10-02'),
+    createdAt: new Date('2023-10-15'),
   },
 ];
 
 describe('useTransactionFilters hook', () => {
-  it('initializes with all transactions and empty filters', () => {
-    const { result } = renderHook(() =>
-      useTransactionFilters(mockTransactions),
-    );
-    expect(result.current.filteredTransactions).toEqual(mockTransactions);
+  it('starts with the supplied transactions and empty selections', () => {
+    const { result } = renderHook(() => useTransactionFilters(transactions));
+
+    expect(result.current.filteredTransactions).toEqual(transactions);
     expect(result.current.filterState).toEqual({
       status: [],
       asset: [],
       network: [],
     });
+    expect(result.current.hasActiveFilters).toBe(false);
   });
 
-  it('filters transactions immediately when a status is selected', () => {
-    const { result } = renderHook(() =>
-      useTransactionFilters(mockTransactions),
-    );
+  it('shows only transactions matching the selected status', () => {
+    const { result } = renderHook(() => useTransactionFilters(transactions));
 
     act(() => result.current.toggleFilter('status', 'completed'));
 
-    expect(result.current.filteredTransactions).toEqual([mockTransactions[0]]);
+    expect(result.current.filteredTransactions).toEqual([transactions[0]]);
     expect(result.current.filterState.status).toEqual(['completed']);
   });
 
-  it('clears all active filters', () => {
-    const { result } = renderHook(() =>
-      useTransactionFilters(mockTransactions),
-    );
+  it('clears all selected categories and restores every transaction', () => {
+    const { result } = renderHook(() => useTransactionFilters(transactions));
 
-    act(() => result.current.toggleFilter('status', 'pending'));
-    act(() => result.current.toggleFilter('asset', 'XLM'));
+    act(() => {
+      result.current.toggleFilter('status', 'pending');
+      result.current.toggleFilter('asset', 'XLM');
+    });
     expect(result.current.filteredTransactions).toEqual([]);
 
     act(() => result.current.clearAllFilters());
 
-    expect(result.current.filteredTransactions).toEqual(mockTransactions);
+    expect(result.current.filteredTransactions).toEqual(transactions);
     expect(result.current.filterState).toEqual({
       status: [],
       asset: [],

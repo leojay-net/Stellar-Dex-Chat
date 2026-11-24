@@ -1,6 +1,5 @@
-import { expect, Page } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { test } from './fixtures';
-import { mockSorobanRpc } from './helpers';
 
 /**
  * E2E tests for NetworkStatusModal component
@@ -16,14 +15,6 @@ const CONNECTED_ADDRESS =
 const EXPECTED_NETWORK = 'testnet';
 
 test.describe('NetworkStatusModal E2E Coverage', () => {
-  // Helper to setup and mount the test page
-  async function setupTestPage(page: Page) {
-    // Add a test fixture endpoint that mounts the modal
-    await page.route('**/api/**', async (route) => {
-      await route.abort();
-    });
-  }
-
   test.describe('Connected State', () => {
     test('should display connected status in Chromium with correct elements', async ({
       page,
@@ -49,7 +40,7 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
       await expect(modal).toBeVisible();
 
       // Verify elements for connected state
-      await expect(page.getByText('Connected')).toBeVisible();
+      await expect(page.getByText('Connected', { exact: true })).toBeVisible();
       await expect(
         page.getByText(/Wallet is connected to the Stellar testnet network/i),
       ).toBeVisible();
@@ -60,9 +51,11 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
 
       // Verify wallet details section
       await expect(page.getByText('Address')).toBeVisible();
-      await expect(page.getByText('Network')).toBeVisible();
+      await expect(page.getByText('Network', { exact: true })).toBeVisible();
       await expect(page.getByText('Expected')).toBeVisible();
-      await expect(page.getByText(EXPECTED_NETWORK)).toBeVisible();
+      await expect(page.getByRole('dialog').locator('dd').last()).toHaveText(
+        new RegExp(EXPECTED_NETWORK, 'i'),
+      );
     });
 
     test('should display connected status in Firefox with correct rendering', async ({
@@ -84,7 +77,7 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
 
       const modal = page.getByRole('dialog', { name: /network status/i });
       await expect(modal).toBeVisible({ timeout: 10000 });
-      await expect(page.getByText('Connected')).toBeVisible();
+      await expect(page.getByText('Connected', { exact: true })).toBeVisible();
     });
 
     test('should display connected status in WebKit with correct styling', async ({
@@ -117,20 +110,12 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
     test('should show address truncation in connected state', async ({
       page,
     }) => {
-      const testAddress = 'GABCDEFGHIJKLMNOPQRSTUVWXYZ123456';
-      await page.addInitScript((addr) => {
-        (window as any).__NETWORK_STATE = {
-          connection: { isConnected: true, address: addr, network: 'testnet' },
-          isNetworkMismatch: false,
-          isDarkMode: false,
-        };
-      }, testAddress);
-
       await page.goto('/test-network-modal-connected');
 
-      // Address should be formatted as GABCDE...Z123
-      const addressDisplay = page.locator('dd').filter({ hasText: /GAB.*123/ });
-      await expect(addressDisplay).toBeVisible();
+      const addressDisplay = page.getByRole('dialog').locator('dd').first();
+      await expect(addressDisplay).toHaveText(
+        `${CONNECTED_ADDRESS.slice(0, 6)}…${CONNECTED_ADDRESS.slice(-4)}`,
+      );
     });
   });
 
@@ -186,8 +171,10 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
 
       // Verify details section is visible
       await expect(page.getByText('Address')).toBeVisible();
-      await expect(page.getByText('public')).toBeVisible();
-      await expect(page.getByText(EXPECTED_NETWORK)).toBeVisible();
+      await expect(page.getByText(/^public$/i)).toBeVisible();
+      await expect(page.getByRole('dialog').locator('dd').last()).toHaveText(
+        new RegExp(EXPECTED_NETWORK, 'i'),
+      );
     });
   });
 
@@ -299,7 +286,7 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
 
       await page.goto('/test-network-modal-connected');
 
-      let modal = page.getByRole('dialog', { name: /network status/i });
+      const modal = page.getByRole('dialog', { name: /network status/i });
       await expect(modal).toBeVisible();
 
       // Click close button
@@ -330,7 +317,7 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
 
       // Click backdrop
       const backdrop = page.locator('[aria-hidden="true"]').first();
-      await backdrop.click();
+      await backdrop.click({ position: { x: 8, y: 8 } });
 
       // Modal should be hidden
       await expect(modal).not.toBeVisible();

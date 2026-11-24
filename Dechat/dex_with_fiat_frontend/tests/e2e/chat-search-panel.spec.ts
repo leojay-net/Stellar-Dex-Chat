@@ -151,22 +151,19 @@ test.describe('ChatSearchPanel', () => {
     test('wallet address filter narrows results', async ({ page }) => {
       await gotoHarness(page);
 
-      // Type a keyword first to get results
-      await searchInput(page).fill('swap');
-      await expect(page.getByText('Alpha XLM swap')).toBeVisible({
-        timeout: 5_000,
-      });
+      // Both the Alpha and Bridge fixtures match this keyword.
+      await searchInput(page).fill('e');
+      const results = page.getByRole('option');
+      await expect(results).toHaveCount(2);
 
-      // Open advanced filters and enter the wallet address from fixture
+      // Open advanced filters and enter the Alpha fixture's wallet address.
       await page.getByRole('button', { name: /advanced filters/i }).click();
       await page
         .getByLabel('Filter by wallet address')
         .fill('GBEFLW6RTALNHCL7HW2INWB4ASHZ7E6MF6E2IOIIMBVEAU2B2B4XLRQW');
 
-      // Alpha session should still appear (it has this wallet address)
-      await expect(page.getByText('Alpha XLM swap')).toBeVisible({
-        timeout: 5_000,
-      });
+      await expect(results).toHaveCount(1);
+      await expect(results.first()).toContainText('Alpha XLM swap');
     });
 
     test('date-from filter is reachable', async ({ page }) => {
@@ -193,9 +190,7 @@ test.describe('ChatSearchPanel', () => {
       await gotoHarness(page);
 
       await searchInput(page).fill('swap');
-      await expect(page.getByText('Alpha XLM swap')).toBeVisible({
-        timeout: 5_000,
-      });
+      await expect(page.getByRole('option')).toHaveCount(2);
 
       // Clear button appears when any filter is set
       const clearBtn = page.getByTitle('Clear filters');
@@ -258,16 +253,10 @@ test.describe('ChatSearchPanel', () => {
     test('ArrowDown and ArrowUp move the active result', async ({ page }) => {
       await gotoHarness(page);
 
-      await searchInput(page).fill('');
-      // Use a term that matches both fixture sessions
       await searchInput(page).fill('e'); // matches 'DEX' and 'bridge'
 
-      const results = page.locator('[role="option"]');
-      const count = await results.count();
-      if (count < 2) {
-        test.skip();
-        return;
-      }
+      const results = page.getByRole('option');
+      await expect(results).toHaveCount(2);
 
       // First result should be active (index 0)
       await expect(results.first()).toHaveAttribute('aria-selected', 'true');
@@ -338,9 +327,9 @@ test.describe('ChatSearchPanel', () => {
       await gotoHarness(page);
 
       await searchInput(page).fill('bridge');
-      await expect(page.getByText('Bridge deposit status')).toBeVisible({
-        timeout: 5_000,
-      });
+      await expect(
+        page.getByRole('button', { name: /^Bridge deposit status/ }),
+      ).toBeVisible();
 
       const apiRequests = externalRequests.filter(
         (url) =>

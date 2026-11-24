@@ -65,14 +65,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Prettier check
-        run: make -C ../.. frontend-check
+      - name: Lint
+        run: make -C ../.. frontend-lint
 
       - name: Type check
         run: make -C ../.. frontend-typecheck
 
-      - name: Lint
-        run: make -C ../.. frontend-lint
+      - name: Prettier check
+        run: make -C ../.. frontend-check
 
   # ── 2. Next.js build (independent of unit tests) ──────────────────────────
   build:
@@ -135,7 +135,35 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run unit tests (shard ${{ matrix.shard }}/4)
-        run: make -C ../.. frontend-test SHARD=${{ matrix.shard }}/4
+        run: make -C ../.. frontend-test SHARD=${{ matrix.shard }}/4 JUNIT_REPORT="$RUNNER_TEMP/vitest-junit.xml"
+
+      - name: Summarize unit test results
+        if: always()
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import os
+          from html import escape
+          from pathlib import Path
+          from xml.etree import ElementTree
+
+          print(f"## Vitest shard {os.environ['SHARD']}/4")
+          report = Path(os.environ["RUNNER_TEMP"]) / "vitest-junit.xml"
+          if not report.exists():
+              print("JUnit report unavailable. See the test step log.")
+          else:
+              cases = list(ElementTree.parse(report).iter("testcase"))
+              failures = [
+                  case for case in cases
+                  if case.find("failure") is not None or case.find("error") is not None
+              ]
+              skipped = sum(case.find("skipped") is not None for case in cases)
+              print(f"{len(cases) - len(failures) - skipped} passed, {len(failures)} failed, {skipped} skipped.")
+              for case in failures:
+                  name = " › ".join(case.get(field, "") for field in ("classname", "name"))
+                  print(f"- <code>{escape(' '.join(name.split()))}</code>")
+          PY
 
       # Upload the vitest blob so coverage-merge can reconstruct full coverage.
       # The blob lands in .vitest-reports/ by vitest convention.
@@ -146,10 +174,10 @@ jobs:
           name: vitest-blob-${{ matrix.shard }}
           path: Dechat/dex_with_fiat_frontend/.vitest-reports/
           include-hidden-files: true
+          if-no-files-found: error
           retention-days: 1
 
-      # Upload per-shard coverage-summary.json so coverage-merge has something
-      # to work with even if --mergeReports fails.
+      # Keep each shard’s coverage summary available for troubleshooting.
       - name: Upload coverage summary
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -165,7 +193,7 @@ jobs:
     needs: unit-tests
     # Run when shards finish (pass or fail) so we always produce coverage data.
     # Skip only if the unit-tests job itself was skipped (e.g. path filter).
-    if: needs.unit-tests.result != 'skipped'
+    if: ${{ !cancelled() && needs.unit-tests.result != 'skipped' }}
 
     defaults:
       run:
@@ -198,9 +226,6 @@ jobs:
 
       - name: Merge reports and regenerate coverage
         run: make -C ../.. frontend-coverage-merge
-        # NOTE: coverage.thresholds are not configured in vitest.config.ts yet.
-        # The numbers below (stmt 70%, branch 65%, fn 70%, lines 70%) are targets
-        # only; this step does not fail on low coverage until thresholds are added.
 
       # Build the JSON consumed by coverage-comment.yml.
       - name: Generate coverage report artifact
@@ -223,7 +248,7 @@ jobs:
               branches: total.branches.pct,
               functions: total.functions.pct,
               lines: total.lines.pct,
-              targets: { statements: 70, branches: 65, functions: 70, lines: 70 },
+              targets: require('./coverage-thresholds.json'),
             };
             fs.writeFileSync('frontend-coverage-report.json', JSON.stringify(report));
           "
@@ -260,10 +285,11 @@ jobs:
           The saving is roughly `sum(shards) - max(shards)`.
           SUMMARY
 
-  # ── 5. Playwright E2E ──────────────────────
+  # ── 5. Playwright E2E ──────────────────────────────────────────────────
   e2e:
     name: Playwright E2E Tests
     runs-on: ubuntu-24.04
+    # The pinned Playwright version does not support Ubuntu 26.04.
     needs: build
 
     defaults:

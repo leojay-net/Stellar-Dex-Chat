@@ -3,23 +3,29 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { TransactionAmountDisplay } from '../TransactionAmountDisplay';
+import type { ConversionResult } from '@/hooks/useCurrencyConversion';
 
 // Mock the hook
 vi.mock('@/hooks/useCurrencyConversion', () => ({
-  useCurrencyConversion: vi.fn((amount, asset) => ({
-    displayText: amount ? `${amount} ${asset} ≈ $12.40 USD` : '',
-    originalAmount: amount,
-    originalCurrency: asset,
-    fiatAmount: 12.4,
-    fiatCurrency: 'USD',
-    isLoading: false,
-    hasError: false,
-    isStale: false,
-    forceRefresh: vi.fn().mockResolvedValue(undefined),
-  })),
+  useCurrencyConversion: vi.fn(
+    (amount: number | null | undefined, asset = 'XLM'): ConversionResult => ({
+      displayText: amount ? `${amount} ${asset} ≈ $12.40 USD` : '',
+      originalAmount: amount ?? 0,
+      originalCurrency: asset,
+      fiatAmount: 12.4,
+      fiatCurrency: 'USD',
+      isLoading: false,
+      hasError: false,
+      isStale: false,
+      forceRefresh: vi.fn().mockResolvedValue(undefined),
+    }),
+  ),
 }));
 
-vi.mock('@/contexts/UserPreferencesContext', () => ({
+vi.mock('@/contexts/UserPreferencesContext', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('@/contexts/UserPreferencesContext')
+  >()),
   useUserPreferences: () => ({ fiatCurrency: 'usd' }),
 }));
 

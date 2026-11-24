@@ -1,6 +1,7 @@
 'use client';
 
 import OfflineStatusBanner from '@/components/OfflineStatusBanner';
+import { setQueuedMessageCount } from '@/lib/offlineMessageQueue';
 
 /**
  * Test harness page for OfflineStatusBanner E2E tests.
@@ -20,6 +21,13 @@ export default function TestOfflineStatusBannerPage() {
       <p className="text-sm text-gray-600">
         The banner renders fixed at the top of the viewport when offline.
       </p>
+      <button
+        type="button"
+        className="mt-16"
+        onClick={() => setQueuedMessageCount(2)}
+      >
+        Queue two messages
+      </button>
       <OfflineStatusBanner />
     </main>
   );

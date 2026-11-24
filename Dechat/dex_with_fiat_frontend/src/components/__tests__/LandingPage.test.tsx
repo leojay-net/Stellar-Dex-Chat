@@ -1,8 +1,14 @@
 import React from 'react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import {
+  render as renderComponent,
+  screen,
+  cleanup,
+  fireEvent,
+} from '@testing-library/react';
 import { useRouter } from 'next/navigation';
 import LandingPage from '@/components/LandingPage';
+import { UserPreferencesProvider } from '@/contexts/UserPreferencesContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { CONTRACT_ID } from '@/lib/stellarContract';
 
@@ -27,6 +33,9 @@ vi.mock('@/components/OfflineStatusBanner', () => ({
 vi.mock('@/components/ui/CopyButton', () => ({
   default: () => <button type="button">Copy</button>,
 }));
+
+const render = (element: React.ReactElement) =>
+  renderComponent(element, { wrapper: UserPreferencesProvider });
 
 describe('LandingPage – accessibility', () => {
   afterEach(cleanup);
@@ -81,7 +90,10 @@ describe('LandingPage – accessibility', () => {
 });
 
 describe('LandingPage – keyboard shortcuts (#1185)', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    localStorage.removeItem('single-key-shortcuts-enabled');
+  });
 
   it('navigates to /chat when "g" is pressed', () => {
     const push = vi.fn();
@@ -103,6 +115,27 @@ describe('LandingPage – keyboard shortcuts (#1185)', () => {
     fireEvent.keyDown(window, { key: 'd' });
 
     expect(toggleDarkMode).toHaveBeenCalledTimes(1);
+  });
+
+  it('honors the single-key preference for navigation and theme shortcuts', () => {
+    const push = vi.fn();
+    const toggleDarkMode = vi.fn();
+    vi.mocked(useRouter).mockReturnValue({ push } as unknown as ReturnType<
+      typeof useRouter
+    >);
+    vi.mocked(useTheme).mockReturnValue({ isDarkMode: false, toggleDarkMode });
+
+    render(<LandingPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Keyboard shortcuts' }));
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Enable single-key shortcuts' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.keyDown(window, { key: 'g' });
+    fireEvent.keyDown(window, { key: 'd' });
+
+    expect(push).not.toHaveBeenCalled();
+    expect(toggleDarkMode).not.toHaveBeenCalled();
   });
 });
 

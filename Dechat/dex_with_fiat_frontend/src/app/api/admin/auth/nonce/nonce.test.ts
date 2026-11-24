@@ -1,10 +1,16 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST, GET } from './route';
 import { NextRequest } from 'next/server';
 import {
-  setAdminSession,
   deleteAdminSession,
+  requireAdminAuth,
+  setAdminSession,
 } from '../../_utils/requireAdminAuth';
+
+const setCookie = vi.hoisted(() => vi.fn());
+vi.mock('next/headers', () => ({
+  cookies: async () => ({ set: setCookie }),
+}));
 
 // Mock the dependencies
 vi.mock('@/lib/stellarContract', () => ({
@@ -60,6 +66,24 @@ describe('Admin Auth Nonce Route', () => {
 
     expect(response.status).toBe(200);
     expect(data.success).toBe(true);
+    expect(setCookie).toHaveBeenCalledWith(
+      'admin_session',
+      expect.any(String),
+      {
+        httpOnly: true,
+        secure: false,
+        sameSite: 'lax',
+        maxAge: 1800,
+        path: '/',
+      },
+    );
+
+    const sessionToken = setCookie.mock.calls[0][1];
+    const sessionRequest = new Request('http://localhost', {
+      headers: { cookie: `admin_session=${sessionToken}` },
+    });
+    expect(requireAdminAuth(sessionRequest)).toBeNull();
+    deleteAdminSession(sessionToken);
   });
 
   it('POST should reject missing fields', async () => {
@@ -142,6 +166,8 @@ describe('Admin Auth Nonce Route', () => {
 });
 
 describe('Admin Session Management', () => {
+  afterEach(() => vi.useRealTimers());
+
   it('should set and validate admin session', () => {
     const sessionToken = 'test-session-token';
     const address =
@@ -155,14 +181,14 @@ describe('Admin Session Management', () => {
       headers: { cookie: `admin_session=${sessionToken}` },
     });
 
-    const { requireAdminAuth } = require('../../_utils/requireAdminAuth');
     const result = requireAdminAuth(mockRequest);
 
     // Should return null (no error) for valid session
     expect(result).toBeNull();
   });
 
-  it('should reject expired session', async () => {
+  it('should reject expired session', () => {
+    vi.useFakeTimers();
     const sessionToken = 'expired-session-token';
     const address =
       'GADMIN12345678901234567890123456789012345678901234567890123';
@@ -170,14 +196,12 @@ describe('Admin Session Management', () => {
 
     setAdminSession(sessionToken, address, ttlMs);
 
-    // Wait for session to expire
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    vi.advanceTimersByTime(10);
 
     const mockRequest = new Request('http://localhost', {
       headers: { cookie: `admin_session=${sessionToken}` },
     });
 
-    const { requireAdminAuth } = require('../../_utils/requireAdminAuth');
     const result = requireAdminAuth(mockRequest);
 
     // Should return 401 error for expired session
@@ -198,7 +222,6 @@ describe('Admin Session Management', () => {
       headers: { cookie: `admin_session=${sessionToken}` },
     });
 
-    const { requireAdminAuth } = require('../../_utils/requireAdminAuth');
     const result = requireAdminAuth(mockRequest);
 
     // Should return 401 error for deleted session

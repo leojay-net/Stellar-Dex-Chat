@@ -287,19 +287,17 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
   useEffect(() => {
     if (!hasHydrated) return;
     const machine = machineRef.current;
-    const machineState = machine.getState();
+    if (machine.getState().state !== ChatState.UNINITIALIZED) return;
+    if (currentSessionId && !currentSession) return;
 
-    if (machineState.state === ChatState.UNINITIALIZED) {
-      if (currentSession && currentSession.messages.length > 0) {
-        setMessages(currentSession.messages);
-        machine.transition(ChatEvent.INITIALIZE_SESSION);
-        createNewSession(currentSession.messages);
-      } else if (!currentSessionId) {
-        setMessages([]);
-        createNewSession([]);
-        machine.transition(ChatEvent.INITIALIZE_SESSION);
-      }
+    machine.transition(ChatEvent.INITIALIZE_SESSION);
+    if (currentSession?.messages.length) {
+      setMessages(currentSession.messages);
+      createNewSession(currentSession.messages);
+    } else if (!currentSessionId) {
+      createNewSession([]);
     }
+    machine.transition(ChatEvent.LOAD_SESSION);
   }, [currentSession, currentSessionId, createNewSession, hasHydrated]);
 
   // Persist messages to session
@@ -582,7 +580,6 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
           m.id === optimisticUserId
             ? {
                 ...m,
-                content: enhancedResponse,
                 metadata: {
                   ...m.metadata,
                   status: 'sent',

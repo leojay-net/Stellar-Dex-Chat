@@ -1220,9 +1220,7 @@ describe('Cross-tab sync via BroadcastChannel (#1733)', () => {
   });
 
   it('falls back to the storage event when BroadcastChannel is unavailable', async () => {
-    vi.unstubAllGlobals();
-    // @ts-expect-error – intentionally removing the global for this test
-    delete globalThis.BroadcastChannel;
+    vi.stubGlobal('BroadcastChannel', undefined);
 
     const { result } = renderHook(() => useChatHistory(), {
       wrapper: ({ children }: { children: React.ReactNode }) => children,

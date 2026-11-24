@@ -23,14 +23,12 @@ const mockGetTotalDeposited = vi.mocked(getTotalDeposited);
 
 describe('useBridgeStats', () => {
   beforeEach(() => {
-    vi.useFakeTimers();
     mockGetContractBalance.mockResolvedValue(100n);
     mockGetBridgeLimit.mockResolvedValue(1000n);
     mockGetTotalDeposited.mockResolvedValue(500n);
   });
 
   afterEach(() => {
-    vi.useRealTimers();
     vi.clearAllMocks();
   });
 
@@ -81,11 +79,9 @@ describe('useBridgeStats', () => {
     unmount();
 
     // Resolve after unmount — should not throw or update state
-    expect(() => {
+    await act(async () => {
       resolveBalance(200n);
-    }).not.toThrow();
-
-    await vi.runAllTimersAsync();
+    });
 
     // State should remain at initial values since component was unmounted
     expect(result.current.balance).toBeNull();
@@ -117,15 +113,15 @@ describe('useBridgeStats', () => {
     });
 
     // Resolve the second (newer) fetch first
-    resolveSecond(999n);
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+    await act(async () => {
+      resolveSecond(999n);
     });
+    expect(result.current.loading).toBe(false);
 
     // Now resolve the first (stale) fetch — its result should be discarded
-    resolveFirst(111n);
-    await vi.runAllTimersAsync();
+    await act(async () => {
+      resolveFirst(111n);
+    });
 
     // The newer fetch result (999n) should be preserved
     expect(result.current.balance).toBe(999n);
@@ -146,27 +142,24 @@ describe('useBridgeStats', () => {
 
   it('dispatches bridge_stats_telemetry events', async () => {
     const events: CustomEvent[] = [];
-    window.addEventListener('bridge_stats_telemetry', (e) => {
-      events.push(e as CustomEvent);
-    });
+    const record = (event: Event) => events.push(event as CustomEvent);
+    window.addEventListener('bridge_stats_telemetry', record);
 
-    const { unmount } = renderHook(() => useBridgeStats());
-
-    await waitFor(() => {
+    try {
+      const { unmount } = renderHook(() => useBridgeStats());
       expect(
         events.some((e) => e.detail?.event === 'bridge_stats_mounted'),
       ).toBe(true);
-    });
 
-    await waitFor(() => {
-      expect(
-        events.some((e) => e.detail?.event === 'bridge_stats_fetch_success'),
-      ).toBe(true);
-    });
+      await waitFor(() => {
+        expect(
+          events.some((e) => e.detail?.event === 'bridge_stats_fetch_success'),
+        ).toBe(true);
+      });
 
-    unmount();
-    window.removeEventListener('bridge_stats_telemetry', (e) => {
-      events.push(e as CustomEvent);
-    });
+      unmount();
+    } finally {
+      window.removeEventListener('bridge_stats_telemetry', record);
+    }
   });
 });

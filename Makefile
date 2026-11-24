@@ -32,7 +32,9 @@ frontend-build:
 	$(PNPM) build
 
 frontend-test:
-	NODE_OPTIONS=--max-old-space-size=8192 $(PNPM) test:coverage $(if $(SHARD),--reporter=blob --reporter=dot --coverage.reporter=json-summary --coverage.clean --shard=$(SHARD))
+	NODE_OPTIONS=--max-old-space-size=8192 $(if $(SHARD),VITEST_COVERAGE_SHARD=true) $(PNPM) test:coverage \
+		$(if $(SHARD),--reporter=blob --reporter=dot --coverage.reporter=json-summary --shard=$(SHARD)) \
+		$(if $(JUNIT_REPORT),--reporter=junit --outputFile.junit="$(JUNIT_REPORT)")
 
 frontend-coverage-merge:
 	NODE_OPTIONS=--max-old-space-size=4096 $(PNPM) test:coverage:merge

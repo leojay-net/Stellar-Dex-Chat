@@ -30,21 +30,16 @@ test.describe('Message component E2E', () => {
       await expect(page.getByText(/Receipt ID:/i)).toBeVisible();
     });
 
-    test('copies transaction hash on button click', async ({
-      page,
-      context,
-      browserName,
-    }) => {
-      test.skip(
-        browserName !== 'chromium',
-        'Clipboard permissions are only supported in Chromium.',
-      );
-
-      const copyButton = page.locator('button[aria-label*="copy" i]').first();
-      await expect(copyButton).toBeVisible();
-      await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-      await copyButton.click();
-    });
+    test(
+      'copies transaction hash on button click',
+      { tag: '@chromium-only' },
+      async ({ page, context }) => {
+        const copyButton = page.locator('button[aria-label*="copy" i]').first();
+        await expect(copyButton).toBeVisible();
+        await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+        await copyButton.click();
+      },
+    );
   });
 
   test.describe('Suggested actions', () => {

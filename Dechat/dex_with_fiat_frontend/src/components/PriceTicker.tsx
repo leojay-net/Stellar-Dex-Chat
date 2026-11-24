@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useId } from 'react';
 import { TrendingUp, TrendingDown } from 'lucide-react';
+import { useSingleKeyShortcuts } from '@/contexts/UserPreferencesContext';
 import { fetchTickerData, TickerData } from '@/lib/cryptoPriceService';
 import {
   formatCurrency,
@@ -22,6 +23,7 @@ export default function PriceTicker({
   refreshInterval = 60000, // 60 seconds default
   locale = 'en-US',
 }: PriceTickerProps) {
+  const singleKeyShortcuts = useSingleKeyShortcuts();
   const [prices, setPrices] = useState<TickerData>({});
   const [error, setError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -146,12 +148,19 @@ export default function PriceTicker({
         setCurrentPage((p) => Math.min(totalPages - 1, p + 1));
         return;
       }
-      if (e.key === 'r' || e.key === 'R') {
+      if (
+        singleKeyShortcuts &&
+        e.target === e.currentTarget &&
+        !e.altKey &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        e.key.toLowerCase() === 'r'
+      ) {
         e.preventDefault();
         void fetchPrices();
       }
     },
-    [fetchPrices, totalPages],
+    [fetchPrices, singleKeyShortcuts, totalPages],
   );
 
   // Show error state
@@ -182,7 +191,9 @@ export default function PriceTicker({
       role="region"
       tabIndex={0}
       aria-label="Market prices ticker"
-      aria-keyshortcuts="ArrowLeft ArrowRight R"
+      aria-keyshortcuts={
+        singleKeyShortcuts ? 'ArrowLeft ArrowRight R' : 'ArrowLeft ArrowRight'
+      }
       aria-describedby={kbHelpId}
       data-testid="price-ticker"
       onKeyDown={handleKeyDown}
@@ -190,7 +201,7 @@ export default function PriceTicker({
     >
       <span id={kbHelpId} className="sr-only">
         Keyboard shortcuts: Left Arrow for previous page, Right Arrow for next
-        page, R to refresh prices.
+        page{singleKeyShortcuts ? ', R to refresh prices.' : '.'}
       </span>
 
       <div className="flex items-center justify-between mb-2">

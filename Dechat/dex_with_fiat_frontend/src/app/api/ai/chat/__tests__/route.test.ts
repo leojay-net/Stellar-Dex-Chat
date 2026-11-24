@@ -2,10 +2,14 @@ import { describe, it, expect, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { POST } from '../route';
 
+vi.mock('@/lib/serverEnv', () => ({
+  serverEnv: { GEMINI_API_KEY: 'test-key' },
+}));
+
 // Mock GoogleGenerativeAI so tests don't try to actually hit Gemini
 vi.mock('@google/generative-ai', () => {
   return {
-    GoogleGenerativeAI: vi.fn().mockImplementation(() => {
+    GoogleGenerativeAI: vi.fn(function () {
       return {
         getGenerativeModel: vi.fn().mockReturnValue({
           generateContent: vi.fn().mockResolvedValue({

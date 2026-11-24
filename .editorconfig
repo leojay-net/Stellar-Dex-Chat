@@ -1,0 +1,35 @@
+root = true
+
+# Global defaults for all files
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Rust files (follows rustfmt standard)
+[*.rs]
+indent_style = space
+indent_size = 4
+
+# Frontend TypeScript, JavaScript, JSON, CSS (matches Prettier config)
+[*.{ts,tsx,js,jsx,mjs,cjs,json}]
+indent_style = space
+indent_size = 2
+
+# YAML configuration files and GitHub Actions workflows
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+
+# Markdown documentation (preserve double space for line breaks)
+[*.md]
+indent_style = space
+indent_size = 2
+trim_trailing_whitespace = false
+
+# Makefiles require tab indentation
+[Makefile]
+indent_style = tab

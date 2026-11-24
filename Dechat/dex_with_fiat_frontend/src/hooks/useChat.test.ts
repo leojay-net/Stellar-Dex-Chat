@@ -200,7 +200,11 @@ describe('Message Retry UX', () => {
         const sentUser = hook.api.messages[hook.api.messages.length - 2];
         const sentAssistant = hook.api.messages[hook.api.messages.length - 1];
 
-        expect(sentUser?.metadata?.status).toBe('sent');
+        expect(sentUser).toMatchObject({
+          role: 'user',
+          content: 'Hello',
+          metadata: { status: 'sent' },
+        });
         expect(sentAssistant).toMatchObject({
           role: 'assistant',
           content: 'ok',

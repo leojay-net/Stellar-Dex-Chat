@@ -1,6 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import ts from 'typescript';
 import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures';
 import type { TargetAndTransition } from 'framer-motion';
+import type { ChatEvent } from '../../src/lib/chatTelemetry';
 
 /**
  * E2E tests for chatTelemetry.ts
@@ -15,64 +19,93 @@ import type { TargetAndTransition } from 'framer-motion';
  * 6. Non-blocking resilient dispatching
  */
 
-const TEST_URL = '/';
+const TEST_URL = '/__playwright/chat-telemetry';
+const MODULE_URL = '/__playwright/chat-telemetry.js';
 
-/** Setup a listener on the window to collect telemetry events in the browser */
-async function attachTelemetryCollector(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    (window as any).__collectedTelemetryEvents = [];
-    window.addEventListener('chat:telemetry', (e: any) => {
-      (window as any).__collectedTelemetryEvents.push(e.detail);
-    });
-  });
+// Serve the real TypeScript module as a browser-loadable ES module. Intercept
+// both fixtures inside Playwright so the application exposes no test endpoint.
+const telemetrySource = ts.transpileModule(
+  readFileSync(resolve(__dirname, '../../src/lib/chatTelemetry.ts'), 'utf8'),
+  {
+    compilerOptions: {
+      module: ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.ESNext,
+    },
+  },
+).outputText;
+
+declare global {
+  interface Window {
+    __chatTelemetry: typeof import('../../src/lib/chatTelemetry');
+    __collectedTelemetryEvents: ChatEvent[];
+  }
 }
 
-/** Get collected telemetry events from window */
-async function getCollectedEvents(page: Page): Promise<any[]> {
-  return page.evaluate(() => (window as any).__collectedTelemetryEvents || []);
+async function getCollectedEvents(page: Page): Promise<ChatEvent[]> {
+  return page.evaluate(() => window.__collectedTelemetryEvents);
 }
 
-/** Clear collected events */
 async function clearCollectedEvents(page: Page): Promise<void> {
   await page.evaluate(() => {
-    (window as any).__collectedTelemetryEvents = [];
+    window.__collectedTelemetryEvents = [];
   });
+}
+
+async function waitForTelemetryFrame(page: Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+  );
 }
 
 test.describe('chatTelemetry E2E Coverage', () => {
   test.beforeEach(async ({ page }) => {
+    await page.route(TEST_URL, (route) =>
+      route.fulfill({
+        contentType: 'text/html',
+        body: '<!doctype html><title>Chat telemetry test</title>',
+      }),
+    );
+    await page.route(MODULE_URL, (route) =>
+      route.fulfill({ contentType: 'text/javascript', body: telemetrySource }),
+    );
     await page.goto(TEST_URL);
-    await page.waitForLoadState('domcontentloaded');
-    await attachTelemetryCollector(page);
+    await page.evaluate(async (url) => {
+      window.__chatTelemetry = await import(url);
+      window.__collectedTelemetryEvents = [];
+      window.addEventListener('chat:telemetry', (event) => {
+        window.__collectedTelemetryEvents.push(
+          (event as CustomEvent<ChatEvent>).detail,
+        );
+      });
+    }, MODULE_URL);
   });
 
   test.describe('Consent Management & Event Suppression', () => {
     test('suppresses telemetry events when consent is not granted', async ({
       page,
     }) => {
-      await page.evaluate(async () => {
-        const { chatTelemetry, setTelemetryConsent } =
-          await import('@/lib/chatTelemetry');
+      await page.evaluate(() => {
+        const { chatTelemetry, setTelemetryConsent } = window.__chatTelemetry;
         setTelemetryConsent(false);
         chatTelemetry.messageSend({ messageLength: 10, hasWallet: false });
       });
 
       // Wait a frame for any rAF
-      await page.waitForTimeout(50);
+      await waitForTelemetryFrame(page);
       const events = await getCollectedEvents(page);
       expect(events.length).toBe(0);
     });
 
     test('emits telemetry events when consent is granted', async ({ page }) => {
-      await page.evaluate(async () => {
-        const { chatTelemetry, setTelemetryConsent } =
-          await import('@/lib/chatTelemetry');
+      await page.evaluate(() => {
+        const { chatTelemetry, setTelemetryConsent } = window.__chatTelemetry;
         setTelemetryConsent(true);
         chatTelemetry.messageSend({ messageLength: 25, hasWallet: true });
       });
 
       await page.waitForFunction(
-        () => (window as any).__collectedTelemetryEvents.length === 1,
+        () => window.__collectedTelemetryEvents.length === 1,
       );
       const events = await getCollectedEvents(page);
       expect(events.length).toBe(1);
@@ -86,26 +119,24 @@ test.describe('chatTelemetry E2E Coverage', () => {
     test('immediately stops emitting events when consent is revoked', async ({
       page,
     }) => {
-      await page.evaluate(async () => {
-        const { chatTelemetry, setTelemetryConsent } =
-          await import('@/lib/chatTelemetry');
+      await page.evaluate(() => {
+        const { chatTelemetry, setTelemetryConsent } = window.__chatTelemetry;
         setTelemetryConsent(true);
         chatTelemetry.messageSend({ messageLength: 15, hasWallet: true });
       });
 
       await page.waitForFunction(
-        () => (window as any).__collectedTelemetryEvents.length === 1,
+        () => window.__collectedTelemetryEvents.length === 1,
       );
       await clearCollectedEvents(page);
 
-      await page.evaluate(async () => {
-        const { chatTelemetry, setTelemetryConsent } =
-          await import('@/lib/chatTelemetry');
+      await page.evaluate(() => {
+        const { chatTelemetry, setTelemetryConsent } = window.__chatTelemetry;
         setTelemetryConsent(false);
         chatTelemetry.messageSend({ messageLength: 30, hasWallet: false });
       });
 
-      await page.waitForTimeout(50);
+      await waitForTelemetryFrame(page);
       const events = await getCollectedEvents(page);
       expect(events.length).toBe(0);
     });
@@ -113,15 +144,15 @@ test.describe('chatTelemetry E2E Coverage', () => {
 
   test.describe('Event Types & Schema Validation', () => {
     test.beforeEach(async ({ page }) => {
-      await page.evaluate(async () => {
-        const { setTelemetryConsent } = await import('@/lib/chatTelemetry');
+      await page.evaluate(() => {
+        const { setTelemetryConsent } = window.__chatTelemetry;
         setTelemetryConsent(true);
       });
     });
 
     test('emits messageRetry event with correct payload', async ({ page }) => {
-      await page.evaluate(async () => {
-        const { chatTelemetry } = await import('@/lib/chatTelemetry');
+      await page.evaluate(() => {
+        const { chatTelemetry } = window.__chatTelemetry;
         chatTelemetry.messageRetry({
           retryAttempts: 3,
           errorMessage: 'Network timeout',
@@ -129,7 +160,7 @@ test.describe('chatTelemetry E2E Coverage', () => {
       });
 
       await page.waitForFunction(
-        () => (window as any).__collectedTelemetryEvents.length === 1,
+        () => window.__collectedTelemetryEvents.length === 1,
       );
       const [event] = await getCollectedEvents(page);
       expect(event.name).toBe('message_retry');
@@ -138,13 +169,13 @@ test.describe('chatTelemetry E2E Coverage', () => {
     });
 
     test('emits walletConnect event with correct payload', async ({ page }) => {
-      await page.evaluate(async () => {
-        const { chatTelemetry } = await import('@/lib/chatTelemetry');
+      await page.evaluate(() => {
+        const { chatTelemetry } = window.__chatTelemetry;
         chatTelemetry.walletConnect({ walletType: 'freighter', success: true });
       });
 
       await page.waitForFunction(
-        () => (window as any).__collectedTelemetryEvents.length === 1,
+        () => window.__collectedTelemetryEvents.length === 1,
       );
       const [event] = await getCollectedEvents(page);
       expect(event.name).toBe('wallet_connect');
@@ -155,14 +186,14 @@ test.describe('chatTelemetry E2E Coverage', () => {
     test('emits bridgeOpen event for deposit and withdraw flows', async ({
       page,
     }) => {
-      await page.evaluate(async () => {
-        const { chatTelemetry } = await import('@/lib/chatTelemetry');
+      await page.evaluate(() => {
+        const { chatTelemetry } = window.__chatTelemetry;
         chatTelemetry.bridgeOpen({ flow: 'deposit' });
         chatTelemetry.bridgeOpen({ flow: 'withdraw' });
       });
 
       await page.waitForFunction(
-        () => (window as any).__collectedTelemetryEvents.length === 2,
+        () => window.__collectedTelemetryEvents.length === 2,
       );
       const events = await getCollectedEvents(page);
       expect(events[0].name).toBe('bridge_open');
@@ -174,8 +205,8 @@ test.describe('chatTelemetry E2E Coverage', () => {
     test('emits txConfirm event with asset and network details', async ({
       page,
     }) => {
-      await page.evaluate(async () => {
-        const { chatTelemetry } = await import('@/lib/chatTelemetry');
+      await page.evaluate(() => {
+        const { chatTelemetry } = window.__chatTelemetry;
         chatTelemetry.txConfirm({
           assetCode: 'XLM',
           amountXlm: 150.5,
@@ -184,7 +215,7 @@ test.describe('chatTelemetry E2E Coverage', () => {
       });
 
       await page.waitForFunction(
-        () => (window as any).__collectedTelemetryEvents.length === 1,
+        () => window.__collectedTelemetryEvents.length === 1,
       );
       const [event] = await getCollectedEvents(page);
       expect(event.name).toBe('tx_confirm');
@@ -194,8 +225,8 @@ test.describe('chatTelemetry E2E Coverage', () => {
     });
 
     test('emits fiatPayoutStep event with funnel actions', async ({ page }) => {
-      await page.evaluate(async () => {
-        const { chatTelemetry } = await import('@/lib/chatTelemetry');
+      await page.evaluate(() => {
+        const { chatTelemetry } = window.__chatTelemetry;
         chatTelemetry.fiatPayoutStep({
           action: 'step_change',
           step: 2,
@@ -205,7 +236,7 @@ test.describe('chatTelemetry E2E Coverage', () => {
       });
 
       await page.waitForFunction(
-        () => (window as any).__collectedTelemetryEvents.length === 1,
+        () => window.__collectedTelemetryEvents.length === 1,
       );
       const [event] = await getCollectedEvents(page);
       expect(event.name).toBe('fiat_payout_step');
@@ -218,8 +249,8 @@ test.describe('chatTelemetry E2E Coverage', () => {
     test('emits paymentStatus event with reference and state', async ({
       page,
     }) => {
-      await page.evaluate(async () => {
-        const { chatTelemetry } = await import('@/lib/chatTelemetry');
+      await page.evaluate(() => {
+        const { chatTelemetry } = window.__chatTelemetry;
         chatTelemetry.paymentStatus({
           status: 'success',
           reference: 'PAY_123456',
@@ -229,7 +260,7 @@ test.describe('chatTelemetry E2E Coverage', () => {
       });
 
       await page.waitForFunction(
-        () => (window as any).__collectedTelemetryEvents.length === 1,
+        () => window.__collectedTelemetryEvents.length === 1,
       );
       const [event] = await getCollectedEvents(page);
       expect(event.name).toBe('payment_status');
@@ -242,8 +273,8 @@ test.describe('chatTelemetry E2E Coverage', () => {
     test('emits networkStatus event on connectivity transitions', async ({
       page,
     }) => {
-      await page.evaluate(async () => {
-        const { chatTelemetry } = await import('@/lib/chatTelemetry');
+      await page.evaluate(() => {
+        const { chatTelemetry } = window.__chatTelemetry;
         chatTelemetry.networkStatus({
           status: 'offline',
           source: 'browser-event',
@@ -251,7 +282,7 @@ test.describe('chatTelemetry E2E Coverage', () => {
       });
 
       await page.waitForFunction(
-        () => (window as any).__collectedTelemetryEvents.length === 1,
+        () => window.__collectedTelemetryEvents.length === 1,
       );
       const [event] = await getCollectedEvents(page);
       expect(event.name).toBe('network_status');
@@ -260,8 +291,8 @@ test.describe('chatTelemetry E2E Coverage', () => {
     });
 
     test('emits splitView event on thread comparisons', async ({ page }) => {
-      await page.evaluate(async () => {
-        const { chatTelemetry } = await import('@/lib/chatTelemetry');
+      await page.evaluate(() => {
+        const { chatTelemetry } = window.__chatTelemetry;
         chatTelemetry.splitView({
           action: 'swap_sessions',
           leftSessionId: 'sess-2',
@@ -270,7 +301,7 @@ test.describe('chatTelemetry E2E Coverage', () => {
       });
 
       await page.waitForFunction(
-        () => (window as any).__collectedTelemetryEvents.length === 1,
+        () => window.__collectedTelemetryEvents.length === 1,
       );
       const [event] = await getCollectedEvents(page);
       expect(event.name).toBe('split_view');
@@ -282,8 +313,8 @@ test.describe('chatTelemetry E2E Coverage', () => {
 
   test.describe('Avatar Contrast & Accessibility Utilities', () => {
     test.beforeEach(async ({ page }) => {
-      await page.evaluate(async () => {
-        const { setTelemetryConsent } = await import('@/lib/chatTelemetry');
+      await page.evaluate(() => {
+        const { setTelemetryConsent } = window.__chatTelemetry;
         setTelemetryConsent(true);
       });
     });
@@ -291,15 +322,15 @@ test.describe('chatTelemetry E2E Coverage', () => {
     test('avatarColorCheck emits event with enriched contrast calculations', async ({
       page,
     }) => {
-      await page.evaluate(async () => {
-        const { chatTelemetry } = await import('@/lib/chatTelemetry');
+      await page.evaluate(() => {
+        const { chatTelemetry } = window.__chatTelemetry;
         chatTelemetry.avatarColorCheck({
           avatarBackgroundColor: '#000000',
         });
       });
 
       await page.waitForFunction(
-        () => (window as any).__collectedTelemetryEvents.length === 1,
+        () => window.__collectedTelemetryEvents.length === 1,
       );
       const [event] = await getCollectedEvents(page);
       expect(event.name).toBe('avatar_color_check');
@@ -312,9 +343,9 @@ test.describe('chatTelemetry E2E Coverage', () => {
     test('calculateContrastRatio computes WCAG luminance ratios in browser', async ({
       page,
     }) => {
-      const results = await page.evaluate(async () => {
+      const results = await page.evaluate(() => {
         const { calculateContrastRatio, getAccessibleAvatarTextColor } =
-          await import('@/lib/chatTelemetry');
+          window.__chatTelemetry;
         const whiteOnBlack = calculateContrastRatio('#FFFFFF', '#000000');
         const blackOnWhite = calculateContrastRatio('#000000', '#FFFFFF');
         const accessibleTextForLightBg =
@@ -338,9 +369,8 @@ test.describe('chatTelemetry E2E Coverage', () => {
 
   test.describe('Motion Variants & Reduced Motion', () => {
     test('resolves telemetry motion intents correctly', async ({ page }) => {
-      const intents = await page.evaluate(async () => {
-        const { telemetryEventMotionIntent } =
-          await import('@/lib/chatTelemetry');
+      const intents = await page.evaluate(() => {
+        const { telemetryEventMotionIntent } = window.__chatTelemetry;
         return {
           retry: telemetryEventMotionIntent('message_retry'),
           avatar: telemetryEventMotionIntent('avatar_color_check'),
@@ -356,9 +386,8 @@ test.describe('chatTelemetry E2E Coverage', () => {
     });
 
     test('returns reduced motion variants when requested', async ({ page }) => {
-      const variants = await page.evaluate(async () => {
-        const { getTelemetryMotionVariants } =
-          await import('@/lib/chatTelemetry');
+      const variants = await page.evaluate(() => {
+        const { getTelemetryMotionVariants } = window.__chatTelemetry;
         // `Variants` is an index signature of the `Variant` union, which hides the
         // concrete animation props; narrow to the concrete variant object type.
         return getTelemetryMotionVariants({ reducedMotion: true }) as Record<

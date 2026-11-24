@@ -1,10 +1,6 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
-import {
-  connectMockWallet,
-  gotoChatConnected,
-  MOCK_WALLET_ADDRESS,
-} from './helpers';
+import { gotoChatConnected, MOCK_WALLET_ADDRESS } from './helpers';
 
 test.describe('Wallet Connect UI Path', () => {
   test('should display start bridging button on landing page', async ({

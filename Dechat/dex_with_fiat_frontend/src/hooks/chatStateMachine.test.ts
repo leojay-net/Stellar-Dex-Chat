@@ -12,6 +12,11 @@ import {
   formatChatStateSnapshot,
 } from './chatStateMachine';
 
+function initializeSession(machine: ReturnType<typeof createChatStateMachine>) {
+  machine.transition(ChatEvent.INITIALIZE_SESSION);
+  machine.transition(ChatEvent.LOAD_SESSION);
+}
+
 describe('ChatStateMachine', () => {
   let machine = createChatStateMachine();
 
@@ -25,9 +30,11 @@ describe('ChatStateMachine', () => {
       expect(state.state).toBe(ChatState.UNINITIALIZED);
     });
 
-    it('should transition from UNINITIALIZED to INITIALIZED on INITIALIZE_SESSION', () => {
-      const result = machine.transition(ChatEvent.INITIALIZE_SESSION);
-      expect(result).toBe(true);
+    it('initializes only once the session has loaded', () => {
+      expect(machine.transition(ChatEvent.INITIALIZE_SESSION)).toBe(true);
+      expect(machine.getState().state).toBe(ChatState.SKELETON_LOADING);
+      expect(machine.transition(ChatEvent.SEND_MESSAGE)).toBe(false);
+      expect(machine.transition(ChatEvent.LOAD_SESSION)).toBe(true);
       expect(machine.getState().state).toBe(ChatState.INITIALIZED);
     });
 
@@ -47,7 +54,7 @@ describe('ChatStateMachine', () => {
 
   describe('Message Sending Flow', () => {
     beforeEach(() => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initializeSession(machine);
     });
 
     it('should transition from INITIALIZED to SENDING_MESSAGE on SEND_MESSAGE', () => {
@@ -74,7 +81,7 @@ describe('ChatStateMachine', () => {
 
   describe('Clarification Flow', () => {
     beforeEach(() => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initializeSession(machine);
       machine.transition(ChatEvent.SEND_MESSAGE);
       machine.transition(ChatEvent.ANALYSIS_COMPLETE);
     });
@@ -112,7 +119,7 @@ describe('ChatStateMachine', () => {
 
   describe('Transaction Flow', () => {
     beforeEach(() => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initializeSession(machine);
     });
 
     it('should not transition to READY_FOR_TRANSACTION without transaction data', () => {
@@ -201,7 +208,7 @@ describe('ChatStateMachine', () => {
 
   describe('Cancellation and Reset', () => {
     beforeEach(() => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initializeSession(machine);
     });
 
     it('should transition to CANCELLED state on CANCEL_FLOW', () => {
@@ -269,7 +276,7 @@ describe('ChatStateMachine', () => {
 
   describe('Error Handling', () => {
     beforeEach(() => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initializeSession(machine);
     });
 
     it('should transition to ERROR state on ENCOUNTER_ERROR', () => {
@@ -319,7 +326,7 @@ describe('ChatStateMachine', () => {
 
   describe('Required acceptance paths', () => {
     beforeEach(() => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initializeSession(machine);
     });
 
     it('idle -> sending -> success -> idle', () => {
@@ -535,7 +542,7 @@ describe('ChatStateMachine', () => {
         notifiedState = state;
       });
 
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initializeSession(machine);
       expect(notifiedState).toBe(ChatState.INITIALIZED);
 
       unsubscribe();
@@ -551,14 +558,14 @@ describe('ChatStateMachine', () => {
       expect(notificationCount).toBe(1);
 
       unsubscribe();
-      machine.transition(ChatEvent.SEND_MESSAGE);
+      machine.transition(ChatEvent.LOAD_SESSION);
       expect(notificationCount).toBe(1);
     });
   });
 
   describe('Valid Transitions', () => {
     it('should list valid transitions from INITIALIZED', () => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initializeSession(machine);
       const validTransitions = machine.getValidTransitions();
       expect(validTransitions).toContain(ChatEvent.SEND_MESSAGE);
       expect(validTransitions).toContain(ChatEvent.LOAD_SESSION);
@@ -566,14 +573,14 @@ describe('ChatStateMachine', () => {
     });
 
     it('should list valid transitions from SENDING_MESSAGE', () => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initializeSession(machine);
       machine.transition(ChatEvent.SEND_MESSAGE);
       const validTransitions = machine.getValidTransitions();
       expect(validTransitions).toContain(ChatEvent.ANALYSIS_COMPLETE);
     });
 
     it('should list valid transitions from AWAITING_USER_INPUT', () => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initializeSession(machine);
       machine.transition(ChatEvent.SEND_MESSAGE);
       machine.transition(ChatEvent.ANALYSIS_COMPLETE);
       machine.transition(ChatEvent.ANALYSIS_COMPLETE);
@@ -586,28 +593,29 @@ describe('ChatStateMachine', () => {
 
   describe('Transition History', () => {
     it('should record transition history', () => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initializeSession(machine);
       machine.transition(ChatEvent.SEND_MESSAGE);
       machine.transition(ChatEvent.ANALYSIS_COMPLETE);
 
       const history = machine.getHistory();
       expect(history.length).toBeGreaterThanOrEqual(3);
       expect(history[0].from).toBe(ChatState.UNINITIALIZED);
-      expect(history[0].to).toBe(ChatState.INITIALIZED);
+      expect(history[0].to).toBe(ChatState.SKELETON_LOADING);
       expect(history[0].event).toBe(ChatEvent.INITIALIZE_SESSION);
+      expect(history[1].event).toBe(ChatEvent.LOAD_SESSION);
     });
   });
 
   describe('Context Updates', () => {
     it('should update context without changing state', () => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initializeSession(machine);
       machine.updateContext({ messageCount: 5 });
       expect(machine.getState().state).toBe(ChatState.INITIALIZED);
       expect(machine.getState().context.messageCount).toBe(5);
     });
 
     it('should support partial context updates', () => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initializeSession(machine);
       const transactionData: TransactionData = {
         type: 'fiat_conversion',
         tokenIn: 'XLM',
@@ -625,7 +633,7 @@ describe('ChatStateMachine', () => {
   describe('Integration: Complete Happy Path', () => {
     it('should handle complete transaction flow', () => {
       // Initialize
-      expect(machine.transition(ChatEvent.INITIALIZE_SESSION)).toBe(true);
+      initializeSession(machine);
       expect(machine.getState().state).toBe(ChatState.INITIALIZED);
 
       // Send first message
@@ -666,7 +674,7 @@ describe('ChatStateMachine', () => {
     });
 
     it('should handle cancellation from transaction readiness', () => {
-      machine.transition(ChatEvent.INITIALIZE_SESSION);
+      initializeSession(machine);
       machine.transition(ChatEvent.SEND_MESSAGE);
       machine.transition(ChatEvent.ANALYSIS_COMPLETE);
       machine.updateContext({
@@ -695,11 +703,11 @@ describe('ChatStateMachine', () => {
 describe('chatStateMachine race condition regression (#590)', () => {
   it('two independent machines do not share context state', () => {
     const machineA = createChatStateMachine();
-    machineA.transition(ChatEvent.INITIALIZE_SESSION);
+    initializeSession(machineA);
     machineA.updateContext({ messageCount: 7, hasUserCancelled: true });
 
     const machineB = createChatStateMachine();
-    machineB.transition(ChatEvent.INITIALIZE_SESSION);
+    initializeSession(machineB);
 
     // Machine B must start clean — not polluted by machine A's mutations
     expect(machineB.getState().context.messageCount).toBe(0);
@@ -708,14 +716,14 @@ describe('chatStateMachine race condition regression (#590)', () => {
 
   it('action callbacks on machine A do not corrupt machine B context', () => {
     const machineA = createChatStateMachine();
-    machineA.transition(ChatEvent.INITIALIZE_SESSION);
+    initializeSession(machineA);
     machineA.transition(ChatEvent.SEND_MESSAGE);
     machineA.transition(ChatEvent.ANALYSIS_COMPLETE); // → ANALYZING
     machineA.transition(ChatEvent.ENCOUNTER_ERROR); // → ERROR
     machineA.updateContext({ errorMessage: 'A failed' });
 
     const machineB = createChatStateMachine();
-    machineB.transition(ChatEvent.INITIALIZE_SESSION);
+    initializeSession(machineB);
 
     expect(machineB.getState().context.errorMessage).toBeNull();
     expect(machineB.getState().state).toBe(ChatState.INITIALIZED);
@@ -724,10 +732,10 @@ describe('chatStateMachine race condition regression (#590)', () => {
   it('many machines created in sequence all start with zero messageCount', () => {
     for (let i = 0; i < 5; i++) {
       const m = createChatStateMachine();
-      m.transition(ChatEvent.INITIALIZE_SESSION);
+      initializeSession(m);
       m.updateContext({ messageCount: i + 10 });
       const fresh = createChatStateMachine();
-      fresh.transition(ChatEvent.INITIALIZE_SESSION);
+      initializeSession(fresh);
       expect(fresh.getState().context.messageCount).toBe(0);
     }
   });
@@ -788,7 +796,7 @@ describe('createDebouncedDispatcher (issue #588)', () => {
 
   it('applies a single dispatched event after the debounce delay', () => {
     const machine = createChatStateMachine();
-    machine.transition(ChatEvent.INITIALIZE_SESSION);
+    initializeSession(machine);
     const dispatcher = createDebouncedDispatcher(machine, 200);
 
     dispatcher.dispatch(ChatEvent.SEND_MESSAGE);
@@ -803,7 +811,7 @@ describe('createDebouncedDispatcher (issue #588)', () => {
 
   it('collapses a burst of events into the latest one', () => {
     const machine = createChatStateMachine();
-    machine.transition(ChatEvent.INITIALIZE_SESSION);
+    initializeSession(machine);
     const transitionSpy = vi.spyOn(machine, 'transition');
     const dispatcher = createDebouncedDispatcher(machine, 150);
 
@@ -821,7 +829,7 @@ describe('createDebouncedDispatcher (issue #588)', () => {
 
   it('flush applies the pending event immediately and returns the result', () => {
     const machine = createChatStateMachine();
-    machine.transition(ChatEvent.INITIALIZE_SESSION);
+    initializeSession(machine);
     const dispatcher = createDebouncedDispatcher(machine);
 
     dispatcher.dispatch(ChatEvent.SEND_MESSAGE);
@@ -837,7 +845,7 @@ describe('createDebouncedDispatcher (issue #588)', () => {
 
   it('cancel discards the pending event without applying it', () => {
     const machine = createChatStateMachine();
-    machine.transition(ChatEvent.INITIALIZE_SESSION);
+    initializeSession(machine);
     const dispatcher = createDebouncedDispatcher(machine, 200);
 
     dispatcher.dispatch(ChatEvent.SEND_MESSAGE);

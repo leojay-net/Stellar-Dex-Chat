@@ -1,4 +1,4 @@
-import { expect, Page } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { test } from './fixtures';
 
 /**
@@ -36,7 +36,7 @@ test.describe('LandingPage E2E Coverage', () => {
 
       // Wait for hero section to be visible
       const heroHeading = page.getByRole('heading', {
-        name: /Welcome to your Personal USDT-to-Fiat/i,
+        name: /XLM-to-Fiat Bridge/i,
       });
       await expect(heroHeading).toBeVisible({ timeout: 5000 });
 
@@ -52,21 +52,16 @@ test.describe('LandingPage E2E Coverage', () => {
       // Wait for hero to be visible
       await expect(
         page.getByRole('heading', {
-          name: /Welcome to your Personal USDT-to-Fiat/i,
+          name: /XLM-to-Fiat Bridge/i,
         }),
       ).toBeVisible({ timeout: 5000 });
 
       // Find and click Get Started button
       const getStartedBtn = page.getByRole('button', {
-        name: /Get Started|Get started|get started/i,
+        name: /Start Bridging/i,
       });
-      if (await getStartedBtn.isVisible()) {
-        await getStartedBtn.click();
-
-        // Should navigate to /chat
-        await page.waitForURL(/\/chat/, { timeout: 5000 });
-        expect(page.url()).toContain('/chat');
-      }
+      await getStartedBtn.click();
+      await expect(page).toHaveURL(/\/chat/);
     });
 
     test('should display price loading state', async ({ page }) => {
@@ -95,7 +90,7 @@ test.describe('LandingPage E2E Coverage', () => {
 
       // Get Started button should still work
       const getStartedBtn = page.getByRole('button', {
-        name: /Get Started|get started/i,
+        name: /Start Bridging/i,
       });
       await expect(getStartedBtn).toBeVisible();
     });
@@ -104,17 +99,17 @@ test.describe('LandingPage E2E Coverage', () => {
       await page.goto('/', { waitUntil: 'load' });
 
       // Scroll down to features section
-      await page
-        .locator('text=Soroban Smart Contracts')
-        .scrollIntoViewIfNeeded();
+      const features = page.getByRole('region', {
+        name: 'Why Choose DexFiat on Stellar',
+      });
+      const soroban = features.getByRole('heading', {
+        name: 'Soroban Smart Contracts',
+      });
+      await soroban.scrollIntoViewIfNeeded();
+      await expect(soroban).toBeVisible();
 
-      // Features should be visible
-      const featuresSection = page.locator('text=Soroban Smart Contracts');
-      await expect(featuresSection).toBeVisible();
-
-      // Verify at least one feature description
-      const featureDesc = page.locator(
-        'text=FiatBridge contract built on Stellar Soroban',
+      const featureDesc = features.getByText(
+        /FiatBridge contract built on Stellar Soroban/,
       );
       await expect(featureDesc).toBeVisible();
     });
@@ -140,7 +135,7 @@ test.describe('LandingPage E2E Coverage', () => {
       await page.goto('/', { waitUntil: 'load' });
 
       const heroHeading = page.getByRole('heading', {
-        name: /Welcome to your Personal USDT-to-Fiat/i,
+        name: /XLM-to-Fiat Bridge/i,
       });
       await expect(heroHeading).toBeVisible({ timeout: 10000 });
     });
@@ -150,12 +145,12 @@ test.describe('LandingPage E2E Coverage', () => {
 
       await expect(
         page.getByRole('heading', {
-          name: /Welcome to your Personal USDT-to-Fiat/i,
+          name: /XLM-to-Fiat Bridge/i,
         }),
       ).toBeVisible({ timeout: 10000 });
 
       const getStartedBtn = page.getByRole('button', {
-        name: /Get Started|get started/i,
+        name: /Start Bridging/i,
       });
       if (await getStartedBtn.isVisible()) {
         await getStartedBtn.click();
@@ -169,7 +164,7 @@ test.describe('LandingPage E2E Coverage', () => {
       await page.goto('/', { waitUntil: 'load' });
 
       const heroHeading = page.getByRole('heading', {
-        name: /Welcome to your Personal USDT-to-Fiat/i,
+        name: /XLM-to-Fiat Bridge/i,
       });
       await expect(heroHeading).toBeVisible({ timeout: 10000 });
     });
@@ -179,12 +174,12 @@ test.describe('LandingPage E2E Coverage', () => {
 
       await expect(
         page.getByRole('heading', {
-          name: /Welcome to your Personal USDT-to-Fiat/i,
+          name: /XLM-to-Fiat Bridge/i,
         }),
       ).toBeVisible({ timeout: 10000 });
 
       const getStartedBtn = page.getByRole('button', {
-        name: /Get Started|get started/i,
+        name: /Start Bridging/i,
       });
       if (await getStartedBtn.isVisible()) {
         await getStartedBtn.click();
@@ -232,16 +227,11 @@ test.describe('LandingPage E2E Coverage', () => {
       const themeBtn = page.getByRole('button', {
         name: /Switch to |mode/i,
       });
-      const initialAriaLabel = await themeBtn.getAttribute('aria-label');
       await themeBtn.click();
-
-      // Get initial theme
-      const bodyAfterClick = page.locator('body');
-      const classAfterClick = await bodyAfterClick.getAttribute('class');
 
       // Click Get Started (navigation)
       const getStartedBtn = page.getByRole('button', {
-        name: /Get Started|get started/i,
+        name: /Start Bridging/i,
       });
       if (await getStartedBtn.isVisible()) {
         await getStartedBtn.click();
@@ -274,7 +264,7 @@ test.describe('LandingPage E2E Coverage', () => {
       await page.locator('main').first().click();
 
       // Press 'G' to launch
-      await page.keyboard.press('shift+g');
+      await page.keyboard.press('Shift+G');
 
       // Should navigate to chat
       await page.waitForURL(/\/chat/, { timeout: 5000 });
@@ -308,7 +298,7 @@ test.describe('LandingPage E2E Coverage', () => {
       await page.goto('/', { waitUntil: 'load' });
 
       // Get initial focused element
-      let focusedElement = await page.evaluate(
+      const focusedElement = await page.evaluate(
         () => document.activeElement?.tagName,
       );
 
@@ -335,11 +325,6 @@ test.describe('LandingPage E2E Coverage', () => {
         await page.keyboard.press('Tab');
       }
 
-      // Find which element is focused
-      const focused = await page.evaluate(() =>
-        (document.activeElement as HTMLElement)?.getAttribute('aria-label'),
-      );
-
       // We should be able to reach theme toggle
       const themeBtn = page.getByRole('button', {
         name: /Switch to |mode/i,
@@ -352,7 +337,7 @@ test.describe('LandingPage E2E Coverage', () => {
 
       // Focus Get Started button
       const getStartedBtn = page.getByRole('button', {
-        name: /Get Started|get started/i,
+        name: /Start Bridging/i,
       });
 
       if (await getStartedBtn.isVisible()) {
@@ -446,39 +431,8 @@ test.describe('LandingPage E2E Coverage', () => {
     test('should not make real API calls to external services', async ({
       page,
     }) => {
-      const networkRequests: string[] = [];
-      page.on('request', (request) => {
-        const url = request.url();
-        networkRequests.push(url);
-      });
-
       await page.goto('/', { waitUntil: 'load' });
-
       await page.waitForTimeout(2000);
-
-      // Check if any external API calls were made (excluding localhost)
-      const externalCalls = networkRequests.filter(
-        (url) =>
-          !url.includes('localhost') &&
-          !url.includes('127.0.0.1') &&
-          !url.includes('_next') &&
-          !url.includes('chrome-extension') &&
-          (url.includes('coingecko') ||
-            url.includes('stellar.expert') ||
-            url.includes('horizon') ||
-            url.includes('ticker')),
-      );
-
-      // Price calls should not reach external APIs (they should be mocked/aborted)
-      const priceApiCalls = externalCalls.filter(
-        (url) =>
-          url.includes('ticker') ||
-          url.includes('coingecko') ||
-          url.includes('price'),
-      );
-
-      // All external calls should be handled (not completed to real APIs)
-      // This is ensured by route.abort() in beforeEach
     });
   });
 
@@ -492,7 +446,7 @@ test.describe('LandingPage E2E Coverage', () => {
 
       // At least Get Started button should be functional
       const getStartedBtn = page.getByRole('button', {
-        name: /Get Started|get started/i,
+        name: /Start Bridging/i,
       });
       if (await getStartedBtn.isVisible()) {
         await expect(getStartedBtn).toBeEnabled();

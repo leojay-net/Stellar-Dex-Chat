@@ -4,8 +4,8 @@ import AuditLogService from '@/lib/auditLog';
 import type { AuditEntry } from '@/types';
 
 const mockEnv = { ADMIN_SECRET: 'test-admin-secret' };
-vi.mock('@/lib/env', () => ({
-  get env() {
+vi.mock('@/lib/serverEnv', () => ({
+  get serverEnv() {
     return mockEnv;
   },
 }));
