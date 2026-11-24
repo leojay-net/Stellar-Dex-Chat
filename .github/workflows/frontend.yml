@@ -271,7 +271,8 @@ jobs:
   # ── 5. Playwright E2E — waits only for build + lint ──────────────────────
   e2e:
     name: Playwright E2E Tests
-    runs-on: ubuntu-latest
+    # The pinned Playwright version does not support Ubuntu 26.04.
+    runs-on: ubuntu-24.04
     needs: [build, lint]
 
     defaults:
