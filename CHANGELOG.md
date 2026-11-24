@@ -949,6 +949,9 @@ Repo Avatar
 - **frontend:** Restore unit tests and configure the E2E build
 - **frontend:** Repair browser fixtures and preserve sent chat messages
 - **frontend:** Type the native QR detector without suppressions
+- **ci:** Resolve PR merge check failures
+- **frontend:** Resolve duplicate payment validator merge
+- **ci:** Repair release action pin and offline queue test
 
 ### Changed
 
@@ -1315,6 +1318,10 @@ Closes #1724, #1725, #1726, #1728
 - **frontend:** Finish browser test formatting and stabilize offline input
 - **frontend:** Pin Playwright to Ubuntu 24.04
 - **changelog:** Update changelog [skip ci]
+- **frontend:** Add Lighthouse CI for landing and chat #1756
+- **frontend:** Extend flaky CI timeouts #1756
+- **changelog:** Update changelog [skip ci]
+- **e2e:** Account for browser keyboard focus behavior
 
 ### Deprecated
 
