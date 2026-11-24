@@ -1,0 +1,142 @@
+version: 2
+updates:
+  # ── Cargo (Stellar smart contracts) ───────────────────────────────────────
+  - package-ecosystem: "cargo"
+    directory: "/Dechat/stellar-contracts"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "area: contracts"
+    groups:
+      cargo-minor-patch:
+        # Minor and patch bumps are batched; majors open individually so they
+        # are caught by the semver-major block in auto-merge.yml.
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # soroban-sdk major bumps require coordinated contract + frontend work.
+      # Handle them as planned upgrades; close or re-label #1334 manually.
+      - dependency-name: "soroban-sdk"
+        update-types: ["version-update:semver-major"]
+
+  # ── npm: frontend app ─────────────────────────────────────────────────────
+  - package-ecosystem: "npm"
+    directory: "/Dechat/dex_with_fiat_frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 8
+    labels:
+      - "dependencies"
+      - "area: frontend"
+    groups:
+      frontend-minor-patch:
+        # Batch all non-major updates together except the packages listed in
+        # ignore rules, which open individual PRs when they reach minor/patch.
+        update-types:
+          - "minor"
+          - "patch"
+        # Exclude known-breaking packages from the group so they stay
+        # individual and easier to review / close.
+        exclude-patterns:
+          - "next"
+          - "react"
+          - "react-dom"
+          - "@stellar/*"
+          - "soroban-*"
+    ignore:
+      # next, react, and @stellar/* majors are planned upgrades — keep them
+      # pinned until explicitly reviewed.  Minor/patch still auto-update.
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@stellar/*"
+        update-types: ["version-update:semver-major"]
+
+  # ── npm: root package (husky, lint-staged) ────────────────────────────────
+  # The root package.json is managed by npm (package-lock.json is present).
+  # Keeping it separate from the frontend avoids cross-directory confusion.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "area: tooling"
+    groups:
+      root-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ── GitHub Actions ────────────────────────────────────────────────────────
+  # The github_actions updater was failing because workflow files contained
+  # git conflict markers (<<<<<<< / =======  / >>>>>>>).  Those files have
+  # been resolved; the updater should parse cleanly on the next weekly run.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "area: ci"
+    groups:
+      actions:
+        # Batch all action version bumps into one PR.
+        patterns:
+          - "*"
+
+  # ── Docker: Root (docker-compose.yml) ─────────────────────────────────────
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "area: docker"
+    groups:
+      docker-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ── Docker: Frontend (Dockerfile.dev) ─────────────────────────────────────
+  - package-ecosystem: "docker"
+    directory: "/Dechat/dex_with_fiat_frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "area: docker"
+    groups:
+      docker-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"

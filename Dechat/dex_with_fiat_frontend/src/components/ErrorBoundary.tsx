@@ -1,6 +1,8 @@
 'use client';
 
 import React from 'react';
+import { UserPreferencesContext } from '@/contexts/UserPreferencesContext';
+import { isEditableShortcutTarget } from '@/lib/keyboardShortcuts';
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -19,7 +21,10 @@ interface ErrorBoundaryState {
 
 type WindowWithSentry = Window & {
   Sentry?: {
-    captureException(error: Error, ctx: { extra: Record<string, unknown> }): void;
+    captureException(
+      error: Error,
+      ctx: { extra: Record<string, unknown> },
+    ): void;
   };
 };
 
@@ -27,6 +32,9 @@ export default class ErrorBoundary extends React.Component<
   ErrorBoundaryProps,
   ErrorBoundaryState
 > {
+  static contextType = UserPreferencesContext;
+  declare context: React.ContextType<typeof UserPreferencesContext>;
+
   public constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false };
@@ -34,6 +42,44 @@ export default class ErrorBoundary extends React.Component<
 
   public static getDerivedStateFromError(): ErrorBoundaryState {
     return { hasError: true };
+  }
+
+  // #1184: "r" / "Enter" retries the same way the button's onClick does,
+  // for keyboard users who'd rather not reach for the mouse after a crash.
+  // Only acts while the fallback is actually showing, and ignores the
+  // shortcut while focus is in a form field so it can't hijack typing.
+  private handleKeyDown = (event: KeyboardEvent) => {
+    if (!this.state.hasError) {
+      return;
+    }
+    if (isEditableShortcutTarget(event.target)) return;
+    const retryKey =
+      this.context?.singleKeyShortcutsEnabled !== false &&
+      !event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      event.key.toLowerCase() === 'r';
+    if (event.key === 'Enter' || retryKey) {
+      event.preventDefault();
+      this.retry();
+    }
+  };
+
+  private retry = () => {
+    if (this.props.onRetry) {
+      this.setState({ hasError: false });
+      this.props.onRetry();
+      return;
+    }
+    window.location.reload();
+  };
+
+  public componentDidMount() {
+    window.addEventListener('keydown', this.handleKeyDown);
+  }
+
+  public componentWillUnmount() {
+    window.removeEventListener('keydown', this.handleKeyDown);
   }
 
   public componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
@@ -91,18 +137,38 @@ export default class ErrorBoundary extends React.Component<
             </p>
             <button
               type="button"
-              onClick={() => {
-                if (this.props.onRetry) {
-                  this.setState({ hasError: false });
-                  this.props.onRetry();
-                  return;
-                }
-                window.location.reload();
-              }}
+              onClick={this.retry}
               className="mt-5 inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
             >
               {this.props.retryLabel ?? 'Reload'}
             </button>
+            <p
+              className={`mt-3 text-xs ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-500'
+              }`}
+            >
+              Press{' '}
+              <kbd
+                className={`rounded border px-1.5 py-0.5 font-mono text-[11px] ${
+                  isDarkMode
+                    ? 'border-gray-600 bg-gray-700 text-gray-200'
+                    : 'border-gray-300 bg-gray-100 text-gray-700'
+                }`}
+              >
+                Enter
+              </kbd>{' '}
+              or{' '}
+              <kbd
+                className={`rounded border px-1.5 py-0.5 font-mono text-[11px] ${
+                  isDarkMode
+                    ? 'border-gray-600 bg-gray-700 text-gray-200'
+                    : 'border-gray-300 bg-gray-100 text-gray-700'
+                }`}
+              >
+                R
+              </kbd>{' '}
+              to retry
+            </p>
           </div>
         </div>
       );

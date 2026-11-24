@@ -30,7 +30,7 @@ fn setup(env: &Env, tx_limit: i128) -> (Address, FiatBridgeClient<'_>, Address, 
         .address();
     let token_sac = StellarAssetClient::new(env, &token_addr);
     let signers = vec![env, admin.clone()];
-    bridge.init(&admin, &token_addr, &tx_limit, &1, &signers, &1);
+    bridge.init(&admin, &token_addr, &tx_limit, &1, &signers, &1, &0);
 
     let user = Address::generate(env);
     token_sac.mint(&user, &1_000_000);

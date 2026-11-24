@@ -1,14 +1,42 @@
 # Root-level generated artifacts
 node_modules/
-dex_with_fiat_frontend/.next/
-dex_with_fiat_frontend/node_modules/
-stellar-contracts/target/
+/dex_with_fiat_frontend/.next/
+/dex_with_fiat_frontend/node_modules/
+/stellar-contracts/target/
+# Build output and dependencies
+**/node_modules/
+**/.next/
+**/target/
+**/coverage/
+**/playwright-report/
+**/test-results/
+__pycache__/
+*.pyc
+*.bak
+test_output.txt
 
-# Local environment files
-.env.local
+# OS and Editor noise
+.DS_Store
+Thumbs.db
+.idea/
+
+# Environment files
+.env
+.env.*
+!.env.example
 
 # Contract build artifacts
 *.wasm
 
+# Scratch files
 issue.md
-pr.md
+pr.md/stellar-contracts/
+PR_DESCRIPTION.md
+/dex_with_fiat_frontend/
+/Stellar-Dex-Chat
+package-lock.json
+yarn.lock
+
+# Editor swap files
+*.swp
+*.swo

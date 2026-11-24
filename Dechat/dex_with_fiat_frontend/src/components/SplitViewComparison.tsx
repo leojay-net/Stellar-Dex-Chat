@@ -1,17 +1,32 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
-import { ArrowLeftRight, X, ChevronDown, Copy, Check, Columns2 } from 'lucide-react';
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  useMemo,
+  useCallback,
+} from 'react';
+import {
+  ArrowLeftRight,
+  X,
+  ChevronDown,
+  Copy,
+  Check,
+  Columns2,
+} from 'lucide-react';
 import { ChatSession, ChatMessage } from '@/types';
 import { UseSplitViewReturn } from '@/hooks/useSplitView';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useToast } from '@/hooks/useToast';
 import { useEffectiveDarkMode } from '@/hooks/useEffectiveDarkMode';
 import EmptyState from '@/components/ui/EmptyState';
+import Skeleton from '@/components/ui/skeleton/Skeleton';
 
 interface SplitViewComparisonProps {
   splitView: UseSplitViewReturn;
   sessions: ChatSession[];
+  isLoading?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -43,9 +58,15 @@ function ThreadPane({
   const [copiedMessageId, setCopiedMessageId] = React.useState<string | null>(
     null,
   );
+  const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   React.useEffect(() => {
     setMounted(true);
+    return () => {
+      if (copyResetTimerRef.current !== null) {
+        clearTimeout(copyResetTimerRef.current);
+      }
+    };
   }, []);
 
   const scrollToMessage = (id: string) => {
@@ -64,15 +85,23 @@ function ThreadPane({
     if (newId) scrollToMessage(newId);
   };
 
-  const handleCopyMessage = (
+  const handleCopyMessage = async (
     e: React.MouseEvent,
     content: string,
     messageId: string,
   ) => {
     e.stopPropagation();
-    onCopyMessage(content);
+    // Optimistic UI update: immediately show checkmark
     setCopiedMessageId(messageId);
-    setTimeout(() => setCopiedMessageId(null), 2000);
+    // A previous copy's timeout must not clear feedback for a newer copy.
+    if (copyResetTimerRef.current !== null) {
+      clearTimeout(copyResetTimerRef.current);
+    }
+    await onCopyMessage(content);
+    copyResetTimerRef.current = setTimeout(() => {
+      setCopiedMessageId(null);
+      copyResetTimerRef.current = null;
+    }, 2000);
   };
 
   const formatTimestamp = (timestamp: number | Date) => {
@@ -90,7 +119,7 @@ function ThreadPane({
       id={paneId}
       role="region"
       aria-label={`${label} thread comparison pane`}
-      className="flex flex-col flex-1 min-w-0 border-r border-[var(--color-border)] last:border-r-0"
+      className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden border-r border-[var(--color-border)] last:border-r-0"
       data-testid={`split-pane-${label.toLowerCase()}`}
     >
       {/* Pane header */}
@@ -216,6 +245,7 @@ function ThreadPane({
 export default function SplitViewComparison({
   splitView,
   sessions,
+  isLoading = false,
 }: SplitViewComparisonProps) {
   const {
     state,
@@ -224,8 +254,6 @@ export default function SplitViewComparison({
     setRightSession,
     swapSessions,
     selectMessage,
-    leftSession,
-    rightSession,
   } = splitView;
 
   const { isOnline, wasOffline, resetWasOffline } = useOnlineStatus();
@@ -239,6 +267,81 @@ export default function SplitViewComparison({
   // first offline transition is always detected correctly, regardless of the
   // order in which React commits the initial render vs. the effect.
   const wasOnlineRef = useRef(true);
+
+  // ── Optimistic UI state ──────────────────────────────────────────────────
+  const [optimisticLeftId, setOptimisticLeftId] = useState<string | null>(
+    state.leftSessionId,
+  );
+  const [optimisticRightId, setOptimisticRightId] = useState<string | null>(
+    state.rightSessionId,
+  );
+  const [optimisticSelectedId, setOptimisticSelectedId] = useState<
+    string | null
+  >(state.selectedMessageId);
+
+  useEffect(() => {
+    setOptimisticLeftId(state.leftSessionId);
+    setOptimisticRightId(state.rightSessionId);
+    setOptimisticSelectedId(state.selectedMessageId);
+  }, [state.leftSessionId, state.rightSessionId, state.selectedMessageId]);
+
+  const effectiveLeftSession = useMemo(() => {
+    const id = optimisticLeftId ?? state.leftSessionId;
+    if (!id) return null;
+    return sessions.find((s) => s.id === id) ?? null;
+  }, [optimisticLeftId, state.leftSessionId, sessions]);
+
+  const effectiveRightSession = useMemo(() => {
+    const id = optimisticRightId ?? state.rightSessionId;
+    if (!id) return null;
+    return sessions.find((s) => s.id === id) ?? null;
+  }, [optimisticRightId, state.rightSessionId, sessions]);
+
+  const effectiveSelectedMessageId =
+    optimisticSelectedId !== undefined
+      ? optimisticSelectedId
+      : state.selectedMessageId;
+
+  const handleSwapSessions = useCallback(() => {
+    const currentLeft = optimisticLeftId ?? state.leftSessionId;
+    const currentRight = optimisticRightId ?? state.rightSessionId;
+    setOptimisticLeftId(currentRight);
+    setOptimisticRightId(currentLeft);
+    setOptimisticSelectedId(null);
+    swapSessions();
+  }, [
+    optimisticLeftId,
+    optimisticRightId,
+    state.leftSessionId,
+    state.rightSessionId,
+    swapSessions,
+  ]);
+
+  const handleSelectLeftSession = useCallback(
+    (id: string) => {
+      setOptimisticLeftId(id || null);
+      setOptimisticSelectedId(null);
+      setLeftSession(id);
+    },
+    [setLeftSession],
+  );
+
+  const handleSelectRightSession = useCallback(
+    (id: string) => {
+      setOptimisticRightId(id || null);
+      setOptimisticSelectedId(null);
+      setRightSession(id);
+    },
+    [setRightSession],
+  );
+
+  const handleSelectMessage = useCallback(
+    (id: string | null) => {
+      setOptimisticSelectedId(id);
+      selectMessage(id);
+    },
+    [selectMessage],
+  );
 
   const handleCopyMessage = async (content: string) => {
     try {
@@ -290,7 +393,7 @@ export default function SplitViewComparison({
 
   if (!state.isOpen) return null;
 
-  const bothEmpty = !leftSession && !rightSession;
+  const bothEmpty = !effectiveLeftSession && !effectiveRightSession;
 
   const dialogTitleId = 'split-view-comparison-title';
 
@@ -300,6 +403,7 @@ export default function SplitViewComparison({
       role="dialog"
       aria-modal="true"
       aria-labelledby={dialogTitleId}
+      aria-busy={isLoading}
       data-testid="split-view-comparison"
       data-effective-theme={effectiveTheme}
     >
@@ -317,7 +421,7 @@ export default function SplitViewComparison({
         </h2>
 
         <div className="flex items-center gap-2">
-          {state.selectedMessageId && (
+          {effectiveSelectedMessageId && (
             <span className="text-xs px-2 py-0.5 rounded bg-[var(--color-primary-soft)] text-[var(--color-primary)]">
               Message selected
             </span>
@@ -325,7 +429,7 @@ export default function SplitViewComparison({
 
           {/* Swap button */}
           <button
-            onClick={swapSessions}
+            onClick={handleSwapSessions}
             title="Swap threads"
             aria-label="Swap left and right threads"
             className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-[var(--color-surface)] hover:bg-[var(--color-surface-elevated)] text-[var(--color-text-primary)] border border-[var(--color-border)]"
@@ -350,7 +454,24 @@ export default function SplitViewComparison({
 
       {/* Two panes */}
       <div className="flex flex-1 min-h-0 overflow-hidden flex-col md:flex-row">
-        {bothEmpty ? (
+        {isLoading ? (
+          <div className="flex flex-1 min-h-0 overflow-hidden flex-col md:flex-row gap-4 p-4">
+            {[1, 2].map((index) => (
+              <div
+                key={index}
+                className="flex-1 space-y-4"
+                data-testid="split-view-skeleton"
+              >
+                <Skeleton className="h-10 w-3/4 bg-slate-200 dark:bg-slate-700" />
+                <div className="space-y-3">
+                  <Skeleton className="h-16 bg-slate-200 dark:bg-slate-700" />
+                  <Skeleton className="h-16 bg-slate-200 dark:bg-slate-700" />
+                  <Skeleton className="h-16 bg-slate-200 dark:bg-slate-700" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : bothEmpty ? (
           <EmptyState
             icon={Columns2}
             title="No threads to compare"
@@ -359,21 +480,21 @@ export default function SplitViewComparison({
         ) : (
           <>
             <ThreadPane
-              session={leftSession}
+              session={effectiveLeftSession}
               label="Left"
-              selectedMessageId={state.selectedMessageId}
+              selectedMessageId={effectiveSelectedMessageId}
               allSessions={sessions}
-              onSelectSession={setLeftSession}
-              onSelectMessage={selectMessage}
+              onSelectSession={handleSelectLeftSession}
+              onSelectMessage={handleSelectMessage}
               onCopyMessage={handleCopyMessage}
             />
             <ThreadPane
-              session={rightSession}
+              session={effectiveRightSession}
               label="Right"
-              selectedMessageId={state.selectedMessageId}
+              selectedMessageId={effectiveSelectedMessageId}
               allSessions={sessions}
-              onSelectSession={setRightSession}
-              onSelectMessage={selectMessage}
+              onSelectSession={handleSelectRightSession}
+              onSelectMessage={handleSelectMessage}
               onCopyMessage={handleCopyMessage}
             />
           </>

@@ -59,4 +59,4 @@ After the fast-reject, the floored quotient is computed. When `quotient == max_s
 
 - Inline Rustdoc: `stellar-contracts/src/lib.rs` — `FiatBridge::check_slippage`.
 - Contract tests: `stellar-contracts/src/test.rs` — `test_slippage_*` and boundary suites.
-- Overflow / fixed-point context: `stellar-contracts/docs/OVERFLOW_PREVENTION.md`.
+- Overflow / fixed-point context: [OVERFLOW_PREVENTION.md](OVERFLOW_PREVENTION.md) and [Contract Overflow Prevention Guide](../Dechat/stellar-contracts/docs/OVERFLOW_PREVENTION.md).

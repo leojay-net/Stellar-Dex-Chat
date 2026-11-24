@@ -1,0 +1,106 @@
+name: Security Audit
+
+# Advisories against the current lockfiles can surface at any time, not just
+# when a contract or frontend PR happens to touch the affected manifest —
+# contracts.yml's `deny` job and the frontend build only run on paths that
+# touch their respective directories, so a fresh RUSTSEC/npm advisory
+# otherwise goes unnoticed until someone edits nearby code. This runs both
+# audits weekly regardless of what changed.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Every Monday 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  contracts-audit:
+    name: Contract Advisory Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Run cargo-deny (advisories)
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          manifest-path: Dechat/stellar-contracts/Cargo.toml
+          command: check advisories
+
+  frontend-audit:
+    name: Frontend Dependency Audit
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: Dechat/dex_with_fiat_frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+          cache-dependency-path: Dechat/dex_with_fiat_frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit production dependencies
+        run: pnpm audit --prod --audit-level high
+
+  open-tracking-issue:
+    name: Open Tracking Issue
+    runs-on: ubuntu-latest
+    needs: [contracts-audit, frontend-audit]
+    if: failure()
+
+    steps:
+      - name: Find or create tracking issue
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const label = 'security-audit';
+            const title = 'Scheduled security audit failed';
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+
+            const { data: existing } = await github.rest.issues.listForRepo({
+              owner, repo, state: 'open', labels: label, per_page: 1,
+            });
+
+            if (existing.length > 0) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: existing[0].number,
+                body: `Audit failed again: ${runUrl}`,
+              });
+              core.notice(`Commented on existing tracking issue #${existing[0].number}`);
+              return;
+            }
+
+            const issue = await github.rest.issues.create({
+              owner, repo, title, labels: [label],
+              body: [
+                'The weekly `security-audit.yml` workflow (`cargo deny check advisories`',
+                'and/or `pnpm audit --prod --audit-level high`) failed.',
+                '',
+                `Failed run: ${runUrl}`,
+                '',
+                'Close this issue once the advisory has been triaged (ignored with a',
+                'documented reason in `Dechat/stellar-contracts/deny.toml`, or fixed by',
+                'a dependency bump).',
+              ].join('\n'),
+            });
+            core.notice(`Opened tracking issue #${issue.data.number}`);

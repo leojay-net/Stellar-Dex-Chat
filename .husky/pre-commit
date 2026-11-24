@@ -1,1 +1,11 @@
+FILES=$(git diff --cached --name-only)
+if [ -n "$FILES" ]; then
+  for f in $FILES; do
+    if [ -f "$f" ] && grep -qE '^(<<<<<<< |=======|>>>>>>> )' "$f"; then
+      echo "Error: Conflict markers found in $f"
+      exit 1
+    fi
+  done
+fi
+
 npx lint-staged

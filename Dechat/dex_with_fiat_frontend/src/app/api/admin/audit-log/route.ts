@@ -93,21 +93,17 @@ export async function GET(request: Request) {
   }
 }
 
+// The audit trail is append-only: entries are never deleted or cleared through
+// the API (#1484). DELETE is rejected so a compromised or careless admin session
+// cannot wipe the history it is meant to record.
 export async function DELETE(request: Request) {
-  try {
-    const authError = requireAdminAuth(request);
-    if (authError) {
-      return authError;
-    }
-
-    mockAuditLogData.splice(0, mockAuditLogData.length);
-
-    return Response.json({ success: true });
-  } catch (error) {
-    console.error('Error clearing audit logs:', error);
-    return Response.json(
-      { error: 'Failed to clear admin audit logs' },
-      { status: 500 },
-    );
+  const authError = requireAdminAuth(request);
+  if (authError) {
+    return authError;
   }
+
+  return Response.json(
+    { error: 'The admin audit log is append-only and cannot be cleared' },
+    { status: 405, headers: { Allow: 'GET' } },
+  );
 }

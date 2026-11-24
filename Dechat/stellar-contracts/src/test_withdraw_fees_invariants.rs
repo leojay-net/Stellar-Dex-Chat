@@ -1,6 +1,24 @@
-//! Soroban invariant tests for withdraw_fees operations.
+//! Invariant tests for [`FiatBridge::withdraw_fees`].
 //!
-//! This module tests that the contract maintains its invariants after fee withdrawal operations.
+//! `withdraw_fees` moves *accrued* (untracked-in-`net_deposited`) fees out of
+//! the contract to a fee recipient. Because fee tokens are not part of the
+//! `total_deposited` / `total_withdrawn` accounting, a buggy implementation
+//! could siphon tracked depositor funds instead. The invariants asserted here
+//! are:
+//!
+//! * `total_deposited >= total_withdrawn` after fee withdrawal;
+//! * `net_deposited (total_deposited - total_withdrawn) >= total_liabilities`
+//!   — fees taken out never reduce the net amount below outstanding
+//!   liabilities;
+//! * on-chain token balance `>= net_deposited` — the contract always retains
+//!   enough to honour all net deposits;
+//! * fee withdrawal never disturbs the depositor accounting counters.
+//!
+//! These mirror the runtime checks performed by
+//! [`FiatBridge::check_invariants`] (see `src/lib.rs`).
+//!
+//! See [`docs/INVARIANT_TESTING.md`](docs/INVARIANT_TESTING.md) for the
+//! invariant-testing strategy and contributor checklist.
 
 #![cfg(test)]
 
@@ -41,7 +59,7 @@ fn setup_bridge(
     let mut signers = Vec::new(env);
     signers.push_back(admin.clone());
 
-    client.init(&admin, &token_address, &1_000_000, &100, &signers, &1);
+    client.init(&admin, &token_address, &1_000_000, &100, &signers, &1, &0);
 
     (
         contract_id,
@@ -432,4 +450,137 @@ fn test_fee_vault_never_decreases_between_accruals() {
 
     let balance = token_client.balance(&contract_id);
     assert!(balance >= vault_before);
+}
+
+// ── Issue #829: Replay protection tests for withdraw_fees ───────────────────────
+
+#[test]
+fn test_withdraw_fees_with_valid_nonce_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, admin, token_addr, _, token_admin) = setup_bridge(&env);
+    let fee_recipient = Address::generate(&env);
+
+    // Setup: accrue fees
+    token_admin.mint(&contract_id, &1_000);
+    bridge.accrue_fee(&token_addr, &1_000);
+
+    // Withdraw with correct nonce (0)
+    bridge.withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &500, &0);
+    
+    // Nonce should have incremented to 1
+    assert_eq!(bridge.get_fee_withdrawal_nonce(&admin), 1);
+}
+
+#[test]
+fn test_withdraw_fees_with_stale_nonce_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, admin, token_addr, _, token_admin) = setup_bridge(&env);
+    let fee_recipient = Address::generate(&env);
+
+    // Setup: accrue fees
+    token_admin.mint(&contract_id, &1_000);
+    bridge.accrue_fee(&token_addr, &1_000);
+
+    // First withdrawal with nonce 0
+    bridge.withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &500, &0);
+    
+    // Attempt to replay with same nonce should fail
+    let result = bridge.try_withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &300, &0);
+    assert_eq!(result, Err(Ok(Error::StaleNonce)));
+}
+
+#[test]
+fn test_withdraw_fees_with_future_nonce_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, admin, token_addr, _, token_admin) = setup_bridge(&env);
+    let fee_recipient = Address::generate(&env);
+
+    // Setup: accrue fees
+    token_admin.mint(&contract_id, &1_000);
+    bridge.accrue_fee(&token_addr, &1_000);
+
+    // Attempt to use nonce 5 when current is 0 should fail
+    let result = bridge.try_withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &500, &5);
+    assert_eq!(result, Err(Ok(Error::InvalidNonce)));
+}
+
+#[test]
+fn test_withdraw_fees_nonce_increments_monotonically() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, admin, token_addr, _, token_admin) = setup_bridge(&env);
+    let fee_recipient = Address::generate(&env);
+
+    // Setup: accrue fees
+    token_admin.mint(&contract_id, &3_000);
+    bridge.accrue_fee(&token_addr, &3_000);
+
+    // Sequential withdrawals with incrementing nonces
+    bridge.withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &500, &0);
+    assert_eq!(bridge.get_fee_withdrawal_nonce(&admin), 1);
+
+    bridge.withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &500, &1);
+    assert_eq!(bridge.get_fee_withdrawal_nonce(&admin), 2);
+
+    bridge.withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &500, &2);
+    assert_eq!(bridge.get_fee_withdrawal_nonce(&admin), 3);
+}
+
+#[test]
+fn test_withdraw_fees_replay_attack_prevention() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, admin, token_addr, _, token_admin) = setup_bridge(&env);
+    let fee_recipient = Address::generate(&env);
+
+    // Setup: accrue fees
+    token_admin.mint(&contract_id, &2_000);
+    bridge.accrue_fee(&token_addr, &2_000);
+
+    // First withdrawal
+    bridge.withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &500, &0);
+    
+    // Attempt replay attack with same nonce
+    let result = bridge.try_withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &500, &0);
+    assert_eq!(result, Err(Ok(Error::StaleNonce)));
+
+    // Attempt replay with different amount但 same nonce
+    let result2 = bridge.try_withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &100, &0);
+    assert_eq!(result2, Err(Ok(Error::StaleNonce)));
+
+    // Correct usage with next nonce should succeed
+    bridge.withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &500, &1);
+    assert_eq!(bridge.get_fee_withdrawal_nonce(&admin), 2);
+}
+
+#[test]
+fn test_withdraw_fees_nonce_skipping_not_allowed() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (contract_id, bridge, admin, token_addr, _, token_admin) = setup_bridge(&env);
+    let fee_recipient = Address::generate(&env);
+
+    // Setup: accrue fees
+    token_admin.mint(&contract_id, &2_000);
+    bridge.accrue_fee(&token_addr, &2_000);
+
+    // First withdrawal with nonce 0
+    bridge.withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &500, &0);
+    
+    // Attempt to skip to nonce 2 should fail
+    let result = bridge.try_withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &500, &2);
+    assert_eq!(result, Err(Ok(Error::InvalidNonce)));
+
+    // Must use nonce 1
+    bridge.withdraw_fees(&Some(fee_recipient.clone()), &token_addr, &500, &1);
+    assert_eq!(bridge.get_fee_withdrawal_nonce(&admin), 2);
 }

@@ -130,13 +130,11 @@ describe('useTransactionFilters', () => {
   });
 
   it('exposes the same accessible chip tone resolver through the hook', () => {
-    const { result } = renderHook(() =>
-      useTransactionFilters(transactions),
-    );
+    const { result } = renderHook(() => useTransactionFilters(transactions));
 
-    expect(
-      result.current.getFilterChipTone('status', 'pending', true),
-    ).toEqual(getAccessibleFilterChipTone('status', 'pending', true));
+    expect(result.current.getFilterChipTone('status', 'pending', true)).toEqual(
+      getAccessibleFilterChipTone('status', 'pending', true),
+    );
   });
 
   it('applies pending filter state immediately before debounce flush', () => {
@@ -153,11 +151,168 @@ describe('useTransactionFilters', () => {
     expect(result.current.filteredTransactions[0]?.status).toBe('completed');
   });
 
+  describe('optimistic updates (issue #734)', () => {
+    it('marks filters as syncing until the URL confirms the change', () => {
+      const { result, rerender } = renderHook(() =>
+        useTransactionFilters(transactions),
+      );
+
+      expect(result.current.isSyncingFilters).toBe(false);
+
+      act(() => {
+        result.current.toggleFilter('status', 'completed');
+      });
+
+      expect(result.current.isSyncingFilters).toBe(true);
+      expect(result.current.filterState.status).toEqual(['completed']);
+
+      act(() => {
+        vi.advanceTimersByTime(150);
+      });
+      rerender();
+
+      expect(result.current.isSyncingFilters).toBe(false);
+      expect(result.current.filterState.status).toEqual(['completed']);
+      expect(result.current.filterSyncError).toBeNull();
+    });
+
+    it('rolls back to the confirmed state when the URL push fails', () => {
+      mockSearchParams = new URLSearchParams('status=failed');
+      mockPush.mockImplementationOnce(() => {
+        throw new Error('navigation blocked');
+      });
+
+      const { result } = renderHook(() => useTransactionFilters(transactions));
+
+      act(() => {
+        result.current.toggleFilter('status', 'completed');
+      });
+
+      // Optimistic: both statuses applied immediately.
+      expect(result.current.filterState.status).toEqual([
+        'failed',
+        'completed',
+      ]);
+      expect(result.current.filteredTransactions).toHaveLength(2);
+
+      act(() => {
+        vi.advanceTimersByTime(150);
+      });
+
+      expect(result.current.filterState.status).toEqual(['failed']);
+      expect(result.current.filteredTransactions).toHaveLength(1);
+      expect(result.current.isSyncingFilters).toBe(false);
+      expect(result.current.filterSyncError?.message).toBe(
+        'navigation blocked',
+      );
+    });
+
+    it('clears a previous sync error on the next filter change', () => {
+      mockPush.mockImplementationOnce(() => {
+        throw new Error('navigation blocked');
+      });
+
+      const { result } = renderHook(() => useTransactionFilters(transactions));
+
+      act(() => {
+        result.current.toggleFilter('status', 'completed');
+      });
+      act(() => {
+        vi.advanceTimersByTime(150);
+      });
+      expect(result.current.filterSyncError).not.toBeNull();
+
+      act(() => {
+        result.current.toggleFilter('asset', 'XLM');
+      });
+      expect(result.current.filterSyncError).toBeNull();
+    });
+
+    it('stacks rapid toggles on the pending state rather than the stale URL', () => {
+      const { result } = renderHook(() => useTransactionFilters(transactions));
+
+      act(() => {
+        result.current.toggleFilter('status', 'completed');
+      });
+      act(() => {
+        result.current.toggleFilter('status', 'failed');
+      });
+
+      expect(result.current.filterState.status).toEqual([
+        'completed',
+        'failed',
+      ]);
+      expect(result.current.filteredTransactions).toHaveLength(2);
+    });
+
+    it('defers to the URL when an external navigation lands after the push', () => {
+      // Push is sent, but the navigation is superseded (e.g. back button).
+      mockPush.mockImplementationOnce(() => {});
+
+      const { result, rerender } = renderHook(() =>
+        useTransactionFilters(transactions),
+      );
+
+      act(() => {
+        result.current.toggleFilter('status', 'completed');
+      });
+      act(() => {
+        vi.advanceTimersByTime(150);
+      });
+      expect(result.current.isSyncingFilters).toBe(true);
+
+      mockSearchParams = new URLSearchParams('tab=history&asset=USDC');
+      rerender();
+
+      expect(result.current.isSyncingFilters).toBe(false);
+      expect(result.current.filterState.status).toEqual([]);
+      expect(result.current.filterState.asset).toEqual(['USDC']);
+    });
+
+    it('does not discard optimistic state before the debounced push is sent', () => {
+      const { result, rerender } = renderHook(() =>
+        useTransactionFilters(transactions),
+      );
+
+      act(() => {
+        result.current.toggleFilter('status', 'completed');
+      });
+
+      // A non-filter param changes while the push is still debounced.
+      mockSearchParams = new URLSearchParams('tab=receipts');
+      rerender();
+
+      expect(result.current.filterState.status).toEqual(['completed']);
+      expect(result.current.isSyncingFilters).toBe(true);
+    });
+  });
+
   it('keeps keyboard shortcut metadata intact', () => {
     expect(KEYBOARD_SHORTCUTS.clearAll.key).toBe('x');
     expect(KEYBOARD_SHORTCUTS.cycleStatus.key).toBe('1');
     expect(KEYBOARD_SHORTCUTS.cycleAsset.key).toBe('2');
     expect(KEYBOARD_SHORTCUTS.cycleNetwork.key).toBe('3');
+  });
+
+  it('registers one keyboard listener across rerenders and removes it on unmount (#790)', () => {
+    const addListener = vi.spyOn(window, 'addEventListener');
+    const removeListener = vi.spyOn(window, 'removeEventListener');
+    const { rerender, unmount } = renderHook(
+      ({ entries }) => useTransactionFilters(entries),
+      { initialProps: { entries: transactions } },
+    );
+
+    rerender({ entries: [...transactions] });
+    rerender({ entries: transactions.slice(0, 1) });
+
+    const keydownAdds = addListener.mock.calls.filter(
+      ([type]) => type === 'keydown',
+    );
+    expect(keydownAdds).toHaveLength(1);
+    const registeredHandler = keydownAdds[0]?.[1];
+
+    unmount();
+    expect(removeListener).toHaveBeenCalledWith('keydown', registeredHandler);
   });
 });
 
@@ -165,10 +320,14 @@ describe('useTransactionFilters', () => {
 
 describe('dark mode fallback for filter chip tones (issue #671)', () => {
   it('leaves classes untouched when a dark variant is already present', () => {
-    const className = 'bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-200';
-    expect(ensureDarkModeClasses(className, DARK_MODE_FALLBACK_CLASSES.chipClassName)).toBe(
-      className,
-    );
+    const className =
+      'bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-200';
+    expect(
+      ensureDarkModeClasses(
+        className,
+        DARK_MODE_FALLBACK_CLASSES.chipClassName,
+      ),
+    ).toBe(className);
   });
 
   it('appends fallback dark classes when none are present', () => {
@@ -183,9 +342,9 @@ describe('dark mode fallback for filter chip tones (issue #671)', () => {
   });
 
   it('returns only the fallback classes for an empty className', () => {
-    expect(ensureDarkModeClasses('', DARK_MODE_FALLBACK_CLASSES.countClassName)).toBe(
-      DARK_MODE_FALLBACK_CLASSES.countClassName,
-    );
+    expect(
+      ensureDarkModeClasses('', DARK_MODE_FALLBACK_CLASSES.countClassName),
+    ).toBe(DARK_MODE_FALLBACK_CLASSES.countClassName);
   });
 
   it('backfills dark-mode classes on a tone missing them', () => {
@@ -200,7 +359,9 @@ describe('dark mode fallback for filter chip tones (issue #671)', () => {
   it('keeps built-in palette tones (which already define dark variants) unchanged', () => {
     const tone = getAccessibleFilterChipTone('status', 'completed', true);
     // Built-in tones already ship dark: classes, so no fallback should be appended.
-    expect(tone.chipClassName).not.toContain(DARK_MODE_FALLBACK_CLASSES.chipClassName);
+    expect(tone.chipClassName).not.toContain(
+      DARK_MODE_FALLBACK_CLASSES.chipClassName,
+    );
     expect(tone.chipClassName).toContain('dark:');
     expect(tone.countClassName).toContain('dark:');
   });

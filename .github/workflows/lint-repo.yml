@@ -1,0 +1,57 @@
+name: Lint Repo
+
+on:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for conflict markers
+        run: |
+          if git grep -nE '^(<<<<<<< |=======|>>>>>>> )' -- ":(exclude).github/workflows/lint-repo.yml" ":(exclude).husky/pre-commit" ":(exclude)scripts/check-conflict-markers.sh"; then
+            echo "❌ Conflict markers found in the repository!"
+            exit 1
+          fi
+
+      - name: Ensure no npm or yarn lockfiles
+        run: |
+          found=$(find . -name "package-lock.json" -o -name "yarn.lock" | grep -v "node_modules/" || true)
+          if [ -n "$found" ]; then
+            echo "❌ ERROR: Found npm/yarn lockfiles. Use pnpm only."
+            echo "$found"
+            exit 1
+          fi
+
+      - name: Validate environment example files
+        run: |
+          node -e "
+          const fs = require('fs');
+          const dechatEnv = fs.readFileSync('Dechat/dex_with_fiat_frontend/.env.example', 'utf8');
+          const requiredVars = [
+            'NEXT_PUBLIC_STELLAR_RPC_URL',
+            'NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT',
+            'NEXT_PUBLIC_XLM_SAC_CONTRACT',
+            'PAYSTACK_SECRET_KEY',
+            'PAYOUT_PROVIDER'
+          ];
+          const missing = requiredVars.filter(v => !dechatEnv.includes(v));
+          if (missing.length > 0) {
+            console.error('❌ .env.example missing required variables:', missing.join(', '));
+            process.exit(1);
+          }
+          console.log('✅ .env.example contains all required environment variables');
+          "
+
+      - name: Run actionlint
+        uses: reviewdog/action-actionlint@ee28dc79d2c7e07b6a9c8abcf817194ab959c473 # v1.44.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-check
+          filter_mode: added
+          fail_level: error

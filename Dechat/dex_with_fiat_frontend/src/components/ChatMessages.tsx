@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useReducedMotion } from 'framer-motion';
 import { ChatMessage } from '@/types';
 import { useTheme } from '@/contexts/ThemeContext';
 import {
@@ -22,6 +23,11 @@ interface ChatMessagesProps {
     actionType: string,
     data?: Record<string, unknown>,
   ) => void;
+  /**
+   * Resend a message that failed to send. Receives the failed message's id and
+   * its original content, ready to be submitted again as-is.
+   */
+  onRetry?: (messageId: string, content: string) => void | Promise<void>;
   isLoading?: boolean;
   searchQuery?: string;
 }
@@ -49,17 +55,19 @@ function HelpCard({
 }: HelpCardProps) {
   return (
     <div
-      className={`relative group p-5 rounded-2xl border transition-all duration-300 transform hover:-translate-y-1 hover:shadow-xl ${isDarkMode
+      className={`relative group p-5 rounded-2xl border transition-all duration-300 transform hover:-translate-y-1 hover:shadow-xl ${
+        isDarkMode
           ? 'bg-gray-800/50 border-gray-700 hover:border-blue-500/50'
           : 'bg-white border-gray-100 hover:border-blue-200'
-        }`}
+      }`}
     >
       <button
         onClick={() => onDismiss(id)}
-        className={`absolute top-3 right-3 p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity ${isDarkMode
+        className={`absolute top-3 right-3 p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity ${
+          isDarkMode
             ? 'hover:bg-gray-700 text-gray-500 hover:text-gray-300'
             : 'hover:bg-gray-100 text-gray-400 hover:text-gray-600'
-          }`}
+        }`}
         aria-label="Dismiss"
       >
         <X className="w-4 h-4" />
@@ -67,34 +75,38 @@ function HelpCard({
 
       <div className="flex flex-col h-full">
         <div
-          className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 ${isDarkMode
+          className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 ${
+            isDarkMode
               ? 'bg-blue-500/10 text-blue-400'
               : 'bg-blue-50 text-blue-600'
-            }`}
+          }`}
         >
           {icon}
         </div>
 
         <h3
-          className={`text-base font-semibold mb-2 ${isDarkMode ? 'text-gray-100' : 'text-gray-900'
-            }`}
+          className={`text-base font-semibold mb-2 ${
+            isDarkMode ? 'text-gray-100' : 'text-gray-900'
+          }`}
         >
           {title}
         </h3>
 
         <p
-          className={`text-sm leading-relaxed mb-6 flex-grow ${isDarkMode ? 'text-gray-400' : 'text-gray-500'
-            }`}
+          className={`text-sm leading-relaxed mb-6 flex-grow ${
+            isDarkMode ? 'text-gray-400' : 'text-gray-500'
+          }`}
         >
           {description}
         </p>
 
         <button
           onClick={onAction}
-          className={`flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl text-sm font-medium transition-all ${isDarkMode
+          className={`flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl text-sm font-medium transition-all ${
+            isDarkMode
               ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/20'
               : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-200'
-            }`}
+          }`}
         >
           {actionLabel}
           <ChevronRight className="w-4 h-4" />
@@ -107,6 +119,7 @@ function HelpCard({
 export default function ChatMessages({
   messages: allMessages,
   onActionClick,
+  onRetry,
   isLoading = false,
   searchQuery = '',
 }: ChatMessagesProps) {
@@ -114,6 +127,8 @@ export default function ChatMessages({
   const containerRef = useRef<HTMLDivElement>(null);
   const loaderRef = useRef<HTMLDivElement>(null);
   const { isDarkMode } = useTheme();
+  const shouldReduceMotion = useReducedMotion();
+  const scrollBehavior: ScrollBehavior = shouldReduceMotion ? 'auto' : 'smooth';
 
   const { visibleMessages, hasMore, isLoadingMore, loadMore } =
     useChatPagination(allMessages);
@@ -122,7 +137,7 @@ export default function ChatMessages({
   const [isLoaded, setIsLoaded] = useState(false);
   const [prevScrollHeight, setPrevScrollHeight] = useState(0);
   const [shouldPreserveScroll, setShouldPreserveScroll] = useState(false);
-  
+
   // Track messages that have already been rendered to avoid re-animating
   const seenMessageIds = useRef<Set<string>>(new Set());
   const [isReadyToAnimate, setIsReadyToAnimate] = useState(false);
@@ -137,10 +152,10 @@ export default function ChatMessages({
         console.error('Failed to parse dismissed cards', e);
       }
     }
-    
+
     // Mark initial messages as seen
-    allMessages.forEach(m => seenMessageIds.current.add(m.id));
-    
+    allMessages.forEach((m) => seenMessageIds.current.add(m.id));
+
     setIsLoaded(true);
     // Delay setting isReadyToAnimate to ensure initial history is processed
     const timer = setTimeout(() => setIsReadyToAnimate(true), 100);
@@ -150,7 +165,7 @@ export default function ChatMessages({
   // Update seen messages whenever visibleMessages changes, but don't trigger re-render
   useEffect(() => {
     if (isReadyToAnimate && !isLoadingMore) {
-      visibleMessages.forEach(m => seenMessageIds.current.add(m.id));
+      visibleMessages.forEach((m) => seenMessageIds.current.add(m.id));
     }
   }, [visibleMessages, isReadyToAnimate, isLoadingMore]);
 
@@ -167,22 +182,38 @@ export default function ChatMessages({
     if (containerRef.current) {
       containerRef.current.scrollTo({
         top: containerRef.current.scrollHeight,
-        behavior: 'smooth',
+        behavior: scrollBehavior,
       });
     }
-  }, []);
+  }, [scrollBehavior]);
 
   useEffect(() => {
     if (isLoading || allMessages.length > 0) {
       // Only auto-scroll to bottom if we are NOT loading more previous messages
       if (!isLoadingMore && !shouldPreserveScroll) {
         const timer = setTimeout(() => {
-          scrollToBottom();
+          // Check if user is within 100px of bottom before auto-scrolling
+          if (containerRef.current) {
+            const { scrollTop, scrollHeight, clientHeight } =
+              containerRef.current;
+            const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+
+            // Auto-scroll only if within 100px of bottom
+            if (distanceFromBottom <= 100) {
+              scrollToBottom();
+            }
+          }
         }, 100);
         return () => clearTimeout(timer);
       }
     }
-  }, [allMessages.length, isLoading, isLoadingMore, shouldPreserveScroll, scrollToBottom]);
+  }, [
+    allMessages.length,
+    isLoading,
+    isLoadingMore,
+    shouldPreserveScroll,
+    scrollToBottom,
+  ]);
 
   // Handle scroll preservation when loading more
   useEffect(() => {
@@ -203,7 +234,12 @@ export default function ChatMessages({
       }
       setShouldPreserveScroll(false);
     }
-  }, [visibleMessages.length, isLoadingMore, shouldPreserveScroll, prevScrollHeight]);
+  }, [
+    visibleMessages.length,
+    isLoadingMore,
+    shouldPreserveScroll,
+    prevScrollHeight,
+  ]);
 
   // Intersection Observer for Infinite Scroll
   useEffect(() => {
@@ -215,7 +251,7 @@ export default function ChatMessages({
           loadMore();
         }
       },
-      { threshold: 0.5 }
+      { threshold: 0.5 },
     );
 
     if (loaderRef.current) {
@@ -262,18 +298,77 @@ export default function ChatMessages({
     (card) => !dismissedCards.includes(card.id),
   );
 
+  const handleKeyboardNavigation = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (!containerRef.current) return;
+
+      if (e.key === 'Home') {
+        e.preventDefault();
+        containerRef.current.scrollTo({ top: 0, behavior: scrollBehavior });
+      }
+
+      if (e.key === 'End') {
+        e.preventDefault();
+        containerRef.current.scrollTo({
+          top: containerRef.current.scrollHeight,
+          behavior: scrollBehavior,
+        });
+      }
+
+      if (e.key === 'PageUp') {
+        e.preventDefault();
+        containerRef.current.scrollBy({
+          top: -containerRef.current.clientHeight,
+          behavior: scrollBehavior,
+        });
+      }
+
+      if (e.key === 'PageDown') {
+        e.preventDefault();
+        containerRef.current.scrollBy({
+          top: containerRef.current.clientHeight,
+          behavior: scrollBehavior,
+        });
+      }
+    },
+    [scrollBehavior],
+  );
+
   return (
     <div
       ref={containerRef}
-      className={`flex-1 overflow-y-auto p-6 transition-colors duration-300 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'
-        }`}
+      role="region"
+      tabIndex={0}
+      aria-label="Chat messages"
+      aria-keyshortcuts="Home End PageUp PageDown"
+      aria-describedby="chat-messages-shortcuts"
+      onKeyDown={handleKeyboardNavigation}
+      className={`flex-1 overflow-y-auto p-6 transition-colors duration-300 outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent ${
+        isDarkMode ? 'bg-gray-900' : 'bg-gray-50'
+      }`}
       style={{
         height: '100%',
         minHeight: '0',
         maxHeight: '100%',
       }}
     >
-      {visibleMessages.length === 0 ? (
+      <span id="chat-messages-shortcuts" className="sr-only">
+        Keyboard shortcuts: Home to jump to top, End to jump to bottom, PageUp
+        and PageDown to quickly scroll.
+      </span>
+      {isLoading && allMessages.length === 0 ? (
+        <div
+          className="space-y-4 max-w-4xl mx-auto py-8"
+          data-testid="chat-messages-loading"
+        >
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="space-y-3">
+              <Skeleton className="h-6 w-3/4 bg-slate-200 dark:bg-slate-700" />
+              <Skeleton className="h-12 w-full bg-slate-200 dark:bg-slate-700" />
+            </div>
+          ))}
+        </div>
+      ) : visibleMessages.length === 0 ? (
         <div className="max-w-4xl mx-auto h-full flex flex-col items-center justify-center py-12">
           {searchQuery.trim() ? (
             /* ── Search returned nothing ── */
@@ -371,7 +466,10 @@ export default function ChatMessages({
               className="flex justify-center py-4 text-gray-500"
             >
               {isLoadingMore ? (
-                <div className="w-full space-y-3 px-2 animate-in fade-in" aria-label="Loading older messages">
+                <div
+                  className="w-full space-y-3 px-2 animate-in fade-in"
+                  aria-label="Loading older messages"
+                >
                   {[...Array(3)].map((_, i) => (
                     <div key={i} className="flex gap-3">
                       <Skeleton className="h-8 w-8 rounded-full flex-shrink-0" />
@@ -383,7 +481,9 @@ export default function ChatMessages({
                   ))}
                 </div>
               ) : (
-                <span className="text-xs opacity-0">Scroll up to load more</span>
+                <span className="text-xs opacity-0">
+                  Scroll up to load more
+                </span>
               )}
             </div>
           )}
@@ -393,7 +493,12 @@ export default function ChatMessages({
               key={message.id}
               message={message}
               onActionClick={onActionClick}
-              shouldAnimate={isReadyToAnimate && !isLoadingMore && !seenMessageIds.current.has(message.id)}
+              onRetry={onRetry}
+              shouldAnimate={
+                isReadyToAnimate &&
+                !isLoadingMore &&
+                !seenMessageIds.current.has(message.id)
+              }
             />
           ))}
         </div>

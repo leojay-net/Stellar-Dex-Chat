@@ -39,3 +39,8 @@ For chat lifecycle logic in `dex_with_fiat_frontend/src/hooks/chatStateMachine.t
 - Add at least one "just below / at / just above" boundary assertion.
 - Keep generated data deterministic with a seed when possible.
 - Record expected failure mode (panic, explicit error, rejected transition).
+
+## Related Documentation
+
+- [Overflow Prevention & Arithmetic Safety Architecture](OVERFLOW_PREVENTION.md)
+- [Slippage Threshold Specification](slippage-threshold.md)

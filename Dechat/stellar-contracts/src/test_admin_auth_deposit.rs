@@ -45,7 +45,7 @@ fn setup_fixture() -> Fixture<'_> {
     let bridge = FiatBridgeClient::new(&env, &contract_id);
 
     let signers = vec![&env, admin.clone()];
-    bridge.init(&admin, &token_addr, &1_000_000, &1, &signers, &1);
+    bridge.init(&admin, &token_addr, &1_000_000, &1, &signers, &1, &0);
 
     let user = Address::generate(&env);
     token_sac.mint(&user, &10_000);
@@ -151,7 +151,7 @@ fn deposit_fails_when_admin_does_not_co_authorize() {
     let contract_id = env.register(FiatBridge, ());
     let bridge = FiatBridgeClient::new(&env, &contract_id);
     let signers = vec![&env, admin.clone()];
-    bridge.init(&admin, &token_addr, &1_000_000, &1, &signers, &1);
+    bridge.init(&admin, &token_addr, &1_000_000, &1, &signers, &1, &0);
     let user = Address::generate(&env);
     token_sac.mint(&user, &5_000);
 

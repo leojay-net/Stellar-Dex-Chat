@@ -60,7 +60,9 @@ export default function WalletConnectionTimeline({
           : connecting
             ? 'active'
             : 'pending',
-      detail: midTransferDisconnect ? 'Wallet disconnected during transfer' : undefined,
+      detail: midTransferDisconnect
+        ? 'Wallet disconnected during transfer'
+        : undefined,
     },
     {
       id: 'sign',
@@ -87,7 +89,8 @@ export default function WalletConnectionTimeline({
     {
       id: 'ready',
       label: 'Ready',
-      status: connected && !mismatch && !midTransferDisconnect ? 'done' : 'pending',
+      status:
+        connected && !mismatch && !midTransferDisconnect ? 'done' : 'pending',
     },
   ];
 

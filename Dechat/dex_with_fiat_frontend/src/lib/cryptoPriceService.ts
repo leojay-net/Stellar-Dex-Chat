@@ -7,6 +7,20 @@ export interface CryptoPrice {
   };
 }
 
+export type PriceSource = 'live' | 'cache' | 'fallback';
+
+export interface CryptoPriceResult {
+  prices: CryptoPrice;
+  stale: boolean;
+  source: PriceSource;
+}
+
+export interface TokenPriceQuote {
+  price: number;
+  stale: boolean;
+  source: PriceSource;
+}
+
 export interface TokenPriceData {
   tokenSymbol: string;
   prices: {
@@ -48,66 +62,101 @@ export const SUPPORTED_CURRENCIES = [
 
 // Cache for prices to avoid excessive API calls
 const priceCache: Map<string, TokenPriceData> = new Map();
+const inflightRequests: Map<string, Promise<TokenPriceQuote>> = new Map();
 const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
 
-/**
- * Fetch real-time crypto prices from CoinGecko API
- */
+async function fetchCoinGeckoPrices(
+  tokenSymbols: string[],
+  vsCurrencies: string[],
+): Promise<CryptoPrice> {
+  const tokenIds = tokenSymbols
+    .map((symbol) => TOKEN_IDS[symbol.toUpperCase()])
+    .filter(Boolean);
+  const validCurrencies = vsCurrencies
+    .map((currency) => currency.toLowerCase())
+    .filter((currency) => SUPPORTED_CURRENCIES.includes(currency));
+
+  if (tokenIds.length === 0 || validCurrencies.length === 0) {
+    throw new Error('No supported token and currency pairs requested');
+  }
+
+  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${tokenIds.join(',')}&vs_currencies=${validCurrencies.join(',')}&include_24hr_change=true`;
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `CoinGecko API error: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  const data = (await response.json()) as Record<
+    string,
+    Record<string, number>
+  >;
+  const prices: CryptoPrice = {};
+  Object.entries(data).forEach(([coinId, coinPrices]) => {
+    const tokenSymbol = Object.entries(TOKEN_IDS).find(
+      ([, id]) => id === coinId,
+    )?.[0];
+    if (tokenSymbol) prices[tokenSymbol] = coinPrices;
+  });
+
+  return prices;
+}
+
+/** Fetch live prices, or return the last good cache and flagged fallbacks. */
 export async function fetchCryptoPrices(
   tokenSymbols: string[],
   vsCurrencies: string[] = ['usd', 'eur', 'gbp', 'ngn'],
-): Promise<CryptoPrice> {
+): Promise<CryptoPriceResult> {
   try {
-    // Map symbols to CoinGecko IDs
-    const tokenIds = tokenSymbols
-      .map((symbol) => TOKEN_IDS[symbol.toUpperCase()])
-      .filter(Boolean);
-
-    if (tokenIds.length === 0) {
-      throw new Error('No valid token IDs found');
-    }
-
-    // Filter supported currencies
-    const validCurrencies = vsCurrencies.filter((currency) =>
-      SUPPORTED_CURRENCIES.includes(currency.toLowerCase()),
-    );
-
-    const idsParam = tokenIds.join(',');
-    const currenciesParam = validCurrencies.join(',');
-
-    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${idsParam}&vs_currencies=${currenciesParam}&include_24hr_change=true`;
-
-    const response = await fetch(url, {
-      headers: {
-        Accept: 'application/json',
-      },
+    const prices = await fetchCoinGeckoPrices(tokenSymbols, vsCurrencies);
+    const lastUpdated = Date.now();
+    Object.entries(prices).forEach(([symbol, currencies]) => {
+      Object.entries(currencies).forEach(([currency, price]) => {
+        if (SUPPORTED_CURRENCIES.includes(currency) && Number.isFinite(price)) {
+          priceCache.set(`${symbol}_${currency}`, {
+            tokenSymbol: symbol,
+            prices: { [currency]: price },
+            lastUpdated,
+          });
+        }
+      });
     });
-
-    if (!response.ok) {
-      throw new Error(
-        `CoinGecko API error: ${response.status} ${response.statusText}`,
-      );
-    }
-
-    const data = await response.json();
-
-    // Convert back to token symbols
-    const priceData: CryptoPrice = {};
-    Object.entries(data).forEach(([coinId, prices]) => {
-      const tokenSymbol = Object.entries(TOKEN_IDS).find(
-        ([, id]) => id === coinId,
-      )?.[0];
-      if (tokenSymbol) {
-        priceData[tokenSymbol] = prices as { [currency: string]: number };
-      }
-    });
-
-    return priceData;
+    return { prices, stale: false, source: 'live' };
   } catch (error) {
     console.error('Error fetching crypto prices:', error);
+    const fallbackPrices = getFallbackPrices(tokenSymbols, vsCurrencies);
+    const prices: CryptoPrice = {};
+    let usedFallback = false;
+    let usedCache = false;
 
-    // Fallback to cached data or default values
-    return getFallbackPrices(tokenSymbols, vsCurrencies);
+    tokenSymbols.forEach((symbol) => {
+      const tokenSymbol = symbol.toUpperCase();
+      vsCurrencies.forEach((currency) => {
+        const currencyLower = currency.toLowerCase();
+        const cachedPrice = priceCache.get(`${tokenSymbol}_${currencyLower}`)
+          ?.prices[currencyLower];
+        const fallbackPrice = fallbackPrices[tokenSymbol]?.[currencyLower];
+        const price = cachedPrice ?? fallbackPrice;
+        if (cachedPrice !== undefined) usedCache = true;
+        if (price !== undefined) {
+          prices[tokenSymbol] ??= {};
+          prices[tokenSymbol][currencyLower] = price;
+        }
+        if (cachedPrice === undefined && fallbackPrice !== undefined) {
+          usedFallback = true;
+        }
+      });
+    });
+
+    return {
+      prices,
+      stale: true,
+      source: usedFallback || !usedCache ? 'fallback' : 'cache',
+    };
   }
 }
 
@@ -185,39 +234,55 @@ function getFallbackPrices(
 }
 
 /**
- * Get cached price or fetch from API
+ * Get cached price or fetch from API.
+ * Deduplicates concurrent requests for the same token+currency so only one
+ * API call is in flight at a time — fixes stale-closure where N concurrent
+ * callers each saw a stale cache and fired their own fetch.
  */
 export async function getTokenPrice(
   tokenSymbol: string,
   vsCurrency: string = 'usd',
 ): Promise<number> {
+  return (await getTokenPriceWithStatus(tokenSymbol, vsCurrency)).price;
+}
+
+export async function getTokenPriceWithStatus(
+  tokenSymbol: string,
+  vsCurrency: string = 'usd',
+): Promise<TokenPriceQuote> {
   const cacheKey = `${tokenSymbol.toUpperCase()}_${vsCurrency.toLowerCase()}`;
   const cached = priceCache.get(cacheKey);
 
   // Return cached data if it's still fresh
   if (cached && Date.now() - cached.lastUpdated < CACHE_DURATION) {
-    return cached.prices[vsCurrency.toLowerCase()] || 0;
+    return {
+      price: cached.prices[vsCurrency.toLowerCase()] ?? 0,
+      stale: false,
+      source: 'cache',
+    };
   }
 
+  // If there's already an in-flight request for this key, wait for it
+  const existing = inflightRequests.get(cacheKey);
+  if (existing) {
+    return existing;
+  }
+
+  const promise = fetchCryptoPrices([tokenSymbol], [vsCurrency]).then(
+    (result) => ({
+      price:
+        result.prices[tokenSymbol.toUpperCase()]?.[vsCurrency.toLowerCase()] ??
+        0,
+      stale: result.stale,
+      source: result.source,
+    }),
+  );
+  inflightRequests.set(cacheKey, promise);
+
   try {
-    // Fetch fresh data
-    const priceData = await fetchCryptoPrices([tokenSymbol], [vsCurrency]);
-    const price =
-      priceData[tokenSymbol.toUpperCase()]?.[vsCurrency.toLowerCase()] || 0;
-
-    // Update cache
-    priceCache.set(cacheKey, {
-      tokenSymbol: tokenSymbol.toUpperCase(),
-      prices: { [vsCurrency.toLowerCase()]: price },
-      lastUpdated: Date.now(),
-    });
-
-    return price;
-  } catch (error) {
-    console.error(`Error getting price for ${tokenSymbol}:`, error);
-
-    // Return cached data even if stale, or 0 as last resort
-    return cached?.prices[vsCurrency.toLowerCase()] || 0;
+    return await promise;
+  } finally {
+    inflightRequests.delete(cacheKey);
   }
 }
 
@@ -264,13 +329,8 @@ export async function convertFiatToCrypto(
 export async function getMultipleTokenPrices(
   tokenSymbols: string[],
   vsCurrencies: string[] = ['usd'],
-): Promise<CryptoPrice> {
-  try {
-    return await fetchCryptoPrices(tokenSymbols, vsCurrencies);
-  } catch (error) {
-    console.error('Error getting multiple token prices:', error);
-    return getFallbackPrices(tokenSymbols, vsCurrencies);
-  }
+): Promise<CryptoPriceResult> {
+  return fetchCryptoPrices(tokenSymbols, vsCurrencies);
 }
 
 /**
@@ -288,16 +348,6 @@ export async function fetchTickerData(
   vsCurrency: string = 'usd',
 ): Promise<TickerData> {
   try {
-    // Map symbols to CoinGecko IDs
-    const tokenIds = tokenSymbols
-      .map((symbol) => TOKEN_IDS[symbol.toUpperCase()])
-      .filter(Boolean);
-
-    if (tokenIds.length === 0) {
-      throw new Error('No valid token IDs found');
-    }
-
-    const idsParam = tokenIds.join(',');
     const currencyLower = vsCurrency.toLowerCase();
 
     // Only include supported currencies
@@ -305,30 +355,9 @@ export async function fetchTickerData(
       throw new Error(`Unsupported currency: ${vsCurrency}`);
     }
 
-    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${idsParam}&vs_currencies=${currencyLower}&include_24hr_change=true`;
-
-    const response = await fetch(url, {
-      headers: {
-        Accept: 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(
-        `CoinGecko API error: ${response.status} ${response.statusText}`,
-      );
-    }
-
-    const data = await response.json();
-
-    // Convert to ticker format
+    const prices = await fetchCoinGeckoPrices(tokenSymbols, [currencyLower]);
     const tickerData: TickerData = {};
-    Object.entries(data).forEach(([coinId, priceData]) => {
-      const tokenSymbol = Object.entries(TOKEN_IDS).find(
-        ([, id]) => id === coinId,
-      )?.[0];
-      
-      const priceRecord = priceData as Record<string, number | undefined>;
+    Object.entries(prices).forEach(([tokenSymbol, priceRecord]) => {
       if (tokenSymbol && priceRecord[currencyLower] !== undefined) {
         tickerData[tokenSymbol] = {
           symbol: tokenSymbol,
@@ -341,8 +370,11 @@ export async function fetchTickerData(
 
     return tickerData;
   } catch (error) {
-    console.error('Error fetching ticker data:', error);
-    return {}; // Return empty object to trigger fallback UI
+    const message =
+      error instanceof Error ? error.message : 'Unknown error fetching prices';
+    console.error('Error fetching ticker data:', message);
+    // Return empty object — callers should treat {} as "no data, show fallback"
+    return {};
   }
 }
 
@@ -352,6 +384,8 @@ export interface LockedQuote {
   ngnAmount: number;
   lockedAt: number;
   expiresAt: number;
+  stale?: boolean;
+  source?: PriceSource;
 }
 
 /**
@@ -364,16 +398,18 @@ export async function fetchLockedQuote(
   amount: number,
   fiatCurrency: string = 'ngn',
 ): Promise<LockedQuote> {
-  const ngnAmount = await convertCryptoToFiat(
-    tokenSymbol,
-    amount,
-    fiatCurrency,
-  );
+  const quote = await getTokenPriceWithStatus(tokenSymbol, fiatCurrency);
+  if (quote.price <= 0 || !Number.isFinite(quote.price)) {
+    throw new Error(`No price data available for ${tokenSymbol}`);
+  }
+  const ngnAmount = amount * quote.price;
   const lockedAt = Date.now();
   return {
     ngnAmount,
     lockedAt,
     expiresAt: lockedAt + QUOTE_LOCK_DURATION_MS,
+    stale: quote.stale,
+    source: quote.source,
   };
 }
 

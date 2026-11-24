@@ -5,8 +5,9 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
-  reporter: 'html',
+  workers: process.env.CI ? 2 : undefined,
+  timeout: 60_000,
+  reporter: process.env.CI ? [['github'], ['html']] : 'html',
   use: {
     baseURL: 'http://localhost:3000',
     trace: 'on-first-retry',
@@ -19,16 +20,22 @@ export default defineConfig({
     },
     {
       name: 'firefox',
+      grepInvert: /@chromium-only/,
       use: { ...devices['Desktop Firefox'] },
     },
     {
       name: 'webkit',
+      grepInvert: /@chromium-only/,
       use: { ...devices['Desktop Safari'] },
     },
   ],
   webServer: {
-    command: 'npm run dev',
+    command: process.env.CI ? 'npx next start' : 'npx next dev --turbopack',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
+    env: {
+      NEXT_PUBLIC_E2E: 'true',
+    },
   },
 });

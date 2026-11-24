@@ -17,7 +17,7 @@ import {
   Clock,
   RefreshCw,
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { fetchLockedQuote, type LockedQuote } from '@/lib/cryptoPriceService';
 import SkeletonWallet from '@/components/ui/skeleton/SkeletonWallet';
 import { useNotifications } from '@/hooks/useNotifications';
@@ -61,7 +61,7 @@ export const bankDetailsSchema = z.object({
       (val) => {
         if (!val || val.trim() === '') return true; // optional field
         const cleaned = val.replace(/\s+/g, '').toUpperCase();
-        // Basic format: 2 letters + 2 digits + 11-30 alphanumeric chars (total 15-34)
+
         if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(cleaned)) return false;
         return validateIbanMod97(cleaned);
       },
@@ -109,7 +109,6 @@ export interface BankDetailsModalProps {
   xlmAmount: number;
 }
 
-// Animation variants
 const modalVariants = {
   hidden: {
     opacity: 0,
@@ -155,7 +154,6 @@ const stepVariants = {
   },
 };
 
-
 type Step = 1 | 2 | 3 | 4;
 
 export default function BankDetailsModal({
@@ -164,6 +162,7 @@ export default function BankDetailsModal({
   xlmAmount,
 }: BankDetailsModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
+  const prefersReducedMotion = useReducedMotion();
   const {
     beneficiaries,
     isLoaded: beneficiariesLoaded,
@@ -174,6 +173,15 @@ export default function BankDetailsModal({
 
   const { addNotification } = useNotifications();
   const { addEntry } = useTxHistory();
+
+  // `addNotification` is rebound on every render (see useNotifications.ts),
+  // so the status-polling effect below reads it through a ref rather than
+  // listing it as a dependency — otherwise the poll interval would be torn
+  // down and restarted on every unrelated re-render.
+  const addNotificationRef = useRef(addNotification);
+  useEffect(() => {
+    addNotificationRef.current = addNotification;
+  }, [addNotification]);
 
   const { execute: executePayoutConfirm, isProcessing: isPayoutProcessing } =
     useIdempotentAction({
@@ -225,6 +233,7 @@ export default function BankDetailsModal({
   const [transferStatus, setTransferStatus] = useState<
     'pending' | 'success' | 'failed' | 'reversed'
   >('pending');
+  const [transferFailureReason, setTransferFailureReason] = useState('');
 
   // Transfer timeline
   const [statusEvents, setStatusEvents] = useState<StatusEvent[]>([]);
@@ -255,7 +264,8 @@ export default function BankDetailsModal({
     if (!isOpen) return;
     setBanksLoading(true);
     setBanksError('');
-    fetch('/api/banks')
+    const abortController = new AbortController();
+    fetch('/api/banks', { signal: abortController.signal })
       .then((r) => r.json())
       .then((json: { success: boolean; data: Bank[]; message?: string }) => {
         if (json.success) {
@@ -264,8 +274,16 @@ export default function BankDetailsModal({
           setBanksError(json.message ?? 'Failed to load banks');
         }
       })
-      .catch(() => setBanksError('Failed to load banks. Please try again.'))
-      .finally(() => setBanksLoading(false));
+      .catch((err: unknown) => {
+        if (err instanceof Error && err.name === 'AbortError') return;
+        setBanksError('Failed to load banks. Please try again.');
+      })
+      .finally(() => {
+        if (!abortController.signal.aborted) setBanksLoading(false);
+      });
+    return () => {
+      abortController.abort();
+    };
   }, [isOpen]);
 
   // Fetch a locked quote when the user reaches step 3
@@ -318,8 +336,29 @@ export default function BankDetailsModal({
         const res = await fetch(`/api/transfer-status/${transferReference}`);
         if (res.ok) {
           const json = await res.json();
-          if (json.success && json.data?.status) {
-            setTransferStatus(json.data.status);
+          const status = json.data?.status;
+          if (json.success && status) {
+            setTransferStatus(status);
+
+            if (status === 'success') {
+              setIsPollingStatus(false);
+              pushStatusEvent('success', 'Bank transfer confirmed');
+              addNotificationRef.current(
+                'payout_success',
+                'Fiat payout successfully completed!',
+              );
+            } else if (status === 'failed' || status === 'reversed') {
+              const failureReason: string | undefined =
+                json.data?.failureReason;
+              const suffix = failureReason ? `: ${failureReason}` : '';
+              setIsPollingStatus(false);
+              setTransferFailureReason(failureReason ?? '');
+              pushStatusEvent(status, `Transfer ${status}${suffix}`);
+              addNotificationRef.current(
+                'payout_fail',
+                `Payout ${status}${suffix}`,
+              );
+            }
           }
         }
       } catch (err) {
@@ -338,7 +377,9 @@ export default function BankDetailsModal({
     const result = bankDetailsSchema
       .pick({ iban: true })
       .safeParse({ iban: value });
-    return result.success ? '' : (result.error.issues[0]?.message ?? 'Invalid IBAN');
+    return result.success
+      ? ''
+      : (result.error.issues[0]?.message ?? 'Invalid IBAN');
   };
 
   const handleIbanChange = (value: string) => {
@@ -449,6 +490,7 @@ export default function BankDetailsModal({
       setPayoutLoading(true);
       setPayoutError('');
       setStatusEvents([]);
+      setTransferFailureReason('');
       pushStatusEvent('initiated', 'Transfer initiated');
       addNotification('payout_pending', 'Fiat payout request is pending...');
       try {
@@ -530,20 +572,15 @@ export default function BankDetailsModal({
             '',
           message: `Fiat payout initiated to ${selectedBank.name}.`,
         });
-        // Simulation block
-        await new Promise((resolve) => setTimeout(resolve, 2500));
-        setIsPollingStatus(false);
-        pushStatusEvent('success', 'Bank transfer confirmed');
+        // Move to the status step while the transfer is still pending — the
+        // polling effect above resolves success/failed/reversed once the
+        // real transfer status confirms it, rather than assuming success.
         setStep(4);
         chatTelemetry.fiatPayoutStep({
           action: 'confirm_success',
           step: 4,
           xlmAmount,
         });
-        addNotification(
-          'payout_success',
-          'Fiat payout successfully completed!',
-        );
       } catch (err) {
         const errorMsg =
           err instanceof Error
@@ -589,6 +626,7 @@ export default function BankDetailsModal({
     setPayoutNote('');
     setTransferReference('');
     setTransferStatus('pending');
+    setTransferFailureReason('');
     onClose();
   }, [step, xlmAmount, onClose]);
 
@@ -665,10 +703,10 @@ export default function BankDetailsModal({
   return (
     <motion.div
       className="theme-overlay fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm"
-      initial={{ opacity: 0 }}
+      initial={prefersReducedMotion ? false : { opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.2 }}
+      transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.2 }}
     >
       <motion.div
         ref={modalRef}
@@ -678,10 +716,22 @@ export default function BankDetailsModal({
         tabIndex={-1}
         className="theme-surface theme-border relative w-full max-w-md mx-4 border rounded-2xl shadow-2xl p-6"
         variants={modalVariants}
-        initial="hidden"
+        initial={prefersReducedMotion ? false : 'hidden'}
         animate="visible"
         exit="exit"
       >
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className="sr-only"
+        >
+          {step === 1 && 'Bank selection step.'}
+          {step === 2 && 'Account verification step.'}
+          {step === 3 && 'Payout confirmation step.'}
+          {step === 4 && 'Payout status step.'}
+        </div>
+
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
@@ -775,7 +825,7 @@ export default function BankDetailsModal({
                                   onChange={(e) =>
                                     setEditingName(e.target.value)
                                   }
-                                  className="flex-1 bg-gray-700 text-white text-sm px-2 py-1 rounded border border-gray-600 focus:outline-none focus:border-blue-500"
+                                  className="flex-1 theme-input text-sm px-2 py-1 rounded border theme-input-border focus:outline-none focus:border-blue-500"
                                   autoFocus
                                 />
                                 <button
@@ -857,7 +907,7 @@ export default function BankDetailsModal({
                         value={bankSearch}
                         onChange={(e) => setBankSearch(e.target.value)}
                         placeholder="Search banks…"
-                        className="w-full bg-gray-800 border border-gray-600 rounded-lg pl-9 pr-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 text-sm"
+                        className="w-full theme-input border theme-input-border rounded-lg pl-9 pr-4 py-2 placeholder-gray-500 focus:outline-none focus:border-blue-500 text-sm"
                       />
                     </div>
 
@@ -944,14 +994,16 @@ export default function BankDetailsModal({
                     onBlur={handleVerifyAccount}
                     maxLength={10}
                     placeholder="0000000000"
-                    className="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                    className="w-full theme-input border theme-input-border rounded-lg px-4 py-3 placeholder-gray-500 focus:outline-none focus:border-blue-500"
                   />
                 </div>
 
                 <div className="mb-3">
                   <label className="block text-sm text-gray-400 mb-1">
                     IBAN{' '}
-                    <span className="text-gray-500 text-xs">(optional — for international transfers)</span>
+                    <span className="text-gray-500 text-xs">
+                      (optional — for international transfers)
+                    </span>
                   </label>
                   <input
                     type="text"
@@ -961,12 +1013,12 @@ export default function BankDetailsModal({
                     placeholder="GB29 NWBK 6016 1331 9268 19"
                     aria-describedby={ibanError ? 'iban-error' : undefined}
                     aria-invalid={ibanTouched && !!ibanError}
-                    className={`w-full bg-gray-800 border rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none uppercase tracking-widest text-sm ${
+                    className={`w-full theme-input border rounded-lg px-4 py-3 placeholder-gray-500 focus:outline-none uppercase tracking-widest text-sm ${
                       ibanTouched && ibanError
                         ? 'border-red-500 focus:border-red-500'
                         : ibanTouched && iban && !ibanError
                           ? 'border-green-500 focus:border-green-500'
-                          : 'border-gray-600 focus:border-blue-500'
+                          : 'theme-input-border focus:border-blue-500'
                     }`}
                   />
                   {ibanTouched && ibanError && (
@@ -1063,7 +1115,7 @@ export default function BankDetailsModal({
                             setSaveNameError('');
                           }}
                           placeholder={verifiedAccount.account_name}
-                          className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 text-sm"
+                          className="w-full theme-input border theme-input-border rounded-lg px-3 py-2 placeholder-gray-500 focus:outline-none focus:border-blue-500 text-sm"
                           aria-describedby={
                             saveNameError ? 'save-name-error' : undefined
                           }
@@ -1165,6 +1217,16 @@ export default function BankDetailsModal({
                       <span className="theme-text-muted">-</span>
                     )}
                   </div>
+
+                  {lockedQuote?.stale && (
+                    <p
+                      role="status"
+                      className="flex items-center gap-2 text-amber-400 text-xs"
+                    >
+                      <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                      Estimated rate: live market prices are unavailable.
+                    </p>
+                  )}
 
                   {/* Quote lock countdown */}
                   {lockedQuote && (
@@ -1380,7 +1442,9 @@ export default function BankDetailsModal({
                     ? 'Your bank transfer is processing. This usually takes a few minutes.'
                     : transferStatus === 'success'
                       ? 'The funds have been successfully sent to your bank account.'
-                      : 'There was an issue processing your bank transfer. Please contact support.'}
+                      : transferFailureReason
+                        ? `There was an issue processing your bank transfer: ${transferFailureReason}. Please contact support.`
+                        : 'There was an issue processing your bank transfer. Please contact support.'}
                 </p>
                 {payoutNote && (
                   <p className="theme-text-secondary text-xs mb-6">

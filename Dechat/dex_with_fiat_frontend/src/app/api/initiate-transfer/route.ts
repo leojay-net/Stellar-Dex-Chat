@@ -8,10 +8,29 @@ import { initiateTransferSchema } from '@/lib/apiSchemas';
 
 const RATE_LIMIT = { maxRequests: 3, windowMs: 60_000 };
 
+const idempotencyCache = new Map<
+  string,
+  { result: unknown; timestamp: number }
+>();
+const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
+
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request);
   const limited = applyRateLimit(ip, '/api/initiate-transfer', RATE_LIMIT);
   if (limited) return limited;
+
+  const idempotencyKey = request.headers.get('X-Idempotency-Key');
+  if (!idempotencyKey) {
+    return NextResponse.json(
+      { success: false, message: 'X-Idempotency-Key header is required' },
+      { status: 400 },
+    );
+  }
+
+  const cached = idempotencyCache.get(idempotencyKey);
+  if (cached && Date.now() - cached.timestamp < IDEMPOTENCY_TTL_MS) {
+    return NextResponse.json({ success: true, data: cached.result });
+  }
 
   const traceContext = telemetry.extractTraceFromHeaders(request.headers);
   const span = telemetry.createSpan(
@@ -25,7 +44,20 @@ export async function POST(request: NextRequest) {
       endpoint: '/api/initiate-transfer',
     });
 
-    const body = await request.json();
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      telemetry.addLog(span.spanId, 'warn', 'Malformed JSON body');
+      telemetry.finishSpan(span.spanId, {
+        success: false,
+        error: 'Invalid JSON body',
+      });
+      return NextResponse.json(
+        { success: false, message: 'Invalid JSON in request body.' },
+        { status: 400 },
+      );
+    }
 
     // Validate with Zod
     const validationResult = initiateTransferSchema.safeParse(body);
@@ -49,11 +81,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { source, reason, amount, recipient, reference } =
-      validationResult.data;
+    const { source, reason, amount, recipient } = validationResult.data;
+    // `clientSessionId` isn't part of initiateTransferSchema, so it's read
+    // from the raw (already-validated-as-an-object) body instead of
+    // validationResult.data.
+    const bodyRecord = body as Record<string, unknown>;
     const clientSessionId =
-      typeof body.clientSessionId === 'string'
-        ? body.clientSessionId
+      typeof bodyRecord.clientSessionId === 'string'
+        ? bodyRecord.clientSessionId
         : undefined;
 
     telemetry.addLog(span.spanId, 'info', 'Request validated', {
@@ -69,15 +104,13 @@ export async function POST(request: NextRequest) {
       reason,
       amount,
       recipient,
-      reference,
+      reference: idempotencyKey,
     });
 
     const transferReference =
       typeof data.reference === 'string' && data.reference
         ? data.reference
-        : typeof reference === 'string' && reference
-          ? reference
-          : '';
+        : idempotencyKey;
 
     if (transferReference) {
       setTransferStatus({
@@ -89,12 +122,16 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    idempotencyCache.set(idempotencyKey, {
+      result: data,
+      timestamp: Date.now(),
+    });
+
     return NextResponse.json({
       success: true,
       data,
     });
   } catch (error: unknown) {
-    // Capture error in Sentry
     Sentry.captureException(error, {
       tags: {
         endpoint: '/api/initiate-transfer',
@@ -107,13 +144,14 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    const errorMessage =
+      error instanceof Error ? error.message : 'Unknown error';
+
     telemetry.addLog(
       span.spanId,
       'error',
       'Unhandled error in transfer initiation',
-      {
-        error: error instanceof Error ? error.message : 'Unknown error',
-      },
+      { error: errorMessage },
     );
 
     console.error('Initiate transfer error:', error);

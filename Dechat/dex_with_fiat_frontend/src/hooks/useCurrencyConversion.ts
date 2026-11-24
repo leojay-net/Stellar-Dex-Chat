@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { fetchCryptoPrices } from '@/lib/cryptoPriceService';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
 
@@ -12,11 +12,15 @@ export interface ConversionResult {
   displayText: string;
   isLoading: boolean;
   hasError: boolean;
+  isStale: boolean;
   forceRefresh: () => Promise<void>;
 }
 
 const RATE_CACHE_TTL_MS = 60 * 1000;
-const rateCache = new Map<string, { price: number; expiresAt: number }>();
+const rateCache = new Map<
+  string,
+  { price: number; stale: boolean; expiresAt: number }
+>();
 
 function getRateCacheKey(tokenSymbol: string, fiatCurrency: string): string {
   return `${tokenSymbol.toUpperCase()}_${fiatCurrency.toLowerCase()}`;
@@ -36,6 +40,20 @@ export function useCurrencyConversion(
   const [fiatAmount, setFiatAmount] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [isStale, setIsStale] = useState(false);
+
+  // Memory-leak fix (#1217): fetchCryptoPrices is async. Without a mounted
+  // guard, every setState call inside convertAmount would fire even after the
+  // component unmounts (e.g. navigating away mid-fetch), triggering the
+  // "Can't perform a React state update on an unmounted component" warning and
+  // leaking the closure referencing this component's state.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const getCurrencySymbolForCode = useCallback((code: string): string => {
     const symbolMap: Record<string, string> = {
@@ -50,51 +68,74 @@ export function useCurrencyConversion(
     return symbolMap[code.toLowerCase()] || '';
   }, []);
 
-  const convertAmount = useCallback(async (forceRefresh = false) => {
-    if (!amount || amount <= 0 || !tokenSymbol) {
-      setFiatAmount(null);
-      return;
-    }
+  const convertAmount = useCallback(
+    async (forceRefresh = false) => {
+      if (!amount || amount <= 0 || !tokenSymbol) {
+        setFiatAmount(null);
+        setIsStale(false);
+        return;
+      }
 
-    setIsLoading(true);
-    setHasError(false);
+      setIsLoading(true);
+      setHasError(false);
 
-    try {
-      const cacheKey = getRateCacheKey(tokenSymbol, fiatCurrency);
-      const cachedRate = rateCache.get(cacheKey);
-      const now = Date.now();
-      let price: number | undefined;
+      try {
+        const cacheKey = getRateCacheKey(tokenSymbol, fiatCurrency);
+        const cachedRate = rateCache.get(cacheKey);
+        const now = Date.now();
+        let price: number | undefined;
+        let stale = false;
 
-      if (!forceRefresh && cachedRate && cachedRate.expiresAt > now) {
-        price = cachedRate.price;
-      } else {
-        const prices = await fetchCryptoPrices([tokenSymbol], [fiatCurrency]);
-        price = prices?.[tokenSymbol.toUpperCase()]?.[fiatCurrency.toLowerCase()];
+        if (!forceRefresh && cachedRate && cachedRate.expiresAt > now) {
+          price = cachedRate.price;
+          stale = cachedRate.stale;
+        } else {
+          const result = await fetchCryptoPrices([tokenSymbol], [fiatCurrency]);
+
+          // Guard: component may have unmounted while the fetch was in-flight.
+          if (!isMountedRef.current) return;
+
+          price =
+            result.prices?.[tokenSymbol.toUpperCase()]?.[
+              fiatCurrency.toLowerCase()
+            ];
+          stale = result.stale;
+
+          if (typeof price === 'number') {
+            rateCache.set(cacheKey, {
+              price,
+              stale,
+              expiresAt: now + RATE_CACHE_TTL_MS,
+            });
+          }
+        }
+
+        if (!isMountedRef.current) return;
 
         if (typeof price === 'number') {
-          rateCache.set(cacheKey, {
-            price,
-            expiresAt: now + RATE_CACHE_TTL_MS,
-          });
+          const converted = amount * price;
+          setFiatAmount(converted);
+          setIsStale(stale);
+          setHasError(false);
+        } else {
+          setFiatAmount(null);
+          setIsStale(false);
+          setHasError(true);
+        }
+      } catch (error) {
+        console.error('Currency conversion error:', error);
+        if (!isMountedRef.current) return;
+        setFiatAmount(null);
+        setIsStale(false);
+        setHasError(true);
+      } finally {
+        if (isMountedRef.current) {
+          setIsLoading(false);
         }
       }
-
-      if (typeof price === 'number') {
-        const converted = amount * price;
-        setFiatAmount(converted);
-        setHasError(false);
-      } else {
-        setFiatAmount(null);
-        setHasError(true);
-      }
-    } catch (error) {
-      console.error('Currency conversion error:', error);
-      setFiatAmount(null);
-      setHasError(true);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [amount, tokenSymbol, fiatCurrency]);
+    },
+    [amount, tokenSymbol, fiatCurrency],
+  );
 
   useEffect(() => {
     convertAmount();
@@ -121,8 +162,17 @@ export function useCurrencyConversion(
       maximumFractionDigits: 2,
     });
 
-    return `${amount} ${tokenSymbol} ≈ ${symbol}${formattedFiat} ${fiatCurrency.toUpperCase()}`;
-  }, [amount, tokenSymbol, fiatCurrency, fiatAmount, isLoading, hasError, getCurrencySymbolForCode]);
+    return `${isStale ? '~ ' : ''}${amount} ${tokenSymbol} ≈ ${symbol}${formattedFiat} ${fiatCurrency.toUpperCase()}`;
+  }, [
+    amount,
+    tokenSymbol,
+    fiatCurrency,
+    fiatAmount,
+    isLoading,
+    hasError,
+    isStale,
+    getCurrencySymbolForCode,
+  ]);
 
   return {
     originalAmount: amount || 0,
@@ -132,6 +182,7 @@ export function useCurrencyConversion(
     displayText: displayText(),
     isLoading,
     hasError,
+    isStale,
     forceRefresh,
   };
 }

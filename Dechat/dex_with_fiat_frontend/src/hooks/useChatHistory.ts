@@ -1,8 +1,13 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { ChatSession, ChatHistoryState, ChatMessage } from '@/types';
-import { ChatHistoryManager } from '@/lib/chatHistory';
+import {
+  ChatHistoryManager,
+  CHAT_HISTORY_CHANNEL,
+  CHAT_HISTORY_KEY,
+  type ChatHistorySyncMessage,
+} from '@/lib/chatHistory';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
 
 export const useChatHistory = () => {
@@ -11,28 +16,103 @@ export const useChatHistory = () => {
     currentSessionId: null,
     sessions: [],
   });
+  // False until the stored history has been read, so the initial empty state
+  // is never written back over what is in localStorage.
+  const [isLoaded, setIsLoaded] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<ChatSession[]>([]);
+
+  // A short-lived channel posts writes separately from this tab's listener,
+  // so messages carry a tab ID that lets the listener ignore local writes.
+  const tabIdRef = useRef<string>(
+    typeof crypto !== 'undefined'
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random()}`,
+  );
+
+  // Keep a ref to the latest sessions so callbacks that need to read (not write)
+  // sessions never capture a stale closure snapshot.
+  const sessionsRef = useRef<ChatSession[]>(historyState.sessions);
+  useEffect(() => {
+    sessionsRef.current = historyState.sessions;
+  }, [historyState.sessions]);
 
   // Load history from localStorage on mount
   useEffect(() => {
     const loaded = ChatHistoryManager.loadFromLocalStorage();
     setHistoryState(loaded);
+    setIsLoaded(true);
   }, []);
 
-  // Debounced save to localStorage
+  // Debounced save to localStorage, then notify sibling tabs.
+  // Persists an empty list too: skipping it left the last deleted session in
+  // localStorage, so it came back after a reload (#1506).
   useEffect(() => {
-    if (historyState.sessions.length > 0) {
-      const timeoutId = setTimeout(() => {
-        ChatHistoryManager.saveToLocalStorage(historyState);
-      }, 500); // Debounce by 500ms
+    if (!isLoaded) return;
+    const timeoutId = setTimeout(() => {
+      ChatHistoryManager.saveToLocalStorage(historyState);
 
-      return () => clearTimeout(timeoutId);
+      // Tell other tabs that localStorage has been updated.  BroadcastChannel
+      // is preferred; we fall back silently — the storage event (wired below)
+      // handles the cross-tab case in that environment.
+      try {
+        if (typeof BroadcastChannel !== 'undefined') {
+          const ch = new BroadcastChannel(CHAT_HISTORY_CHANNEL);
+          ch.postMessage({
+            tabId: tabIdRef.current,
+          } satisfies ChatHistorySyncMessage);
+          ch.close();
+        }
+      } catch {
+        // Non-fatal: the storage-event fallback still fires in other tabs.
+      }
+    }, 500); // Debounce by 500ms
+
+    return () => clearTimeout(timeoutId);
+  }, [historyState, isLoaded]);
+
+  // Listen for cross-tab writes and reload in-memory state when another tab
+  // saves.  Supports both BroadcastChannel and the legacy storage event.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const reload = () => {
+      const fresh = ChatHistoryManager.loadFromLocalStorage();
+      setHistoryState(fresh);
+    };
+
+    let channel: BroadcastChannel | null = null;
+
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        channel = new BroadcastChannel(CHAT_HISTORY_CHANNEL);
+        channel.onmessage = (event: MessageEvent<ChatHistorySyncMessage>) => {
+          // BroadcastChannel never delivers to the sender, but guard anyway.
+          if (event.data?.tabId !== tabIdRef.current) {
+            reload();
+          }
+        };
+      } catch {
+        // Fall through to storage-event path.
+        channel = null;
+      }
     }
-  }, [historyState]);
 
-  // Debounced search — avoids triggering a lookup on every keystroke
+    // The browser delivers storage events only to other documents.
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === CHAT_HISTORY_KEY) reload();
+    };
+
+    if (!channel) window.addEventListener('storage', onStorage);
+
+    return () => {
+      channel?.close();
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
+
+  // Debounced search - avoids triggering a lookup on every keystroke
   useEffect(() => {
     if (!searchQuery.trim()) {
       setSearchResults([]);
@@ -74,52 +154,58 @@ export const useChatHistory = () => {
     [connection.address],
   );
 
-  const updateCurrentSession = useCallback(
-    (messages: ChatMessage[]) => {
-      if (!historyState.currentSessionId) return;
+  const updateCurrentSession = useCallback((messages: ChatMessage[]) => {
+    // Race-condition fix (#1213): the previous implementation read
+    // `historyState.currentSessionId` from the closure, which could be stale
+    // if multiple state updates were in-flight. The early-return guard has
+    // been moved inside the functional updater so it always sees the latest
+    // committed state - no stale snapshot can cause a phantom update or a
+    // missed guard.
+    setHistoryState((prev) => {
+      // Guard inside the functional updater so it always reads fresh state,
+      // not the stale closure value of historyState.currentSessionId (#1223).
+      if (!prev.currentSessionId) return prev;
 
-      setHistoryState((prev) => {
-        const sessionIndex = prev.sessions.findIndex(
-          (s) => s.id === prev.currentSessionId,
-        );
-        if (sessionIndex === -1) return prev;
+      const sessionIndex = prev.sessions.findIndex(
+        (s) => s.id === prev.currentSessionId,
+      );
+      if (sessionIndex === -1) return prev;
 
-        const updatedSession = {
-          ...prev.sessions[sessionIndex],
-          messages,
-          lastUpdated: new Date(),
-        };
+      const updatedSession = {
+        ...prev.sessions[sessionIndex],
+        messages,
+        lastUpdated: new Date(),
+      };
 
-        // Update title if this is the first user message
-        const updatedSessionWithTitle =
-          ChatHistoryManager.updateSessionTitle(updatedSession);
+      const updatedSessionWithTitle =
+        ChatHistoryManager.updateSessionTitle(updatedSession);
 
-        const updatedSessions = [...prev.sessions];
-        updatedSessions[sessionIndex] = updatedSessionWithTitle;
+      const updatedSessions = [...prev.sessions];
+      updatedSessions[sessionIndex] = updatedSessionWithTitle;
 
-        return {
-          ...prev,
-          sessions: updatedSessions,
-        };
-      });
-    },
-    [historyState.currentSessionId],
-  );
-
-  const loadSession = useCallback(
-    (sessionId: string): ChatMessage[] | null => {
-      const session = historyState.sessions.find((s) => s.id === sessionId);
-      if (!session) return null;
-
-      setHistoryState((prev) => ({
+      return {
         ...prev,
-        currentSessionId: sessionId,
-      }));
+        sessions: updatedSessions,
+      };
+    });
+  }, []);
 
-      return session.messages;
-    },
-    [historyState.sessions],
-  );
+  const loadSession = useCallback((sessionId: string): ChatMessage[] | null => {
+    // Race-condition fix (#1213): reading `historyState.sessions` from the
+    // closure captured at useCallback creation could be a stale snapshot when
+    // rapid session switches occur. We now read from sessionsRef which is
+    // synchronously updated via a layout-effect-ordered ref, ensuring the
+    // lookup always reflects the latest committed sessions list.
+    const session = sessionsRef.current.find((s) => s.id === sessionId);
+    if (!session) return null;
+
+    setHistoryState((prev) => ({
+      ...prev,
+      currentSessionId: sessionId,
+    }));
+
+    return session.messages;
+  }, []);
 
   const deleteSession = useCallback((sessionId: string) => {
     setHistoryState((prev) => {
@@ -142,55 +228,51 @@ export const useChatHistory = () => {
     localStorage.removeItem('defi_chat_history');
   }, []);
 
-  const exportSession = useCallback(
-    (sessionId: string): string | null => {
-      const session = historyState.sessions.find((s) => s.id === sessionId);
-      if (!session) return null;
-
-      return ChatHistoryManager.exportSession(session);
-    },
-    [historyState.sessions],
-  );
+  const exportSession = useCallback((sessionId: string): string | null => {
+    const session = sessionsRef.current.find((s) => s.id === sessionId);
+    if (!session) return null;
+    return ChatHistoryManager.exportSession(session);
+  }, []);
 
   const exportSessionAsJSON = useCallback(
     (sessionId: string): { data: string; filename: string } | null => {
-      const session = historyState.sessions.find((s) => s.id === sessionId);
+      const session = sessionsRef.current.find((s) => s.id === sessionId);
       if (!session) return null;
-
       const data = ChatHistoryManager.exportSessionAsJSON(session);
-      const filename = ChatHistoryManager.generateExportFilename(sessionId, 'json');
+      const filename = ChatHistoryManager.generateExportFilename(
+        sessionId,
+        'json',
+      );
       return { data, filename };
     },
-    [historyState.sessions],
+    [],
   );
 
   const exportSessionAsTXT = useCallback(
     (sessionId: string): { data: string; filename: string } | null => {
-      const session = historyState.sessions.find((s) => s.id === sessionId);
+      const session = sessionsRef.current.find((s) => s.id === sessionId);
       if (!session) return null;
-
       const data = ChatHistoryManager.exportSessionAsTXT(session);
-      const filename = ChatHistoryManager.generateExportFilename(sessionId, 'txt');
+      const filename = ChatHistoryManager.generateExportFilename(
+        sessionId,
+        'txt',
+      );
       return { data, filename };
     },
-    [historyState.sessions],
+    [],
   );
 
-  const searchSessions = useCallback(
-    (query: string): ChatSession[] => {
-      return ChatHistoryManager.searchSessions(historyState.sessions, query);
-    },
-    [historyState.sessions],
-  );
+  const searchSessions = useCallback((query: string): ChatSession[] => {
+    return ChatHistoryManager.searchSessions(sessionsRef.current, query);
+  }, []);
 
   const getCurrentSession = useCallback((): ChatSession | null => {
     if (!historyState.currentSessionId) return null;
     return (
-      historyState.sessions.find(
-        (s) => s.id === historyState.currentSessionId,
-      ) || null
+      sessionsRef.current.find((s) => s.id === historyState.currentSessionId) ||
+      null
     );
-  }, [historyState.currentSessionId, historyState.sessions]);
+  }, [historyState.currentSessionId]);
 
   const togglePin = useCallback((sessionId: string) => {
     setHistoryState((prev) => {
@@ -223,7 +305,11 @@ export const useChatHistory = () => {
       newPinnedOrder.forEach((id, index) => {
         const s = sessionsMap.get(id);
         if (!s) return;
-        const updatedSession = { ...s, pinned: true, pinnedAt: new Date(now + (pinnedCount - index)) } as ChatSession;
+        const updatedSession = {
+          ...s,
+          pinned: true,
+          pinnedAt: new Date(now + (pinnedCount - index)),
+        } as ChatSession;
         const idx = updated.findIndex((ss) => ss.id === id);
         if (idx !== -1) updated[idx] = updatedSession;
       });

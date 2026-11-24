@@ -2,19 +2,28 @@
 
 import { useState, useEffect, useRef, useCallback, useId } from 'react';
 import { TrendingUp, TrendingDown } from 'lucide-react';
+import { useSingleKeyShortcuts } from '@/contexts/UserPreferencesContext';
 import { fetchTickerData, TickerData } from '@/lib/cryptoPriceService';
+import {
+  formatCurrency,
+  formatPercent,
+  formatRelativeTime,
+} from '@/lib/formatters';
 
 interface PriceTickerProps {
   symbols?: string[];
   currency?: string;
   refreshInterval?: number;
+  locale?: string;
 }
 
 export default function PriceTicker({
   symbols = ['XLM', 'ETH', 'BTC'],
   currency = 'usd',
   refreshInterval = 60000, // 60 seconds default
+  locale = 'en-US',
 }: PriceTickerProps) {
+  const singleKeyShortcuts = useSingleKeyShortcuts();
   const [prices, setPrices] = useState<TickerData>({});
   const [error, setError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -37,29 +46,20 @@ export default function PriceTicker({
   const itemsPerPage = 5;
   const totalPages = Math.max(1, Math.ceil(symbols.length / itemsPerPage));
 
-  // Format price based on currency
-  const formatPrice = (price: number) => {
-    if (currency.toUpperCase() === 'JPY') {
-      return `¥${price.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-    }
-    if (currency.toUpperCase() === 'NGN') {
-      return `₦${price.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-    }
-    if (price < 1) {
-      return `$${price.toFixed(4)}`;
-    }
-    if (price < 1000) {
-      return `$${price.toFixed(2)}`;
-    }
-    return `$${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  };
+  const formatPrice = (price: number) =>
+    formatCurrency(price, currency, locale);
 
-  // Format change percentage
   const formatChange = (change: number | undefined) => {
     if (change === undefined || change === null) return 'N/A%';
-    const formatted = change.toFixed(2);
-    return `${change >= 0 ? '+' : ''}${formatted}%`;
+    return formatPercent(change, locale);
   };
+
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
 
   // Fetch prices with exponential backoff retry on failure
   const fetchPrices = useCallback(async () => {
@@ -76,15 +76,20 @@ export default function PriceTicker({
       if (Object.keys(newPrices).length > 0) {
         setPrices(newPrices);
         hasPreviousDataRef.current = true;
+        setLastUpdated(Date.now());
         setIsStale(false);
         retryCountRef.current = 0;
       } else {
         setError(true);
         if (hasPreviousDataRef.current) setIsStale(true);
-        const delay = Math.min(1000 * Math.pow(2, retryCountRef.current), 30000);
+        const delay = Math.min(
+          1000 * Math.pow(2, retryCountRef.current),
+          30000,
+        );
         retryCountRef.current++;
         retryTimeoutRef.current = setTimeout(() => {
-          if (isMounted.current && fetchPricesRef.current) void fetchPricesRef.current();
+          if (isMounted.current && fetchPricesRef.current)
+            void fetchPricesRef.current();
         }, delay);
       }
     } catch (err) {
@@ -95,7 +100,8 @@ export default function PriceTicker({
       const delay = Math.min(1000 * Math.pow(2, retryCountRef.current), 30000);
       retryCountRef.current++;
       retryTimeoutRef.current = setTimeout(() => {
-        if (isMounted.current && fetchPricesRef.current) void fetchPricesRef.current();
+        if (isMounted.current && fetchPricesRef.current)
+          void fetchPricesRef.current();
       }, delay);
     } finally {
       if (isMounted.current) setIsLoading(false);
@@ -142,12 +148,19 @@ export default function PriceTicker({
         setCurrentPage((p) => Math.min(totalPages - 1, p + 1));
         return;
       }
-      if (e.key === 'r' || e.key === 'R') {
+      if (
+        singleKeyShortcuts &&
+        e.target === e.currentTarget &&
+        !e.altKey &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        e.key.toLowerCase() === 'r'
+      ) {
         e.preventDefault();
         void fetchPrices();
       }
     },
-    [fetchPrices, totalPages],
+    [fetchPrices, singleKeyShortcuts, totalPages],
   );
 
   // Show error state
@@ -178,7 +191,9 @@ export default function PriceTicker({
       role="region"
       tabIndex={0}
       aria-label="Market prices ticker"
-      aria-keyshortcuts="ArrowLeft ArrowRight R"
+      aria-keyshortcuts={
+        singleKeyShortcuts ? 'ArrowLeft ArrowRight R' : 'ArrowLeft ArrowRight'
+      }
       aria-describedby={kbHelpId}
       data-testid="price-ticker"
       onKeyDown={handleKeyDown}
@@ -186,7 +201,7 @@ export default function PriceTicker({
     >
       <span id={kbHelpId} className="sr-only">
         Keyboard shortcuts: Left Arrow for previous page, Right Arrow for next
-        page, R to refresh prices.
+        page{singleKeyShortcuts ? ', R to refresh prices.' : '.'}
       </span>
 
       <div className="flex items-center justify-between mb-2">
@@ -197,7 +212,13 @@ export default function PriceTicker({
           className={`w-2 h-2 rounded-full transition-colors duration-300 ${
             isStale ? 'bg-yellow-400' : error ? 'bg-red-500' : 'bg-green-500'
           }`}
-          aria-label={isStale ? 'Stale data — reconnecting' : error ? 'Data unavailable' : 'Live'}
+          aria-label={
+            isStale
+              ? 'Stale data — reconnecting'
+              : error
+                ? 'Data unavailable'
+                : 'Live'
+          }
         />
       </div>
 
@@ -313,8 +334,19 @@ export default function PriceTicker({
       )}
 
       {isStale && (
-        <p className="text-yellow-500 dark:text-yellow-400 text-[10px] mt-2 text-center" aria-live="polite">
+        <p
+          className="text-yellow-500 dark:text-yellow-400 text-[10px] mt-2 text-center"
+          aria-live="polite"
+        >
           Prices may be stale — retrying&hellip;
+        </p>
+      )}
+      {lastUpdated !== null && (
+        <p
+          className="theme-text-secondary text-[10px] mt-2 text-center opacity-60"
+          data-testid="last-updated"
+        >
+          Updated {formatRelativeTime(lastUpdated, now, locale)}
         </p>
       )}
       {error && !isStale && Object.keys(prices).length > 0 && (

@@ -6,7 +6,7 @@ A decentralized exchange (DEX) interface prioritizing seamless asset-to-bank con
 ![Next.js](https://img.shields.io/badge/Next.js-15.3.5-black)
 ![Rust](https://img.shields.io/badge/Rust-Soroban-orange)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)
-![Coverage](https://img.shields.io/badge/coverage-≥70%25-brightgreen)
+
 
 ## Overview
 
@@ -103,7 +103,7 @@ DEX-CHAT converts crypto to fiat through an AI-guided conversation flow. The end
 
 The user connects their Freighter wallet and tells the AI assistant they want to offramp a token amount. The frontend builds a Soroban `deposit` transaction that transfers the specified token from the user's Stellar account into the `FiatBridge` contract. The contract validates the deposit against oracle-sourced prices, enforces slippage limits, checks per-token and daily deposit caps, and records a `Receipt` with a unique memo hash.
 
-For maintainers: how slippage BPS and the on-chain threshold interact is documented in [docs/slippage-threshold.md](docs/slippage-threshold.md).
+For maintainers: how slippage BPS and the on-chain threshold interact is documented in [../docs/slippage-threshold.md](../docs/slippage-threshold.md).
 
 ### 2. Escrow (on-chain hold)
 
@@ -124,8 +124,8 @@ The user sees a real-time transfer timeline in the chat interface and can downlo
 
 Before you begin, ensure you have the following installed:
 
-- **Node.js** (v18 or higher)
-- **npm** or **yarn**
+- **Node.js** (v20) - See `.nvmrc` in repository root
+- **pnpm** (v9.15.9) - See `packageManager` in package.json
 - **Rust** & Cargo tooling + `wasm32-unknown-unknown` target
 - **Stellar CLI** (for interacting with Soroban)
 - **Docker** & **Docker Compose** (optional, for quick start)
@@ -142,11 +142,11 @@ The fastest way to get the full stack running locally is with Docker Compose. Th
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/leojay-net/DEX-CHAT.git
-cd DEX-CHAT
+git clone https://github.com/leojay-net/Stellar-Dex-Chat.git
+cd Stellar-Dex-Chat
 
 # 2. Copy the Docker environment file
-cp .env.docker dex_with_fiat_frontend/.env.local
+cp .env.docker Dechat/dex_with_fiat_frontend/.env.local
 
 # 3. Start the full stack
 docker compose up
@@ -180,14 +180,14 @@ If you prefer to run services individually or need more control:
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/leojay-net/Dechat.git
-cd Dechat
+git clone https://github.com/leojay-net/Stellar-Dex-Chat.git
+cd Stellar-Dex-Chat
 ```
 
 ### 2. Smart Contract Setup
 
 ```bash
-cd stellar-contracts
+cd Dechat/stellar-contracts
 
 # Build the smart contracts
 cargo build --target wasm32-unknown-unknown --release
@@ -199,13 +199,13 @@ cargo test
 ### 3. Frontend Setup
 
 ```bash
-cd dex_with_fiat_frontend
+cd Dechat/dex_with_fiat_frontend
 
 # Install dependencies needed for Stellar connection
-npm install
+pnpm install
 
 # Start the development server
-npm run dev
+pnpm run dev
 ```
 
 ### 4. Git Pre-commit Hooks (Husky + lint-staged)
@@ -214,8 +214,8 @@ This repository uses Husky and lint-staged to run quick quality checks before ea
 
 ```bash
 # from repository root
-npm install
-npm run prepare
+pnpm install
+pnpm run prepare
 
 # required once for Rust linting
 rustup component add clippy
@@ -235,7 +235,59 @@ npm run precommit:eslint
 
 ## Documentation
 
-- **[TypeScript SDK Examples](docs/typescript-sdk-examples.md)** - Complete guide for calling new contract functions (`heartbeat`, `deny_address`, `migrate_escrow`, `execute_batch_admin`) from the TypeScript SDK with error handling patterns and code examples.
+- **[Environment Variable Reference](../docs/environment.md)** - Centralized guide for client, server, Docker, and CI environment configuration.
+- **[TypeScript SDK Examples](../docs/typescript-sdk-examples.md)** - Complete guide for calling new contract functions (`heartbeat`, `deny_address`, `migrate_escrow`, `execute_batch_admin`) from the TypeScript SDK with error handling patterns and code examples.
+
+### Invariant tests (contracts)
+
+Alongside the per-issue regression tests, the `FiatBridge` suite has dedicated
+**invariant** modules. An invariant test does not check the return value of a
+single call — it exercises a state-changing operation and then re-asserts the
+contract's core accounting and access-control properties, so a regression that
+breaks escrow solvency fails loudly no matter which entry point introduced it.
+
+| Module | Operation under test | Properties asserted |
+|--------|---------------------|---------------------|
+| [`test_deposit_invariants.rs`](stellar-contracts/src/test_deposit_invariants.rs) | `deposit` | `total_deposited >= total_withdrawn`, `net_deposited >= total_liabilities`, contract token balance `>= net_deposited` — held across multiple deposits, multiple users, and deposits interleaved with withdrawal requests |
+| [`test_withdraw_fees_invariants.rs`](stellar-contracts/src/test_withdraw_fees_invariants.rs) | `withdraw_fees` (admin) | The same three accounting invariants, plus fee-accrual monotonicity: the fee vault never decreases between accruals, including batched withdrawals and withdrawals with requests still pending |
+| [`test_pause_invariants.rs`](stellar-contracts/src/test_pause_invariants.rs) | `pause` / `unpause` | While paused, every state-changing entry point (`deposit`, `request_withdrawal`, `execute_withdrawal`, finalization) is rejected while read-only views stay callable; `pause`/`unpause` are admin-only, idempotent, event-emitting, and preserve state across a cycle |
+
+Each module opens with a Rustdoc header (`//!`) stating what it guards, and the
+test names spell out the property rather than the scenario — for example
+`test_deposit_maintains_balance_ge_net_deposited`. Keep both conventions when
+adding cases: a new invariant belongs in the module for the operation that could
+violate it, named after the property it protects.
+
+Run them with the rest of the contract suite:
+
+```bash
+cd Dechat/stellar-contracts
+cargo test                                     # all tests, invariants included
+cargo test invariants                          # invariant modules only
+```
+
+The accounting identities these tests protect are derived in
+[FEE_ACCRUAL_ARCHITECTURE.md](../FEE_ACCRUAL_ARCHITECTURE.md) and
+[OVERFLOW_PREVENTION.md](stellar-contracts/docs/OVERFLOW_PREVENTION.md).
 
 ## Contributing!!
 Contributions and feature reviews are welcome. Please open up an issue to raise bugs or feature requests!
+
+### Repository conventions
+
+This repo takes a high volume of external contributions, so a few conventions
+keep review predictable:
+
+- **Review ownership** — the contracts and the frontend are reviewed by
+  different maintainers. Say in your PR body which of the two areas you touched
+  so the right reviewer picks it up.
+- **PR descriptions** — every PR needs a test plan: the commands you ran
+  (`cargo test`, `cargo clippy`, `pnpm typecheck`, `pnpm lint`, `pnpm test:unit`,
+  `pnpm build`) and their outcome. [`pull_request_template.md`](../.github/pull_request_template.md) in
+  `docs/` shows the shape of a fully written-up PR.
+- **Generated files** — build output (`.next/`, `target/`, `*.wasm`,
+  `tsconfig.tsbuildinfo`) is not source and does not belong in a commit. If you
+  notice one already tracked, mention it in your PR rather than deleting it as a
+  drive-by change; it is easier to review as its own fix.
+- **Scope** — one logical change per PR. Unrelated cleanups found along the way
+  are better filed as issues.

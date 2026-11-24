@@ -8,7 +8,11 @@ const REMINDERS_ENABLED_KEY = 'reminders-enabled';
 const REMINDER_FREQUENCY_KEY = 'reminder-frequency';
 const MASKING_ENABLED_KEY = 'content-masking-enabled';
 const MASKING_STYLE_KEY = 'content-masking-style';
+const HIGH_VALUE_THRESHOLD_KEY = 'high-value-threshold';
+const TWO_FACTOR_ENABLED_KEY = 'two-factor-enabled';
+const SINGLE_KEY_SHORTCUTS_KEY = 'single-key-shortcuts-enabled';
 const DEFAULT_CURRENCY = 'usd';
+const DEFAULT_HIGH_VALUE_THRESHOLD = 500;
 
 export const SUPPORTED_FIAT_CURRENCIES = [
   { code: 'usd', label: 'USD — US Dollar', symbol: '$' },
@@ -35,9 +39,15 @@ interface UserPreferencesContextType {
   setMaskingEnabled: (enabled: boolean) => void;
   maskingStyle: MaskingStyle;
   setMaskingStyle: (style: MaskingStyle) => void;
+  highValueThreshold: number;
+  setHighValueThreshold: (threshold: number) => void;
+  twoFactorEnabled: boolean;
+  setTwoFactorEnabled: (enabled: boolean) => void;
+  singleKeyShortcutsEnabled: boolean;
+  setSingleKeyShortcutsEnabled: (enabled: boolean) => void;
 }
 
-const UserPreferencesContext = createContext<
+export const UserPreferencesContext = createContext<
   UserPreferencesContextType | undefined
 >(undefined);
 
@@ -46,11 +56,21 @@ export function UserPreferencesProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [fiatCurrencyState, setFiatCurrencyState] = useState<FiatCurrencyCode>(DEFAULT_CURRENCY);
+  const [fiatCurrencyState, setFiatCurrencyState] =
+    useState<FiatCurrencyCode>(DEFAULT_CURRENCY);
   const [remindersEnabledState, setRemindersEnabledState] = useState(false);
-  const [reminderFrequencyState, setReminderFrequencyState] = useState<'weekly' | 'monthly'>('weekly');
+  const [reminderFrequencyState, setReminderFrequencyState] = useState<
+    'weekly' | 'monthly'
+  >('weekly');
   const [maskingEnabledState, setMaskingEnabledState] = useState(false);
-  const [maskingStyleState, setMaskingStyleState] = useState<MaskingStyle>('asterisk');
+  const [maskingStyleState, setMaskingStyleState] =
+    useState<MaskingStyle>('asterisk');
+  const [highValueThresholdState, setHighValueThresholdState] = useState(
+    DEFAULT_HIGH_VALUE_THRESHOLD,
+  );
+  const [twoFactorEnabledState, setTwoFactorEnabledState] = useState(true);
+  const [singleKeyShortcutsEnabled, setSingleKeyShortcutsState] =
+    useState(true);
 
   // Restore saved preferences on mount
   useEffect(() => {
@@ -82,10 +102,34 @@ export function UserPreferencesProvider({
       setMaskingEnabledState(savedMasking === 'true');
     }
 
-    const savedMaskingStyle = localStorage.getItem(MASKING_STYLE_KEY) as MaskingStyle | null;
-    if (savedMaskingStyle && ['asterisk', 'block', 'initial', 'pipe'].includes(savedMaskingStyle)) {
+    const savedMaskingStyle = localStorage.getItem(
+      MASKING_STYLE_KEY,
+    ) as MaskingStyle | null;
+    if (
+      savedMaskingStyle &&
+      ['asterisk', 'block', 'initial', 'pipe', 'address'].includes(
+        savedMaskingStyle,
+      )
+    ) {
       setMaskingStyleState(savedMaskingStyle as MaskingStyle);
     }
+
+    const savedThreshold = localStorage.getItem(HIGH_VALUE_THRESHOLD_KEY);
+    if (savedThreshold !== null) {
+      const threshold = parseInt(savedThreshold, 10);
+      if (!isNaN(threshold) && threshold > 0) {
+        setHighValueThresholdState(threshold);
+      }
+    }
+
+    const savedTwoFactor = localStorage.getItem(TWO_FACTOR_ENABLED_KEY);
+    if (savedTwoFactor !== null) {
+      setTwoFactorEnabledState(savedTwoFactor === 'true');
+    }
+
+    setSingleKeyShortcutsState(
+      localStorage.getItem(SINGLE_KEY_SHORTCUTS_KEY) !== 'false',
+    );
   }, []);
 
   const setFiatCurrency = (currency: FiatCurrencyCode) => {
@@ -113,8 +157,24 @@ export function UserPreferencesProvider({
     localStorage.setItem(MASKING_STYLE_KEY, style);
   };
 
+  const setHighValueThreshold = (threshold: number) => {
+    setHighValueThresholdState(threshold);
+    localStorage.setItem(HIGH_VALUE_THRESHOLD_KEY, String(threshold));
+  };
+
+  const setTwoFactorEnabled = (enabled: boolean) => {
+    setTwoFactorEnabledState(enabled);
+    localStorage.setItem(TWO_FACTOR_ENABLED_KEY, String(enabled));
+  };
+
+  const setSingleKeyShortcutsEnabled = (enabled: boolean) => {
+    setSingleKeyShortcutsState(enabled);
+    localStorage.setItem(SINGLE_KEY_SHORTCUTS_KEY, String(enabled));
+  };
+
   const currencySymbol =
-    SUPPORTED_FIAT_CURRENCIES.find((c) => c.code === fiatCurrencyState)?.symbol ?? '$';
+    SUPPORTED_FIAT_CURRENCIES.find((c) => c.code === fiatCurrencyState)
+      ?.symbol ?? '$';
 
   return (
     <UserPreferencesContext.Provider
@@ -130,6 +190,12 @@ export function UserPreferencesProvider({
         setMaskingEnabled,
         maskingStyle: maskingStyleState,
         setMaskingStyle,
+        highValueThreshold: highValueThresholdState,
+        setHighValueThreshold,
+        twoFactorEnabled: twoFactorEnabledState,
+        setTwoFactorEnabled,
+        singleKeyShortcutsEnabled,
+        setSingleKeyShortcutsEnabled,
       }}
     >
       {children}
@@ -140,7 +206,12 @@ export function UserPreferencesProvider({
 export const useUserPreferences = () => {
   const context = useContext(UserPreferencesContext);
   if (!context) {
-    throw new Error('useUserPreferences must be used within UserPreferencesProvider');
+    throw new Error(
+      'useUserPreferences must be used within UserPreferencesProvider',
+    );
   }
   return context;
 };
+
+export const useSingleKeyShortcuts = () =>
+  useContext(UserPreferencesContext)?.singleKeyShortcutsEnabled !== false;

@@ -24,21 +24,19 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable
         with:
           toolchain: stable
-          targets: wasm32-unknown-unknown
+          targets: wasm32v1-none
 
-      - name: Install Soroban CLI
-        run: |
-          curl -s https://raw.githubusercontent.com/stellar/rs-soroban-sdk/master/soroban-env/install-soroban.sh | bash
-          soroban --version
+      - name: Install Stellar CLI
+        run: cargo install --locked stellar-cli --version 28.0.0
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry
@@ -49,7 +47,7 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Build contract
-        run: cargo build --target wasm32-unknown-unknown --release
+        run: stellar contract build
 
       - name: Deploy to Futurenet
         id: deploy
@@ -68,7 +66,7 @@ jobs:
 
       - name: Upload contract ID artifact
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: contract-deployment-${{ github.sha }}
           path: Dechat/stellar-contracts/contract_id_futurenet.txt
@@ -76,7 +74,7 @@ jobs:
 
       - name: Create deployment status
         if: always()
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const status = '${{ job.status }}' === 'success' ? 'success' : 'failure';

@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+vi.mock('server-only', () => ({}));
 import {
   evaluateAdminIpAllowlist,
   parseIpAllowlist,
@@ -28,21 +29,21 @@ describe('parseIpAllowlist', () => {
 });
 
 describe('resolveClientIp', () => {
-  it('prefers x-forwarded-for and takes the first hop', () => {
+  it('prefers the same platform-provided IP as the rate limiter', () => {
     const request = createRequest({
       'x-forwarded-for': '203.0.113.10, 198.51.100.25',
-      'x-real-ip': '198.51.100.25',
+      'cf-connecting-ip': '198.51.100.25',
     });
 
-    expect(resolveClientIp(request)).toBe('203.0.113.10');
+    expect(resolveClientIp(request)).toBe('198.51.100.25');
   });
 
-  it('handles forwarded header format', () => {
+  it('does not trust forwarded headers when no proxy hops are configured', () => {
     const request = createRequest({
-      forwarded: 'for="198.51.100.45";proto=https;host=example.com',
+      'x-forwarded-for': '198.51.100.45',
     });
 
-    expect(resolveClientIp(request)).toBe('198.51.100.45');
+    expect(resolveClientIp(request)).toBeNull();
   });
 });
 

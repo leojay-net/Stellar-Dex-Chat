@@ -6,7 +6,6 @@ import {
   Shield,
   Zap,
   Globe,
-  CheckCircle,
   Play,
   Lock,
   Code,
@@ -27,8 +26,13 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTheme } from '../contexts/ThemeContext';
+import { fetchTickerData } from '../lib/cryptoPriceService';
 import CopyButton from '@/components/ui/CopyButton';
 import OfflineStatusBanner from '@/components/OfflineStatusBanner';
+import ShortcutsHelp from '@/components/ShortcutsHelp';
+import { CONTRACT_ID } from '@/lib/stellarContract';
+import { useSingleKeyShortcuts } from '@/contexts/UserPreferencesContext';
+import { isEditableShortcutTarget } from '@/lib/keyboardShortcuts';
 
 interface FeatureCardProps {
   icon: React.ElementType;
@@ -57,7 +61,7 @@ const FeatureCard: React.FC<FeatureCardProps> = ({
       <div className="bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-xl p-6 hover:border-blue-500/50 transition-all duration-300 hover:bg-[var(--color-surface)] backdrop-blur-sm shadow-sm hover:shadow-md">
         <div className="flex items-center space-x-4 mb-4">
           <div className="w-12 h-12 bg-blue-600/10 rounded-lg flex items-center justify-center">
-            <Icon className="w-6 h-6 text-blue-500" />
+            <Icon className="w-6 h-6 text-blue-500" aria-hidden="true" />
           </div>
           <h3 className="text-xl font-semibold text-[var(--color-text-primary)]">
             {title}
@@ -107,30 +111,78 @@ const Step: React.FC<StepProps> = ({ number, title, description, delay }) => {
 
 export default function LandingPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [isSubmitted, setIsSubmitted] = useState(false);
   const { isDarkMode, toggleDarkMode } = useTheme();
+  const singleKeyShortcuts = useSingleKeyShortcuts();
   const [heroVisible, setHeroVisible] = useState(false);
+  const [xlmPrice, setXlmPrice] = useState<number | null>(null);
+  const [xlmChange, setXlmChange] = useState<number | null>(null);
+  const [priceLoading, setPriceLoading] = useState(true);
 
-  const contractAddress =
-    'CB4L7Q6M3N7Z6K4L2A3B5C6D7E8F9G0H1I2J3K4L5M6N7O8P9Q0R1S2T3U4V5W6X7Y8Z9'; // Replace with actual deployed address
+  const contractAddress = CONTRACT_ID;
 
   useEffect(() => {
     setHeroVisible(true);
+  }, []);
+
+  // Fetch XLM price data every 60 seconds
+  useEffect(() => {
+    let isActive = true;
+
+    const fetchPrice = async () => {
+      try {
+        if (isActive) setPriceLoading(true);
+        const tickerData = await fetchTickerData(['XLM'], 'usd');
+        if (isActive && tickerData && tickerData.XLM) {
+          setXlmPrice(tickerData.XLM.price);
+          setXlmChange(tickerData.XLM.change24h || 0);
+        }
+      } catch (error) {
+        console.error('Failed to fetch XLM price:', error);
+      } finally {
+        if (isActive) setPriceLoading(false);
+      }
+    };
+
+    fetchPrice();
+    const interval = setInterval(fetchPrice, 60000); // Refresh every 60 seconds
+
+    return () => {
+      isActive = false;
+      clearInterval(interval);
+    };
   }, []);
 
   const handleGetStarted = () => {
     router.push('/chat');
   };
 
-  const handleEmailSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitted(true);
-    // Here you would typically send the email to your backend
-    setTimeout(() => {
-      router.push('/chat');
-    }, 1500);
-  };
+  // #1185: "g" launches the app (same as the Get Started CTA), "d" toggles
+  // the theme. Ignored while focus is in the email field (or any other
+  // form control) so typing "g"/"d" there isn't hijacked.
+  useEffect(() => {
+    if (!singleKeyShortcuts) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        isEditableShortcutTarget(event.target)
+      ) {
+        return;
+      }
+      if (event.key === 'g' || event.key === 'G') {
+        event.preventDefault();
+        router.push('/chat');
+      } else if (event.key === 'd' || event.key === 'D') {
+        event.preventDefault();
+        toggleDarkMode();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [router, singleKeyShortcuts, toggleDarkMode]);
 
   const features = [
     {
@@ -209,12 +261,12 @@ export default function LandingPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] transition-colors duration-200">
+    <div className="min-h-screen w-full overflow-x-hidden bg-[var(--background)] text-[var(--foreground)] transition-colors duration-200">
       {/* Offline Status Banner */}
       <OfflineStatusBanner />
 
-      {/* Theme Toggle Button */}
-      <div className="fixed top-6 right-6 z-50">
+      <div className="fixed top-6 right-6 z-50 flex items-center gap-2">
+        <ShortcutsHelp />
         <button
           onClick={toggleDarkMode}
           className="p-3 rounded-full bg-[var(--color-surface-elevated)] border border-[var(--color-border)] text-[var(--color-text-primary)] hover:bg-[var(--color-surface)] transition-all duration-300 shadow-lg hover:shadow-blue-500/20 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -302,9 +354,12 @@ export default function LandingPage() {
                 className="group flex items-center space-x-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] px-8 py-4 rounded-lg text-lg font-semibold transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-blue-500/25"
                 aria-label="Start bridging: open the chat app"
               >
-                <Play className="w-5 h-5" />
+                <Play className="w-5 h-5" aria-hidden="true" />
                 <span>Start Bridging</span>
-                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-300" />
+                <ArrowRight
+                  className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-300"
+                  aria-hidden="true"
+                />
               </button>
 
               <a
@@ -323,12 +378,57 @@ export default function LandingPage() {
               <p className="text-sm text-[var(--color-text-muted)] mb-2">
                 Smart Contract Address
               </p>
-              <div className="flex items-center justify-between">
-                <code className="text-blue-400 font-mono text-sm break-all flex-1 mr-2">
+              <div className="flex min-w-0 items-center justify-between">
+                <a
+                  href={`https://stellar.expert/explorer/testnet/contract/${contractAddress}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="min-w-0 text-blue-400 font-mono text-sm break-all flex-1 mr-2 hover:underline"
+                >
                   {contractAddress}
-                </code>
+                </a>
                 <CopyButton value={contractAddress} />
               </div>
+            </div>
+
+            {/* XLM Price Chart Widget */}
+            <div className="mt-4 bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-xl p-6 max-w-md mx-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-[var(--color-text-primary)]">
+                  XLM Price
+                </h3>
+                {priceLoading ? (
+                  <div className="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                ) : (
+                  <span className="text-xs text-[var(--color-text-muted)]">
+                    Live
+                  </span>
+                )}
+              </div>
+              <div className="flex items-baseline gap-3 mb-2">
+                {priceLoading ? (
+                  <div className="h-8 bg-gray-700 rounded animate-pulse w-32"></div>
+                ) : (
+                  <>
+                    <span className="text-3xl font-bold text-[var(--color-text-primary)]">
+                      ${xlmPrice?.toFixed(4) || '0.0000'}
+                    </span>
+                    {xlmChange !== null && (
+                      <span
+                        className={`text-sm font-medium ${
+                          xlmChange >= 0 ? 'text-green-500' : 'text-red-500'
+                        }`}
+                      >
+                        {xlmChange >= 0 ? '+' : ''}
+                        {xlmChange.toFixed(2)}%
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
+              <p className="text-xs text-[var(--color-text-muted)]">
+                24h change • Refreshes every 60s
+              </p>
             </div>
           </div>
         </section>
@@ -381,7 +481,10 @@ export default function LandingPage() {
 
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
               <div className="text-center p-6 bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] hover:border-blue-500/50 transition-all duration-300">
-                <Network className="w-12 h-12 text-blue-500 mx-auto mb-4" />
+                <Network
+                  className="w-12 h-12 text-blue-500 mx-auto mb-4"
+                  aria-hidden="true"
+                />
                 <h3 className="text-lg font-semibold mb-2 text-[var(--color-text-primary)]">
                   Soroban
                 </h3>
@@ -391,7 +494,10 @@ export default function LandingPage() {
                 </p>
               </div>
               <div className="text-center p-6 bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] hover:border-purple-500/50 transition-all duration-300">
-                <Shield className="w-12 h-12 text-purple-500 mx-auto mb-4" />
+                <Shield
+                  className="w-12 h-12 text-purple-500 mx-auto mb-4"
+                  aria-hidden="true"
+                />
                 <h3 className="text-lg font-semibold mb-2 text-[var(--color-text-primary)]">
                   Stellar Network
                 </h3>
@@ -401,7 +507,10 @@ export default function LandingPage() {
                 </p>
               </div>
               <div className="text-center p-6 bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] hover:border-green-500/50 transition-all duration-300">
-                <Cpu className="w-12 h-12 text-green-500 mx-auto mb-4" />
+                <Cpu
+                  className="w-12 h-12 text-green-500 mx-auto mb-4"
+                  aria-hidden="true"
+                />
                 <h3 className="text-lg font-semibold mb-2 text-[var(--color-text-primary)]">
                   AI-Optimized
                 </h3>
@@ -411,7 +520,10 @@ export default function LandingPage() {
                 </p>
               </div>
               <div className="text-center p-6 bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] hover:border-yellow-500/50 transition-all duration-300">
-                <Lock className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
+                <Lock
+                  className="w-12 h-12 text-yellow-500 mx-auto mb-4"
+                  aria-hidden="true"
+                />
                 <h3 className="text-lg font-semibold mb-2 text-[var(--color-text-primary)]">
                   Freighter Wallet
                 </h3>
@@ -446,7 +558,10 @@ export default function LandingPage() {
             <div className="grid md:grid-cols-2 gap-12">
               <div>
                 <h3 className="text-2xl font-semibold mb-6 flex items-center text-[var(--color-text-primary)]">
-                  <Network className="w-6 h-6 mr-3 text-blue-500" />
+                  <Network
+                    className="w-6 h-6 mr-3 text-blue-500"
+                    aria-hidden="true"
+                  />
                   Stellar Assets
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -477,7 +592,10 @@ export default function LandingPage() {
 
               <div>
                 <h3 className="text-2xl font-semibold mb-6 flex items-center text-[var(--color-text-primary)]">
-                  <Globe className="w-6 h-6 mr-3 text-green-500" />
+                  <Globe
+                    className="w-6 h-6 mr-3 text-green-500"
+                    aria-hidden="true"
+                  />
                   Fiat Currencies
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -555,11 +673,15 @@ export default function LandingPage() {
                   key={index}
                   className="bg-[var(--color-surface)] p-6 rounded-xl border border-[var(--color-border)] shadow-sm"
                 >
-                  <div className="flex items-center mb-4">
+                  <div
+                    className="flex items-center mb-4"
+                    aria-label={`Rating: ${testimonial.rating} out of 5 stars`}
+                  >
                     {[...Array(testimonial.rating)].map((_, i) => (
                       <Star
                         key={i}
                         className="w-5 h-5 text-yellow-400 fill-current"
+                        aria-hidden="true"
                       />
                     ))}
                   </div>
@@ -648,47 +770,6 @@ export default function LandingPage() {
             <p className="text-xl text-[var(--color-text-secondary)] mb-8">
               Experience the future of XLM-to-fiat finance with our
               Soroban-powered platform
-            </p>
-
-            {!isSubmitted ? (
-              <form
-                onSubmit={handleEmailSubmit}
-                className="flex flex-col sm:flex-row gap-4 max-w-lg mx-auto"
-                aria-label="Early access email signup"
-              >
-                <label htmlFor="landing-email-input" className="sr-only">
-                  Email address for early access
-                </label>
-                <input
-                  id="landing-email-input"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter your email address"
-                  autoComplete="email"
-                  className="flex-1 px-4 py-3 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:border-blue-500 transition-colors duration-300"
-                  required
-                />
-                <button
-                  type="submit"
-                  className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] px-6 py-3 rounded-lg font-semibold transition-all duration-300 hover:scale-105 whitespace-nowrap"
-                  aria-label="Submit email and launch app"
-                >
-                  Launch App
-                </button>
-              </form>
-            ) : (
-              <div className="flex items-center justify-center space-x-2 text-green-400">
-                <CheckCircle className="w-6 h-6" />
-                <span className="text-lg">
-                  Welcome to Stellar DeFi! Launching DeFi Hub...
-                </span>
-              </div>
-            )}
-
-            <p className="text-sm text-[var(--color-text-muted)] mt-4">
-              By signing up, you agree to our Terms of Service and Privacy
-              Policy
             </p>
           </div>
         </section>
@@ -789,21 +870,21 @@ export default function LandingPage() {
                   href="#"
                   className="flex items-center text-gray-400 hover:text-white transition-colors"
                 >
-                  <FileText className="w-4 h-4 mr-2" />
+                  <FileText className="w-4 h-4 mr-2" aria-hidden="true" />
                   Documentation
                 </a>
                 <a
                   href="#"
                   className="flex items-center text-gray-400 hover:text-white transition-colors"
                 >
-                  <HelpCircle className="w-4 h-4 mr-2" />
+                  <HelpCircle className="w-4 h-4 mr-2" aria-hidden="true" />
                   Help Center
                 </a>
                 <a
                   href="#"
                   className="flex items-center text-gray-400 hover:text-white transition-colors"
                 >
-                  <MessageSquare className="w-4 h-4 mr-2" />
+                  <MessageSquare className="w-4 h-4 mr-2" aria-hidden="true" />
                   Community
                 </a>
                 <a
@@ -826,15 +907,15 @@ export default function LandingPage() {
               <h3 className="text-lg font-semibold mb-6">Contact</h3>
               <div className="space-y-4">
                 <div className="flex items-center text-gray-400">
-                  <Mail className="w-4 h-4 mr-3" />
+                  <Mail className="w-4 h-4 mr-3" aria-hidden="true" />
                   <span>support@dexfiat.com</span>
                 </div>
                 <div className="flex items-center text-gray-400">
-                  <Phone className="w-4 h-4 mr-3" />
+                  <Phone className="w-4 h-4 mr-3" aria-hidden="true" />
                   <span>+1 (555) 123-4567</span>
                 </div>
                 <div className="flex items-start text-gray-400">
-                  <MapPin className="w-4 h-4 mr-3 mt-1" />
+                  <MapPin className="w-4 h-4 mr-3 mt-1" aria-hidden="true" />
                   <span>
                     San Francisco, CA
                     <br />

@@ -8,6 +8,92 @@ import {
 import { telemetry } from '@/lib/telemetry';
 import { toastStore } from '@/lib/toastStore';
 
+/**
+ * Retry configuration for AI API requests
+ */
+interface RetryConfig {
+  maxRetries?: number;
+  initialDelayMs?: number;
+  maxDelayMs?: number;
+  backoffMultiplier?: number;
+}
+
+/**
+ * Default retry configuration for AI requests
+ */
+const DEFAULT_AI_RETRY_CONFIG: Required<RetryConfig> = {
+  maxRetries: 3,
+  initialDelayMs: 1000,
+  maxDelayMs: 10000,
+  backoffMultiplier: 2,
+};
+
+/**
+ * Calculate delay with exponential backoff and jitter
+ * @param attempt - Current attempt number (0-indexed)
+ * @param config - Retry configuration
+ * @returns Delay in milliseconds
+ */
+function calculateBackoffDelay(
+  attempt: number,
+  config: Required<RetryConfig>,
+): number {
+  const exponentialDelay =
+    config.initialDelayMs * Math.pow(config.backoffMultiplier, attempt);
+  const jitter = exponentialDelay * 0.25 * (Math.random() * 2 - 1);
+  return Math.min(config.maxDelayMs, exponentialDelay + jitter);
+}
+
+/**
+ * Sleep for a specified duration
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Execute a function with retry logic and exponential backoff for AI requests
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  config: RetryConfig = {},
+): Promise<T> {
+  const mergedConfig: Required<RetryConfig> = {
+    ...DEFAULT_AI_RETRY_CONFIG,
+    ...config,
+  };
+
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= mergedConfig.maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+
+      // Don't retry on abort errors
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
+
+      // Check if error is retryable
+      const isRetryable = isLikelyNetworkError(error);
+
+      if (!isRetryable) {
+        throw error;
+      }
+
+      // Don't wait after the last attempt
+      if (attempt < mergedConfig.maxRetries) {
+        const delay = calculateBackoffDelay(attempt, mergedConfig);
+        await sleep(delay);
+      }
+    }
+  }
+
+  throw lastError;
+}
+
 function isLikelyNetworkError(error: unknown): boolean {
   if (error instanceof DOMException && error.name === 'AbortError') {
     return false;
@@ -23,7 +109,8 @@ function isLikelyNetworkError(error: unknown): boolean {
     return (
       m.includes('failed to fetch') ||
       m.includes('network') ||
-      m.includes('load failed')
+      m.includes('load failed') ||
+      m.includes('timeout')
     );
   }
   return false;
@@ -94,7 +181,12 @@ export const ASSISTANT_ANIMATION_VARIANTS: Record<
       opacity: 1,
       x: 0,
       scale: 1,
-      transition: { duration: 0.4, type: 'spring', stiffness: 300, damping: 20 },
+      transition: {
+        duration: 0.4,
+        type: 'spring',
+        stiffness: 300,
+        damping: 20,
+      },
     },
   },
 
@@ -324,7 +416,11 @@ export class AIAssistant {
     const controllerSignal = signal || this.abortController.signal;
     try {
       // Validate input to prevent processing empty or malformed messages
-      if (!message || typeof message !== 'string' || message.trim().length === 0) {
+      if (
+        !message ||
+        typeof message !== 'string' ||
+        message.trim().length === 0
+      ) {
         console.warn('AIAssistant: Received empty or invalid message');
         return AIAssistant.SAFE_FALLBACK_RESULT;
       }
@@ -342,22 +438,30 @@ export class AIAssistant {
         };
       }
 
-      const response = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, context: trimmedContext }),
-        signal: controllerSignal,
+      const response = await withRetry(async () => {
+        const res = await fetch('/api/ai/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message, context: trimmedContext }),
+          signal: controllerSignal,
+        });
+
+        if (!res.ok) {
+          throw new Error(`AI chat API returned ${res.status}`);
+        }
+
+        return res;
       });
 
-      if (!response.ok) {
-        throw new Error(`AI chat API returned ${response.status}`);
-      }
-
-      const result: AIAnalysisResult = await response.json() as AIAnalysisResult;
+      const result: AIAnalysisResult =
+        (await response.json()) as AIAnalysisResult;
 
       // Validate result structure before processing
       if (!this.isValidAnalysisResult(result)) {
-        console.warn('AIAssistant: API returned invalid result structure', result);
+        console.warn(
+          'AIAssistant: API returned invalid result structure',
+          result,
+        );
         return AIAssistant.SAFE_FALLBACK_RESULT;
       }
 
@@ -734,13 +838,14 @@ Choose one of the next actions below and I'll keep it moving.`;
     if (!result || typeof result !== 'object') return false;
     const obj = result as Record<string, unknown>;
     return (
-      typeof obj.intent === 'string' &&
-      typeof obj.confidence === 'number' &&
-      obj.confidence >= 0 &&
-      obj.confidence <= 1 &&
-      typeof obj.suggestedResponse === 'string' &&
-      Array.isArray(obj.extractedData) || typeof obj.extractedData === 'object' &&
-      Array.isArray(obj.requiredQuestions)
+      (typeof obj.intent === 'string' &&
+        typeof obj.confidence === 'number' &&
+        obj.confidence >= 0 &&
+        obj.confidence <= 1 &&
+        typeof obj.suggestedResponse === 'string' &&
+        Array.isArray(obj.extractedData)) ||
+      (typeof obj.extractedData === 'object' &&
+        Array.isArray(obj.requiredQuestions))
     );
   }
 
@@ -760,7 +865,8 @@ Choose one of the next actions below and I'll keep it moving.`;
     missingData: string[],
     signal?: AbortSignal,
   ): Promise<string> {
-    const fallbackQuestion = 'Could you provide more details about your request?';
+    const fallbackQuestion =
+      'Could you provide more details about your request?';
 
     if (this.abortController) {
       this.abortController.abort();
@@ -770,26 +876,36 @@ Choose one of the next actions below and I'll keep it moving.`;
 
     try {
       // Validate inputs to prevent malformed API calls
-      if (!intent || typeof intent !== 'string' || !Array.isArray(missingData)) {
-        console.warn('AIAssistant: Invalid inputs to generateFollowUpQuestion', { intent, missingData });
+      if (
+        !intent ||
+        typeof intent !== 'string' ||
+        !Array.isArray(missingData)
+      ) {
+        console.warn(
+          'AIAssistant: Invalid inputs to generateFollowUpQuestion',
+          { intent, missingData },
+        );
         return fallbackQuestion;
       }
 
-      const response = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: `Generate a single, natural follow-up question for a Stellar DeFi assistant. Intent: ${intent}. Missing data: ${missingData.join(', ')}. Return only the question text.`,
-        }),
-        signal: controllerSignal,
+      const response = await withRetry(async () => {
+        const res = await fetch('/api/ai/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: `Generate a single, natural follow-up question for a Stellar DeFi assistant. Intent: ${intent}. Missing data: ${missingData.join(', ')}. Return only the question text.`,
+          }),
+          signal: controllerSignal,
+        });
+
+        if (!res.ok) {
+          throw new Error(`Follow-up question API returned ${res.status}`);
+        }
+
+        return res;
       });
 
-      if (!response.ok) {
-        console.warn(`AIAssistant: Follow-up question API returned ${response.status}`);
-        return fallbackQuestion;
-      }
-
-      const result = await response.json() as AIAnalysisResult;
+      const result = (await response.json()) as AIAnalysisResult;
       const question = result.suggestedResponse || fallbackQuestion;
 
       // Validate returned question is non-empty

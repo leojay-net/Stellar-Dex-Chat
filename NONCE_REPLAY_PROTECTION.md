@@ -79,10 +79,10 @@ fn validate_and_increment_nonce(env: &Env, operator: &Address, provided_nonce: u
         }
     }
 
-    // Increment nonce
+    // Increment nonce with overflow protection
     env.storage()
         .instance()
-        .set(&DataKey::OperatorNonce(operator.clone()), &(current_nonce + 1));
+        .set(&DataKey::OperatorNonce(operator.clone()), &(current_nonce.checked_add(1).ok_or(Error::Overflow)?));
 
     env.events().publish(
         (Symbol::new(env, "nonce_inc"), operator.clone()),
@@ -303,8 +303,45 @@ The implementation publishes events for monitoring:
 3. **Operator Activity**: Track heartbeat frequency per operator
 4. **Replay Attempts**: Monitor `StaleNonce` errors as potential attacks
 
+## Overflow Prevention
+
+The nonce implementation includes comprehensive overflow protection to prevent nonce counter overflow and ensure replay protection remains functional even at high transaction volumes.
+
+### Nonce Increment Safety
+
+Nonce counters use `checked_add` to prevent overflow:
+
+```rust
+// Increment nonce with overflow protection
+env.storage()
+    .instance()
+    .set(&DataKey::OperatorNonce(operator.clone()), &(current_nonce.checked_add(1).ok_or(Error::Overflow)?));
+```
+
+**Safety guarantees:**
+- Returns `Error::Overflow` if incrementing would exceed `u64::MAX`
+- Effectively impossible in practice (would require 2⁶⁴ operations per operator)
+- Prevents nonce wraparound that could break replay protection
+
+### Overflow Prevention Strategy
+
+1. **Checked Arithmetic**: All nonce operations use `checked_add` instead of unchecked addition
+2. **Error Propagation**: Overflow errors are returned as `Error::Overflow` rather than panicking
+3. **Bounded Growth**: Nonce counters are bounded by `u64::MAX` (18.4 quintillion operations)
+4. **Per-Operator Isolation**: Each operator has independent nonce counter, preventing cross-operator overflow
+
+### Practical Considerations
+
+- **u64 Maximum**: 18,446,744,073,709,551,615 possible nonce values
+- **Transaction Rate**: At 1,000 transactions/second, would take ~584 years to overflow
+- **Monitoring**: Track nonce values to detect unusual patterns
+- **Recovery**: In practice, nonce overflow is virtually impossible
+
+See [OVERFLOW_PREVENTION_ARCHITECTURE.md](OVERFLOW_PREVENTION_ARCHITECTURE.md) for comprehensive overflow prevention details.
+
 ## References
 
 - [Stellar Smart Contracts Documentation](https://developers.stellar.org/docs/smart-contracts)
 - [Replay Attack Prevention Best Practices](https://en.wikipedia.org/wiki/Replay_attack)
 - [Nonce-Based Authentication](https://en.wikipedia.org/wiki/Cryptographic_nonce)
+- [Overflow Prevention Architecture](OVERFLOW_PREVENTION_ARCHITECTURE.md)

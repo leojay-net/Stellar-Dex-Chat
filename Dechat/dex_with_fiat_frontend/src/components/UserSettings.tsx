@@ -34,6 +34,10 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
     setRemindersEnabled,
     reminderFrequency,
     setReminderFrequency,
+    highValueThreshold,
+    setHighValueThreshold,
+    twoFactorEnabled,
+    setTwoFactorEnabled,
   } = useUserPreferences();
   const { consented: telemetryConsented, setConsent: setTelemetryConsent } = useChatTelemetry();
   const { beneficiaries, isLoaded, addBeneficiary, deleteBeneficiary, renameBeneficiary } = useBeneficiaries();
@@ -47,10 +51,11 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
 
   // Beneficiary management states
   const [showAddBeneficiary, setShowAddBeneficiary] = useState(false);
-  const [editingBeneficiary, setEditingBeneficiary] = useState<Beneficiary | null>(null);
+  const [editingBeneficiary, setEditingBeneficiary] =
+    useState<Beneficiary | null>(null);
   const [newBeneficiaryName, setNewBeneficiaryName] = useState('');
   const [newBeneficiaryAddress, setNewBeneficiaryAddress] = useState('');
-  
+
   useAccessibleModal(isOpen, panelRef, onClose);
 
   if (!isOpen) return null;
@@ -66,7 +71,14 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
         renameBeneficiary(editingBeneficiary.id, newBeneficiaryName);
         setEditingBeneficiary(null);
       } else {
-        addBeneficiary(0, 'Unknown Bank', '000', newBeneficiaryAddress, newBeneficiaryAddress, newBeneficiaryName);
+        addBeneficiary(
+          0,
+          'Unknown Bank',
+          '000',
+          newBeneficiaryAddress,
+          newBeneficiaryAddress,
+          newBeneficiaryName,
+        );
       }
       setNewBeneficiaryName('');
       setNewBeneficiaryAddress('');
@@ -171,7 +183,9 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
             </p>
 
             {showAddBeneficiary && (
-              <div className={`p-3 rounded-lg mb-3 border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+              <div
+                className={`p-3 rounded-lg mb-3 border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}
+              >
                 <div className="space-y-3">
                   <div>
                     <label
@@ -268,10 +282,14 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                       }`}
                     >
                       <div className="min-w-0 flex-1">
-                        <p className={`text-xs font-medium truncate ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>
+                        <p
+                          className={`text-xs font-medium truncate ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+                        >
                           {beneficiary.name}
                         </p>
-                        <p className={`text-[10px] truncate ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                        <p
+                          className={`text-[10px] truncate ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}
+                        >
                           {beneficiary.accountName}
                         </p>
                       </div>
@@ -288,7 +306,9 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                           <Edit2 className="w-3 h-3" />
                         </button>
                         <button
-                          onClick={() => handleDeleteBeneficiary(beneficiary.id)}
+                          onClick={() =>
+                            handleDeleteBeneficiary(beneficiary.id)
+                          }
                           aria-label={`Delete ${beneficiary.name}`}
                           className={`p-1.5 rounded transition-colors ${
                             isDarkMode
@@ -550,11 +570,16 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
               aria-label="Select language"
               className="space-y-1"
             >
-              {([
-                { code: 'en', label: 'English' },
-                { code: 'fr', label: 'Français' },
-                { code: 'es', label: 'Español' },
-              ] as const satisfies ReadonlyArray<{ code: SupportedLocale; label: string }>).map(({ code, label }) => {
+              {(
+                [
+                  { code: 'en', label: 'English' },
+                  { code: 'fr', label: 'Français' },
+                  { code: 'es', label: 'Español' },
+                ] as const satisfies ReadonlyArray<{
+                  code: SupportedLocale;
+                  label: string;
+                }>
+              ).map(({ code, label }) => {
                 const isSelected = locale === code;
                 return (
                   <li key={code}>
@@ -585,6 +610,88 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                 );
               })}
             </ul>
+          </section>
+
+          {/* High-Value Transfer Security section */}
+          <section
+            className={`pt-6 border-t ${featureFlagSectionDividerBorderClass(isDarkMode)}`}
+          >
+            <h3
+              className={`text-xs font-semibold uppercase tracking-wider mb-3 ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-500'
+              }`}
+            >
+              High-Value Transfer Security
+            </h3>
+            <p
+              className={`text-xs mb-4 ${
+                isDarkMode ? 'text-gray-500' : 'text-gray-400'
+              }`}
+            >
+              Configure additional security for large transfers
+            </p>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span
+                  className={`text-sm ${
+                    isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                  }`}
+                >
+                  Enable two-factor confirmation
+                </span>
+                <button
+                  onClick={() => setTwoFactorEnabled(!twoFactorEnabled)}
+                  aria-pressed={twoFactorEnabled}
+                  aria-label="Two-factor confirmation"
+                  className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors focus:outline-none ${
+                    twoFactorEnabled ? 'bg-blue-600' : 'bg-gray-700'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                      twoFactorEnabled ? 'translate-x-5.5' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {twoFactorEnabled && (
+                <div className="space-y-2">
+                  <label
+                    className={`text-[10px] font-bold uppercase tracking-widest ${
+                      isDarkMode ? 'text-gray-500' : 'text-gray-400'
+                    }`}
+                  >
+                    Threshold (XLM)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={highValueThreshold}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value, 10);
+                      if (!isNaN(value) && value > 0) {
+                        setHighValueThreshold(value);
+                      }
+                    }}
+                    className={`w-full px-3 py-2 rounded-lg text-sm border transition-colors ${
+                      isDarkMode
+                        ? 'bg-gray-700 border-gray-600 text-white focus:border-blue-500'
+                        : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500'
+                    }`}
+                    aria-label="High-value transfer threshold in XLM"
+                  />
+                  <p
+                    className={`text-[10px] ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                  >
+                    Transfers above this amount will require additional
+                    confirmation
+                  </p>
+                </div>
+              )}
+            </div>
           </section>
 
           {/* Telemetry section */}

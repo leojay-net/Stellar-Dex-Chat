@@ -5,7 +5,12 @@
 
 import { SensitiveTermsManager } from './sensitiveTerms';
 
-export type MaskingStyle = 'asterisk' | 'block' | 'initial' | 'pipe';
+export type MaskingStyle =
+  | 'asterisk'
+  | 'block'
+  | 'initial'
+  | 'pipe'
+  | 'address';
 
 export interface MaskingOptions {
   style?: MaskingStyle;
@@ -15,7 +20,10 @@ export interface MaskingOptions {
 /**
  * Generate mask character(s) for a term
  */
-export function generateMask(term: string, style: MaskingStyle = 'asterisk'): string {
+export function generateMask(
+  term: string,
+  style: MaskingStyle = 'asterisk',
+): string {
   const length = term.length;
 
   switch (style) {
@@ -31,6 +39,14 @@ export function generateMask(term: string, style: MaskingStyle = 'asterisk'): st
     case 'pipe':
       // e.g., "damn" -> "|dam|"
       return `|${term}|`;
+
+    case 'address':
+      // e.g., "GABCDEF..." -> "GABCDE...XYZ"
+      if (length <= 10) return term;
+      const firstSix = term.slice(0, 6);
+      const lastFour = term.slice(-4);
+      const maskedMiddle = '*'.repeat(length - 10);
+      return `${firstSix}${maskedMiddle}${lastFour}`;
 
     case 'asterisk':
     default:

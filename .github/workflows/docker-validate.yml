@@ -1,0 +1,78 @@
+name: Docker Validate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "docker-compose.yml"
+      - ".env.docker"
+      - "Dechat/dex_with_fiat_frontend/Dockerfile*"
+      - ".github/workflows/docker-validate.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docker-compose.yml"
+      - ".env.docker"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Docker Compose
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Validate docker-compose.yml syntax
+        run: docker compose config > /dev/null
+
+      - name: Check for correct paths after Dechat/ move
+        run: |
+          if grep -qE '\./dex_with_fiat_frontend[^/]' docker-compose.yml; then
+            echo "❌ ERROR: docker-compose.yml still references old path ./dex_with_fiat_frontend"
+            echo "   Should be: ./Dechat/dex_with_fiat_frontend"
+            exit 1
+          fi
+          
+          if ! grep -q './Dechat/dex_with_fiat_frontend' docker-compose.yml; then
+            echo "❌ ERROR: docker-compose.yml does not reference ./Dechat/dex_with_fiat_frontend"
+            exit 1
+          fi
+          
+          echo "✅ docker-compose.yml uses correct Dechat/ paths"
+
+      - name: Verify environment variable names match env.ts
+        run: |
+          # Check that .env.docker uses the correct NEXT_PUBLIC_* variable names
+          if grep -q 'NEXT_PUBLIC_STELLAR_CONTRACT_ID\|NEXT_PUBLIC_XLM_SAC_ID\|NEXT_PUBLIC_STELLAR_NETWORK' .env.docker docker-compose.yml; then
+            echo "❌ ERROR: Found obsolete environment variable names"
+            echo "   NEXT_PUBLIC_STELLAR_CONTRACT_ID should be NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT"
+            echo "   NEXT_PUBLIC_XLM_SAC_ID should be NEXT_PUBLIC_XLM_SAC_CONTRACT"
+            echo "   NEXT_PUBLIC_STELLAR_NETWORK is not used (remove it)"
+            exit 1
+          fi
+          
+          echo "✅ Environment variable names are correct"
+
+      - name: Check for pinned stellar/quickstart image
+        run: |
+          if grep -q 'stellar/quickstart:latest' docker-compose.yml; then
+            echo "❌ ERROR: stellar/quickstart image should be pinned to a specific tag, not 'latest'"
+            echo "   Example: stellar/quickstart:testing or stellar/quickstart:soroban-dev"
+            exit 1
+          fi
+          
+          echo "✅ stellar/quickstart image is pinned"
+
+      - name: Verify no obsolete version key
+        run: |
+          if grep -q "^version:" docker-compose.yml; then
+            echo "❌ ERROR: docker-compose.yml contains obsolete 'version:' key"
+            echo "   The version key is deprecated in Compose V2 and should be removed"
+            exit 1
+          fi
+          
+          echo "✅ No obsolete version key found"

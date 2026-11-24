@@ -1,0 +1,46 @@
+[graph]
+all-features = false
+no-default-features = false
+
+[output]
+feature-depth = 1
+
+[advisories]
+ignore = [
+    # Transitive dep of soroban-sdk 28.0.0 (via soroban-env-host/soroban-wasmi).
+    # No soroban-sdk release drops this yet; review-by 2026-12-28, re-evaluate
+    # on the next SDK bump or sooner if security-audit.yml flags it.
+    { id = "RUSTSEC-2024-0436", reason = "paste is unmaintained; pulled in transitively by soroban-env-host/soroban-wasmi, no upstream fix available; review-by 2026-12-28" },
+    # crypto-bigint 0.5.5 is pinned by elliptic-curve 0.13 (k256/p256/ecdsa) inside
+    # soroban-env-host 28.0.2, so the >=0.7.6 fix cannot be reached with `cargo update`.
+    # Not reachable from contract code (host-side only, never compiled to WASM);
+    # review-by 2027-01-15, drop once soroban-sdk moves to elliptic-curve 0.14.
+    { id = "RUSTSEC-2026-0387", reason = "crypto-bigint 0.5.5 constant-time issue; transitive via elliptic-curve 0.13 in soroban-env-host, host-side only; fix needs semver-breaking elliptic-curve upgrade; review-by 2027-01-15" },
+]
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-1-Clause",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+confidence-threshold = 0.8
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

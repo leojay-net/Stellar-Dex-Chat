@@ -50,6 +50,11 @@ docs: add CONTRIBUTING.md with branch and commit conventions
 A breaking change is marked with `!` after the type/scope:
 feat(contract)!: change withdrawal function signature
 
+## Documentation
+
+- [Testing Guide](docs/testing.md) - Use this as the entry point for unit, E2E, and contract testing
+- [Glossary](docs/glossary.md) - Use the project glossary for consistent terminology in docs, contracts, and frontend
+
 ## Pull Request Checklist
 
 Before opening a PR:
@@ -60,3 +65,5 @@ Before opening a PR:
 - [ ] `npx lint-staged` runs clean (this also runs automatically on commit)
 - [ ] Tests pass locally
 - [ ] No unrelated files included in the diff
+
+

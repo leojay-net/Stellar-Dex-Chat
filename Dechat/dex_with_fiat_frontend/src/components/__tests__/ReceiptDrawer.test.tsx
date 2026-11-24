@@ -33,6 +33,23 @@ vi.mock('../components/ui/skeleton/SkeletonReceipt', () => ({
   default: () => <div data-testid="skeleton" />,
 }));
 
+vi.mock('../ReceiptQrCode', () => ({
+  default: ({ value }: { value: string }) => (
+    <img data-testid="receipt-qr-code" alt="QR" src={`qr:${value}`} />
+  ),
+}));
+
+const sampleTransaction = {
+  id: 'tx-001',
+  kind: 'deposit' as const,
+  status: 'completed' as const,
+  amount: '100',
+  asset: 'USDC',
+  txHash: 'abc123def4567890123456789012345678901234567890123456789012345678',
+  message: 'Deposit completed',
+  createdAt: new Date('2025-06-01T12:00:00Z'),
+};
+
 const defaultProps = {
   isOpen: true,
   onClose: vi.fn(),
@@ -95,5 +112,56 @@ describe('ReceiptDrawer keyboard shortcuts (#528)', () => {
     const dialog = getByRole('dialog');
     expect(dialog).toBeTruthy();
     expect(dialog.getAttribute('aria-modal')).toBe('true');
+  });
+});
+
+describe('ReceiptDrawer print styles', () => {
+  beforeEach(() => {
+    document.getElementById('receipt-print-styles')?.remove();
+  });
+
+  it('injects @media print styles into document head on mount', () => {
+    render(<ReceiptDrawer {...defaultProps} />);
+    const styleEl = document.getElementById('receipt-print-styles');
+    expect(styleEl).toBeTruthy();
+    expect(styleEl?.textContent).toContain('@media print');
+    expect(styleEl?.textContent).toContain('.receipt-drawer-backdrop');
+    expect(styleEl?.textContent).toContain('.receipt-qr-code');
+  });
+
+  it('print button calls window.print when receipts exist', async () => {
+    vi.useFakeTimers();
+    const printSpy = vi.spyOn(window, 'print').mockImplementation(() => {});
+    const { getByRole } = render(
+      <ReceiptDrawer {...defaultProps} transactions={[sampleTransaction]} />,
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(1200);
+    });
+
+    act(() => {
+      getByRole('button', { name: 'Print transaction receipts' }).click();
+    });
+
+    expect(printSpy).toHaveBeenCalledTimes(1);
+    printSpy.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it('renders QR code for each transaction receipt', async () => {
+    vi.useFakeTimers();
+    const { getAllByTestId } = render(
+      <ReceiptDrawer {...defaultProps} transactions={[sampleTransaction]} />,
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(1200);
+    });
+
+    const qrCodes = getAllByTestId('receipt-qr-code');
+    expect(qrCodes).toHaveLength(1);
+    expect(qrCodes[0].getAttribute('src')).toContain('stellar.expert');
+    vi.useRealTimers();
   });
 });

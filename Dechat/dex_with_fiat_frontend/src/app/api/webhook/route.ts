@@ -1,10 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { telemetry } from '@/lib/telemetry';
-import { isReplayEvent, replayCacheStats } from '@/lib/transferStore';
+import { isReplayEvent } from '@/lib/transferStore';
 import { getTransferStatus, setTransferStatus } from '@/lib/transferStore';
-import { env } from '@/lib/env';
+import { serverEnv as env } from '@/lib/serverEnv';
 import { publishPaymentStatus } from '@/lib/paymentStatusEvents';
+
+interface PaystackWebhookData {
+  id?: string;
+  reference: string;
+  amount: number;
+  recipient: string;
+  status: string;
+  failure_reason?: string;
+}
+
+interface PaystackWebhookEvent {
+  event: string;
+  data: PaystackWebhookData;
+}
 
 export async function POST(request: NextRequest) {
   const traceContext = telemetry.extractTraceFromHeaders(request.headers);
@@ -29,7 +43,9 @@ export async function POST(request: NextRequest) {
         success: false,
         error: 'Missing PAYSTACK_SECRET_KEY',
       });
-      console.error('PAYSTACK_SECRET_KEY is not configured. Rejecting webhook.');
+      console.error(
+        'PAYSTACK_SECRET_KEY is not configured. Rejecting webhook.',
+      );
       return NextResponse.json(
         { message: 'Webhook processing is not configured' },
         { status: 400 },
@@ -90,38 +106,55 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const event = JSON.parse(payload);
-    const payloadHash = crypto
-      .createHash('sha256')
-      .update(payload)
-      .digest('hex');
-    const replayKey = String(
-      event?.data?.id || event?.data?.reference || payloadHash,
-    );
-
-    if (isReplayEvent(replayKey)) {
-      const cache = replayCacheStats();
+    let event: PaystackWebhookEvent;
+    try {
+      event = JSON.parse(payload) as PaystackWebhookEvent;
+    } catch {
       telemetry.addLog(
         span.spanId,
         'warn',
-        'Webhook replay detected, ignoring event',
+        'Webhook payload is not valid JSON',
         {
-          replayKey,
-          eventType: event.event,
-          cacheSize: cache.size,
-          cacheTtlMs: cache.ttlMs,
-          cacheMaxSize: cache.maxSize,
+          endpoint: '/api/webhook',
+          payloadLength: payload.length,
         },
       );
-      console.warn('Webhook replay detected and ignored', {
-        replayKey,
-        eventType: event.event,
+      telemetry.finishSpan(span.spanId, {
+        success: false,
+        error: 'Invalid JSON payload',
+        errorType: 'parse_error',
       });
-
-      const response = NextResponse.json({ received: true, duplicate: true });
-      telemetry.setTraceHeaders(response.headers, traceContext);
-      return response;
+      return NextResponse.json(
+        { message: 'Webhook payload must be valid JSON' },
+        { status: 400 },
+      );
     }
+
+    const _payloadHash = crypto
+      .createHash('sha256')
+      .update(payload)
+      .digest('hex');
+    const dataId = event?.data?.id;
+    const dataRef = event?.data?.reference;
+    if (!dataId && !dataRef) {
+      telemetry.addLog(
+        span.spanId,
+        'error',
+        'Missing event data id and reference',
+        {
+          eventType: event.event,
+        },
+      );
+      telemetry.finishSpan(span.spanId, {
+        success: false,
+        error: 'Missing event data id and reference',
+      });
+      return NextResponse.json(
+        { message: 'Event data must contain id or reference' },
+        { status: 400 },
+      );
+    }
+    const replayKey = `${event.event}:${dataId ?? dataRef}`;
 
     telemetry.addLog(span.spanId, 'info', 'Webhook signature verified', {
       eventType: event.event,
@@ -134,24 +167,25 @@ export async function POST(request: NextRequest) {
     // Handle different event types
     switch (event.event) {
       case 'transfer.success': {
-        const existingRecord = getTransferStatus(event.data.reference);
+        const data = event.data ?? {};
+        const existingRecord = getTransferStatus(data.reference ?? '');
         const updatedAt = new Date().toISOString();
         telemetry.addLog(span.spanId, 'info', 'Processing transfer success', {
-          reference: event.data.reference,
-          amount: event.data.amount,
-          recipient: event.data.recipient,
-          status: event.data.status,
+          reference: data.reference,
+          amount: data.amount,
+          recipient: data.recipient,
+          status: data.status,
         });
         console.log('Transfer successful:', {
-          reference: event.data.reference,
-          amount: event.data.amount,
-          recipient: event.data.recipient,
-          status: event.data.status,
+          reference: data.reference,
+          amount: data.amount,
+          recipient: data.recipient,
+          status: data.status,
         });
         const nextRecord = setTransferStatus({
-          reference: event.data.reference,
+          reference: data.reference ?? '',
           status: 'success',
-          amount: event.data.amount,
+          amount: data.amount,
           updatedAt,
           clientSessionId: existingRecord?.clientSessionId,
         });
@@ -165,27 +199,28 @@ export async function POST(request: NextRequest) {
       }
 
       case 'transfer.failed': {
-        const existingRecord = getTransferStatus(event.data.reference);
+        const data = event.data ?? {};
+        const existingRecord = getTransferStatus(data.reference ?? '');
         const updatedAt = new Date().toISOString();
         telemetry.addLog(span.spanId, 'warn', 'Processing transfer failure', {
-          reference: event.data.reference,
-          amount: event.data.amount,
-          recipient: event.data.recipient,
-          status: event.data.status,
-          failureReason: event.data.failure_reason,
+          reference: data.reference,
+          amount: data.amount,
+          recipient: data.recipient,
+          status: data.status,
+          failureReason: data.failure_reason,
         });
         console.log('Transfer failed:', {
-          reference: event.data.reference,
-          amount: event.data.amount,
-          recipient: event.data.recipient,
-          status: event.data.status,
-          failure_reason: event.data.failure_reason,
+          reference: data.reference,
+          amount: data.amount,
+          recipient: data.recipient,
+          status: data.status,
+          failure_reason: data.failure_reason,
         });
         const nextRecord = setTransferStatus({
-          reference: event.data.reference,
+          reference: data.reference ?? '',
           status: 'failed',
-          amount: event.data.amount,
-          failureReason: event.data.failure_reason,
+          amount: data.amount,
+          failureReason: data.failure_reason,
           updatedAt,
           clientSessionId: existingRecord?.clientSessionId,
         });
@@ -200,24 +235,25 @@ export async function POST(request: NextRequest) {
       }
 
       case 'transfer.reversed': {
-        const existingRecord = getTransferStatus(event.data.reference);
+        const data = event.data ?? {};
+        const existingRecord = getTransferStatus(data.reference ?? '');
         const updatedAt = new Date().toISOString();
         telemetry.addLog(span.spanId, 'info', 'Processing transfer reversal', {
-          reference: event.data.reference,
-          amount: event.data.amount,
-          recipient: event.data.recipient,
-          status: event.data.status,
+          reference: data.reference,
+          amount: data.amount,
+          recipient: data.recipient,
+          status: data.status,
         });
         console.log('Transfer reversed:', {
-          reference: event.data.reference,
-          amount: event.data.amount,
-          recipient: event.data.recipient,
-          status: event.data.status,
+          reference: data.reference,
+          amount: data.amount,
+          recipient: data.recipient,
+          status: data.status,
         });
         const nextRecord = setTransferStatus({
-          reference: event.data.reference,
+          reference: data.reference ?? '',
           status: 'reversed',
-          amount: event.data.amount,
+          amount: data.amount,
           updatedAt,
           clientSessionId: existingRecord?.clientSessionId,
         });
@@ -236,6 +272,8 @@ export async function POST(request: NextRequest) {
         });
         console.log('Unhandled webhook event:', event.event);
     }
+
+    isReplayEvent(replayKey);
 
     telemetry.addLog(span.spanId, 'info', 'Webhook processing completed', {
       eventType: event.event,

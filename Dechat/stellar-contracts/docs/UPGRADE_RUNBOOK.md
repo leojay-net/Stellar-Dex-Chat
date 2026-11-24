@@ -33,21 +33,23 @@ All upgrade operations require the **contract admin** key.
 ```
 Admin                       Contract
   │                            │
-  │── propose_upgrade(hash, delay) ──▶│  stores UpgradeProposal
-  │                            │       executable_after = current_ledger + delay
+  │── set_upgrade_delay(delay)──▶│  stores UpgradeDelay
+  │                            │
+  │── propose_upgrade(hash) ──▶│  stores UpgradeProposal
+  │                            │       executable_after = current_ledger + stored_delay
   │          (wait for timelock to elapse)
   │                            │
-  │── execute_upgrade() ───────▶│  replaces WASM; version bumped
+  │── execute_upgrade() ───────▶│  replaces WASM
   │                            │
 ```
 
 Key rules:
-- `delay` must be ≥ `MIN_UPGRADE_DELAY` (1 000 ledgers); shorter delays are rejected with
+- `set_upgrade_delay` must set `delay ≥ MIN_UPGRADE_DELAY` (1 000 ledgers); shorter delays are rejected with
   `Error::UpgradeDelayTooShort (607)`.
-- `execute_upgrade` uses a **strict `>`** check, so execution is possible only once
-  `current_ledger > executable_after` (one extra ledger of margin).
-- `new_version` must be ≥ the currently stored version; downgrades are rejected with
-  `Error::DowngradeNotAllowed (1201)`.
+- `propose_upgrade` takes the WASM hash and a caller-declared `new_version` u32;
+  the delay is read from stored `UpgradeDelay` value.
+- `execute_upgrade` uses a **`>=`** check, so execution is possible once
+  `current_ledger >= executable_after`.
 - Only one proposal can be pending at a time; proposing again overwrites the previous one.
 
 ---
@@ -59,16 +61,33 @@ Complete **every** item before proposing an upgrade.
 ### 1. Build and Verify the New WASM
 
 ```bash
-# From the stellar-contracts directory
-cargo build --release --target wasm32-unknown-unknown
+# From the stellar-contracts directory.
+# Builds for wasm32v1-none and emits the optimized contract artifact.
+stellar contract build
 
 # Compute the SHA-256 hash of the optimised WASM
-shasum -a 256 target/wasm32-unknown-unknown/release/fiat_bridge.wasm
+WASM_FILE=target/wasm32v1-none/release/stellar_contracts.optimized.wasm
+sha256sum "$WASM_FILE"
 ```
 
 Record the hash — you will need it for `propose_upgrade`.
 
-### 2. Review the Contract Diff
+### 2. Upload the New WASM
+
+Install the optimized WASM on the target network before proposing the upgrade.
+Use the same source account and network settings as the subsequent invocations;
+confirm that the hash returned by the CLI matches the local SHA-256 above.
+
+```bash
+stellar contract install \
+  --wasm "$WASM_FILE" \
+  --source-account "$ADMIN_SECRET" \
+  --network "$NETWORK" \
+  --network-passphrase "$NETWORK_PASSPHRASE" \
+  --rpc-url "$RPC_URL"
+```
+
+### 3. Review the Contract Diff
 
 ```bash
 git diff HEAD~1 HEAD -- src/
@@ -77,9 +96,15 @@ git diff HEAD~1 HEAD -- src/
 Confirm that:
 - No storage key renames that would orphan existing data.
 - No removal of existing error codes relied upon by the frontend.
-- The `new_version` constant in `lib.rs` is greater than the currently deployed version.
+- New `withdraw_fees` error variants are appended to `ERROR_CODES.md`.
+- New `withdraw_fees` events use the `EVENT_VERSION` topic prefix.
+- The per-caller nonce migration for `withdraw_fees` described in `NONCE_REPLAY_PROTECTION.md` is included.
+- The `new_version` argument to `propose_upgrade` must be ≥ the value returned by
+  `get_contract_version`; a strictly lower value is rejected with
+  `Error::DowngradeNotAllowed (608)`.
+- Any storage layout changes ship with a migration path.
 
-### 3. Run the Full Test Suite
+### 4. Run the Full Test Suite
 
 ```bash
 cargo test
@@ -87,33 +112,48 @@ cargo test
 
 All tests must pass before proceeding.
 
-### 4. Snapshot Current Contract State
+### 5. Snapshot Current Contract State
 
-Use the Soroban CLI to record the current on-chain values that must survive the upgrade:
+Use the Stellar CLI (`stellar`) to record the current on-chain values that must survive the upgrade:
 
 ```bash
-# Replace CONTRACT_ID and RPC_URL with actual values
-soroban contract invoke \
+# Replace CONTRACT_ID, RPC_URL and NETWORK_PASSPHRASE with actual values.
+# `stellar contract invoke` requires a source account: either pass
+# `--source-account <identity|G...|S...>` (alias `--source`) or export
+# STELLAR_ACCOUNT=<identity> once for the whole session.
+# A custom `--rpc-url` also requires the passphrase explicitly (see STELLAR_NETWORK_PASSPHRASE);
+# with the built-in network config, `--network futurenet` alone is enough.
+stellar contract invoke \
   --id $CONTRACT_ID \
   --network $NETWORK \
+  --network-passphrase "$NETWORK_PASSPHRASE" \
   --rpc-url $RPC_URL \
   -- get_upgrade_proposal
 
-soroban contract invoke \
+stellar contract invoke \
   --id $CONTRACT_ID \
   --network $NETWORK \
+  --network-passphrase "$NETWORK_PASSPHRASE" \
+  --rpc-url $RPC_URL \
+  -- get_contract_version
+
+stellar contract invoke \
+  --id $CONTRACT_ID \
+  --network $NETWORK \
+  --network-passphrase "$NETWORK_PASSPHRASE" \
   --rpc-url $RPC_URL \
   -- get_escrow_storage_version
 ```
 
 Save the output — compare it against post-upgrade values to confirm no state was lost.
 
-### 5. Confirm No Active Pending Withdrawals at Risk
+### 6. Confirm No Active Pending Withdrawals at Risk
 
 ```bash
-soroban contract invoke \
+stellar contract invoke \
   --id $CONTRACT_ID \
   --network $NETWORK \
+  --network-passphrase "$NETWORK_PASSPHRASE" \
   --rpc-url $RPC_URL \
   -- get_withdrawal_count   # if function exists; otherwise check indexer
 ```
@@ -121,7 +161,7 @@ soroban contract invoke \
 Consider pausing the contract during the upgrade window if withdrawal volume is high:
 
 ```bash
-soroban contract invoke \
+stellar contract invoke \
   --id $CONTRACT_ID \
   --network $NETWORK \
   --source-account $ADMIN_SECRET \
@@ -132,20 +172,34 @@ soroban contract invoke \
 
 ## Upgrade Procedure
 
-### Step 1 — Propose the Upgrade
+### Step 1 — Set Upgrade Delay (one-time)
 
 ```bash
-soroban contract invoke \
+stellar contract invoke \
+  --id $CONTRACT_ID \
+  --network $NETWORK \
+  --source-account $ADMIN_SECRET \
+  -- set_upgrade_delay \
+  --ledgers 1000
+```
+
+Expected: no error; delay is stored for future upgrades.
+
+### Step 1b — Propose the Upgrade
+
+```bash
+stellar contract invoke \
   --id $CONTRACT_ID \
   --network $NETWORK \
   --source-account $ADMIN_SECRET \
   -- propose_upgrade \
-  --wasm_hash $NEW_WASM_HASH_HEX \
-  --delay 1000 \
+  --new_wasm_hash $NEW_WASM_HASH_HEX \
   --new_version $NEW_VERSION_NUMBER
 ```
 
-Expected: no error; `UpgradeProposedEvent` emitted on-chain.
+Expected: no error; event emitted on-chain.  `$NEW_VERSION_NUMBER` must be
+≥ the value returned by `get_contract_version` (see Pre-Upgrade Checklist §5);
+otherwise the transaction will fail with `Error::DowngradeNotAllowed (608)`.
 
 Record:
 - Proposal ledger: `current_ledger`
@@ -159,7 +213,7 @@ During the delay period:
 - Confirm the proposal is still pending:
 
 ```bash
-soroban contract invoke \
+stellar contract invoke \
   --id $CONTRACT_ID \
   --network $NETWORK \
   -- get_upgrade_proposal
@@ -167,10 +221,10 @@ soroban contract invoke \
 
 ### Step 3 — Execute the Upgrade
 
-Once `current_ledger > executable_after`:
+Once `current_ledger >= executable_after`:
 
 ```bash
-soroban contract invoke \
+stellar contract invoke \
   --id $CONTRACT_ID \
   --network $NETWORK \
   --source-account $ADMIN_SECRET \
@@ -185,23 +239,32 @@ Expected: `UpgradeExecutedEvent` emitted; contract WASM replaced.
 
 Run through the following checks immediately after `execute_upgrade` succeeds.
 
-### 1. Confirm Version Bump
+### 1. Confirm Upgrade Executed
 
 ```bash
-soroban contract invoke \
+# Confirm no upgrade is pending (returns None)
+stellar contract invoke \
   --id $CONTRACT_ID \
   --network $NETWORK \
-  -- get_contract_version   # or check the UpgradeExecutedEvent
+  -- get_upgrade_proposal
 ```
 
-The returned version must equal `NEW_VERSION_NUMBER`.
+Verify the returned value is `None`, indicating the proposal has been executed and cleared.
+
+```bash
+# Confirm the version was bumped to the proposed value
+stellar contract invoke \
+  --id $CONTRACT_ID \
+  --network $NETWORK \
+  -- get_contract_version
+```
 
 ### 2. Smoke-Test Read Functions
 
 ```bash
-soroban contract invoke --id $CONTRACT_ID --network $NETWORK -- get_accrued_fees --token $TOKEN_ADDRESS
-soroban contract invoke --id $CONTRACT_ID --network $NETWORK -- get_escrow_storage_version
-soroban contract invoke --id $CONTRACT_ID --network $NETWORK -- get_upgrade_proposal
+stellar contract invoke --id $CONTRACT_ID --network $NETWORK -- get_accrued_fees --token $TOKEN_ADDRESS
+stellar contract invoke --id $CONTRACT_ID --network $NETWORK -- get_escrow_storage_version
+stellar contract invoke --id $CONTRACT_ID --network $NETWORK -- get_upgrade_proposal
 ```
 
 All read functions must return expected values without error.
@@ -211,10 +274,13 @@ All read functions must return expected values without error.
 Query a sample of known pending withdrawal request IDs and confirm their state matches
 the pre-upgrade snapshot.
 
+If the upgrade added per-caller nonce storage, confirm the migration step in
+`NONCE_REPLAY_PROTECTION.md` completed and nonce reads return the expected values.
+
 ### 4. Unpause if Paused
 
 ```bash
-soroban contract invoke \
+stellar contract invoke \
   --id $CONTRACT_ID \
   --network $NETWORK \
   --source-account $ADMIN_SECRET \
@@ -239,17 +305,26 @@ previous WASM hash.
 If `execute_upgrade` has **not** yet been called, simply cancel the pending proposal:
 
 ```bash
-soroban contract invoke \
+# First, get the current nonce
+stellar contract invoke \
+  --id $CONTRACT_ID \
+  --network $NETWORK \
+  -- get_upgrade_cancellation_nonce \
+  --admin $ADMIN_ADDRESS
+
+# Then cancel with the nonce
+stellar contract invoke \
   --id $CONTRACT_ID \
   --network $NETWORK \
   --source-account $ADMIN_SECRET \
-  -- cancel_upgrade
+  -- cancel_upgrade \
+  --nonce $CURRENT_NONCE
 ```
 
 Verify:
 
 ```bash
-soroban contract invoke \
+stellar contract invoke \
   --id $CONTRACT_ID \
   --network $NETWORK \
   -- get_upgrade_proposal   # must return None
@@ -266,36 +341,31 @@ If the new WASM is already live and must be reverted:
 
    ```bash
    git checkout <previous-release-tag>
-   cargo build --release --target wasm32-unknown-unknown
-   shasum -a 256 target/wasm32-unknown-unknown/release/fiat_bridge.wasm
+   stellar contract build
+  WASM_FILE=target/wasm32v1-none/release/stellar_contracts.optimized.wasm
+  sha256sum "$WASM_FILE"
    ```
 
 2. **Pause the contract** (optional but recommended to prevent user funds being affected
    while the rollback timelock elapses):
 
    ```bash
-   soroban contract invoke \
+   stellar contract invoke \
      --id $CONTRACT_ID \
      --network $NETWORK \
      --source-account $ADMIN_SECRET \
      -- pause
    ```
 
-3. **Propose the rollback upgrade** using the previous WASM hash.  
-   Note: `new_version` for the rollback proposal must still be ≥ the version of the
-   currently live contract (the one you are rolling back from) because `DowngradeNotAllowed`
-   is enforced.  If the contract version field was incremented, you will need to bump
-   `new_version` to the next integer rather than reverting to the old number:
+3. **Propose the rollback upgrade** using the previous WASM hash:
 
    ```bash
-   soroban contract invoke \
+   stellar contract invoke \
      --id $CONTRACT_ID \
      --network $NETWORK \
      --source-account $ADMIN_SECRET \
      -- propose_upgrade \
-     --wasm_hash $PREVIOUS_WASM_HASH_HEX \
-     --delay 1000 \
-     --new_version $ROLLBACK_VERSION_NUMBER
+     --new_wasm_hash $PREVIOUS_WASM_HASH_HEX
    ```
 
 4. **Wait for the timelock** (`MIN_UPGRADE_DELAY` ledgers).
@@ -303,7 +373,7 @@ If the new WASM is already live and must be reverted:
 5. **Execute the rollback**:
 
    ```bash
-   soroban contract invoke \
+   stellar contract invoke \
      --id $CONTRACT_ID \
      --network $NETWORK \
      --source-account $ADMIN_SECRET \
@@ -318,6 +388,8 @@ If the new WASM is already live and must be reverted:
   reversed.  If the upgrade added new storage keys, they will remain after rollback
   but will be ignored by the old WASM.  If the upgrade *removed* keys that the old
   WASM reads, those reads will fall back to their default values.
+- Per-caller nonce keys created for `withdraw_fees` replay protection are not removed
+  by rollback; they are ignored by the old WASM and will be reused by a future upgrade.
 - **Coordinate with the indexer team** — events emitted by the bad WASM between
   `execute_upgrade` and the rollback may need to be annotated or excluded from
   downstream data pipelines.
@@ -343,5 +415,9 @@ In the event of a failed upgrade or unexpected contract behaviour, escalate in t
 ## Related Documentation
 
 - [`VERSION_MIGRATION.md`](./VERSION_MIGRATION.md) — upgrade mechanism deep-dive and event schema
+- [`NONCE_REPLAY_PROTECTION.md`](./NONCE_REPLAY_PROTECTION.md) — per-caller nonce schema and migration path
 - [`BATCH_OPERATIONS.md`](./BATCH_OPERATIONS.md) — batch admin operations reference
 - [`DEPLOYMENT.md`](../DEPLOYMENT.md) — initial Futurenet deployment guide
+- [`FEE_ACCRUAL_ARCHITECTURE.md`](./FEE_ACCRUAL_ARCHITECTURE.md) — fee accrual events and structures
+- [`NONCE_REPLAY_PROTECTION.md`](./NONCE_REPLAY_PROTECTION.md) — nonce and replay protection conventions
+- [`ERROR_CODES.md`](./ERROR_CODES.md) — canonical list of contract error codes

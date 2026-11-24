@@ -10,10 +10,13 @@ import {
   ArrowDownUp,
   Download,
   WifiOff,
+  ScanLine,
 } from 'lucide-react';
 import EmptyState from '@/components/ui/EmptyState';
 import CopyButton from '@/components/ui/CopyButton';
+import QrScanner from '@/components/QrScanner';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
+import { useUserPreferences } from '@/contexts/UserPreferencesContext';
 import {
   BRIDGE_LIMIT_WARNING_PERCENT,
   CONTRACT_ID,
@@ -24,7 +27,10 @@ import {
 import { xlmToStroops, stroopsToXlm as stroopsToDisplay } from '@/lib/stroops';
 import type { FeeEstimate } from '@/lib/stellarContract';
 import useBridgeStats from '@/hooks/useBridgeStats';
-import { getTokenPrice, formatFiatAmount } from '@/lib/cryptoPriceService';
+import {
+  getTokenPriceWithStatus,
+  formatFiatAmount,
+} from '@/lib/cryptoPriceService';
 import SkeletonPayout from '@/components/ui/skeleton/SkeletonPayout';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useTxHistory } from '@/hooks/useTxHistory';
@@ -51,7 +57,6 @@ interface StellarFiatModalProps {
 type TxStatus = 'idle' | 'pending' | 'loading' | 'success' | 'error';
 
 const PENDING_TX_KEY = 'stellar_pending_tx';
-const LARGE_AMOUNT_RISK_THRESHOLD = 500;
 const SUBMIT_COOLDOWN_MS = 2000;
 
 interface PendingTxRecord {
@@ -77,9 +82,11 @@ export default function StellarFiatModal({
   // so the submit button stays enabled across same-tick clicks. A ref closes
   // that window before React re-renders.
   const lastSubmitAtRef = useRef(0);
-  const { connection, signTx } = useStellarWallet();
+  const { connection, signTx, xlmBalance, refreshXlmBalance } =
+    useStellarWallet();
   const { addNotification } = useNotifications();
   const { addEntry } = useTxHistory();
+  const { highValueThreshold, twoFactorEnabled } = useUserPreferences();
 
   const { execute: executeTransaction, isProcessing: isTxProcessing } =
     useIdempotentAction({
@@ -90,7 +97,9 @@ export default function StellarFiatModal({
   const [amount, setAmount] = useState(defaultAmount);
   const [activePreset, setActivePreset] = useState<number | null>(null);
   const [recipient, setRecipient] = useState(recipientAddress);
+  const [showQrScanner, setShowQrScanner] = useState(false);
   const [fiatEstimate, setFiatEstimate] = useState<string | null>(null);
+  const [isFiatEstimateStale, setIsFiatEstimateStale] = useState(false);
   const [note, setNote] = useState('');
   const [riskConfirmation, setRiskConfirmation] = useState('');
   const [lastLoggedRiskAmount, setLastLoggedRiskAmount] = useState('');
@@ -98,66 +107,19 @@ export default function StellarFiatModal({
   const [requiresPreSignConfirmation, setRequiresPreSignConfirmation] =
     useState(false);
   const [isLoadingFee, setIsLoadingFee] = useState(false);
+  const [isDownloadingReceipt, setIsDownloadingReceipt] = useState(false);
   const [status, setStatus] = useState<TxStatus>('idle');
   const [txHash, setTxHash] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [isLoadingUI, setIsLoadingUI] = useState(true);
   const [lastActionTimestamp, setLastActionTimestamp] = useState(0);
-  const [walletBalance, setWalletBalance] = useState<string | null>(null);
-  const [isLoadingBalance, setIsLoadingBalance] = useState(false);
+  const [showTwoFactorModal, setShowTwoFactorModal] = useState(false);
+  const [twoFactorConfirmation, setTwoFactorConfirmation] = useState('');
 
   // Helpers avoid JSX branch narrowing (pending/loading render a separate view).
   const isStatusPending = (status as TxStatus) === 'pending';
   const isStatusLoading = (status as TxStatus) === 'loading';
   const isTransactionBusy = isStatusPending || isStatusLoading;
-
-  useEffect(() => {
-    if (!isOpen || !connection.isConnected || !connection.publicKey) {
-      setWalletBalance(null);
-      return;
-    }
-
-    let cancelled = false;
-    setIsLoadingBalance(true);
-
-    const fetchBalance = async () => {
-      try {
-        const horizonUrl =
-          connection.network?.toUpperCase() === 'PUBLIC'
-            ? 'https://horizon.stellar.org'
-            : 'https://horizon-testnet.stellar.org';
-        const res = await fetch(
-          `${horizonUrl}/accounts/${connection.publicKey}`,
-        );
-        if (!res.ok) throw new Error('Failed to fetch account');
-        const data = await res.json();
-        const native = (
-          data.balances as Array<{ asset_type: string; balance: string }>
-        ).find((b) => b.asset_type === 'native');
-        if (!cancelled && native) {
-          setWalletBalance(native.balance);
-        }
-      } catch {
-        if (!cancelled) {
-          setWalletBalance(null);
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingBalance(false);
-        }
-      }
-    };
-
-    void fetchBalance();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    isOpen,
-    connection.isConnected,
-    connection.publicKey,
-    connection.network,
-  ]);
 
   const {
     limit: bridgeLimit,
@@ -257,13 +219,15 @@ export default function StellarFiatModal({
 
     let cancelled = false;
     pollTransaction(pending.hash)
-      .then((hash) => {
+      .then(async (hash) => {
         if (cancelled) {
           return;
         }
         setTxHash(hash);
         setStatus('success');
         localStorage.removeItem(PENDING_TX_KEY);
+        // Refresh wallet balance after successful transaction
+        await refreshXlmBalance();
       })
       .catch(() => {
         if (cancelled) {
@@ -277,7 +241,7 @@ export default function StellarFiatModal({
     return () => {
       cancelled = true;
     };
-  }, [isOpen]);
+  }, [isOpen, refreshXlmBalance]);
 
   useEffect(() => {
     if (!isOpen || !connection.isConnected) {
@@ -292,9 +256,10 @@ export default function StellarFiatModal({
     }
 
     let cancelled = false;
+    const abortController = new AbortController();
     setIsLoadingFee(true);
 
-    const simulate = async () => {
+    const timer = setTimeout(async () => {
       try {
         let estimate: FeeEstimate | null = null;
         if (isAdminMode) {
@@ -324,11 +289,11 @@ export default function StellarFiatModal({
           setIsLoadingFee(false);
         }
       }
-    };
+    }, 300);
 
-    const timer = setTimeout(simulate, 500);
     return () => {
       cancelled = true;
+      abortController.abort();
       clearTimeout(timer);
     };
   }, [
@@ -344,6 +309,7 @@ export default function StellarFiatModal({
     const xlm = parseFloat(amount);
     if (!xlm || xlm <= 0) {
       setFiatEstimate(null);
+      setIsFiatEstimateStale(false);
       return;
     }
 
@@ -351,13 +317,15 @@ export default function StellarFiatModal({
 
     const fetchEstimate = async () => {
       try {
-        const price = await getTokenPrice('XLM', fiatCurrency);
+        const quote = await getTokenPriceWithStatus('XLM', fiatCurrency);
         if (!cancelled) {
-          setFiatEstimate(formatFiatAmount(xlm * price, fiatCurrency));
+          setFiatEstimate(formatFiatAmount(xlm * quote.price, fiatCurrency));
+          setIsFiatEstimateStale(quote.stale);
         }
       } catch {
         if (!cancelled) {
           setFiatEstimate(null);
+          setIsFiatEstimateStale(false);
         }
       }
     };
@@ -374,8 +342,9 @@ export default function StellarFiatModal({
   const stroopsAmount = !isAmountInvalid ? xlmToStroops(amount) : null;
   const hasValidAmount = stroopsAmount !== null && stroopsAmount > BigInt(0);
   const isRiskyAmount =
+    twoFactorEnabled &&
     Number.isFinite(numericAmount) &&
-    numericAmount >= LARGE_AMOUNT_RISK_THRESHOLD;
+    numericAmount >= highValueThreshold;
   const isDepositFlow = !isAdminMode;
   const isLimitUnavailable =
     isDepositFlow &&
@@ -389,9 +358,9 @@ export default function StellarFiatModal({
     stroopsAmount > bridgeLimit;
   const usagePercent =
     isDepositFlow &&
-      bridgeLimit !== null &&
-      bridgeLimit > BigInt(0) &&
-      stroopsAmount !== null
+    bridgeLimit !== null &&
+    bridgeLimit > BigInt(0) &&
+    stroopsAmount !== null
       ? Number((stroopsAmount * 10_000n) / bridgeLimit) / 100
       : 0;
   const isHighLimitUsage =
@@ -401,9 +370,9 @@ export default function StellarFiatModal({
     usagePercent >= BRIDGE_LIMIT_WARNING_PERCENT;
   const remainingLimit =
     isDepositFlow &&
-      bridgeLimit !== null &&
-      stroopsAmount !== null &&
-      bridgeLimit > stroopsAmount
+    bridgeLimit !== null &&
+    stroopsAmount !== null &&
+    bridgeLimit > stroopsAmount
       ? bridgeLimit - stroopsAmount
       : BigInt(0);
   const isSubmitDisabled =
@@ -415,7 +384,7 @@ export default function StellarFiatModal({
       (isLoadingBridgeLimit || isLimitUnavailable || isOverLimit)) ||
     (isRiskyAmount &&
       riskConfirmation.trim().toUpperCase() !==
-      STELLAR_FIAT_RISK_CONFIRMATION_PHRASE) ||
+        STELLAR_FIAT_RISK_CONFIRMATION_PHRASE) ||
     Date.now() - lastActionTimestamp < SUBMIT_COOLDOWN_MS;
 
   const operationType = isAdminMode ? 'Withdraw' : 'Deposit';
@@ -462,6 +431,12 @@ export default function StellarFiatModal({
   const handleAction = async () => {
     if (!connection.isConnected) return;
 
+    // Show two-factor confirmation modal for high-value transfers
+    if (isRiskyAmount && twoFactorEnabled && !showTwoFactorModal) {
+      setShowTwoFactorModal(true);
+      return;
+    }
+
     const zodMessage = validateStellarFiatModalForm({
       isAdminMode,
       amount,
@@ -469,6 +444,9 @@ export default function StellarFiatModal({
       note,
       riskConfirmation,
       isRiskyAmount,
+      twoFactorConfirmation: showTwoFactorModal
+        ? twoFactorConfirmation
+        : undefined,
     });
     if (zodMessage) {
       setErrorMsg(zodMessage);
@@ -496,7 +474,7 @@ export default function StellarFiatModal({
     if (isDepositFlow && (bridgeLimit === null || bridgeLimitError)) {
       setErrorMsg(
         bridgeLimitError ||
-        'Unable to validate against the current bridge limit. Please try again.',
+          'Unable to validate against the current bridge limit. Please try again.',
       );
       setStatus('error');
       return;
@@ -573,6 +551,8 @@ export default function StellarFiatModal({
           setStatus('success');
           clearCache();
           localStorage.removeItem(PENDING_TX_KEY);
+          // Refresh wallet balance after successful transaction
+          await refreshXlmBalance();
           addNotification(
             'tx_confirm',
             `Transaction confirmed successfully! (${hash.slice(0, 8)}...)`,
@@ -676,22 +656,28 @@ export default function StellarFiatModal({
             <button
               type="button"
               data-testid="download-receipt-button"
-              onClick={() =>
-                downloadReceipt({
-                  txHash,
-                  amount: stroopsToDisplay(stroopsAmount ?? BigInt(0)),
-                  wallet: connection.publicKey,
-                  network: connection.network || 'TESTNET',
-                  timestamp: new Date().toLocaleString(),
-                  type: isAdminMode ? 'Withdrawal' : 'Deposit',
-                  note: note.trim() || undefined,
-                  messages,
-                })
-              }
-              className="mt-4 w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border border-blue-500/30 text-blue-400 hover:bg-blue-500/10 transition-colors text-sm font-medium"
+              onClick={async () => {
+                setIsDownloadingReceipt(true);
+                try {
+                  await downloadReceipt({
+                    txHash,
+                    amount: stroopsToDisplay(stroopsAmount ?? BigInt(0)),
+                    wallet: connection.publicKey,
+                    network: connection.network || 'TESTNET',
+                    timestamp: new Date().toLocaleString(),
+                    type: isAdminMode ? 'Withdrawal' : 'Deposit',
+                    note: note.trim() || undefined,
+                    messages,
+                  });
+                } finally {
+                  setIsDownloadingReceipt(false);
+                }
+              }}
+              disabled={isDownloadingReceipt}
+              className="mt-4 w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border border-blue-500/30 text-blue-400 hover:bg-blue-500/10 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Download className="w-4 h-4" />
-              Download Receipt
+              {isDownloadingReceipt ? 'Generating...' : 'Download Receipt'}
             </button>
 
             {!isAdminMode && onDepositSuccess ? (
@@ -727,7 +713,9 @@ export default function StellarFiatModal({
                 : 'Your deposit is being submitted to the Stellar bridge.'}
             </p>
             <p className="text-gray-500 text-xs">
-              {stroopsToDisplay(stroopsAmount ?? BigInt(0))} XLM is being processed. You will see confirmation once the transaction completes.
+              {stroopsToDisplay(stroopsAmount ?? BigInt(0))} XLM is being
+              processed. You will see confirmation once the transaction
+              completes.
             </p>
           </div>
         ) : isLoadingUI ? (
@@ -745,10 +733,11 @@ export default function StellarFiatModal({
                     type="button"
                     onClick={() => handlePreset(preset)}
                     disabled={isTransactionBusy}
-                    className={`flex-1 py-1.5 rounded-md text-xs font-medium border transition-colors ${activePreset === preset
+                    className={`flex-1 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                      activePreset === preset
                         ? 'bg-blue-600 border-blue-500 text-white'
                         : 'bg-gray-800 border-gray-600 text-gray-300 hover:border-blue-500 hover:text-white'
-                      } ${isTransactionBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    } ${isTransactionBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
                   >
                     {preset}
                   </button>
@@ -766,10 +755,11 @@ export default function StellarFiatModal({
                 placeholder="0.00"
                 disabled={isTransactionBusy}
                 aria-invalid={isAmountInvalid || isOverLimit ? true : undefined}
-                className={`w-full bg-gray-800 border rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed ${isAmountInvalid || isOverLimit
+                className={`theme-input w-full border rounded-lg px-4 py-3 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed ${
+                  isAmountInvalid || isOverLimit
                     ? 'border-red-500 focus:border-red-400'
-                    : 'border-gray-600 focus:border-blue-500'
-                  }`}
+                    : 'theme-input-border focus:border-blue-500'
+                }`}
               />
               {isAmountInvalid && amount && (
                 <p className="theme-soft-danger flex items-center gap-2 rounded-lg px-3 py-2 mt-2 text-xs">
@@ -781,11 +771,7 @@ export default function StellarFiatModal({
                 <p className="theme-text-secondary text-xs mt-2">
                   Available:{' '}
                   <span className="theme-text-primary font-medium">
-                    {isLoadingBalance
-                      ? 'Loading...'
-                      : walletBalance !== null
-                        ? `${walletBalance} XLM`
-                        : 'Unable to fetch balance'}
+                    {xlmBalance ? `${xlmBalance} XLM` : 'Loading...'}
                   </span>
                 </p>
               )}
@@ -798,6 +784,11 @@ export default function StellarFiatModal({
                   {fiatEstimate}
                 </span>{' '}
                 at current market rate
+              </p>
+            )}
+            {isFiatEstimateStale && (
+              <p role="status" className="text-amber-400 text-xs -mt-2 mb-4">
+                Estimated rate: live market prices are unavailable.
               </p>
             )}
 
@@ -924,12 +915,13 @@ export default function StellarFiatModal({
                     Bridge Capacity
                   </h3>
                   <div
-                    className={`w-2 h-2 rounded-full ${isOverLimit
+                    className={`w-2 h-2 rounded-full ${
+                      isOverLimit
                         ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]'
                         : isHighLimitUsage
                           ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)]'
                           : 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]'
-                      }`}
+                    }`}
                   />
                 </div>
 
@@ -961,12 +953,13 @@ export default function StellarFiatModal({
 
                     <div className="h-1.5 w-full rounded-full bg-[var(--color-surface-elevated)] overflow-hidden mb-2">
                       <div
-                        className={`h-full rounded-full transition-all duration-500 ${isOverLimit
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          isOverLimit
                             ? 'bg-red-500'
                             : isHighLimitUsage
                               ? 'bg-amber-400'
                               : 'bg-blue-500'
-                          }`}
+                        }`}
                         style={{ width: `${Math.min(usagePercent, 100)}%` }}
                       />
                     </div>
@@ -1002,8 +995,8 @@ export default function StellarFiatModal({
                   Large amount confirmation required
                 </p>
                 <p className="text-xs mb-3">
-                  Amounts above {LARGE_AMOUNT_RISK_THRESHOLD} XLM require an
-                  additional confirmation phrase before submission.
+                  Amounts above {highValueThreshold} XLM require an additional
+                  confirmation phrase before submission.
                 </p>
                 <input
                   type="text"
@@ -1020,15 +1013,36 @@ export default function StellarFiatModal({
                 <label className="theme-text-secondary block text-sm mb-1">
                   Recipient address (leave blank for self)
                 </label>
-                <input
-                  type="text"
-                  value={recipient}
-                  onChange={(e) => setRecipient(e.target.value)}
-                  placeholder="G..."
-                  disabled={isTransactionBusy}
-                  className="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 disabled:opacity-60 disabled:cursor-not-allowed font-mono text-sm"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={recipient}
+                    onChange={(e) => setRecipient(e.target.value)}
+                    placeholder="G..."
+                    disabled={isTransactionBusy}
+                    className="theme-input theme-input-border flex-1 border rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 disabled:opacity-60 disabled:cursor-not-allowed font-mono text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowQrScanner(true)}
+                    disabled={isTransactionBusy}
+                    aria-label="Scan QR code"
+                    title="Scan QR code"
+                    className="shrink-0 flex items-center justify-center w-11 h-11 rounded-lg border theme-input-border theme-input hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <ScanLine className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
+            )}
+            {showQrScanner && (
+              <QrScanner
+                onScan={(addr) => {
+                  setRecipient(addr);
+                  setShowQrScanner(false);
+                }}
+                onClose={() => setShowQrScanner(false)}
+              />
             )}
 
             <div
@@ -1040,7 +1054,10 @@ export default function StellarFiatModal({
                   Connected: {connection.address.slice(0, 8)}…
                   {connection.address.slice(-4)}
                 </span>
-                <CopyButton value={connection.address} iconClassName="w-3 h-3" />
+                <CopyButton
+                  value={connection.address}
+                  iconClassName="w-3 h-3"
+                />
               </span>
               <span>Network: {connection.network || 'TESTNET'}</span>
             </div>
@@ -1075,8 +1092,7 @@ export default function StellarFiatModal({
                   'Awaiting Confirmation'
                 ) : (
                   'Deposit'
-                )
-                }
+                )}
               </button>
 
               <button
@@ -1085,7 +1101,7 @@ export default function StellarFiatModal({
                   setAmount('100');
                   setTxHash(
                     'MOCK' +
-                    Math.random().toString(36).substring(2, 10).toUpperCase(),
+                      Math.random().toString(36).substring(2, 10).toUpperCase(),
                   );
                   setStatus('success');
                 }}
@@ -1103,6 +1119,50 @@ export default function StellarFiatModal({
           </>
         )}
       </div>
+
+      {/* Two-Factor Confirmation Modal */}
+      {showTwoFactorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-white font-semibold text-lg mb-4">
+              Two-Factor Confirmation
+            </h3>
+            <p className="text-gray-300 text-sm mb-4">
+              For your security, please enter the last 4 digits of your wallet
+              address to confirm this high-value transfer.
+            </p>
+            <p className="text-gray-400 text-xs mb-2">
+              Your wallet: {connection.address.slice(0, 8)}…
+              {connection.address.slice(-4)}
+            </p>
+            <input
+              type="text"
+              value={twoFactorConfirmation}
+              onChange={(e) => setTwoFactorConfirmation(e.target.value)}
+              placeholder="Enter last 4 digits"
+              maxLength={4}
+              className="theme-input theme-input-border w-full border rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 mb-4"
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowTwoFactorModal(false);
+                  setTwoFactorConfirmation('');
+                }}
+                className="flex-1 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAction}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

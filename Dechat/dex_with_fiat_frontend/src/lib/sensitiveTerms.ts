@@ -13,21 +13,76 @@ export interface SensitiveTermConfig {
 // Default sensitive terms organized by category
 const DEFAULT_SENSITIVE_TERMS: SensitiveTermConfig[] = [
   // Profanity - common profane words
-  { term: 'damn', category: 'profanity', caseSensitive: false, wholeWordOnly: true },
-  { term: 'hell', category: 'profanity', caseSensitive: false, wholeWordOnly: true },
-  { term: 'crap', category: 'profanity', caseSensitive: false, wholeWordOnly: true },
-  { term: 'ass', category: 'profanity', caseSensitive: false, wholeWordOnly: false },
-  { term: 'piss', category: 'profanity', caseSensitive: false, wholeWordOnly: true },
+  {
+    term: 'damn',
+    category: 'profanity',
+    caseSensitive: false,
+    wholeWordOnly: true,
+  },
+  {
+    term: 'hell',
+    category: 'profanity',
+    caseSensitive: false,
+    wholeWordOnly: true,
+  },
+  {
+    term: 'crap',
+    category: 'profanity',
+    caseSensitive: false,
+    wholeWordOnly: true,
+  },
+  {
+    term: 'ass',
+    category: 'profanity',
+    caseSensitive: false,
+    wholeWordOnly: false,
+  },
+  {
+    term: 'piss',
+    category: 'profanity',
+    caseSensitive: false,
+    wholeWordOnly: true,
+  },
 
   // Offensive terms
-  { term: 'stupid', category: 'offensive', caseSensitive: false, wholeWordOnly: true },
-  { term: 'idiot', category: 'offensive', caseSensitive: false, wholeWordOnly: true },
-  { term: 'dumb', category: 'offensive', caseSensitive: false, wholeWordOnly: true },
+  {
+    term: 'stupid',
+    category: 'offensive',
+    caseSensitive: false,
+    wholeWordOnly: true,
+  },
+  {
+    term: 'idiot',
+    category: 'offensive',
+    caseSensitive: false,
+    wholeWordOnly: true,
+  },
+  {
+    term: 'dumb',
+    category: 'offensive',
+    caseSensitive: false,
+    wholeWordOnly: true,
+  },
 
   // Sensitive - could be inappropriate in business context
-  { term: 'sucks', category: 'sensitive', caseSensitive: false, wholeWordOnly: true },
-  { term: 'hate', category: 'sensitive', caseSensitive: false, wholeWordOnly: true },
-  { term: 'kill', category: 'sensitive', caseSensitive: false, wholeWordOnly: true },
+  {
+    term: 'sucks',
+    category: 'sensitive',
+    caseSensitive: false,
+    wholeWordOnly: true,
+  },
+  {
+    term: 'hate',
+    category: 'sensitive',
+    caseSensitive: false,
+    wholeWordOnly: true,
+  },
+  {
+    term: 'kill',
+    category: 'sensitive',
+    caseSensitive: false,
+    wholeWordOnly: true,
+  },
 ];
 
 export class SensitiveTermsManager {
@@ -83,9 +138,12 @@ export class SensitiveTermsManager {
   /**
    * Find all sensitive terms in text
    */
-  findSensitiveTerms(
-    text: string,
-  ): Array<{ term: string; index: number; length: number; config: SensitiveTermConfig }> {
+  findSensitiveTerms(text: string): Array<{
+    term: string;
+    index: number;
+    length: number;
+    config: SensitiveTermConfig;
+  }> {
     const results: Array<{
       term: string;
       index: number;
@@ -121,7 +179,15 @@ export class SensitiveTermsManager {
     const searchTerm = config.caseSensitive ? config.term : termKey;
 
     if (config.wholeWordOnly) {
-      const regex = new RegExp(`\\b${this.escapeRegex(searchTerm)}\\b`, 'i');
+      // The flag has to follow `config.caseSensitive` the same way
+      // `findMatches` does. Hard-coding 'i' here made a case-sensitive,
+      // whole-word term report a hit in `isSensitive()` for text that
+      // `findSensitiveTerms()` then found nothing in, so masking behaved
+      // inconsistently with the check that decides whether to mask.
+      const regex = new RegExp(
+        `\\b${this.escapeRegex(searchTerm)}\\b`,
+        config.caseSensitive ? '' : 'i',
+      );
       return regex.test(searchText);
     } else {
       return searchText.includes(searchTerm);
@@ -141,7 +207,10 @@ export class SensitiveTermsManager {
     const searchTerm = config.caseSensitive ? config.term : termKey;
 
     if (config.wholeWordOnly) {
-      const regex = new RegExp(`\\b${this.escapeRegex(searchTerm)}\\b`, config.caseSensitive ? 'g' : 'gi');
+      const regex = new RegExp(
+        `\\b${this.escapeRegex(searchTerm)}\\b`,
+        config.caseSensitive ? 'g' : 'gi',
+      );
       let match;
       while ((match = regex.exec(searchText)) !== null) {
         matches.push({

@@ -10,7 +10,10 @@ import type {
   FilterChipTone,
   TransactionStatus,
 } from '@/types';
-import { filterTransactions, computeFilterStats } from '@/lib/transactionFilters';
+import {
+  filterTransactions,
+  computeFilterStats,
+} from '@/lib/transactionFilters';
 import {
   deserializeFilters,
   mergeFilterParams,
@@ -32,10 +35,26 @@ function areFilterStatesEqual(a: FilterState, b: FilterState): boolean {
  * Keyboard shortcut definitions exposed by the hook.
  */
 export const KEYBOARD_SHORTCUTS = {
-  clearAll: { key: 'x', modifiers: 'Ctrl+Shift', description: 'Clear all filters' },
-  cycleStatus: { key: '1', modifiers: 'Ctrl+Shift', description: 'Cycle status filter' },
-  cycleAsset: { key: '2', modifiers: 'Ctrl+Shift', description: 'Cycle asset filter' },
-  cycleNetwork: { key: '3', modifiers: 'Ctrl+Shift', description: 'Cycle network filter' },
+  clearAll: {
+    key: 'x',
+    modifiers: 'Ctrl+Shift',
+    description: 'Clear all filters',
+  },
+  cycleStatus: {
+    key: '1',
+    modifiers: 'Ctrl+Shift',
+    description: 'Cycle status filter',
+  },
+  cycleAsset: {
+    key: '2',
+    modifiers: 'Ctrl+Shift',
+    description: 'Cycle asset filter',
+  },
+  cycleNetwork: {
+    key: '3',
+    modifiers: 'Ctrl+Shift',
+    description: 'Cycle network filter',
+  },
 } as const;
 
 export interface UseTransactionFiltersReturn {
@@ -52,6 +71,10 @@ export interface UseTransactionFiltersReturn {
   ) => FilterChipTone;
   /** Available keyboard shortcuts for filter management. */
   keyboardShortcuts: typeof KEYBOARD_SHORTCUTS;
+  /** True while an optimistic filter change has not yet been confirmed by the URL. */
+  isSyncingFilters: boolean;
+  /** Set when the last URL sync failed and the optimistic change was rolled back. */
+  filterSyncError: Error | null;
 }
 
 const DEBOUNCE_DELAY = 150; // ms
@@ -181,7 +204,10 @@ const FILTER_TONE_PALETTES = {
   },
 } as const satisfies Record<string, FilterTonePair>;
 
-const STATUS_TONE_KEYS: Record<TransactionStatus, keyof typeof FILTER_TONE_PALETTES> = {
+const STATUS_TONE_KEYS: Record<
+  TransactionStatus,
+  keyof typeof FILTER_TONE_PALETTES
+> = {
   pending: 'amber',
   completed: 'emerald',
   warning: 'blue',
@@ -305,9 +331,17 @@ export function useTransactionFilters(
   const searchParamsRef = useRef(searchParams);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingFilterStateRef = useRef<FilterState | null>(null);
-  const [optimisticFilterState, setOptimisticFilterState] = useState<FilterState | null>(
-    null,
-  );
+  // True once the pending state has been pushed to the router (debounce flushed).
+  const pendingFlushedRef = useRef(false);
+  const [optimisticFilterState, setOptimisticFilterState] =
+    useState<FilterState | null>(null);
+  const [filterSyncError, setFilterSyncError] = useState<Error | null>(null);
+  const shortcutActionsRef = useRef<{
+    clearAllFilters: () => void;
+    cycleFilterCategory: (category: FilterCategory) => void;
+  } | null>(null);
+  const searchString = searchParams?.toString() ?? '';
+  const lastSearchStringRef = useRef(searchString);
 
   // Keep ref in sync so debounce callbacks always read the latest searchParams
   useEffect(() => {
@@ -317,33 +351,91 @@ export function useTransactionFilters(
   // Parse filter state from URL (with fallback for SSR)
   const urlFilterState = useMemo(() => {
     try {
-      return deserializeFilters(searchParams);
-    } catch {
+      const validOptions = transactions.length
+        ? {
+            asset: Array.from(
+              new Set(
+                transactions.flatMap((transaction) =>
+                  typeof transaction.asset === 'string'
+                    ? [transaction.asset]
+                    : [],
+                ),
+              ),
+            ),
+            network: Array.from(
+              new Set(
+                transactions.flatMap((transaction) =>
+                  'network' in transaction &&
+                  typeof transaction.network === 'string'
+                    ? [transaction.network]
+                    : [],
+                ),
+              ),
+            ),
+          }
+        : {};
+      return deserializeFilters(searchParams, validOptions);
+    } catch (err) {
+      setFilterSyncError(err instanceof Error ? err : new Error(String(err)));
       // Fallback for SSR/SSG
       return { status: [], asset: [], network: [] };
     }
-  }, [searchParams]);
+  }, [searchParams, transactions]);
 
   const filterState = optimisticFilterState ?? urlFilterState;
 
+  const rollbackOptimisticState = useCallback(() => {
+    pendingFilterStateRef.current = null;
+    pendingFlushedRef.current = false;
+    setOptimisticFilterState(null);
+  }, []);
+
+  // Reconcile optimistic state with the URL: drop it once the URL confirms the
+  // change, or when a navigation we did not initiate (e.g. back/forward) lands
+  // after our push was sent — the URL is the source of truth.
   useEffect(() => {
-    if (
-      pendingFilterStateRef.current &&
-      areFilterStatesEqual(pendingFilterStateRef.current, urlFilterState)
-    ) {
-      pendingFilterStateRef.current = null;
-      setOptimisticFilterState(null);
+    const searchChanged = lastSearchStringRef.current !== searchString;
+    lastSearchStringRef.current = searchString;
+
+    const pending = pendingFilterStateRef.current;
+    if (!pending) return;
+
+    if (areFilterStatesEqual(pending, urlFilterState)) {
+      rollbackOptimisticState();
+    } else if (searchChanged && pendingFlushedRef.current) {
+      rollbackOptimisticState();
     }
-  }, [urlFilterState, optimisticFilterState]);
+  }, [
+    searchString,
+    urlFilterState,
+    optimisticFilterState,
+    rollbackOptimisticState,
+  ]);
 
   // Compute filtered transactions
   const filteredTransactions = useMemo(() => {
-    return filterTransactions(transactions, filterState);
+    try {
+      return filterTransactions(transactions, filterState);
+    } catch (err) {
+      setFilterSyncError(err instanceof Error ? err : new Error(String(err)));
+      return transactions;
+    }
   }, [transactions, filterState]);
 
   // Compute filter statistics
   const filterStats = useMemo(() => {
-    return computeFilterStats(transactions, filterState);
+    try {
+      return computeFilterStats(transactions, filterState);
+    } catch (err) {
+      setFilterSyncError(err instanceof Error ? err : new Error(String(err)));
+      return {
+        statusOptions: [],
+        assetOptions: [],
+        networkOptions: [],
+        totalCount: transactions.length,
+        filteredCount: 0,
+      };
+    }
   }, [transactions, filterState]);
 
   // Check if any filters are active
@@ -372,19 +464,35 @@ export function useTransactionFilters(
         clearTimeout(debounceTimerRef.current);
       }
 
+      // Apply optimistically so the UI reflects the change before the URL does.
       pendingFilterStateRef.current = newFilterState;
+      pendingFlushedRef.current = false;
       setOptimisticFilterState(newFilterState);
+      setFilterSyncError(null);
 
       // Set new timer — reads searchParamsRef at flush time so it always
       // uses the latest params (including non-filter params like `tab`).
       debounceTimerRef.current = setTimeout(() => {
-        const newParams = mergeFilterParams(searchParamsRef.current, newFilterState);
+        debounceTimerRef.current = null;
+        const newParams = mergeFilterParams(
+          searchParamsRef.current,
+          newFilterState,
+        );
         const queryString = newParams.toString();
         const newUrl = queryString ? `${pathname}?${queryString}` : pathname;
-        router.push(newUrl, { scroll: false });
+        pendingFlushedRef.current = true;
+        try {
+          router.push(newUrl, { scroll: false });
+        } catch (error) {
+          // Roll back to the last URL-confirmed filter state.
+          rollbackOptimisticState();
+          setFilterSyncError(
+            error instanceof Error ? error : new Error(String(error)),
+          );
+        }
       }, DEBOUNCE_DELAY);
     },
-    [router, pathname],
+    [router, pathname, rollbackOptimisticState],
   );
 
   // Toggle a filter value
@@ -486,6 +594,8 @@ export function useTransactionFilters(
     [filterState, filterStats, toggleFilter, updateUrl],
   );
 
+  shortcutActionsRef.current = { clearAllFilters, cycleFilterCategory };
+
   // Register keyboard shortcuts
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -507,22 +617,22 @@ export function useTransactionFilters(
       switch (e.key.toLowerCase()) {
         case 'x':
           e.preventDefault();
-          clearAllFilters();
+          shortcutActionsRef.current?.clearAllFilters();
           filterTelemetry.shortcut({ key: 'x', action: 'clear_all' });
           break;
         case '1':
           e.preventDefault();
-          cycleFilterCategory('status');
+          shortcutActionsRef.current?.cycleFilterCategory('status');
           filterTelemetry.shortcut({ key: '1', action: 'cycle_status' });
           break;
         case '2':
           e.preventDefault();
-          cycleFilterCategory('asset');
+          shortcutActionsRef.current?.cycleFilterCategory('asset');
           filterTelemetry.shortcut({ key: '2', action: 'cycle_asset' });
           break;
         case '3':
           e.preventDefault();
-          cycleFilterCategory('network');
+          shortcutActionsRef.current?.cycleFilterCategory('network');
           filterTelemetry.shortcut({ key: '3', action: 'cycle_network' });
           break;
       }
@@ -532,7 +642,7 @@ export function useTransactionFilters(
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [clearAllFilters, cycleFilterCategory]);
+  }, []);
 
   return {
     filterState,
@@ -543,5 +653,7 @@ export function useTransactionFilters(
     hasActiveFilters,
     getFilterChipTone,
     keyboardShortcuts: KEYBOARD_SHORTCUTS,
+    isSyncingFilters: optimisticFilterState !== null,
+    filterSyncError,
   };
 }

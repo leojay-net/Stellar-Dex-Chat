@@ -319,9 +319,18 @@ This ensures a single point of control and audit.
 ### 4. Integer Overflow/Underflow
 
 **Mitigation**:
-- `accrue_fee`: Uses unchecked addition (amount must be positive and reasonable)
+- `accrue_fee`: Uses unchecked addition (amount must be positive and reasonable, bounded by contract token balance)
 - `deduct_fee_vault_ledger`: Uses `checked_sub` and returns `Overflow` error
 - Nonce increment: Uses `checked_add` with `Overflow` check (effectively impossible at u64)
+- Fee vault balance: Bounded by actual contract token balance, preventing unbounded growth
+- All financial operations use checked arithmetic to prevent overflow
+
+**Overflow Prevention Strategy**:
+- Fee vault ledger is reconciled with actual contract balance before withdrawals
+- Vault balance cannot exceed contract's actual token holdings
+- Deductions are guarded by inequality checks before subtraction
+- Uses `checked_sub` to prevent underflow in balance deductions
+- See [OVERFLOW_PREVENTION_ARCHITECTURE.md](OVERFLOW_PREVENTION_ARCHITECTURE.md) for comprehensive details
 
 ---
 

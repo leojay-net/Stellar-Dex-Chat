@@ -9,6 +9,7 @@ import {
 import { aggregateDailyVolume, DailyMetric } from '@/lib/analytics';
 import { aggregatePayoutMetrics } from '@/lib/adminMetrics';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
+import { useChartColors } from '@/hooks/useChartColors';
 import AuditTable from '@/components/AuditTable';
 import useBridgeStats from '@/hooks/useBridgeStats';
 import AdminGuard from '@/components/AdminGuard';
@@ -17,7 +18,6 @@ import { stroopsToDisplay } from '@/lib/stellarContract';
 import SkeletonHeader from '@/components/ui/skeleton/SkeletonHeader';
 import SkeletonPayout from '@/components/ui/skeleton/SkeletonPayout';
 import CopyButton from '@/components/ui/CopyButton';
-import ConfirmDestructiveActionDialog from '@/components/ui/ConfirmDestructiveActionDialog';
 import {
   AreaChart,
   Area,
@@ -64,47 +64,6 @@ function escapeCsvValue(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
 }
 
-// Hook to get theme-aware colors for charts using CSS custom properties (#452).
-// All values are read exclusively from CSS variables — no raw hex values.
-function useChartColors() {
-  const [colors, setColors] = useState({
-    primary: 'var(--color-chart-primary)',
-    textMuted: 'var(--color-chart-text)',
-    border: 'var(--color-chart-grid)',
-    surface: 'var(--color-chart-background)',
-    surfaceBorder: 'var(--color-chart-grid)',
-  });
-
-  useEffect(() => {
-    const updateColors = () => {
-      const computedStyle = getComputedStyle(document.documentElement);
-      setColors({
-        primary: computedStyle.getPropertyValue('--color-chart-primary').trim(),
-        textMuted: computedStyle.getPropertyValue('--color-chart-text').trim(),
-        border: computedStyle.getPropertyValue('--color-chart-grid').trim(),
-        surface: computedStyle
-          .getPropertyValue('--color-chart-background')
-          .trim(),
-        surfaceBorder: computedStyle
-          .getPropertyValue('--color-chart-grid')
-          .trim(),
-      });
-    };
-
-    updateColors();
-
-    const observer = new MutationObserver(updateColors);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['data-theme'],
-    });
-
-    return () => observer.disconnect();
-  }, []);
-
-  return colors;
-}
-
 function AdminErrorFallback() {
   return (
     <div className="min-h-screen theme-app flex items-center justify-center p-8">
@@ -147,8 +106,7 @@ export default function AdminDashboard() {
   const [optimisticPage, setOptimisticPage] = useState<number | null>(null);
   const [optimisticFilter, setOptimisticFilter] = useState<string | null>(null);
   const [optimisticExportSuccess, setOptimisticExportSuccess] = useState(false);
-  const [isClearLogsDialogOpen, setIsClearLogsDialogOpen] = useState(false);
-  const [isClearingLogs, setIsClearingLogs] = useState(false);
+  const [showReauthPrompt, setShowReauthPrompt] = useState(false);
   const enableAdminReconciliation = useFeatureFlag('enableAdminReconciliation');
   const chartColors = useChartColors();
 
@@ -182,7 +140,13 @@ export default function AdminDashboard() {
         });
         const response = await fetch(
           `/api/admin/audit-log?${params.toString()}`,
+          { credentials: 'include' },
         );
+
+        if (response.status === 401) {
+          setShowReauthPrompt(true);
+          throw new Error('Session expired. Please re-authenticate.');
+        }
 
         if (!response.ok) {
           throw new Error(
@@ -225,7 +189,16 @@ export default function AdminDashboard() {
 
   const fetchMetrics = async () => {
     try {
-      const response = await fetch('/api/admin/reconciliation');
+      const response = await fetch('/api/admin/reconciliation', {
+        credentials: 'include',
+      });
+
+      if (response.status === 401) {
+        setShowReauthPrompt(true);
+        setLoadingMetrics(false);
+        return;
+      }
+
       if (response.ok) {
         const records: ReconciliationRecord[] = await response.json();
         setReconciliationRecords(records);
@@ -253,7 +226,13 @@ export default function AdminDashboard() {
         });
         const response = await fetch(
           `/api/admin/audit-log?${params.toString()}`,
+          { credentials: 'include' },
         );
+
+        if (response.status === 401) {
+          setShowReauthPrompt(true);
+          throw new Error('Session expired. Please re-authenticate.');
+        }
 
         if (!response.ok) {
           throw new Error(`Failed to fetch audit page ${page}`);
@@ -323,23 +302,26 @@ export default function AdminDashboard() {
     fetchAuditLogs(1, newFilter, true);
   };
 
-  const handleClearAuditLogs = async () => {
-    setIsClearingLogs(true);
+  const _handleClearAuditLogs = async () => {
     try {
       const response = await fetch('/api/admin/audit-log', {
         method: 'DELETE',
+        credentials: 'include',
       });
+
+      if (response.status === 401) {
+        setShowReauthPrompt(true);
+        return;
+      }
+
       if (!response.ok) {
         throw new Error(`Failed to clear audit logs (${response.status})`);
       }
-      setIsClearLogsDialogOpen(false);
       await fetchAuditLogs(1, actionFilter);
     } catch (error) {
       setAuditError(
         error instanceof Error ? error.message : 'Failed to clear audit logs',
       );
-    } finally {
-      setIsClearingLogs(false);
     }
   };
 
@@ -350,7 +332,10 @@ export default function AdminDashboard() {
 
   if (loadingMetrics) {
     return (
-      <div className="min-h-screen theme-app p-8">
+      <main
+        className="min-h-screen theme-app p-8"
+        aria-label="Admin dashboard loading"
+      >
         <div className="max-w-7xl mx-auto space-y-6">
           <SkeletonHeader />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -359,23 +344,30 @@ export default function AdminDashboard() {
             <SkeletonPayout />
           </div>
         </div>
-      </div>
+      </main>
     );
   }
 
   return (
     <AdminGuard>
-      <div className="min-h-screen theme-app p-8">
+      <main
+        className="min-h-screen theme-app p-8"
+        aria-labelledby="admin-dashboard-heading"
+      >
         <ErrorBoundary fallback={<AdminErrorFallback />}>
           <div className="max-w-7xl mx-auto">
             <div className="flex justify-between items-center mb-8">
-              <h1 className="text-3xl font-bold theme-text-primary">
+              <h1
+                id="admin-dashboard-heading"
+                className="text-3xl font-bold theme-text-primary"
+              >
                 Admin Dashboard
               </h1>
               {enableAdminReconciliation && (
                 <Link
                   href="/admin/reconciliation"
                   className="theme-primary-button px-4 py-2 rounded-md"
+                  aria-label="Open admin reconciliation tools"
                 >
                   Reconciliation Tools
                 </Link>
@@ -581,6 +573,7 @@ export default function AdminDashboard() {
                       </label>
                       <select
                         id="audit-action-filter"
+                        aria-label="Filter admin audit log by action type"
                         value={optimisticFilter ?? actionFilter}
                         onChange={(event) => {
                           handleFilterChange(event.target.value);
@@ -627,39 +620,14 @@ export default function AdminDashboard() {
                           ? 'Exporting...'
                           : 'Export CSV'}
                     </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setIsClearLogsDialogOpen(true)}
-                      disabled={auditLoading || auditTotal === 0}
-                      className="h-10 mt-0 sm:mt-5 px-4 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed text-white"
-                      style={{ backgroundColor: 'var(--color-danger)' }}
-                      aria-label="Clear all audit log entries"
-                    >
-                      Clear Audit Logs
-                    </button>
                   </div>
                 </div>
               </div>
 
-              <ConfirmDestructiveActionDialog
-                isOpen={isClearLogsDialogOpen}
-                onClose={() => setIsClearLogsDialogOpen(false)}
-                onConfirm={handleClearAuditLogs}
-                actionName="Clear Audit Logs"
-                description="Permanently deletes every audit log entry currently stored for this admin dashboard."
-                consequences={[
-                  'All audit history will be permanently lost.',
-                  'This action cannot be reversed or recovered.',
-                ]}
-                requireTypedConfirmation
-                confirmLabel="Clear Logs"
-                isConfirming={isClearingLogs}
-              />
-
               {auditError && (
                 <div
                   className="px-6 py-4 text-sm theme-border border-b"
+                  role="alert"
                   style={{
                     backgroundColor: 'var(--color-danger-soft)',
                     color: 'var(--color-danger)',
@@ -771,7 +739,11 @@ export default function AdminDashboard() {
               </div>
 
               {auditLoading && (
-                <div className="px-6 py-8 text-center text-sm theme-text-muted">
+                <div
+                  className="px-6 py-8 text-center text-sm theme-text-muted"
+                  role="status"
+                  aria-live="polite"
+                >
                   Loading audit entries...
                 </div>
               )}
@@ -838,6 +810,40 @@ export default function AdminDashboard() {
               </div>
             </div>
 
+            {showReauthPrompt && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                <div
+                  className="theme-surface rounded-lg shadow-xl p-6 max-w-md mx-4"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="reauth-dialog-title"
+                  aria-describedby="reauth-dialog-description"
+                >
+                  <h3
+                    id="reauth-dialog-title"
+                    className="text-lg font-semibold theme-text-primary mb-2"
+                  >
+                    Session Expired
+                  </h3>
+                  <p
+                    id="reauth-dialog-description"
+                    className="theme-text-secondary mb-4"
+                  >
+                    Your admin session has expired. Please refresh the page to
+                    re-authenticate.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => window.location.reload()}
+                    className="theme-primary-button w-full py-2 rounded-md font-medium"
+                    aria-label="Refresh page to re-authenticate"
+                  >
+                    Refresh Page
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Audit Log Section */}
             <div className="mt-12">
               <h2 className="text-2xl font-bold theme-text-primary mb-6">
@@ -847,7 +853,7 @@ export default function AdminDashboard() {
             </div>
           </div>
         </ErrorBoundary>
-      </div>
+      </main>
     </AdminGuard>
   );
 }

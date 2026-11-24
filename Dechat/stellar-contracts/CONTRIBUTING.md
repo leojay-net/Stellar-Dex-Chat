@@ -7,7 +7,7 @@ Welcome! We appreciate your interest in contributing to the Stellar-Dex-Chat sma
 Before you begin, ensure you have the following installed:
 
 - **Rust**: The primary language for Soroban smart contracts. [Install Rust](https://www.rust-lang.org/tools/install)
-- **Soroban CLI**: Required for building and deploying contracts to the Stellar network. Follow the [Soroban documentation](https://developers.stellar.org/docs/build/smart-contracts/getting-started/setup) to install it.
+- **Stellar CLI**: Required for building and deploying contracts to the Stellar network. Install the pinned version with `cargo install --locked stellar-cli --version 28.0.0`.
 - **Git**: For source control.
 
 ## Local Setup
@@ -15,17 +15,24 @@ Before you begin, ensure you have the following installed:
 1. Fork and clone the repository:
    ```bash
    git clone https://github.com/<your-username>/Stellar-Dex-Chat.git
-   cd Stellar-Dex-Chat/stellar-contracts
+   cd Stellar-Dex-Chat/Dechat/stellar-contracts
    ```
 
-2. Add the `wasm32-unknown-unknown` target for compiling contracts:
+2. Add the `wasm32v1-none` target for compiling contracts:
    ```bash
-   rustup target add wasm32-unknown-unknown
+   rustup target add wasm32v1-none
    ```
 
 3. Build the smart contracts to ensure your environment is set up correctly:
    ```bash
-   cargo build --target wasm32-unknown-unknown --release
+   stellar contract build
+   ```
+
+4. Verify the optimized WASM size is within budget:
+   ```bash
+   ls -lh target/wasm32v1-none/release/stellar_contracts.optimized.wasm
+   # Should be under 120 KB (120000 bytes). The Soroban mainnet limit is ~256 KB,
+   # so we maintain a 120 KB budget to allow for future growth.
    ```
 
 For more details on the architecture of our fiat bridge logic, please refer to [FIAT_BRIDGE_README.md](FIAT_BRIDGE_README.md) (if available).

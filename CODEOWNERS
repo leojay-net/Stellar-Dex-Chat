@@ -1,0 +1,6 @@
+# Default owner for everything in the repo. There is currently a single
+# known maintainer; once more maintainers join, split this by area (e.g.
+# Dechat/stellar-contracts/ vs Dechat/dex_with_fiat_frontend/) so branch
+# protection's "require review from Code Owners" setting (see
+# docs/branch-protection.md) routes reviews to the right people.
+* @leojay-net

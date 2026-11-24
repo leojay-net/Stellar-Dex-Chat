@@ -4,7 +4,7 @@ export interface SearchFilters {
   keyword: string;
   walletAddress: string;
   dateFrom: string; // ISO date string YYYY-MM-DD
-  dateTo: string;   // ISO date string YYYY-MM-DD
+  dateTo: string; // ISO date string YYYY-MM-DD
 }
 
 export interface MessageMatch {
@@ -21,23 +21,55 @@ export interface SearchResults {
   totalMessages: number;
 }
 
+export interface DebouncedFn<T extends (...args: unknown[]) => void> {
+  (...args: Parameters<T>): void;
+  /** Cancel any pending invocation. Call on component unmount to avoid stale callbacks. */
+  cancel(): void;
+  /** Swap the underlying function without resetting the timer. Prevents stale-closure bugs
+   *  when the caller's callback is recreated on each render (e.g. an inline arrow function). */
+  updateFn(newFn: T): void;
+}
+
 /** Debounce helper — returns a debounced version of `fn`. */
 export function debounce<T extends (...args: unknown[]) => void>(
   fn: T,
   delayMs: number,
-): (...args: Parameters<T>) => void {
+): DebouncedFn<T> {
   let timer: ReturnType<typeof setTimeout> | null = null;
-  return (...args: Parameters<T>) => {
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), delayMs);
+  // Store the latest fn so callers can update it via updateFn() without
+  // recreating the debounced wrapper (fixes stale-closure on re-render).
+  let latestFn: T = fn;
+
+  function debounced(...args: Parameters<T>): void {
+    if (timer !== null) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null; // reset so future clearTimeout checks are accurate
+      latestFn(...args);
+    }, delayMs);
+  }
+
+  debounced.cancel = (): void => {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
   };
+
+  debounced.updateFn = (newFn: T): void => {
+    latestFn = newFn;
+  };
+
+  return debounced;
 }
 
 /**
  * Finds all non-overlapping occurrences of `keyword` (case-insensitive)
  * in `text` and returns their [start, end) index pairs.
  */
-export function findHighlights(text: string, keyword: string): Array<[number, number]> {
+export function findHighlights(
+  text: string,
+  keyword: string,
+): Array<[number, number]> {
   if (!keyword.trim()) return [];
   const results: Array<[number, number]> = [];
   const lower = text.toLowerCase();
@@ -113,9 +145,11 @@ export function searchChatHistory(
   const hasWallet = walletAddress.trim().length > 0;
   const hasDate = dateFrom.trim().length > 0 || dateTo.trim().length > 0;
 
-  // If no filters at all, return empty
+  const totalMessages = sessions.reduce((sum, s) => sum + s.messages.length, 0);
+
+  // If no filters at all, return early with accurate counts but no matches.
   if (!hasKeyword && !hasWallet && !hasDate) {
-    return { matches: [], totalSessions: sessions.length, totalMessages: 0 };
+    return { matches: [], totalSessions: sessions.length, totalMessages };
   }
 
   const matches: MessageMatch[] = [];
@@ -134,7 +168,9 @@ export function searchChatHistory(
       if (hasDate && !matchesDateRange(message, dateFrom, dateTo)) continue;
 
       // Keyword filter with highlight positions
-      const highlights = hasKeyword ? findHighlights(message.content, keyword.trim()) : [];
+      const highlights = hasKeyword
+        ? findHighlights(message.content, keyword.trim())
+        : [];
       if (hasKeyword && highlights.length === 0) continue;
 
       matches.push({
@@ -146,6 +182,5 @@ export function searchChatHistory(
     }
   }
 
-  const totalMessages = sessions.reduce((sum, s) => sum + s.messages.length, 0);
   return { matches, totalSessions: sessions.length, totalMessages };
 }

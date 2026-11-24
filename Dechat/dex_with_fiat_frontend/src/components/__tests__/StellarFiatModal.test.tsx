@@ -1,6 +1,12 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { vi } from 'vitest';
+import {
+  act,
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+} from '@testing-library/react';
+import { vi, type Mock } from 'vitest';
 import StellarFiatModal from '../StellarFiatModal';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { BRIDGE_LIMIT_WARNING_PERCENT } from '@/lib/stellarContract';
@@ -14,6 +20,7 @@ vi.mock('@/contexts/StellarWalletContext', () => ({
       network: 'TESTNET',
     },
     signTx: vi.fn(),
+    refreshXlmBalance: vi.fn().mockResolvedValue(undefined),
   }),
 }));
 
@@ -27,16 +34,76 @@ vi.mock('@/lib/stellarContract', () => ({
   pollTransaction: vi.fn(),
   stroopsToDisplay: (stroops: bigint) => String(Number(stroops) / 1e7),
   BRIDGE_LIMIT_WARNING_PERCENT: 0.9,
+  simulateDeposit: vi.fn().mockResolvedValue({
+    baseFee: 0.00001,
+    resourceFee: 0,
+    fee: 0.00001,
+    minFee: '100',
+  }),
+  simulateWithdraw: vi.fn().mockResolvedValue({
+    baseFee: 0.00001,
+    resourceFee: 0,
+    fee: 0.00001,
+    minFee: '100',
+  }),
+}));
+
+vi.mock('@/hooks/useBridgeStats', () => {
+  const refetchStats = vi.fn().mockResolvedValue(undefined);
+  return {
+    default: () => ({
+      limit: 1_000_000_000_000n,
+      loading: false,
+      error: null,
+      refetchStats,
+    }),
+  };
+});
+
+vi.mock('@/lib/cryptoPriceService', () => ({
+  getTokenPrice: vi.fn().mockResolvedValue(0.12),
+  getTokenPriceWithStatus: vi.fn().mockResolvedValue({
+    price: 0.12,
+    stale: false,
+    source: 'live',
+  }),
+  formatFiatAmount: vi.fn().mockReturnValue('$1.20'),
+}));
+
+vi.mock('@/contexts/UserPreferencesContext', () => ({
+  useUserPreferences: () => ({
+    fiatCurrency: 'usd',
+    currencySymbol: '$',
+    setFiatCurrency: vi.fn(),
+    remindersEnabled: false,
+    setRemindersEnabled: vi.fn(),
+    reminderFrequency: 'weekly',
+    setReminderFrequency: vi.fn(),
+    maskingEnabled: false,
+    setMaskingEnabled: vi.fn(),
+    maskingStyle: 'asterisk',
+    setMaskingStyle: vi.fn(),
+    highValueThreshold: 500,
+    setHighValueThreshold: vi.fn(),
+    twoFactorEnabled: false,
+    setTwoFactorEnabled: vi.fn(),
+  }),
 }));
 
 const onClose = vi.fn();
 const onDepositSuccess = vi.fn();
 
 describe('StellarFiatModal', () => {
-  let mockedContract: Awaited<ReturnType<typeof import('@/lib/stellarContract')>>;
+  let mockedContract: {
+    depositToContract: Mock;
+    withdrawFromContract: Mock;
+  };
 
   beforeEach(async () => {
-    mockedContract = await import('@/lib/stellarContract');
+    mockedContract = (await import('@/lib/stellarContract')) as unknown as {
+      depositToContract: Mock;
+      withdrawFromContract: Mock;
+    };
     mockedContract.depositToContract.mockReset();
     mockedContract.withdrawFromContract.mockReset();
     onClose.mockReset();
@@ -68,11 +135,17 @@ describe('StellarFiatModal', () => {
       expect(screen.getByText(/Transaction Confirmed/i)).toBeInTheDocument();
     });
 
-    expect(screen.getByText('TXHASH123')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'TXHASH123' })).toBeInTheDocument();
+    expect(onDepositSuccess).toHaveBeenCalledWith({
+      xlmAmount: 10,
+      note: undefined,
+    });
   });
 
   it('shows an error state when the transaction fails', async () => {
-    mockedContract.depositToContract.mockRejectedValueOnce(new Error('Network failure'));
+    mockedContract.depositToContract.mockRejectedValueOnce(
+      new Error('Network failure'),
+    );
 
     const { getByRole } = render(
       React.createElement(StellarFiatModal, {
@@ -108,7 +181,10 @@ describe('StellarFiatModal fiat estimate cancellation pattern (Issue #709)', () 
     let cancelled = false;
     let stateUpdated = false;
 
-    const setState = () => {
+    // The value is deliberately unused: this stub only records that a state
+    // update was attempted, which is what the cancellation test asserts on.
+    const setState = (value: string) => {
+      void value;
       if (!cancelled) {
         stateUpdated = true;
       }
@@ -120,9 +196,7 @@ describe('StellarFiatModal fiat estimate cancellation pattern (Issue #709)', () 
     });
 
     // Run the async work
-    const asyncWork = fetchPromise.then((result) => {
-      setState(result);
-    });
+    const asyncWork = fetchPromise.then(setState);
 
     // Simulate unmount before the fetch completes
     cancelled = true;
@@ -203,5 +277,189 @@ describe('StellarFiatModal fiat estimate cancellation pattern (Issue #709)', () 
 
     // Only the fast result (latest) should appear
     expect(states).toEqual(['fast-result']);
+  });
+});
+// ── Skeleton Loading State Tests ────────────────────────────────
+
+describe('StellarFiatModal skeleton loading state', () => {
+  beforeEach(() => {
+    onClose.mockReset();
+    onDepositSuccess.mockReset();
+  });
+
+  it('shows skeleton loading state when modal opens with isLoadingUI', () => {
+    const { container } = render(
+      React.createElement(StellarFiatModal, {
+        isOpen: true,
+        onClose,
+        defaultAmount: '10',
+      }),
+    );
+
+    // The skeleton should be rendered (SkeletonPayout renders skeleton elements)
+    const skeletonElements = container.querySelectorAll(
+      '[class*="animate-pulse"]',
+    );
+    expect(skeletonElements.length).toBeGreaterThan(0);
+  });
+
+  it('respects theme context for skeleton display', () => {
+    const { container } = render(
+      React.createElement(StellarFiatModal, {
+        isOpen: true,
+        onClose,
+        defaultAmount: '10',
+      }),
+    );
+
+    // Check that modal has theme classes
+    const modal = container.querySelector('[role="dialog"]');
+    expect(modal?.className).toMatch(/theme-/);
+  });
+});
+
+describe('StellarFiatModal fee simulation debounce', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    onClose.mockReset();
+    onDepositSuccess.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function advanceTimers(ms: number) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  }
+
+  it('debounces fee simulation when typing multi-character amount', async () => {
+    const mockedContract = await import('@/lib/stellarContract');
+    vi.mocked(mockedContract.simulateDeposit).mockClear();
+
+    const { getByRole } = render(
+      React.createElement(StellarFiatModal, {
+        isOpen: true,
+        onClose,
+        defaultAmount: '1',
+      }),
+    );
+
+    // Wait for initial render
+    await advanceTimers(500);
+    vi.mocked(mockedContract.simulateDeposit).mockClear();
+
+    // Simulate typing "1000.5" character by character
+    const input = getByRole('spinbutton') as HTMLInputElement;
+
+    // Type '0' -> "10"
+    fireEvent.change(input, { target: { value: '10' } });
+    await advanceTimers(100);
+
+    // Type '0' -> "100"
+    fireEvent.change(input, { target: { value: '100' } });
+    await advanceTimers(100);
+
+    // Type '0' -> "1000"
+    fireEvent.change(input, { target: { value: '1000' } });
+    await advanceTimers(100);
+
+    // Type '.' -> "1000."
+    fireEvent.change(input, { target: { value: '1000.' } });
+    await advanceTimers(100);
+
+    // Type '5' -> "1000.5"
+    fireEvent.change(input, { target: { value: '1000.5' } });
+
+    // Advance past the debounce delay (300ms)
+    await advanceTimers(350);
+
+    // simulateDeposit should have been called exactly once (for the final value)
+    expect(mockedContract.simulateDeposit).toHaveBeenCalledTimes(1);
+    expect(mockedContract.simulateDeposit).toHaveBeenCalledWith(
+      'GABCDEF1234567890',
+      10_005_000_000n,
+    );
+  });
+
+  it('ignores an in-flight simulation result for a previous amount', async () => {
+    const { simulateDeposit } = await import('@/lib/stellarContract');
+    const simulate = vi.mocked(simulateDeposit);
+    simulate.mockClear();
+
+    const { getByRole } = render(
+      React.createElement(StellarFiatModal, {
+        isOpen: true,
+        onClose,
+        defaultAmount: '10',
+      }),
+    );
+
+    await advanceTimers(500);
+    simulate.mockClear();
+
+    type Estimate = Awaited<ReturnType<typeof simulateDeposit>>;
+    let resolvePrevious!: (estimate: Estimate) => void;
+    simulate
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolvePrevious = resolve;
+        }),
+      )
+      .mockResolvedValueOnce({
+        baseFee: 0.00001,
+        resourceFee: 0.00002,
+        fee: 0.00003,
+        minFee: '300',
+      });
+
+    const input = getByRole('spinbutton');
+    fireEvent.change(input, { target: { value: '20' } });
+    await advanceTimers(300);
+    expect(simulate).toHaveBeenNthCalledWith(
+      1,
+      'GABCDEF1234567890',
+      200_000_000n,
+    );
+
+    fireEvent.change(input, { target: { value: '40' } });
+    await advanceTimers(300);
+    expect(simulate).toHaveBeenNthCalledWith(
+      2,
+      'GABCDEF1234567890',
+      400_000_000n,
+    );
+    expect(screen.getByText('0.0000300 XLM')).toBeInTheDocument();
+
+    await act(async () => {
+      resolvePrevious({
+        baseFee: 0.00001,
+        resourceFee: 0.00008,
+        fee: 0.00009,
+        minFee: '900',
+      });
+    });
+
+    expect(screen.getByText('0.0000300 XLM')).toBeInTheDocument();
+    expect(screen.queryByText('0.0000900 XLM')).not.toBeInTheDocument();
+  });
+
+  // Regression: #779 — inputs must not carry hardcoded border-gray-600;
+  // they should use theme-input / theme-input-border so the colour follows
+  // the design-system token and is never left on the browser default.
+  it('amount input uses theme border classes and not hard-coded gray border', async () => {
+    const { getByRole } = render(
+      React.createElement(StellarFiatModal, {
+        isOpen: true,
+        onClose,
+      }),
+    );
+
+    await advanceTimers(500);
+    const input = getByRole('spinbutton') as HTMLInputElement;
+    expect(input.className).not.toMatch(/border-gray-\d+/);
+    expect(input.className).toMatch(/theme-input/);
   });
 });

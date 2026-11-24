@@ -1,6 +1,30 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { chatTelemetry } from '@/lib/chatTelemetry';
+
+/**
+ * Verify actual internet connectivity by pinging a reliable endpoint.
+ * Detects captive portals and other cases where navigator.onLine is misleading.
+ */
+async function verifyConnectivity(): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    const response = await fetch('https://www.cloudflare.com/cdn-cgi/trace', {
+      method: 'HEAD',
+      mode: 'no-cors',
+      signal: controller.signal,
+    });
+    void response;
+
+    clearTimeout(timeoutId);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Verify actual internet connectivity by pinging a reliable endpoint.
@@ -39,6 +63,10 @@ export function useOnlineStatus() {
     // Set initial state
     if (typeof window !== 'undefined') {
       setIsOnline(window.navigator.onLine);
+      chatTelemetry.networkStatus({
+        status: window.navigator.onLine ? 'online' : 'offline',
+        source: 'initial',
+      });
     }
 
     const handleOnline = async () => {
@@ -52,6 +80,10 @@ export function useOnlineStatus() {
     const handleOffline = () => {
       setIsOnline(false);
       setWasOffline(true);
+      chatTelemetry.networkStatus({
+        status: 'offline',
+        source: 'browser-event',
+      });
     };
 
     if (typeof window !== 'undefined') {

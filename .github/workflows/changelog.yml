@@ -16,18 +16,37 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
+      # Run the binary directly rather than orhun/git-cliff-action. The action
+      # marshals the whole changelog back through $GITHUB_OUTPUT with a heredoc
+      # and fails on this repo's output ("Invalid value. Matching delimiter not
+      # found 'EOF'"). Nothing here consumes that output — we only need
+      # CHANGELOG.md on disk.
+      - name: Install git-cliff
+        env:
+          GIT_CLIFF_VERSION: "2.13.1"
+        run: |
+          set -euo pipefail
+          TARBALL="git-cliff-${GIT_CLIFF_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -sSfL --retry 3 \
+            "https://github.com/orhun/git-cliff/releases/download/v${GIT_CLIFF_VERSION}/${TARBALL}" \
+            -o "$TARBALL"
+          curl -sSfL --retry 3 \
+            "https://github.com/orhun/git-cliff/releases/download/v${GIT_CLIFF_VERSION}/${TARBALL}.sha512" \
+            -o "${TARBALL}.sha512"
+          sha512sum -c "${TARBALL}.sha512"
+          tar -xzf "$TARBALL"
+          sudo install -m755 "git-cliff-${GIT_CLIFF_VERSION}/git-cliff" /usr/local/bin/git-cliff
+          git-cliff --version
+
       - name: Generate CHANGELOG.md
-        uses: orhun/git-cliff-action@v4
-        with:
-          config: cliff.toml
-          args: --verbose --output CHANGELOG.md
+        run: git-cliff --config cliff.toml --output CHANGELOG.md
 
       - name: Commit and push CHANGELOG.md
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@b863ae1933cb653a53c021fe36dbb774e1fb9403 # v5
         with:
           file_pattern: CHANGELOG.md
           commit_message: "chore(changelog): update changelog [skip ci]"

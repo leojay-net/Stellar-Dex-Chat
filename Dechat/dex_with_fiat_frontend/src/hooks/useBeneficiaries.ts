@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 const KEYBOARD_SHORTCUTS = {
   ADD_BENEFICIARY: 'Ctrl+B',
@@ -95,10 +95,13 @@ export function useBeneficiaries(options?: { fetchFromApi?: boolean; userId?: st
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
-  const [isMounted, setIsMounted] = useState(false);
+  const isMountedRef = useRef(false);
 
   useEffect(() => {
-    setIsMounted(true);
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
   }, []);
 
   // Fetch from API with deduplication if enabled
@@ -176,6 +179,16 @@ export function useBeneficiaries(options?: { fetchFromApi?: boolean; userId?: st
     [],
   );
 
+  const updateBeneficiary = useCallback(
+    (id: string, updates: Partial<Omit<Beneficiary, 'id' | 'createdAt'>>) => {
+      setBeneficiaries((prev) =>
+        prev.map((beneficiary) =>
+          beneficiary.id === id ? { ...beneficiary, ...updates } : beneficiary,
+        ),
+      );
+    },
+    [],
+  );
   const renameBeneficiary = useCallback((id: string, newName: string) => {
     setBeneficiaries((prev) =>
       prev.map((b) => (b.id === id ? { ...b, name: newName } : b)),
@@ -194,54 +207,57 @@ export function useBeneficiaries(options?: { fetchFromApi?: boolean; userId?: st
   );
 
   // Keyboard shortcuts handling
-  const handleKeyboardShortcut = useCallback((event: KeyboardEvent) => {
-    const { ctrlKey, shiftKey, key } = event;
+  const handleKeyboardShortcut = useCallback(
+    (event: KeyboardEvent) => {
+      const { ctrlKey, shiftKey, key } = event;
 
-    // Add beneficiary: Ctrl+B
-    if (ctrlKey && !shiftKey && key === 'b') {
-      event.preventDefault();
-      // This would typically trigger a UI action to add beneficiary
-      // For now, we'll just log or provide a callback
-      return 'add';
-    }
-
-    // Focus beneficiaries: Ctrl+Shift+B
-    if (ctrlKey && shiftKey && key === 'B') {
-      event.preventDefault();
-      return 'focus';
-    }
-
-    // Navigation: ArrowUp/ArrowDown when beneficiaries are focused
-    if (key === 'ArrowUp' && selectedIndex > 0) {
-      event.preventDefault();
-      setSelectedIndex(selectedIndex - 1);
-      return 'navigate-up';
-    }
-
-    if (key === 'ArrowDown' && selectedIndex < beneficiaries.length - 1) {
-      event.preventDefault();
-      setSelectedIndex(selectedIndex + 1);
-      return 'navigate-down';
-    }
-
-    // Select: Enter
-    if (key === 'Enter' && selectedIndex >= 0) {
-      event.preventDefault();
-      return 'select';
-    }
-
-    // Delete: Delete key
-    if (key === 'Delete' && selectedIndex >= 0) {
-      event.preventDefault();
-      const beneficiaryToDelete = beneficiaries[selectedIndex];
-      if (beneficiaryToDelete) {
-        deleteBeneficiary(beneficiaryToDelete.id);
+      // Add beneficiary: Ctrl+B
+      if (ctrlKey && !shiftKey && key === 'b') {
+        event.preventDefault();
+        // This would typically trigger a UI action to add beneficiary
+        // For now, we'll just log or provide a callback
+        return 'add';
       }
-      return 'delete';
-    }
 
-    return null;
-  }, [selectedIndex, beneficiaries, deleteBeneficiary]);
+      // Focus beneficiaries: Ctrl+Shift+B
+      if (ctrlKey && shiftKey && key === 'B') {
+        event.preventDefault();
+        return 'focus';
+      }
+
+      // Navigation: ArrowUp/ArrowDown when beneficiaries are focused
+      if (key === 'ArrowUp' && selectedIndex > 0) {
+        event.preventDefault();
+        setSelectedIndex(selectedIndex - 1);
+        return 'navigate-up';
+      }
+
+      if (key === 'ArrowDown' && selectedIndex < beneficiaries.length - 1) {
+        event.preventDefault();
+        setSelectedIndex(selectedIndex + 1);
+        return 'navigate-down';
+      }
+
+      // Select: Enter
+      if (key === 'Enter' && selectedIndex >= 0) {
+        event.preventDefault();
+        return 'select';
+      }
+
+      // Delete: Delete key
+      if (key === 'Delete' && selectedIndex >= 0) {
+        event.preventDefault();
+        const beneficiaryToDelete = beneficiaries[selectedIndex];
+        if (beneficiaryToDelete) {
+          deleteBeneficiary(beneficiaryToDelete.id);
+        }
+        return 'delete';
+      }
+
+      return null;
+    },
+    [selectedIndex, beneficiaries, deleteBeneficiary],
+  );
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -268,6 +284,7 @@ export function useBeneficiaries(options?: { fetchFromApi?: boolean; userId?: st
     selectedIndex,
     addBeneficiary,
     renameBeneficiary,
+    updateBeneficiary,
     deleteBeneficiary,
     getBeneficiary,
     selectBeneficiary,

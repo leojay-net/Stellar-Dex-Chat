@@ -23,7 +23,22 @@ export async function POST(request: NextRequest) {
       endpoint: '/api/verify-account',
     });
 
-    const body = await request.json();
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      telemetry.addLog(span.spanId, 'warn', 'Request body is not valid JSON', {
+        endpoint: '/api/verify-account',
+      });
+      telemetry.finishSpan(span.spanId, {
+        success: false,
+        error: 'Invalid JSON body',
+      });
+      return NextResponse.json(
+        { success: false, message: 'Request body must be valid JSON' },
+        { status: 400 },
+      );
+    }
 
     // Validate with Zod
     const validationResult = verifyAccountSchema.safeParse(body);
@@ -75,11 +90,15 @@ export async function POST(request: NextRequest) {
 
     console.error('Account verification error:', error);
 
-    const axiosError = error as {
-      response?: { status?: number; data?: { message?: string } };
-    };
+    // Use a type-safe narrowing helper instead of an unsafe cast.
+    const httpError =
+      error !== null && typeof error === 'object' && 'response' in error
+        ? (error as {
+            response?: { status?: number; data?: { message?: string } };
+          })
+        : null;
 
-    if (axiosError.response?.status === 422) {
+    if (httpError?.response?.status === 422) {
       telemetry.finishSpan(span.spanId, {
         success: false,
         error: 'Invalid account number or bank code',
@@ -91,8 +110,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (axiosError.response?.data?.message) {
-      const message = axiosError.response.data.message;
+    if (httpError?.response?.data?.message) {
+      const message = httpError.response.data.message;
       telemetry.finishSpan(span.spanId, {
         success: false,
         error: message,

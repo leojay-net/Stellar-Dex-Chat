@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { env } from '@/lib/env';
+import { serverEnv as env } from '@/lib/serverEnv';
 
 import type {
   CreateRecipientInput,
@@ -14,6 +14,10 @@ import type {
 } from './types';
 
 const PAYSTACK_SECRET_KEY = env.PAYSTACK_SECRET_KEY;
+
+export function toKobo(amountNgn: number): number {
+  return Math.round(amountNgn * 100);
+}
 
 function paystackHeaders() {
   return {
@@ -41,10 +45,10 @@ export const paystackProvider: PayoutProvider = {
       return mockVerification;
     }
 
-    const response = await axios.get(
-      `https://api.paystack.co/bank/resolve?account_number=${accountNumber}&bank_code=${bankCode}`,
-      { headers: paystackHeaders() },
-    );
+    const response = await axios.get('https://api.paystack.co/bank/resolve', {
+      headers: paystackHeaders(),
+      params: { account_number: accountNumber, bank_code: bankCode },
+    });
 
     if (response.data?.status && response.data?.data) {
       return {
@@ -137,12 +141,10 @@ export const paystackProvider: PayoutProvider = {
 
     const transferData = {
       source: input.source,
-      amount: input.amount * 100,
+      amount: toKobo(input.amount),
       recipient: input.recipient,
       reason: input.reason || 'Crypto withdrawal',
-      reference:
-        input.reference ||
-        `tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      reference: input.reference,
     };
 
     const response = await axios.post(

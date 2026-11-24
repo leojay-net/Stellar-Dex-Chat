@@ -2,13 +2,15 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Bell, Check, Trash2, X } from 'lucide-react';
+import { isEditableShortcutTarget } from '@/lib/keyboardShortcuts';
+import { useSingleKeyShortcuts } from '@/contexts/UserPreferencesContext';
 import { useNotifications, AppNotification } from '@/hooks/useNotifications';
-import { useTheme } from '@/contexts/ThemeContext';
 
 export default function NotificationsCenter() {
   // Track if component has mounted to prevent hydration mismatches
   const [isMounted, setIsMounted] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const singleKeyShortcuts = useSingleKeyShortcuts();
   const {
     notifications,
     unreadCount,
@@ -16,7 +18,6 @@ export default function NotificationsCenter() {
     markAllAsRead,
     clearNotifications,
   } = useNotifications();
-  const { isDarkMode } = useTheme();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const handleMarkAsRead = (id: string) => {
@@ -57,15 +58,22 @@ export default function NotificationsCenter() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Ignore shortcuts when focus is inside an input/textarea
-      const tag = (event.target as HTMLElement).tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (isEditableShortcutTarget(event.target)) return;
 
       if (event.key === 'Escape') {
         setIsOpen(false);
         return;
       }
-      if (!isOpen) return;
+      if (
+        !isOpen ||
+        !singleKeyShortcuts ||
+        event.defaultPrevented ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey
+      ) {
+        return;
+      }
       if (event.key === 'm' || event.key === 'M') {
         handleMarkAllAsRead();
       } else if (event.key === 'd' || event.key === 'D') {
@@ -74,7 +82,12 @@ export default function NotificationsCenter() {
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, handleMarkAllAsRead, handleClearNotifications]);
+  }, [
+    isOpen,
+    singleKeyShortcuts,
+    handleMarkAllAsRead,
+    handleClearNotifications,
+  ]);
 
   const formatTime = (ts: number) => {
     const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
@@ -119,11 +132,7 @@ export default function NotificationsCenter() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={handleToggleDropdown}
-        className={`relative p-2 rounded-lg transition-colors ${
-          isDarkMode
-            ? 'hover:bg-gray-800 text-gray-400'
-            : 'hover:bg-gray-100 text-gray-600'
-        }`}
+        className="relative p-2 rounded-lg transition-colors text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)]"
         aria-label="Notifications"
         aria-expanded={isOpen}
         aria-haspopup="true"
@@ -137,21 +146,9 @@ export default function NotificationsCenter() {
       </button>
 
       {isMounted && isOpen && (
-        <div
-          className={`absolute right-0 mt-2 w-80 sm:w-96 rounded-xl shadow-xl border z-50 overflow-hidden ${
-            isDarkMode
-              ? 'bg-gray-900 border-gray-800'
-              : 'bg-white border-gray-200'
-          }`}
-        >
-          <div
-            className={`flex items-center justify-between px-4 py-3 border-b ${
-              isDarkMode ? 'border-gray-800' : 'border-gray-100'
-            }`}
-          >
-            <h3
-              className={`font-semibold text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-            >
+        <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-xl shadow-xl border z-50 overflow-hidden bg-[var(--color-surface)] border-[var(--color-border)]">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)]">
+            <h3 className="font-semibold text-sm text-[var(--color-text-primary)]">
               Notifications
             </h3>
             <div className="flex gap-2">
@@ -160,14 +157,14 @@ export default function NotificationsCenter() {
                   <button
                     onClick={handleMarkAllAsRead}
                     title="Mark all as read"
-                    className={`p-1.5 rounded-md transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
+                    className="p-1.5 rounded-md transition-colors text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)]"
                   >
                     <Check className="w-4 h-4" />
                   </button>
                   <button
                     onClick={handleClearNotifications}
                     title="Clear all"
-                    className={`p-1.5 rounded-md transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
+                    className="p-1.5 rounded-md transition-colors text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)]"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -175,7 +172,7 @@ export default function NotificationsCenter() {
               )}
               <button
                 onClick={() => setIsOpen(false)}
-                className={`p-1.5 rounded-md transition-colors ${isDarkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
+                className="p-1.5 rounded-md transition-colors text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)]"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -184,24 +181,16 @@ export default function NotificationsCenter() {
 
           <div className="max-h-[400px] overflow-y-auto">
             {notifications.length === 0 ? (
-              <div
-                className={`px-4 py-8 text-center text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-              >
+              <div className="px-4 py-8 text-center text-sm text-[var(--color-text-muted)]">
                 No notifications yet
               </div>
             ) : (
-              <div
-                className={`divide-y ${isDarkMode ? 'divide-gray-800' : 'divide-gray-100'}`}
-              >
+              <div className="divide-y divide-[var(--color-border)]">
                 {notifications.map((notif) => (
                   <div
                     key={notif.id}
-                    className={`px-4 py-3 hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer flex gap-3 ${
-                      !notif.read
-                        ? isDarkMode
-                          ? 'bg-blue-900/10'
-                          : 'bg-blue-50/50'
-                        : ''
+                    className={`px-4 py-3 hover:bg-[var(--color-surface-muted)] transition-colors cursor-pointer flex gap-3 ${
+                      !notif.read ? 'bg-[var(--color-primary-soft)]' : ''
                     }`}
                     onClick={() => {
                       if (!notif.read) handleMarkAsRead(notif.id);
@@ -214,13 +203,11 @@ export default function NotificationsCenter() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p
-                        className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-800'} ${!notif.read ? 'font-medium' : ''}`}
+                        className={`text-sm text-[var(--color-text-primary)] ${!notif.read ? 'font-medium' : ''}`}
                       >
                         {notif.message}
                       </p>
-                      <p
-                        className={`text-xs mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-                      >
+                      <p className="text-xs mt-1 text-[var(--color-text-muted)]">
                         {formatTime(notif.timestamp)}
                       </p>
                     </div>

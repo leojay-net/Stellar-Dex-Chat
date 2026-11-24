@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
-import net from 'node:net';
-import { env } from '@/lib/env';
+import { serverEnv as env } from '@/lib/serverEnv';
+import {
+  getClientIp,
+  isValidIp,
+  normalizeCandidateIp,
+  type RequestWithClientIp,
+} from './clientIp';
 
-export interface RequestWithIp {
-  headers: Headers;
-  ip?: string | null;
-}
+export type RequestWithIp = RequestWithClientIp;
 
 interface AdminIpAllowlistConfig {
   allowlist: string[];
@@ -45,45 +47,6 @@ interface ConfigInput {
 }
 
 const LOOPBACK_IPV6 = '::1';
-
-function normalizeCandidateIp(raw: string): string {
-  let candidate = raw.trim();
-
-  const forwardedPrefix = 'for=';
-  if (candidate.toLowerCase().startsWith(forwardedPrefix)) {
-    candidate = candidate.slice(forwardedPrefix.length).trim();
-  }
-
-  if (candidate.includes(';')) {
-    candidate = candidate.split(';')[0].trim();
-  }
-
-  if (candidate.startsWith('"')) {
-    candidate = candidate.slice(1);
-  }
-  if (candidate.endsWith('"')) {
-    candidate = candidate.slice(0, -1);
-  }
-
-  if (candidate.startsWith('[') && candidate.includes(']')) {
-    candidate = candidate.slice(1, candidate.indexOf(']'));
-  }
-
-  const ipv4WithPortMatch = candidate.match(/^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/);
-  if (ipv4WithPortMatch) {
-    candidate = ipv4WithPortMatch[1];
-  }
-
-  if (candidate.startsWith('::ffff:')) {
-    candidate = candidate.slice('::ffff:'.length);
-  }
-
-  return candidate;
-}
-
-function isValidIp(value: string): boolean {
-  return net.isIP(value) !== 0;
-}
 
 function isLoopbackIp(ip: string): boolean {
   if (ip === LOOPBACK_IPV6) return true;
@@ -136,42 +99,8 @@ export function parseIpAllowlist(rawAllowlist?: string): {
 }
 
 export function resolveClientIp(request: RequestWithIp): string | null {
-  const xForwardedFor = request.headers.get('x-forwarded-for');
-  if (xForwardedFor) {
-    const first = xForwardedFor.split(',')[0]?.trim();
-    if (first) {
-      const normalized = normalizeCandidateIp(first);
-      if (isValidIp(normalized)) return normalized;
-    }
-  }
-
-  const forwarded = request.headers.get('forwarded');
-  if (forwarded) {
-    const first = forwarded.split(',')[0]?.trim();
-    if (first) {
-      const normalized = normalizeCandidateIp(first);
-      if (isValidIp(normalized)) return normalized;
-    }
-  }
-
-  const directHeaders = [
-    'x-real-ip',
-    'cf-connecting-ip',
-    'x-vercel-forwarded-for',
-  ];
-
-  for (const headerName of directHeaders) {
-    const value = request.headers.get(headerName);
-    if (!value) continue;
-
-    const normalized = normalizeCandidateIp(value);
-    if (isValidIp(normalized)) return normalized;
-  }
-
-  const fallbackIp = request.ip ? normalizeCandidateIp(request.ip) : null;
-  if (fallbackIp && isValidIp(fallbackIp)) return fallbackIp;
-
-  return null;
+  const clientIp = getClientIp(request);
+  return clientIp === 'unknown' ? null : clientIp;
 }
 
 export function evaluateAdminIpAllowlist(

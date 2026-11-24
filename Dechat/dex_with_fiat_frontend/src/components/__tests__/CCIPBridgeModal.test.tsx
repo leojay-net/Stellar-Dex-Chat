@@ -1,7 +1,14 @@
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CCIPBridgeModal from '../CCIPBridgeModal';
+import { toastStore } from '@/lib/toastStore';
 
 vi.mock('@/hooks/useAccessibleModal', () => ({
   useAccessibleModal: () => undefined,
@@ -24,6 +31,22 @@ describe('CCIPBridgeModal', () => {
   afterEach(() => {
     vi.clearAllMocks();
     vi.useRealTimers();
+  });
+
+  it('provides labelled dialog controls and relationships for assistive technology', () => {
+    render(<CCIPBridgeModal {...defaultProps} />);
+
+    const dialog = screen.getByRole('dialog', { name: 'CCIP Bridge' });
+    expect(dialog).toHaveAttribute(
+      'aria-describedby',
+      'ccip-bridge-modal-description',
+    );
+    expect(
+      screen.getByRole('button', { name: 'Start CCIP transfer' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Close CCIP bridge dialog' }),
+    ).toBeInTheDocument();
   });
 
   it('shows a polling spinner and message while waiting for confirmation', async () => {
@@ -81,14 +104,13 @@ describe('CCIPBridgeModal', () => {
     expect(screen.getByText('Status: SUCCESS')).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: /view transaction in ccip explorer/i }),
-    ).toHaveAttribute(
-      'href',
-      'https://ccip.chain.link/status?search=0xabc123',
-    );
+    ).toHaveAttribute('href', 'https://ccip.chain.link/status?search=0xabc123');
   });
 
   it('times out after 10 minutes and shows an error state', async () => {
-    const fetchTransferStatus = vi.fn().mockResolvedValue({ status: 'PENDING' });
+    const fetchTransferStatus = vi
+      .fn()
+      .mockResolvedValue({ status: 'PENDING' });
 
     render(
       <CCIPBridgeModal
@@ -109,7 +131,7 @@ describe('CCIPBridgeModal', () => {
 
     expect(screen.getByText('CCIP transfer error')).toBeInTheDocument();
     expect(
-      screen.getByText(/timed out after 10 minutes/i),
+      screen.getAllByText(/timed out after 10 minutes/i)[0],
     ).toBeInTheDocument();
   });
 
@@ -119,7 +141,10 @@ describe('CCIPBridgeModal', () => {
     it('does not call fetchTransferStatus after modal is closed mid-poll', async () => {
       let resolveStatus!: (v: { status: string }) => void;
       const fetchTransferStatus = vi.fn().mockImplementationOnce(
-        () => new Promise((resolve) => { resolveStatus = resolve; }),
+        () =>
+          new Promise((resolve) => {
+            resolveStatus = resolve;
+          }),
       );
 
       const { rerender } = render(
@@ -147,7 +172,9 @@ describe('CCIPBridgeModal', () => {
       });
 
       // The modal is closed — success state must NOT be rendered
-      expect(screen.queryByText('CCIP transfer confirmed')).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('CCIP transfer confirmed'),
+      ).not.toBeInTheDocument();
     });
 
     it('does not apply stale status from a previous hash after hash changes', async () => {
@@ -155,7 +182,12 @@ describe('CCIPBridgeModal', () => {
       let resolveFirst!: (v: { status: string }) => void;
       const fetchTransferStatus = vi
         .fn()
-        .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveFirst = resolve;
+            }),
+        )
         .mockResolvedValue({ status: 'SUCCESS' });
 
       render(
@@ -170,7 +202,7 @@ describe('CCIPBridgeModal', () => {
 
       // Advance timer to trigger a second poll (which resolves to SUCCESS)
       await act(async () => {
-        vi.advanceTimersByTime(15_000);
+        await vi.advanceTimersByTimeAsync(15_000);
       });
 
       // Confirm success from the fast second poll
@@ -191,15 +223,14 @@ describe('CCIPBridgeModal', () => {
 
   describe('Optimistic UI updates (issue #536)', () => {
     it('immediately shows PENDING status when transfer is initiated', async () => {
-      const onStartTransfer = vi.fn().mockImplementation(
-        () =>
-          new Promise((resolve) =>
-            setTimeout(
-              () => resolve({ transactionHash: '0xabc123' }),
-              100,
+      const onStartTransfer = vi
+        .fn()
+        .mockImplementation(
+          () =>
+            new Promise((resolve) =>
+              setTimeout(() => resolve({ transactionHash: '0xabc123' }), 100),
             ),
-          ),
-      );
+        );
 
       render(
         <CCIPBridgeModal
@@ -250,7 +281,7 @@ describe('CCIPBridgeModal', () => {
       expect(
         await screen.findByText('Waiting for CCIP confirmation…'),
       ).toBeInTheDocument();
-      
+
       const explorerLink = screen.getByRole('link', {
         name: /view transaction in ccip explorer/i,
       });
@@ -443,7 +474,7 @@ describe('CCIPBridgeModal', () => {
       const explorerLink = await screen.findByRole('link', {
         name: /view transaction in ccip explorer/i,
       });
-      
+
       expect(explorerLink).toBeInTheDocument();
       expect(explorerLink).toHaveAttribute(
         'href',
@@ -457,10 +488,7 @@ describe('CCIPBridgeModal', () => {
   describe('Modal open/close behavior', () => {
     it('renders null when modal is closed', () => {
       const { container } = render(
-        <CCIPBridgeModal
-          {...defaultProps}
-          isOpen={false}
-        />,
+        <CCIPBridgeModal {...defaultProps} isOpen={false} />,
       );
 
       expect(container.firstChild).toBeNull();
@@ -501,36 +529,33 @@ describe('CCIPBridgeModal', () => {
 
       // Should be back in idle state
       expect(screen.getByText('Start CCIP Transfer')).toBeInTheDocument();
-      expect(screen.queryByText('CCIP transfer confirmed')).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('CCIP transfer confirmed'),
+      ).not.toBeInTheDocument();
       expect(screen.queryByText('CCIP transfer error')).not.toBeInTheDocument();
     });
 
     it('calls onClose when close button is clicked', () => {
       const onClose = vi.fn();
 
-      render(
-        <CCIPBridgeModal
-          {...defaultProps}
-          onClose={onClose}
-        />,
-      );
+      render(<CCIPBridgeModal {...defaultProps} onClose={onClose} />);
 
-      const closeButton = screen.getByLabelText('Close');
+      const closeButton = screen.getByRole('button', {
+        name: 'Close CCIP bridge dialog',
+      });
       fireEvent.click(closeButton);
 
       expect(onClose).toHaveBeenCalledTimes(1);
     });
 
     it('has proper ARIA attributes for accessibility', () => {
-      render(
-        <CCIPBridgeModal
-          {...defaultProps}
-        />,
-      );
+      render(<CCIPBridgeModal {...defaultProps} />);
 
-      const dialog = screen.getByRole('dialog');
+      const dialog = screen.getByRole('dialog', { name: 'CCIP Bridge' });
       expect(dialog).toHaveAttribute('aria-modal', 'true');
-      expect(dialog).toHaveAttribute('aria-label', 'CCIP bridge transfer');
+      expect(dialog).toHaveAccessibleDescription(
+        'Start a CCIP transfer and monitor its confirmation state.',
+      );
       expect(dialog).toHaveAttribute('tabIndex', '-1');
     });
   });
@@ -565,7 +590,9 @@ describe('CCIPBridgeModal', () => {
     });
 
     it('uses custom timeoutMs for timeout behavior', async () => {
-      const fetchTransferStatus = vi.fn().mockResolvedValue({ status: 'PENDING' });
+      const fetchTransferStatus = vi
+        .fn()
+        .mockResolvedValue({ status: 'PENDING' });
 
       render(
         <CCIPBridgeModal
@@ -584,7 +611,7 @@ describe('CCIPBridgeModal', () => {
 
       expect(screen.getByText('CCIP transfer error')).toBeInTheDocument();
       expect(
-        screen.getByText(/timed out after 10 minutes/i),
+        screen.getAllByText(/timed out after 10 minutes/i)[0],
       ).toBeInTheDocument();
     });
   });
@@ -677,7 +704,7 @@ describe('CCIPBridgeModal', () => {
         await screen.findByText('CCIP transfer error'),
       ).toBeInTheDocument();
       expect(
-        screen.getByText(/CCIP transfer failed with status "FAILED"/),
+        screen.getAllByText(/CCIP transfer failed with status "FAILED"/)[0],
       ).toBeInTheDocument();
     });
 
@@ -742,9 +769,7 @@ describe('CCIPBridgeModal', () => {
 
       fireEvent.click(screen.getByText('Start CCIP Transfer'));
 
-      expect(
-        await screen.findByText('Transaction: 0xabc123def456'),
-      ).toBeInTheDocument();
+      expect(await screen.findByText('0xabc123def456')).toBeInTheDocument();
     });
 
     it('displays transaction hash in success state', async () => {
@@ -763,9 +788,7 @@ describe('CCIPBridgeModal', () => {
       fireEvent.click(screen.getByText('Start CCIP Transfer'));
 
       await screen.findByText('CCIP transfer confirmed');
-      expect(
-        screen.getByText('Transaction: 0xxyz789'),
-      ).toBeInTheDocument();
+      expect(screen.getByText('0xxyz789')).toBeInTheDocument();
     });
 
     it('displays transaction hash in error state when available', async () => {
@@ -789,9 +812,7 @@ describe('CCIPBridgeModal', () => {
       fireEvent.click(screen.getByText('Start CCIP Transfer'));
 
       await screen.findByText('CCIP transfer error');
-      expect(
-        screen.getByText('Transaction: 0xerror123'),
-      ).toBeInTheDocument();
+      expect(screen.getByText('0xerror123')).toBeInTheDocument();
     });
   });
 
@@ -801,7 +822,10 @@ describe('CCIPBridgeModal', () => {
     it('prevents multiple simultaneous transfer initiations', async () => {
       let resolveTransfer!: (v: { transactionHash: string }) => void;
       const onStartTransfer = vi.fn().mockImplementation(
-        () => new Promise((resolve) => { resolveTransfer = resolve; }),
+        () =>
+          new Promise((resolve) => {
+            resolveTransfer = resolve;
+          }),
       );
 
       render(
@@ -836,7 +860,9 @@ describe('CCIPBridgeModal', () => {
         .mockRejectedValueOnce(new Error('First error'))
         .mockResolvedValueOnce({ transactionHash: '0xabc123' });
 
-      const fetchTransferStatus = vi.fn().mockResolvedValue({ status: 'SUCCESS' });
+      const fetchTransferStatus = vi
+        .fn()
+        .mockResolvedValue({ status: 'SUCCESS' });
 
       render(
         <CCIPBridgeModal
@@ -933,7 +959,10 @@ describe('CCIPBridgeModal', () => {
     it('transitions from idle to optimistic on start', async () => {
       let resolveTransfer!: (v: { transactionHash: string }) => void;
       const onStartTransfer = vi.fn().mockImplementation(
-        () => new Promise((resolve) => { resolveTransfer = resolve; }),
+        () =>
+          new Promise((resolve) => {
+            resolveTransfer = resolve;
+          }),
       );
 
       render(
@@ -977,19 +1006,144 @@ describe('CCIPBridgeModal', () => {
       ).toBeInTheDocument();
 
       await act(async () => {
-        vi.advanceTimersByTime(15_000);
+        await vi.advanceTimersByTimeAsync(15_000);
       });
-      expect(screen.getByText('Latest status: IN_PROGRESS')).toBeInTheDocument();
+      expect(
+        screen.getByText('Latest status: IN_PROGRESS'),
+      ).toBeInTheDocument();
 
       await act(async () => {
-        vi.advanceTimersByTime(15_000);
+        await vi.advanceTimersByTimeAsync(15_000);
       });
       expect(screen.getByText('Latest status: COMPLETING')).toBeInTheDocument();
 
       await act(async () => {
-        vi.advanceTimersByTime(15_000);
+        await vi.advanceTimersByTimeAsync(15_000);
       });
       expect(screen.getByText('CCIP transfer confirmed')).toBeInTheDocument();
+    });
+  });
+
+  describe('accessibility: live region announcements (#1179)', () => {
+    it('announces confirmation and status through a polite live region while polling', async () => {
+      const fetchTransferStatus = vi
+        .fn()
+        .mockResolvedValueOnce({ status: 'PENDING' });
+
+      render(
+        <CCIPBridgeModal
+          {...defaultProps}
+          fetchTransferStatus={fetchTransferStatus}
+        />,
+      );
+
+      fireEvent.click(screen.getByText('Start CCIP Transfer'));
+
+      await screen.findByText('Waiting for CCIP confirmation…');
+
+      const liveRegion = screen.getByRole('status');
+      expect(liveRegion).toHaveAttribute('aria-live', 'polite');
+      expect(liveRegion.textContent).toMatch(/Waiting for CCIP confirmation/);
+      expect(liveRegion.textContent).toMatch(/PENDING/);
+    });
+
+    it('announces transfer errors through the live region', async () => {
+      const onStartTransfer = vi
+        .fn()
+        .mockRejectedValue(new Error('Insufficient allowance'));
+
+      render(
+        <CCIPBridgeModal {...defaultProps} onStartTransfer={onStartTransfer} />,
+      );
+
+      fireEvent.click(screen.getByText('Start CCIP Transfer'));
+
+      await screen.findByText('CCIP transfer error');
+
+      const liveRegion = screen.getByRole('status');
+      expect(liveRegion.textContent).toMatch(/CCIP transfer error/);
+      expect(liveRegion.textContent).toMatch(/Insufficient allowance/);
+    });
+  });
+
+  // ── Network status toasts ──────────────────────────────────────────────────
+
+  describe('network status toasts', () => {
+    it('shows a warning toast when the browser goes offline while modal is open', async () => {
+      const addToastSpy = vi.spyOn(toastStore, 'addToast');
+      render(<CCIPBridgeModal {...defaultProps} />);
+
+      fireEvent(window, new Event('offline'));
+
+      await waitFor(() => {
+        expect(addToastSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            severity: 'warning',
+            message: expect.stringMatching(/offline.*CCIP/i),
+          }),
+          undefined,
+        );
+      });
+    });
+
+    it('shows a success toast when coming back online after being offline', async () => {
+      const addToastSpy = vi.spyOn(toastStore, 'addToast');
+      render(<CCIPBridgeModal {...defaultProps} />);
+
+      fireEvent(window, new Event('offline'));
+      await waitFor(() => expect(addToastSpy).toHaveBeenCalled());
+
+      addToastSpy.mockClear();
+      fireEvent(window, new Event('online'));
+
+      await waitFor(() => {
+        expect(addToastSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            severity: 'success',
+            message: expect.stringMatching(/online.*CCIP/i),
+          }),
+          undefined,
+        );
+      });
+    });
+
+    it('does not show network status toasts when the modal is closed', async () => {
+      const addToastSpy = vi.spyOn(toastStore, 'addToast');
+      render(<CCIPBridgeModal {...defaultProps} isOpen={false} />);
+
+      fireEvent(window, new Event('offline'));
+      fireEvent(window, new Event('online'));
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(addToastSpy).not.toHaveBeenCalled();
+    });
+
+    it('handles rapid offline->online transitions without dropping toasts', async () => {
+      const addToastSpy = vi.spyOn(toastStore, 'addToast');
+      render(<CCIPBridgeModal {...defaultProps} />);
+
+      fireEvent(window, new Event('offline'));
+      fireEvent(window, new Event('online'));
+
+      await waitFor(() => {
+        const calls = addToastSpy.mock.calls;
+        const severities = calls.map((c) => {
+          const arg = c[0];
+          return typeof arg === 'string' ? 'info' : arg.severity;
+        });
+        expect(severities).toContain('warning');
+        expect(severities).toContain('success');
+      });
+    });
+
+    it('does not emit an online toast without a prior offline event', async () => {
+      const addToastSpy = vi.spyOn(toastStore, 'addToast');
+      render(<CCIPBridgeModal {...defaultProps} />);
+
+      fireEvent(window, new Event('online'));
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(addToastSpy).not.toHaveBeenCalled();
     });
   });
 });

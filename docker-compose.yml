@@ -1,9 +1,7 @@
-version: '3.8'
-
 services:
   # Soroban local network using Stellar quickstart image
   soroban-local-net:
-    image: stellar/quickstart:latest
+    image: stellar/quickstart:testing
     container_name: stellar-dex-soroban-local
     ports:
       - "8000:8000"   # Horizon API
@@ -25,26 +23,30 @@ services:
   # Next.js frontend application
   frontend:
     build:
-      context: ./dex_with_fiat_frontend
+      context: ./Dechat/dex_with_fiat_frontend
       dockerfile: Dockerfile.dev
     container_name: stellar-dex-frontend
     ports:
       - "3000:3000"
     volumes:
-      - ./dex_with_fiat_frontend:/app
+      - ./Dechat/dex_with_fiat_frontend:/app
       - /app/node_modules
       - /app/.next
     environment:
       - NODE_ENV=development
-      - NEXT_PUBLIC_SOROBAN_NETWORK_PASSPHRASE=Standalone Network ; February 2017
-      - NEXT_PUBLIC_SOROBAN_RPC_URL=http://soroban-local-net:8000/soroban/rpc
-      - NEXT_PUBLIC_HORIZON_URL=http://soroban-local-net:8000
+      - NEXT_PUBLIC_STELLAR_RPC_URL=http://soroban-local-net:8000/soroban/rpc
+      - NEXT_PUBLIC_STELLAR_HORIZON_URL=http://soroban-local-net:8000
+      - NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT=${NEXT_PUBLIC_FIAT_BRIDGE_CONTRACT}
+      - NEXT_PUBLIC_XLM_SAC_CONTRACT=${NEXT_PUBLIC_XLM_SAC_CONTRACT}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - PAYSTACK_SECRET_KEY=${PAYSTACK_SECRET_KEY}
+      - PAYOUT_PROVIDER=${PAYOUT_PROVIDER}
     depends_on:
       soroban-local-net:
         condition: service_healthy
     networks:
       - stellar-dex-network
-    command: npm run dev
+    command: pnpm run dev
 
 networks:
   stellar-dex-network:

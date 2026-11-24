@@ -66,7 +66,7 @@ describe('ChatInput - Rapid Click Protection', () => {
   it('should prevent duplicate submissions on rapid button clicks', async () => {
     render(<ChatInput {...defaultProps} />);
     const textarea = screen.getByPlaceholderText('Type a message...');
-    
+
     // Type a message
     fireEvent.change(textarea, { target: { value: 'Test message' } });
 
@@ -89,7 +89,7 @@ describe('ChatInput - Rapid Click Protection', () => {
   it('should disable submit button while processing', async () => {
     render(<ChatInput {...defaultProps} />);
     const textarea = screen.getByPlaceholderText('Type a message...');
-    
+
     fireEvent.change(textarea, { target: { value: 'Test message' } });
 
     const submitButton = screen.getByRole('button', {
@@ -141,7 +141,9 @@ describe('ChatInput - Rapid Click Protection', () => {
   });
 
   it('should log suppressed duplicate attempts', async () => {
-    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const consoleWarnSpy = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => {});
 
     render(<ChatInput {...defaultProps} />);
     const textarea = screen.getByPlaceholderText('Type a message...');
@@ -167,7 +169,9 @@ describe('ChatInput - Rapid Click Protection', () => {
 
   it('should clear input after successful submission', async () => {
     render(<ChatInput {...defaultProps} />);
-    const textarea = screen.getByPlaceholderText('Type a message...') as HTMLTextAreaElement;
+    const textarea = screen.getByPlaceholderText(
+      'Type a message...',
+    ) as HTMLTextAreaElement;
 
     fireEvent.change(textarea, { target: { value: 'Test message' } });
     expect(textarea.value).toBe('Test message');
@@ -220,7 +224,14 @@ describe('ChatInput - Rapid Click Protection', () => {
 
     expect(submitButton).toHaveAttribute('title', 'Send message (Ctrl+Enter)');
     expect(submitButton).toHaveAttribute('aria-keyshortcuts', 'Control+Enter');
-    expect(textarea).toHaveAttribute('aria-describedby', 'chat-submit-shortcut');
-    expect(screen.getByText(/send message with ctrl\+enter/i)).toBeInTheDocument();
+    expect(textarea.getAttribute('aria-describedby')).toContain(
+      'chat-submit-shortcut',
+    );
+    expect(textarea.getAttribute('aria-describedby')).toContain(
+      'chat-input-status',
+    );
+    expect(
+      screen.getByText(/send message with ctrl\+enter/i),
+    ).toBeInTheDocument();
   });
 });

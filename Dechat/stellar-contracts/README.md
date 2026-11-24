@@ -12,9 +12,11 @@ This directory contains the Soroban smart contracts for the Stellar DEX Chat app
 
 | Guide | Description |
 |-------|-------------|
+| [docs/REFERENCE.md](./docs/REFERENCE.md) | Comprehensive function-by-function reference for all 142 FiatBridge contract functions |
 | [FIAT_BRIDGE_README.md](./FIAT_BRIDGE_README.md) | Full API reference and error code documentation |
 | [docs/VERSION_MIGRATION.md](./docs/VERSION_MIGRATION.md) | Event versioning, upgrade mechanism, and migration guides |
 | [docs/OVERFLOW_PREVENTION.md](./docs/OVERFLOW_PREVENTION.md) | Overflow-prevention strategies and contributor checklist |
+| [docs/INVARIANT_TESTING.md](./docs/INVARIANT_TESTING.md) | Invariant-testing architecture and contributor checklist |
 
 ---
 
@@ -63,14 +65,14 @@ flowchart TD
 
 ```bash
 # Build
-cargo build --target wasm32-unknown-unknown --release
+stellar contract build
 
 # Test
 cargo test
 
 # Deploy (Testnet)
 stellar contract deploy \
-  --wasm target/wasm32-unknown-unknown/release/stellar_contracts.wasm \
+    --wasm target/wasm32v1-none/release/stellar_contracts.optimized.wasm \
   --network testnet
 ```
 

@@ -7,11 +7,26 @@ import { useUserPreferences } from '@/contexts/UserPreferencesContext';
 import { useMasking } from '@/hooks/useMasking';
 import { useCurrencyConversion } from '@/hooks/useCurrencyConversion';
 import { ChatMessage } from '@/types';
-import { AlertTriangle, Bot, Check, CheckCheck, Clock, Coins, Link, RotateCcw, User, Loader2, RefreshCcw, XCircle } from 'lucide-react';
+import {
+  AlertTriangle,
+  Bot,
+  Check,
+  CheckCheck,
+  Clock,
+  Coins,
+  Link,
+  RotateCcw,
+  User,
+  Loader2,
+  RefreshCcw,
+  XCircle,
+} from 'lucide-react';
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 import { toDate } from '@/lib/messageUtils';
+import { BLOCKED_URL, sanitizeUrl } from '@/lib/markdownSanitizer';
+import { MAX_AUTO_RETRIES, useMessageRetry } from '@/hooks/useMessageRetry';
 import { useTranslation } from '@/contexts/TranslationContext';
 import { motion, useReducedMotion } from 'framer-motion';
 import CopyButton from '@/components/ui/CopyButton';
@@ -23,14 +38,25 @@ interface MessageProps {
     actionType: string,
     data?: Record<string, unknown>,
   ) => void;
-  onRetry?: (messageId: string) => void;
+  /**
+   * Resend a message that failed to send. Receives the message id and the
+   * *original* content the user typed (from `originalPayload` when available),
+   * so the caller never has to reconstruct it and the user never has to retype.
+   */
+  onRetry?: (messageId: string, content: string) => void | Promise<void>;
   shouldAnimate?: boolean;
 }
 
-export default function Message({ message, onActionClick, onRetry, shouldAnimate = false }: MessageProps) {
+export default function Message({
+  message,
+  onActionClick,
+  onRetry,
+  shouldAnimate = false,
+}: MessageProps) {
   const { connection } = useStellarWallet();
   const { isDarkMode } = useTheme();
-  const { maskingEnabled, maskingStyle } = useUserPreferences();
+  const { maskingEnabled, maskingStyle, singleKeyShortcutsEnabled } =
+    useUserPreferences();
   const isUser = message.role === 'user';
   const hasError = !!message.error;
   const shouldReduceMotion = useReducedMotion();
@@ -44,34 +70,46 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
   const isPending = message.metadata?.status === 'pending';
   const isFailed = message.metadata?.status === 'failed';
 
+  // Resend uses the payload captured at send time so the user's original text
+  // survives any post-failure rewrite of `content`.
+  const retryContent = message.originalPayload?.content ?? message.content;
+  const retry = useMessageRetry({
+    messageId: message.id,
+    content: retryContent,
+    isFailed: isFailed,
+    onRetry,
+  });
+  // Attempts already recorded on the message, plus the ones this component has
+  // made since it mounted.
+  const totalRetryAttempts =
+    (message.error?.retryAttempts ?? 0) + retry.attempts;
 
   // Currency conversion hook for transaction amounts
-  const amountForConversion = message.metadata?.transactionData?.amountIn 
+  const amountForConversion = message.metadata?.transactionData?.amountIn
     ? parseFloat(String(message.metadata.transactionData.amountIn))
     : undefined;
-  const tokenForConversion = message.metadata?.transactionData?.tokenIn || 'XLM';
+  const tokenForConversion =
+    message.metadata?.transactionData?.tokenIn || 'XLM';
   const { displayText: conversionDisplayText } = useCurrencyConversion(
     amountForConversion,
     tokenForConversion,
   );
 
-
-
   const variants = {
-    initial: { 
-      opacity: 0, 
+    initial: {
+      opacity: 0,
       y: shouldReduceMotion ? 0 : 20,
-      scale: shouldReduceMotion ? 1 : 0.95
+      scale: shouldReduceMotion ? 1 : 0.95,
     },
-    animate: { 
-      opacity: 1, 
+    animate: {
+      opacity: 1,
       y: 0,
       scale: 1,
       transition: {
         duration: 0.4,
-        ease: [0.23, 1, 0.32, 1] as const // Custom cubic-bezier for premium feel
-      }
-    }
+        ease: [0.23, 1, 0.32, 1] as const, // Custom cubic-bezier for premium feel
+      },
+    },
   };
 
   // Memoize the ReactMarkdown components map so it is stable across renders.
@@ -90,10 +128,11 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
       li: ({ children }) => <li className="mb-1">{children}</li>,
       code: ({ children }) => (
         <code
-          className={`px-1 py-0.5 rounded text-xs font-mono ${isDarkMode
-            ? 'bg-gray-700 text-gray-200'
-            : 'bg-gray-200 text-gray-800'
-            }`}
+          className={`px-1 py-0.5 rounded text-xs font-mono ${
+            isDarkMode
+              ? 'bg-gray-700 text-gray-200'
+              : 'bg-gray-200 text-gray-800'
+          }`}
         >
           {children}
         </code>
@@ -107,6 +146,30 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
       h3: ({ children }) => (
         <h3 className="text-sm font-bold mb-1">{children}</h3>
       ),
+      // `urlTransform={sanitizeUrl}` (below) rewrites every unsafe href/src to
+      // BLOCKED_URL before it reaches these renderers, so a blocked link or
+      // image is shown as plain text rather than something clickable (#1498).
+      a: ({ href, children }) =>
+        !href || href === BLOCKED_URL ? (
+          <span>{children}</span>
+        ) : (
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="message-link"
+            className={`underline underline-offset-2 hover:no-underline ${isDarkMode ? 'text-blue-300' : 'text-blue-700'}`}
+          >
+            {children}
+          </a>
+        ),
+      img: ({ src, alt }) =>
+        typeof src !== 'string' || !src || src === BLOCKED_URL ? (
+          <span>{alt}</span>
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={src} alt={alt ?? ''} />
+        ),
     }),
     [isDarkMode],
   );
@@ -114,12 +177,45 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
   // Safely parse the timestamp — guards against deserialized string values
   const timestamp = toDate(message.timestamp);
 
+  const handleMessageKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') {
+      e.currentTarget.blur();
+      return;
+    }
+    if (
+      singleKeyShortcutsEnabled === false ||
+      e.target !== e.currentTarget ||
+      e.altKey ||
+      e.ctrlKey ||
+      e.metaKey
+    ) {
+      return;
+    }
+    if (e.key === 'r' && hasError) {
+      retry.retryNow();
+    } else if (e.key === 'c' && message.metadata?.transactionData?.txHash) {
+      navigator.clipboard.writeText(message.metadata.transactionData.txHash);
+    }
+  };
+
   return (
     <motion.div
-      initial={shouldAnimate ? "initial" : false}
+      data-testid="message"
+      initial={shouldAnimate ? 'initial' : false}
       animate="animate"
       variants={variants}
-      className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-8`}
+      role="group"
+      tabIndex={0}
+      aria-label={`${isUser ? 'Your' : 'Assistant'} message`}
+      aria-keyshortcuts={
+        singleKeyShortcutsEnabled === false
+          ? 'Escape'
+          : hasError
+            ? 'R C Escape'
+            : 'C Escape'
+      }
+      onKeyDown={handleMessageKeyDown}
+      className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-8 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent`}
     >
       <div className={`max-w-[80%] ${isUser ? 'order-2' : 'order-1'}`}>
         {/* Avatar */}
@@ -127,12 +223,13 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
           className={`flex items-start space-x-3 ${isUser ? 'flex-row-reverse space-x-reverse' : ''}`}
         >
           <div
-            className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center shadow-md transition-transform hover:scale-110 ${isUser
-              ? 'bg-blue-600 text-white'
-              : isDarkMode
-                ? 'bg-gray-700 text-white'
-                : 'bg-gray-600 text-white'
-              }`}
+            className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center shadow-md transition-transform hover:scale-110 ${
+              isUser
+                ? 'bg-blue-600 text-white'
+                : isDarkMode
+                  ? 'bg-gray-700 text-white'
+                  : 'bg-gray-600 text-white'
+            }`}
           >
             {isUser ? (
               <User className="w-4 h-4" />
@@ -156,9 +253,16 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
             >
               <div className="whitespace-pre-wrap break-words min-h-[20px] flex items-center">
                 {isPending ? (
-                  <div className="flex items-center space-x-2 text-gray-400">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span className="text-sm italic">{t('common.loading')}</span>
+                  <div
+                    data-testid="message-loading"
+                    className={`flex items-center space-x-2 ${isUser ? 'text-white' : isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
+                  >
+                    <Loader2
+                      className={`w-4 h-4 ${shouldReduceMotion ? '' : 'animate-spin'}`}
+                    />
+                    <span className="text-sm italic">
+                      {t('common.loading')}
+                    </span>
                   </div>
                 ) : isUser ? (
                   message.content
@@ -166,6 +270,7 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
                   <ReactMarkdown
                     className="prose prose-sm max-w-none"
                     components={markdownComponents}
+                    urlTransform={sanitizeUrl}
                   >
                     {maskedContent}
                   </ReactMarkdown>
@@ -175,7 +280,8 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
 
             {/* Timestamp with read receipts */}
             <div
-              className={`flex items-center mt-2 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'} ${isUser ? 'justify-end' : 'justify-start'} group/timestamp`}
+              data-testid="message-timestamp"
+              className={`flex items-center mt-2 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'} ${isUser ? 'justify-end' : 'justify-start'} group/timestamp`}
             >
               <span className="relative">
                 <Clock className="w-3 h-3 mr-1" />
@@ -190,21 +296,33 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
                   })}
                 </span>
               </span>
-              <span>{timestamp.toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit',
-              })}</span>
+              <span>
+                {timestamp.toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </span>
               {isUser && message.metadata?.readAt && (
-                <CheckCheck className="w-3.5 h-3.5 ml-1 text-blue-400" aria-label="Read" />
+                <CheckCheck
+                  className={`w-3.5 h-3.5 ml-1 ${isDarkMode ? 'text-blue-400' : 'text-blue-700'}`}
+                  aria-label="Read"
+                />
               )}
-              {isUser && !message.metadata?.readAt && message.metadata?.deliveredAt && (
-                <Check className="w-3.5 h-3.5 ml-1 text-blue-400" aria-label="Delivered" />
-              )}
+              {isUser &&
+                !message.metadata?.readAt &&
+                message.metadata?.deliveredAt && (
+                  <Check
+                    className={`w-3.5 h-3.5 ml-1 ${isDarkMode ? 'text-blue-400' : 'text-blue-700'}`}
+                    aria-label="Delivered"
+                  />
+                )}
             </div>
 
             {/* Error State */}
             {hasError && (
               <div
+                data-testid="message-error"
+                role="alert"
                 className={`mt-3 inline-flex flex-col gap-2 rounded-lg border px-3 py-2 text-xs ${
                   isDarkMode
                     ? 'border-red-700 bg-red-950/40 text-red-200'
@@ -217,32 +335,63 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
                     {message.error?.message || 'Failed to send message'}
                   </span>
                 </div>
-                {message.error?.retryAttempts && message.error.retryAttempts > 0 && (
+                {totalRetryAttempts > 0 && (
                   <div className="text-xs opacity-75">
-                    Retry attempts: {message.error.retryAttempts}
+                    Retry attempts: {totalRetryAttempts}
                   </div>
                 )}
                 {onRetry && (
-                  <button
-                    onClick={() => onRetry(message.id)}
-                    className={`mt-2 flex items-center justify-center gap-2 px-3 py-1 rounded-lg text-xs font-medium transition-all transform hover:scale-105 active:scale-95 ${
-                      isDarkMode
-                        ? 'bg-red-700/40 hover:bg-red-700/60 border border-red-600'
-                        : 'bg-red-100 hover:bg-red-200 border border-red-300'
-                    }`}
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                    Retry
-                  </button>
+                  <>
+                    <div
+                      className="text-xs opacity-75"
+                      aria-live="polite"
+                      data-testid="message-retry-status"
+                    >
+                      {retry.isRetrying
+                        ? t('chat.resending')
+                        : retry.secondsUntilNextRetry !== null
+                          ? t('chat.retry_countdown', {
+                              seconds: retry.secondsUntilNextRetry,
+                              attempt: retry.attempts + 1,
+                              max: MAX_AUTO_RETRIES,
+                            })
+                          : t('chat.retry_exhausted', {
+                              max: MAX_AUTO_RETRIES,
+                            })}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={retry.retryNow}
+                      disabled={retry.isRetrying}
+                      data-testid="message-retry-button"
+                      aria-label={t('chat.retry_message', {
+                        content: retryContent,
+                      })}
+                      title={retryContent}
+                      className={`mt-2 flex items-center justify-center gap-2 px-3 py-1 rounded-lg text-xs font-medium transition-all transform hover:scale-105 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 ${
+                        isDarkMode
+                          ? 'bg-red-700/40 hover:bg-red-700/60 border border-red-600'
+                          : 'bg-red-100 hover:bg-red-200 border border-red-300'
+                      }`}
+                    >
+                      <RotateCcw
+                        className={`w-3 h-3 ${retry.isRetrying ? 'animate-spin' : ''}`}
+                      />
+                      {retry.isRetrying
+                        ? t('common.loading')
+                        : t('common.retry')}
+                    </button>
+                  </>
                 )}
               </div>
             )}
             {message.metadata?.guardrail?.triggered && (
               <div
-                className={`mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${isDarkMode
-                  ? 'border-amber-700 bg-amber-950/40 text-amber-200'
-                  : 'border-amber-200 bg-amber-50 text-amber-800'
-                  }`}
+                className={`mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${
+                  isDarkMode
+                    ? 'border-amber-700 bg-amber-950/40 text-amber-200'
+                    : 'border-amber-200 bg-amber-50 text-amber-800'
+                }`}
               >
                 <AlertTriangle className="h-4 w-4" />
                 <span>
@@ -261,8 +410,8 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
               >
                 <XCircle className="h-4 w-4" />
                 <span>{t('chat.error_message')}</span>
-                <button 
-                  onClick={() => window.location.reload()} 
+                <button
+                  onClick={() => window.location.reload()}
                   className="ml-2 underline flex items-center gap-1"
                 >
                   <RefreshCcw className="w-3 h-3" />
@@ -293,14 +442,15 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
                       onClick={() =>
                         onActionClick(action.id, action.type, action.data)
                       }
-                      className={`flex items-center space-x-2 px-3 md:px-4 py-2 text-xs md:text-sm rounded-lg border transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 active:scale-95 ${action.priority
-                        ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600 shadow-lg shadow-blue-200 dark:shadow-blue-900/50'
-                        : action.type === 'cancel'
-                          ? 'bg-red-500 hover:bg-red-600 text-white border-red-500 shadow-lg shadow-red-200 dark:shadow-red-900/50'
-                          : isDarkMode
-                            ? 'bg-gray-800 hover:bg-gray-700 text-gray-200 border-gray-600'
-                            : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-300'
-                        }`}
+                      className={`flex items-center space-x-2 px-3 md:px-4 py-2 text-xs md:text-sm rounded-lg border transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 active:scale-95 ${
+                        action.priority
+                          ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600 shadow-lg shadow-blue-200 dark:shadow-blue-900/50'
+                          : action.type === 'cancel'
+                            ? 'bg-red-500 hover:bg-red-600 text-white border-red-500 shadow-lg shadow-red-200 dark:shadow-red-900/50'
+                            : isDarkMode
+                              ? 'bg-gray-800 hover:bg-gray-700 text-gray-200 border-gray-600'
+                              : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-300'
+                      }`}
                     >
                       {action.type === 'confirm_fiat' && (
                         <Coins className="w-4 h-4" />
@@ -350,7 +500,8 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
                     <div className="flex justify-between">
                       <span>Amount:</span>
                       <span className="theme-text-primary font-medium">
-                        {conversionDisplayText || message.metadata.transactionData.amountIn}
+                        {conversionDisplayText ||
+                          message.metadata.transactionData.amountIn}
                       </span>
                     </div>
                   )}
@@ -376,14 +527,20 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
                       <span>Request ID:</span>
                       <div className="flex items-center gap-1">
                         <span className="theme-text-primary font-mono text-xs">
-                          {message.metadata.transactionData.transactionId.slice(0, 6)}
+                          {message.metadata.transactionData.transactionId.slice(
+                            0,
+                            6,
+                          )}
                           ...
-                          {message.metadata.transactionData.transactionId.slice(-4)}
+                          {message.metadata.transactionData.transactionId.slice(
+                            -4,
+                          )}
                         </span>
                         <CopyButton
                           value={message.metadata.transactionData.transactionId}
                           className="flex-shrink-0 p-0.5"
                           iconClassName="w-3 h-3"
+                          ariaLabel="Copy transaction ID"
                         />
                       </div>
                     </div>
@@ -401,6 +558,7 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
                           value={message.metadata.transactionData.txHash}
                           className="flex-shrink-0 p-0.5"
                           iconClassName="w-3 h-3"
+                          ariaLabel="Copy transaction hash"
                         />
                       </div>
                     </div>
@@ -410,7 +568,10 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
                       <span>Receipt ID:</span>
                       <div className="flex items-center gap-1">
                         <span className="theme-text-primary font-mono text-xs">
-                          {message.metadata.transactionData.receiptId.slice(0, 6)}
+                          {message.metadata.transactionData.receiptId.slice(
+                            0,
+                            6,
+                          )}
                           ...
                           {message.metadata.transactionData.receiptId.slice(-4)}
                         </span>
@@ -418,6 +579,7 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
                           value={message.metadata.transactionData.receiptId}
                           className="flex-shrink-0 p-0.5"
                           iconClassName="w-3 h-3"
+                          ariaLabel="Copy receipt ID"
                         />
                       </div>
                     </div>

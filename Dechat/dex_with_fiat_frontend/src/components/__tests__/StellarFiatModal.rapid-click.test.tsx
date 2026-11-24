@@ -52,6 +52,11 @@ vi.mock('@/hooks/useBridgeStats', () => ({
 
 vi.mock('@/lib/cryptoPriceService', () => ({
   getTokenPrice: vi.fn().mockResolvedValue(0.12),
+  getTokenPriceWithStatus: vi.fn().mockResolvedValue({
+    price: 0.12,
+    stale: false,
+    source: 'live',
+  }),
   formatFiatAmount: vi.fn().mockReturnValue('$1.20'),
 }));
 
@@ -76,6 +81,26 @@ vi.mock('@/lib/receipt', () => ({
   downloadReceipt: vi.fn(),
 }));
 
+vi.mock('@/contexts/UserPreferencesContext', () => ({
+  useUserPreferences: () => ({
+    fiatCurrency: 'usd',
+    currencySymbol: '$',
+    setFiatCurrency: vi.fn(),
+    remindersEnabled: false,
+    setRemindersEnabled: vi.fn(),
+    reminderFrequency: 'weekly',
+    setReminderFrequency: vi.fn(),
+    maskingEnabled: false,
+    setMaskingEnabled: vi.fn(),
+    maskingStyle: 'asterisk',
+    setMaskingStyle: vi.fn(),
+    highValueThreshold: 500,
+    setHighValueThreshold: vi.fn(),
+    twoFactorEnabled: false,
+    setTwoFactorEnabled: vi.fn(),
+  }),
+}));
+
 // Pass-through: strip the hook's own idempotency guard so the test exercises
 // the component's rapid-click protection directly.
 vi.mock('@/hooks/useIdempotentAction', () => ({
@@ -94,10 +119,9 @@ const defaultProps = {
 };
 
 async function getSubmitButton() {
-  return waitFor(
-    () => screen.getByRole('button', { name: /deposit/i }),
-    { timeout: 2000 },
-  );
+  return waitFor(() => screen.getByRole('button', { name: /deposit/i }), {
+    timeout: 2000,
+  });
 }
 
 describe('StellarFiatModal - rapid click protection', () => {

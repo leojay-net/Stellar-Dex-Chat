@@ -1,0 +1,53 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Refresh Next.js security lockfile",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"--dir",
+				"Dechat/dex_with_fiat_frontend",
+				"update",
+				"next@15.3.6",
+				"eslint-config-next@15.3.6",
+				"--lockfile-only"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Refresh Next.js lockfile noninteractive",
+			"type": "shell",
+			"command": "sh",
+			"args": [
+				"-c",
+				"yes | pnpm --dir Dechat/dex_with_fiat_frontend update next@15.3.6 eslint-config-next@15.3.6 --lockfile-only"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Regenerate audited frontend lockfile",
+			"type": "shell",
+			"command": "sh",
+			"args": [
+				"-c",
+				"corepack pnpm@9.15.9 --dir Dechat/dex_with_fiat_frontend update next@15.3.6 eslint-config-next@15.3.6 --lockfile-only"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect patched Next release",
+			"type": "shell",
+			"command": "sh",
+			"args": [
+				"-c",
+				"corepack pnpm@9.15.9 view next version"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}

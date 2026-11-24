@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const mockEnv = { ADMIN_SECRET: 'test-admin-secret' };
-vi.mock('@/lib/env', () => ({
-  get env() {
+vi.mock('@/lib/serverEnv', () => ({
+  get serverEnv() {
     return mockEnv;
   },
 }));

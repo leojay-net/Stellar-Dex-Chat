@@ -1,129 +1,292 @@
 name: Auto-Merge PRs
 
-# Fires when a PR is opened/updated (to enable native auto-merge) and when a
-# check suite completes (to directly merge if every check went green and the
-# branch has no conflicts).
+# Triggers:
+#   workflow_run  – fires when a CI workflow finishes; avoids the GITHUB_TOKEN
+#                   limitation that makes `check_suite: completed` invisible to
+#                   workflows triggered by Actions itself.
+#   pull_request_review – re-evaluates a PR the moment it receives an approval,
+#                   so an already-green PR merges without waiting for the next CI run.
+#   pull_request  – catches ready_for_review transitions and label changes.
+#   workflow_dispatch – manual trigger for debugging / one-off sweeps.
+#
+# No schedule: event-driven triggers are sufficient. A missed event is retried
+# the next time any of the above fires for the same PR.
+#
+# Security: this job runs in the base-repo context and never checks out or
+# executes PR-authored code — it only calls the REST API.
+
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    branches: [main]
-  check_suite:
+  workflow_run:
+    workflows:
+      - "Frontend CI"
+      - "Frontend Build Check"
+      - "Smart Contract CI"
+      - "Contract Tests"
     types: [completed]
+  pull_request_review:
+    types: [submitted]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: write        # needed to merge
-  pull-requests: write   # needed to update PR auto-merge flag
+  contents: write       # needed to merge
+  pull-requests: write  # needed to read reviews / labels
+  checks: read
+  statuses: read
+
+concurrency:
+  group: auto-merge
+  cancel-in-progress: false
 
 jobs:
-  # ── 1. Enable GitHub's built-in auto-merge the moment a PR is opened / updated
-  enable-auto-merge:
-    name: Enable auto-merge on PR
-    if: |
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.draft == false
+  merge-green-prs:
+    name: Merge PRs with all checks passing
     runs-on: ubuntu-latest
     steps:
-      - name: Enable squash auto-merge
-        # continue-on-error so a repo without branch-protection rules doesn't
-        # block the workflow; the merge-when-green job is the primary mechanism.
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh pr merge --auto --squash \
-            --repo "${{ github.repository }}" \
-            "${{ github.event.pull_request.number }}"
-
-  # ── 2. Directly merge when ALL check runs on the suite pass ──────────────
-  merge-when-green:
-    name: Merge PR when all checks pass
-    if: |
-      github.event_name == 'check_suite' &&
-      github.event.check_suite.conclusion == 'success'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Merge passing, conflict-free PRs
-        uses: actions/github-script@v7
+      - name: Evaluate and merge
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const headSha = context.payload.check_suite.head_sha;
-            const prs     = context.payload.check_suite.pull_requests ?? [];
+            const { owner, repo } = context.repo;
+            const TERMINAL_OK   = ['success', 'skipped', 'neutral'];
+            const AUTOMERGE_LABEL = 'automerge';
 
-            if (prs.length === 0) {
-              core.info('No open PRs linked to this check suite — nothing to do.');
-              return;
+            // Accumulate skip/merge reasons for the job summary.
+            const summaryRows = [];
+            function skip(number, reason) {
+              core.info(`#${number}: ${reason} — skipping.`);
+              summaryRows.push({ number, action: '⏭ skipped', reason });
+            }
+            function merged(number, title) {
+              core.notice(`Auto-merged #${number}: ${title}`);
+              summaryRows.push({ number, action: '✅ merged', reason: 'all checks green, authorised' });
+            }
+            function failed(number, msg) {
+              core.warning(`#${number}: ${msg}`);
+              summaryRows.push({ number, action: '❌ failed', reason: msg });
             }
 
-            for (const pr of prs) {
-              // Fetch the full PR object (includes mergeable + draft fields)
-              const { data: pull } = await github.rest.pulls.get({
-                owner:       context.repo.owner,
-                repo:        context.repo.repo,
-                pull_number: pr.number,
+            // ── Helpers ────────────────────────────────────────────────────
+
+            // Returns true when a PR has an approving review from a collaborator
+            // with at least write (push) permission on the base repo.
+            async function hasWriteApproval(prNumber) {
+              // Collect all reviews, newest first (GitHub returns oldest first,
+              // so we reverse to find the latest state per reviewer).
+              const reviews = await github.paginate(github.rest.pulls.listReviews, {
+                owner, repo, pull_number: prNumber, per_page: 100,
               });
 
-              if (pull.draft) {
-                core.info(`PR #${pr.number} is a draft — skipping.`);
+              // Build a map: login → latest review state.
+              const latestState = {};
+              for (const review of reviews) {
+                if (review.user?.login) {
+                  latestState[review.user.login] = review.state;
+                }
+              }
+
+              const approvers = Object.entries(latestState)
+                .filter(([, state]) => state === 'APPROVED')
+                .map(([login]) => login);
+
+              if (approvers.length === 0) return false;
+
+              // Check each approver's permission level.
+              for (const login of approvers) {
+                try {
+                  const { data: perm } = await github.rest.repos.getCollaboratorPermissionLevel({
+                    owner, repo, username: login,
+                  });
+                  // 'admin' and 'write' are the two levels that imply write access.
+                  if (['admin', 'write'].includes(perm.permission)) return true;
+                } catch {
+                  // User may not be a collaborator at all — ignore.
+                }
+              }
+              return false;
+            }
+
+            // Returns true when the PR carries the automerge label.
+            function hasAutomergeLabel(pr) {
+              return (pr.labels ?? []).some(l => l.name === AUTOMERGE_LABEL);
+            }
+
+            // Returns true when the PR is from Dependabot AND the version bump
+            // is semver-major (e.g. "from 10.x to 14.x").
+            // Dependabot encodes the bump type in the PR title:
+            //   "Bump uuid from 10.0.0 to 14.0.0"
+            // and in a label "dependencies" / "major" that it sets itself,
+            // but the most reliable signal is parsing the title semver.
+            function isDependabotMajorBump(pr) {
+              if (pr.user?.login !== 'dependabot[bot]') return false;
+              // Dependabot PR titles: "Bump <pkg> from <old> to <new>"
+              const match = pr.title.match(/from\s+(\d+)\.\S+\s+to\s+(\d+)\./i);
+              if (!match) return false;
+              return parseInt(match[1], 10) !== parseInt(match[2], 10);
+            }
+
+            // ── Determine candidate PRs ────────────────────────────────────
+            const openPrs = await github.paginate(github.rest.pulls.list, {
+              owner, repo, state: 'open', per_page: 100,
+            });
+
+            let candidates = openPrs;
+
+            if (context.eventName === 'workflow_run') {
+              const run = context.payload.workflow_run;
+              if (run.conclusion !== 'success') {
+                core.info(`Upstream run "${run.name}" concluded "${run.conclusion}" — nothing to do.`);
+                return;
+              }
+              candidates = openPrs.filter(pr => pr.head.sha === run.head_sha);
+              if (candidates.length === 0) {
+                core.info(`No open PR matches head SHA ${run.head_sha}.`);
+                return;
+              }
+            }
+
+            if (context.eventName === 'pull_request_review') {
+              const prNum = context.payload.pull_request?.number;
+              if (prNum) candidates = openPrs.filter(pr => pr.number === prNum);
+            }
+
+            if (context.eventName === 'pull_request') {
+              const prNum = context.payload.pull_request?.number;
+              if (prNum) candidates = openPrs.filter(pr => pr.number === prNum);
+            }
+
+            core.info(`Evaluating ${candidates.length} PR(s).`);
+
+            // ── Evaluate each candidate ────────────────────────────────────
+            for (const summary of candidates) {
+              const number = summary.number;
+
+              // Re-fetch: the list payload omits `mergeable`/`mergeable_state`.
+              let { data: pr } = await github.rest.pulls.get({
+                owner, repo, pull_number: number,
+              });
+
+              // ── Basic guards ─────────────────────────────────────────────
+              if (pr.draft)            { skip(number, 'draft PR');         continue; }
+              if (pr.state !== 'open') { skip(number, 'PR not open');      continue; }
+
+              // ── Gate 1: authorisation ─────────────────────────────────────
+              // A PR must EITHER carry the automerge label OR have at least one
+              // approving review from a collaborator with write access.
+              const labelled  = hasAutomergeLabel(pr);
+              const approved  = !labelled && await hasWriteApproval(number);
+
+              if (!labelled && !approved) {
+                skip(number, `missing automerge label and no write-access approval`);
                 continue;
               }
 
-              if (pull.state !== 'open') {
-                core.info(`PR #${pr.number} is already closed — skipping.`);
+              // ── Gate 2: Dependabot semver-major ───────────────────────────
+              // Block major-version bumps from Dependabot unless they are
+              // explicitly labelled with the automerge label (i.e. a human has
+              // reviewed and decided the upgrade is safe).
+              if (isDependabotMajorBump(pr) && !labelled) {
+                skip(number, `Dependabot major-version bump — add "${AUTOMERGE_LABEL}" label to override`);
                 continue;
               }
 
-              // GitHub computes mergeability asynchronously; poll once if null.
-              let mergeable = pull.mergeable;
-              if (mergeable === null) {
-                core.info(`PR #${pr.number}: mergeability not yet computed, waiting 6 s…`);
-                await new Promise(r => setTimeout(r, 6000));
-                const { data: refreshed } = await github.rest.pulls.get({
-                  owner:       context.repo.owner,
-                  repo:        context.repo.repo,
-                  pull_number: pr.number,
-                });
-                mergeable = refreshed.mergeable;
-              }
-
-              if (mergeable === false) {
-                core.info(`PR #${pr.number} has merge conflicts — skipping.`);
-                continue;
-              }
-
-              // Confirm every completed check run passed (or was neutral/skipped).
+              // ── Gate 3: all checks must be complete and green ─────────────
+              const sha = pr.head.sha;
               const { data: { check_runs } } = await github.rest.checks.listForRef({
-                owner:    context.repo.owner,
-                repo:     context.repo.repo,
-                ref:      headSha,
-                per_page: 100,
+                owner, repo, ref: sha, per_page: 100,
               });
 
-              const failing = check_runs.filter(r =>
-                r.status === 'completed' &&
-                !['success', 'skipped', 'neutral'].includes(r.conclusion)
-              );
+              // Exclude this workflow's own check run to avoid a self-referential wait.
+              const relevant = check_runs.filter(r => r.name !== 'Merge PRs with all checks passing');
 
-              if (failing.length > 0) {
-                core.info(
-                  `PR #${pr.number} has failing checks ` +
-                  `(${failing.map(r => r.name).join(', ')}) — skipping.`
-                );
+              if (relevant.length === 0) {
+                skip(number, `no CI checks reported for ${sha} — refusing to merge unchecked`);
                 continue;
               }
 
-              // Everything is green and conflict-free — merge!
+              const pending = relevant.filter(r => r.status !== 'completed');
+              if (pending.length > 0) {
+                skip(number, `checks still running: ${pending.map(r => r.name).join(', ')}`);
+                continue;
+              }
+
+              const failing = relevant.filter(r => !TERMINAL_OK.includes(r.conclusion));
+              if (failing.length > 0) {
+                skip(number, `failing checks: ${failing.map(r => r.name).join(', ')}`);
+                continue;
+              }
+
+              // Legacy commit statuses (non-Actions integrations).
+              const { data: combined } = await github.rest.repos.getCombinedStatusForRef({
+                owner, repo, ref: sha,
+              });
+              if (combined.total_count > 0 && combined.state !== 'success') {
+                skip(number, `commit status is "${combined.state}"`);
+                continue;
+              }
+
+              // ── Gate 4: mergeability ──────────────────────────────────────
+              for (let attempt = 0; pr.mergeable === null && attempt < 3; attempt++) {
+                core.info(`#${number}: mergeability not computed yet, retrying in 5s…`);
+                await new Promise(r => setTimeout(r, 5000));
+                ({ data: pr } = await github.rest.pulls.get({
+                  owner, repo, pull_number: number,
+                }));
+              }
+
+              if (pr.mergeable === false) {
+                skip(number, `merge conflicts (mergeable_state="${pr.mergeable_state}")`);
+                continue;
+              }
+              if (pr.mergeable === null) {
+                skip(number, 'mergeability still unknown — will retry on next event');
+                continue;
+              }
+              if (['blocked', 'behind', 'draft'].includes(pr.mergeable_state)) {
+                skip(number, `mergeable_state="${pr.mergeable_state}"`);
+                continue;
+              }
+
+              // ── Merge ─────────────────────────────────────────────────────
+              // Strip AI-assistant co-author trailers; preserve human attribution.
+              const body = (pr.body ?? '')
+                .split('\n')
+                .filter(line => !/^\s*co-authored-by:.*(claude|anthropic\.com)/i.test(line))
+                .join('\n')
+                .trim();
+
               try {
                 await github.rest.pulls.merge({
-                  owner:          context.repo.owner,
-                  repo:           context.repo.repo,
-                  pull_number:    pr.number,
+                  owner, repo,
+                  pull_number:    number,
                   merge_method:   'squash',
-                  commit_title:   `${pull.title} (#${pr.number})`,
-                  commit_message: pull.body ?? '',
+                  commit_title:   `${pr.title} (#${number})`,
+                  commit_message: body,
+                  sha,
                 });
-                core.info(`✅  Auto-merged PR #${pr.number}: ${pull.title}`);
+                merged(number, pr.title);
               } catch (err) {
-                core.error(`Failed to merge PR #${pr.number}: ${err.message}`);
+                // 405 = not mergeable right now, 409 = head moved — both transient.
+                failed(number, `merge API returned ${err.status}: ${err.message}`);
               }
+            }
+
+            // ── Job summary ───────────────────────────────────────────────
+            if (summaryRows.length === 0) {
+              await core.summary.addRaw('No PRs evaluated this run.').write();
+            } else {
+              await core.summary
+                .addHeading('Auto-merge sweep', 3)
+                .addTable([
+                  [
+                    { data: 'PR',     header: true },
+                    { data: 'Result', header: true },
+                    { data: 'Reason', header: true },
+                  ],
+                  ...summaryRows.map(r => [`#${r.number}`, r.action, r.reason]),
+                ])
+                .write();
             }

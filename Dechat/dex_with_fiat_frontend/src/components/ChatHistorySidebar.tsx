@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import jsPDF from 'jspdf';
 import { useChatHistory } from '@/hooks/useChatHistory';
 import { useTxHistory } from '@/hooks/useTxHistory';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
+import { useTranslation } from '@/contexts/TranslationContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import {
   MessageSquare,
@@ -29,7 +29,27 @@ import PriceTicker from '@/components/PriceTicker';
 
 import { ChatSession } from '@/types';
 import { ContractEvent } from '@/types/events';
+import { stroopsToXlmOrNull } from '@/lib/stroops';
 import { useSessionPagination } from '@/hooks/useSessionPagination';
+import {
+  formatDateTime,
+  formatRelativeHistoryDate,
+} from '@/lib/dateFormatters';
+
+/**
+ * Renders a contract-event amount for the activity feed.
+ *
+ * The feed receives raw stroop strings from `/api/events`. Formatting them
+ * through the stroops helper keeps large values exact, and a value that cannot
+ * be parsed degrades to a dash instead of taking the sidebar down.
+ */
+function formatActivityAmount(stroops: string): string {
+  const xlm = stroopsToXlmOrNull(stroops);
+
+  return xlm === null
+    ? '—'
+    : Number(xlm).toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
 
 interface SessionRowProps {
   session: ChatSession;
@@ -66,7 +86,7 @@ function SessionRow({
       }`}
       onClick={() => onLoad(session.id)}
     >
-      <div className="flex items-start justify-between">
+      <div className="flex min-w-0 items-start justify-between">
         <div className="flex-1 min-w-0">
           <h3 className="theme-text-primary text-sm font-medium truncate">
             {session.title || 'New Conversation'}
@@ -92,7 +112,7 @@ function SessionRow({
           )}
         </div>
 
-        <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex shrink-0 items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -205,6 +225,7 @@ export default function ChatHistorySidebar({
   } = useChatHistory();
   const { entries, clearEntries, updateEntry } = useTxHistory();
   const { connection } = useStellarWallet();
+  const { locale, t } = useTranslation();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(
@@ -226,6 +247,7 @@ export default function ChatHistorySidebar({
   const [pendingClearAll, setPendingClearAll] = useState(false);
   const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stashedSessionsRef = useRef<ChatSession[]>([]);
+  const [liveAnnouncement, setLiveAnnouncement] = useState('');
   // ────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -276,7 +298,9 @@ export default function ChatHistorySidebar({
   const filteredSessionIds = filteredSessions.map((s) => s.id).join(',');
   const historyListRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const scrollSnapshotRef = useRef<{ top: number; height: number } | null>(null);
+  const scrollSnapshotRef = useRef<{ top: number; height: number } | null>(
+    null,
+  );
   const draggedIdRef = useRef<string | null>(null);
   const dragOverIdRef = useRef<string | null>(null);
 
@@ -315,17 +339,20 @@ export default function ChatHistorySidebar({
     dragOverIdRef.current = null;
   }, [filteredPinned, reorderPinned]);
 
-  const movePinned = useCallback((id: string, direction: 'up' | 'down') => {
-    const pinnedIds = filteredPinned.map((s) => s.id);
-    const idx = pinnedIds.indexOf(id);
-    if (idx === -1) return;
-    const target = direction === 'up' ? idx - 1 : idx + 1;
-    if (target < 0 || target >= pinnedIds.length) return;
-    const reordered = [...pinnedIds];
-    const [item] = reordered.splice(idx, 1);
-    reordered.splice(target, 0, item);
-    reorderPinned(reordered);
-  }, [filteredPinned, reorderPinned]);
+  const movePinned = useCallback(
+    (id: string, direction: 'up' | 'down') => {
+      const pinnedIds = filteredPinned.map((s) => s.id);
+      const idx = pinnedIds.indexOf(id);
+      if (idx === -1) return;
+      const target = direction === 'up' ? idx - 1 : idx + 1;
+      if (target < 0 || target >= pinnedIds.length) return;
+      const reordered = [...pinnedIds];
+      const [item] = reordered.splice(idx, 1);
+      reordered.splice(target, 0, item);
+      reorderPinned(reordered);
+    },
+    [filteredPinned, reorderPinned],
+  );
 
   // Windowed rendering for unpinned sessions
   const {
@@ -357,7 +384,12 @@ export default function ChatHistorySidebar({
     if (neededVisible > visibleUnpinned.length) {
       setUnpinnedVisibleCount(Math.min(filteredUnpinned.length, neededVisible));
     }
-  }, [currentSessionId, filteredUnpinned, visibleUnpinned.length, setUnpinnedVisibleCount]);
+  }, [
+    currentSessionId,
+    filteredUnpinned,
+    visibleUnpinned.length,
+    setUnpinnedVisibleCount,
+  ]);
 
   const handleScroll = useCallback(() => {
     const el = scrollContainerRef.current;
@@ -365,7 +397,10 @@ export default function ChatHistorySidebar({
 
     if (el.scrollTop < 160 && unpinnedHasMore && !unpinnedIsLoadingMore) {
       // take a snapshot so we can preserve visual position after loading
-      scrollSnapshotRef.current = { top: el.scrollTop, height: el.scrollHeight };
+      scrollSnapshotRef.current = {
+        top: el.scrollTop,
+        height: el.scrollHeight,
+      };
       loadMoreUnpinned();
     }
   }, [unpinnedHasMore, unpinnedIsLoadingMore, loadMoreUnpinned]);
@@ -382,11 +417,24 @@ export default function ChatHistorySidebar({
     }
   }, [unpinnedIsLoadingMore]);
 
+  useEffect(() => {
+    if (isCollapsed || isLoading || !searchQuery) return;
+
+    const resultLabel =
+      filteredSessions.length === 1
+        ? '1 conversation found'
+        : `${filteredSessions.length} conversations found`;
+    setLiveAnnouncement(resultLabel);
+  }, [filteredSessions.length, isCollapsed, isLoading, searchQuery]);
+
   // ── Optimistic delete with undo ──────────────────────────────────────────
   const handleDeleteSession = useCallback(
     (sessionId: string) => {
       setShowDeleteConfirm(null);
       setPendingDeleteId(sessionId);
+      setLiveAnnouncement(
+        'Conversation deleted. Undo available for 5 seconds.',
+      );
 
       // Clear any previous delete timer
       if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
@@ -402,20 +450,25 @@ export default function ChatHistorySidebar({
   const undoDelete = useCallback(() => {
     if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
     setPendingDeleteId(null);
+    setLiveAnnouncement('Conversation restored.');
   }, []);
 
   // ── Optimistic pin toggle with animation ─────────────────────────────────
   const handleTogglePin = useCallback(
     (sessionId: string) => {
+      const session = allSessions.find((item) => item.id === sessionId);
       togglePin(sessionId);
       setRecentlyToggledPinId(sessionId);
+      setLiveAnnouncement(
+        session?.pinned ? 'Conversation unpinned.' : 'Conversation pinned.',
+      );
 
       if (pinAnimTimerRef.current) clearTimeout(pinAnimTimerRef.current);
       pinAnimTimerRef.current = setTimeout(() => {
         setRecentlyToggledPinId(null);
       }, 600);
     },
-    [togglePin],
+    [allSessions, togglePin],
   );
 
   // ── Optimistic clear-all with undo ───────────────────────────────────────
@@ -424,6 +477,7 @@ export default function ChatHistorySidebar({
     stashedSessionsRef.current = [...allSessionsRaw];
     clearAllHistory();
     setPendingClearAll(true);
+    setLiveAnnouncement('History cleared. Undo available for 5 seconds.');
 
     if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
     clearTimerRef.current = setTimeout(() => {
@@ -434,6 +488,7 @@ export default function ChatHistorySidebar({
 
   const undoClearAll = useCallback(() => {
     if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
+    setLiveAnnouncement('History restored.');
     // Restore stashed sessions by re-saving to localStorage and reloading
     if (stashedSessionsRef.current.length > 0) {
       const restored = {
@@ -491,7 +546,8 @@ export default function ChatHistorySidebar({
     }
   };
 
-  const handleExportTransactions = () => {
+  const handleExportTransactions = async () => {
+    const { jsPDF } = await import('jspdf');
     const doc = new jsPDF();
     const exportedAt = new Date();
     const walletAddress = connection.address || 'Wallet not connected';
@@ -502,7 +558,7 @@ export default function ChatHistorySidebar({
     doc.text('Stellar Bridge Transaction History', 14, 18);
     doc.setFontSize(10);
     doc.text(
-      `Exported: ${exportedAt.toLocaleString()} | Records: ${exportRows.length}`,
+      `Exported: ${formatDateTime(exportedAt, locale, { dateStyle: 'short', timeStyle: 'short' })} | Records: ${exportRows.length}`,
       14,
       26,
     );
@@ -530,7 +586,7 @@ export default function ChatHistorySidebar({
         }
 
         const row = [
-          entry.createdAt.toLocaleDateString(),
+          formatDateTime(entry.createdAt, locale, { dateStyle: 'short' }),
           entry.kind === 'payout' ? 'Withdrawal' : 'Deposit',
           entry.fiatAmount
             ? `${entry.amount ?? '-'} / ${entry.fiatAmount}`
@@ -551,28 +607,16 @@ export default function ChatHistorySidebar({
 
     doc.setFontSize(9);
     doc.text(`Wallet: ${walletAddress}`, 14, 280);
-    doc.text(`Export timestamp: ${exportedAt.toLocaleString()}`, 14, 286);
+    doc.text(
+      `Export timestamp: ${formatDateTime(exportedAt, locale, { dateStyle: 'short', timeStyle: 'short' })}`,
+      14,
+      286,
+    );
     doc.save(`stellar-bridge-history-${fileDate}.pdf`);
   };
 
-  const formatDate = (date: Date) => {
-    const now = new Date();
-    const diffTime = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) {
-      return date.toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    } else if (diffDays === 1) {
-      return 'Yesterday';
-    } else if (diffDays < 7) {
-      return `${diffDays} days ago`;
-    } else {
-      return date.toLocaleDateString();
-    }
-  };
+  const formatDate = (date: Date) =>
+    formatRelativeHistoryDate(date, locale, t('history.yesterday'));
 
   return (
     <ErrorBoundary
@@ -581,10 +625,19 @@ export default function ChatHistorySidebar({
       retryLabel="Reload sidebar"
     >
       <div
-        className={`theme-surface theme-border h-full flex flex-col transition-all duration-300 border-r ${
+        className={`theme-surface theme-border h-full min-w-0 overflow-x-hidden flex flex-col transition-all duration-300 border-r ${
           isCollapsed ? 'w-20' : 'w-full'
         } transition-colors duration-300`}
       >
+        <p
+          data-testid="chat-history-live-region"
+          className="sr-only"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {liveAnnouncement}
+        </p>
         <div
           className={`theme-border border-b transition-colors duration-300 ${
             isCollapsed ? 'p-4 flex flex-col items-center' : 'p-4'
@@ -647,7 +700,11 @@ export default function ChatHistorySidebar({
           )}
         </div>
 
-        <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto"
+        >
           {isLoading ? (
             <SkeletonSidebar />
           ) : (
@@ -687,12 +744,14 @@ export default function ChatHistorySidebar({
                                 {event.actor.slice(-4)}
                               </span>
                               <span className="text-[10px] text-[var(--color-text-muted)]">
-                                {new Date(
-                                  event.ledgerClosedAt,
-                                ).toLocaleTimeString([], {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
+                                {formatDateTime(
+                                  new Date(event.ledgerClosedAt),
+                                  locale,
+                                  {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  },
+                                )}
                               </span>
                             </div>
                           </div>
@@ -700,11 +759,7 @@ export default function ChatHistorySidebar({
                             className={`font-bold ${event.type === 'deposit' ? 'text-[var(--color-success)]' : 'text-[var(--color-warning)]'}`}
                           >
                             {event.type === 'deposit' ? '+' : '-'}
-                            {(
-                              parseFloat(event.amount) / 10000000
-                            ).toLocaleString(undefined, {
-                              maximumFractionDigits: 2,
-                            })}
+                            {formatActivityAmount(event.amount)}
                           </span>
                         </div>
                       ))}
@@ -750,7 +805,7 @@ export default function ChatHistorySidebar({
                             Pinned
                           </p>
                         )}
-                        {filteredPinned.map((session, idx) => (
+                        {filteredPinned.map((session) => (
                           <div
                             key={session.id}
                             draggable
@@ -855,7 +910,17 @@ export default function ChatHistorySidebar({
         <div
           className={`theme-border border-t p-4 ${isCollapsed ? 'flex flex-col items-center' : ''}`}
         >
-          <PriceTicker symbols={['XLM', 'ETH', 'BTC']} currency="usd" />
+          <ErrorBoundary
+            fallback={
+              <div className="theme-surface-muted rounded-lg border theme-border p-3">
+                <p className="theme-text-secondary text-sm text-center py-2">
+                  Prices unavailable
+                </p>
+              </div>
+            }
+          >
+            <PriceTicker symbols={['XLM', 'ETH', 'BTC']} currency="usd" />
+          </ErrorBoundary>
 
           <div
             className={`theme-border border-t p-4 ${isCollapsed ? 'flex flex-col items-center' : ''}`}
@@ -914,11 +979,11 @@ export default function ChatHistorySidebar({
                     className="theme-surface-muted theme-border rounded-lg border p-3"
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div>
+                      <div className="min-w-0">
                         <p className="theme-text-primary text-xs font-semibold capitalize">
                           {entry.kind.replace('_', ' ')}
                         </p>
-                        <p className="theme-text-secondary text-xs mt-1">
+                        <p className="theme-text-secondary break-words text-xs mt-1">
                           {entry.message}
                         </p>
                       </div>

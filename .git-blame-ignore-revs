@@ -1,0 +1,13 @@
+# Commits listed here are excluded from git blame output.
+# Add the SHA of any bulk-formatting commit so blame points at real authors.
+# See: https://git-scm.com/docs/git-blame#Documentation/git-blame.txt---ignore-revs-fileltfilegt
+#
+# To activate locally:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# Usage: after merging a formatting-only PR, append its merge commit SHA here.
+# Example:
+#   a1b2c3d4e5f6... # chore: run prettier across src, tests/e2e, and config files
+
+# --- formatting commits below this line ---
+# <replace with merge SHA of the Prettier formatting PR>

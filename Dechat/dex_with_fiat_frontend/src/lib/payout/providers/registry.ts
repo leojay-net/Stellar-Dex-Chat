@@ -1,6 +1,6 @@
 import type { PayoutProvider, PayoutProviderName } from './types';
 import { paystackProvider } from './paystackProvider';
-import { env } from '@/lib/env';
+import { serverEnv as env } from '@/lib/serverEnv';
 
 const providers: Record<PayoutProviderName, PayoutProvider> = {
   paystack: paystackProvider,

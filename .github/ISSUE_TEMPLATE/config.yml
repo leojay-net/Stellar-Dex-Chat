@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security Vulnerability
+    url: https://github.com/leojay-net/Stellar-Dex-Chat/security/advisories
+    about: Please report security vulnerabilities privately using GitHub's private vulnerability reporting feature.

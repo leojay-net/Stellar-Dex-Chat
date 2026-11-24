@@ -1,11 +1,21 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 import { telemetry } from '@/lib/telemetry';
-import { env } from '@/lib/env';
+import { serverEnv as env } from '@/lib/serverEnv';
+import { banksQuerySchema } from '@/lib/apiSchemas';
+import { applyRateLimit, getClientIp } from '@/lib/rateLimit';
 
 const PAYSTACK_SECRET_KEY = env.PAYSTACK_SECRET_KEY;
+const RATE_LIMIT = { maxRequests: 30, windowMs: 60_000 };
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  const limited = applyRateLimit(
+    getClientIp(request),
+    '/api/banks',
+    RATE_LIMIT,
+  );
+  if (limited) return limited;
+
   const traceContext = telemetry.extractTraceFromHeaders(
     request.headers as Headers,
   );
@@ -19,6 +29,33 @@ export async function GET(request: Request) {
     telemetry.addLog(span.spanId, 'info', 'Starting banks fetch', {
       endpoint: '/api/banks',
     });
+
+    const query = Object.fromEntries(request.nextUrl.searchParams.entries());
+    const validationResult = banksQuerySchema.safeParse(query);
+    if (!validationResult.success) {
+      telemetry.addLog(span.spanId, 'warn', 'Banks query validation failed', {
+        errors: validationResult.error.issues,
+      });
+      telemetry.finishSpan(span.spanId, {
+        success: false,
+        error: 'Invalid request',
+      });
+
+      const response = NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'INVALID_REQUEST',
+            issues: validationResult.error.issues,
+          },
+        },
+        { status: 400 },
+      );
+      telemetry.setTraceHeaders(response.headers as Headers, traceContext);
+      return response;
+    }
+
+    const { country } = validationResult.data;
 
     if (!PAYSTACK_SECRET_KEY) {
       telemetry.addLog(
@@ -104,11 +141,11 @@ export async function GET(request: Request) {
     // Call real Paystack API to get Nigerian banks
     telemetry.addLog(span.spanId, 'info', 'Calling Paystack API', {
       endpoint: 'https://api.paystack.co/bank',
-      country: 'nigeria',
+      country,
     });
 
     const response = await axios.get(
-      'https://api.paystack.co/bank?country=nigeria',
+      `https://api.paystack.co/bank?country=${country}`,
       {
         headers: {
           Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,

@@ -29,7 +29,7 @@ fn setup(env: &Env) -> (FiatBridgeClient<'_>, Address, Address, StellarAssetClie
     let token_sac = StellarAssetClient::new(env, &token_addr);
 
     let signers = vec![env, admin.clone()];
-    client.init(&admin, &token_addr, &LIMIT, &1, &signers, &1);
+    client.init(&admin, &token_addr, &LIMIT, &1, &signers, &1, &0);
 
     (client, admin, token_addr, token_sac)
 }
@@ -60,7 +60,7 @@ fn init_rejects_non_sep41_token() {
     let bogus_token = env.register(FiatBridge, ());
     let signers = vec![&env, admin.clone()];
 
-    let result = client.try_init(&admin, &bogus_token, &LIMIT, &1, &signers, &1);
+    let result = client.try_init(&admin, &bogus_token, &LIMIT, &1, &signers, &1, &0);
     assert_eq!(result, Err(Ok(Error::InvalidToken)));
 }
 

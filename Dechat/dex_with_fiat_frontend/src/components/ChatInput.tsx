@@ -20,25 +20,20 @@ interface ChatInputProps {
   sessionId?: string | null;
 }
 
-/**
- * Keyboard Shortcuts
- *
- * The ChatInput component supports the following keyboard shortcuts to improve UX:
- *
- * Message Input:
- * - Ctrl+Enter (Cmd+Enter on Mac): Send message
- * - Enter (when command palette is open): Select highlighted command
- * - Arrow Up/Down: Navigate through command suggestions
- * - Escape: Close command suggestions
- * - '/': Open command palette (type at message start)
- *
- * Global Shortcuts:
- * - Ctrl+K (Cmd+K on Mac): Toggle command palette
- * - Ctrl+N (Cmd+N on Mac): Start new chat
- * - Ctrl+H (Cmd+H on Mac): Open chat history
- * - Ctrl+B (Cmd+B on Mac): Open bridge modal (fiat conversion)
- * - Ctrl+Shift+C (Cmd+Shift+C on Mac): Cancel pending request
- */
+const COMMON_EMOJIS = [
+  '😊',
+  '😂',
+  '🙏',
+  '👍',
+  '❤️',
+  '🔥',
+  '✅',
+  '🚀',
+  '💰',
+  '📊',
+  '⭐',
+  '🎉',
+];
 
 const COMMON_EMOJIS = ['😊', '😂', '🙏', '👍', '❤️', '🔥', '✅', '🚀', '💰', '📊', '⭐', '🎉'];
 
@@ -71,12 +66,13 @@ export default function ChatInput({
   const submitShortcutLabel = isApplePlatform ? 'Cmd+Enter' : 'Ctrl+Enter';
   const submitShortcutKeys = isApplePlatform ? 'Meta+Enter' : 'Control+Enter';
   const [message, setMessage] = useState('');
+  const [isCopied, setIsCopied] = useState(false);
   const [showCommands, setShowCommands] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showPalette, setShowPalette] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
   const [paletteIndex, setPaletteIndex] = useState(0);
-  
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -107,10 +103,22 @@ export default function ChatInput({
   });
 
   const commands = [
-    { cmd: '/deposit', desc: t('common.deposit_desc') || 'Add funds to your Stellar account' },
-    { cmd: '/rates', desc: t('common.rates_desc') || 'Check current market conversion rates' },
-    { cmd: '/portfolio', desc: t('common.portfolio_desc') || 'View your asset balance and value' },
-    { cmd: '/help', desc: t('common.help_desc') || 'Get assistance with platform features' },
+    {
+      cmd: '/deposit',
+      desc: t('common.deposit_desc') || 'Add funds to your Stellar account',
+    },
+    {
+      cmd: '/rates',
+      desc: t('common.rates_desc') || 'Check current market conversion rates',
+    },
+    {
+      cmd: '/portfolio',
+      desc: t('common.portfolio_desc') || 'View your asset balance and value',
+    },
+    {
+      cmd: '/help',
+      desc: t('common.help_desc') || 'Get assistance with platform features',
+    },
   ];
 
   const handleInputChange = (val: string) => {
@@ -129,20 +137,36 @@ export default function ChatInput({
   };
 
   const [walletWarning, setWalletWarning] = useState(false);
+  const [liveAnnouncement, setLiveAnnouncement] = useState('');
   const isSubmitDisabled = !message.trim() || isLoading || isSubmitting;
 
+  const copyMessage = async () => {
+    const value = message.trim();
+    if (!value || typeof navigator === 'undefined' || !navigator.clipboard)
+      return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setIsCopied(true);
+      window.setTimeout(() => setIsCopied(false), 1200);
+    } catch {
+      setIsCopied(false);
+    }
+  };
   const submitMessage = () => {
     if (!connection.isConnected) {
       setWalletWarning(true);
+      setLiveAnnouncement('Wallet disconnected. Reconnect to continue.');
       return;
     }
     setWalletWarning(false);
     if (!isSubmitDisabled) {
+      const messageToSend = message.trim();
       executeSubmit(async () => {
-        onSendMessage(message.trim());
+        onSendMessage(messageToSend);
         setMessage('');
         if (sessionId) clearDraft(sessionId);
         setShowCommands(false);
+        setLiveAnnouncement('Message sent.');
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, 'chat_message_submit');
     }
@@ -156,8 +180,11 @@ export default function ChatInput({
   useEffect(() => {
     if (connection.isConnected) {
       setWalletWarning(false);
+      if (walletWarning) {
+        setLiveAnnouncement('Wallet reconnected. You can send messages.');
+      }
     }
-  }, [connection.isConnected]);
+  }, [connection.isConnected, walletWarning]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (showCommands) {
@@ -239,7 +266,11 @@ export default function ChatInput({
         event.preventDefault();
         setShowPalette((prev: boolean) => !prev);
       }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'n' && !event.shiftKey) {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === 'n' &&
+        !event.shiftKey
+      ) {
         event.preventDefault();
         onNewChat?.();
       }
@@ -251,7 +282,11 @@ export default function ChatInput({
         event.preventDefault();
         onOpenBridgeModal?.();
       }
-      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'c') {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.shiftKey &&
+        event.key.toLowerCase() === 'c'
+      ) {
         event.preventDefault();
         onCancelRequest?.();
       }
@@ -371,7 +406,9 @@ export default function ChatInput({
                 type="button"
                 onClick={() => executePaletteCommand(i)}
                 className={`w-full text-left px-3 py-2 text-sm ${
-                  i === paletteIndex ? 'bg-blue-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                  i === paletteIndex
+                    ? 'bg-blue-600 text-white'
+                    : 'hover:bg-gray-100 dark:hover:bg-gray-800'
                 }`}
               >
                 {cmd.label}
@@ -417,7 +454,9 @@ export default function ChatInput({
 
       <div
         data-testid="chat-input-controls"
-        className={isMobile ? 'flex flex-col gap-2' : 'flex items-end space-x-3'}
+        className={
+          isMobile ? 'flex flex-col gap-2' : 'flex items-end space-x-3'
+        }
       >
         <div className="flex-1 relative min-w-0">
           {showEmojiPicker && (
@@ -443,11 +482,13 @@ export default function ChatInput({
             ref={textareaRef}
             data-testid="chat-input-textarea"
             value={message}
-            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleInputChange(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+              handleInputChange(e.target.value)
+            }
             onKeyDown={handleKeyDown}
             placeholder={activePlaceholder}
             disabled={isLoading}
-            aria-describedby="chat-submit-shortcut"
+            aria-describedby="chat-submit-shortcut chat-input-status"
             aria-invalid={walletWarning}
             // Drive the border colour from an explicit theme-token class rather
             // than leaving it to the Tailwind utility cascade (which could
@@ -456,7 +497,9 @@ export default function ChatInput({
             className={`theme-input w-full resize-none border rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed ${
               isMobile ? 'px-3 py-2.5 text-base' : 'px-4 py-3'
             } ${
-              walletWarning ? 'theme-input-border-invalid' : 'theme-input-border'
+              walletWarning
+                ? 'theme-input-border-invalid'
+                : 'theme-input-border'
             }`}
             rows={1}
             style={{
@@ -489,7 +532,7 @@ export default function ChatInput({
           disabled={isSubmitDisabled}
           title={`Send message (${submitShortcutLabel})`}
           aria-label={`Send message (${submitShortcutLabel})`}
-          aria-describedby="chat-submit-shortcut"
+          aria-describedby="chat-submit-shortcut chat-input-status"
           aria-keyshortcuts={submitShortcutKeys}
           className={`theme-primary-button flex items-center justify-center disabled:bg-gray-300 text-white rounded-lg transition-all duration-200 disabled:cursor-not-allowed transform hover:scale-105 disabled:hover:scale-100 shadow-lg ${
             isMobile ? 'w-full h-11' : 'w-12 h-12'
@@ -503,8 +546,18 @@ export default function ChatInput({
         </button>
       </div>
 
-      <p id="chat-submit-shortcut" className="sr-only" aria-live="polite">
-        Send message with {submitShortcutLabel}. The send button stays disabled while a request is pending.
+      <p id="chat-submit-shortcut" className="sr-only">
+        Send message with {submitShortcutLabel}. The send button stays disabled
+        while a request is pending.
+      </p>
+      <p
+        id="chat-input-status"
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {liveAnnouncement}
       </p>
 
       {walletWarning && (

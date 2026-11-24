@@ -1,6 +1,20 @@
 import React from 'react';
-import { vi, describe, beforeEach, afterEach, it, expect } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import {
+  vi,
+  describe,
+  beforeEach,
+  afterEach,
+  it,
+  expect,
+  type Mock,
+} from 'vitest';
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  act,
+} from '@testing-library/react';
 import ChatInput from '../ChatInput';
 import * as draftUtils from '@/lib/draftUtils';
 
@@ -45,11 +59,16 @@ describe('ChatInput - Draft Persistence', () => {
   });
 
   it('should restore draft from draftUtils on mount', () => {
-    (draftUtils.getDraft as vi.Mock).mockReturnValue('Restored draft content');
-    
+    (draftUtils.getDraft as Mock<() => string>).mockReturnValue(
+      'Restored draft content',
+    );
+    (draftUtils.getDraft as Mock).mockReturnValue('Restored draft content');
+
     render(<ChatInput {...defaultProps} />);
-    
-    const textarea = screen.getByPlaceholderText('Type a message...') as HTMLTextAreaElement;
+
+    const textarea = screen.getByPlaceholderText(
+      'Type a message...',
+    ) as HTMLTextAreaElement;
     expect(textarea.value).toBe('Restored draft content');
     expect(draftUtils.getDraft).toHaveBeenCalledWith(sessionId);
   });
@@ -75,7 +94,10 @@ describe('ChatInput - Draft Persistence', () => {
   });
 
   it('should clear draft on successful send', async () => {
-    (draftUtils.getDraft as vi.Mock).mockReturnValue('Message to send');
+    (draftUtils.getDraft as Mock<() => string>).mockReturnValue(
+      'Message to send',
+    );
+    (draftUtils.getDraft as Mock).mockReturnValue('Message to send');
     render(<ChatInput {...defaultProps} />);
 
     const textarea = screen.getByPlaceholderText('Type a message...');
@@ -91,7 +113,9 @@ describe('ChatInput - Draft Persistence', () => {
 
   it('should persist draft across "reloads" (unmount and remount)', async () => {
     const { unmount } = render(<ChatInput {...defaultProps} />);
-    const textarea = screen.getByPlaceholderText('Type a message...') as HTMLTextAreaElement;
+    const textarea = screen.getByPlaceholderText(
+      'Type a message...',
+    ) as HTMLTextAreaElement;
 
     // Type something
     fireEvent.change(textarea, { target: { value: 'Persistent message' } });
@@ -100,18 +124,26 @@ describe('ChatInput - Draft Persistence', () => {
     act(() => {
       vi.advanceTimersByTime(500);
     });
-    expect(draftUtils.saveDraft).toHaveBeenCalledWith(sessionId, 'Persistent message');
+    expect(draftUtils.saveDraft).toHaveBeenCalledWith(
+      sessionId,
+      'Persistent message',
+    );
 
     // Unmount (simulating page exit/reload context)
     unmount();
 
     // Mock getDraft to return the saved value for the next mount
-    (draftUtils.getDraft as vi.Mock).mockReturnValue('Persistent message');
+    (draftUtils.getDraft as Mock<() => string>).mockReturnValue(
+      'Persistent message',
+    );
+    (draftUtils.getDraft as Mock).mockReturnValue('Persistent message');
 
     // Remount
     render(<ChatInput {...defaultProps} />);
-    const newTextarea = screen.getByPlaceholderText('Type a message...') as HTMLTextAreaElement;
-    
+    const newTextarea = screen.getByPlaceholderText(
+      'Type a message...',
+    ) as HTMLTextAreaElement;
+
     expect(newTextarea.value).toBe('Persistent message');
   });
 });

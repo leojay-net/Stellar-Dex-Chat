@@ -64,7 +64,12 @@ describe('ChatInput - Wallet Disconnect Handling', () => {
     fireEvent.change(textarea, { target: { value: 'Test message' } });
     fireEvent.keyDown(textarea, { key: 'Enter', code: 'Enter', ctrlKey: true });
 
-    expect(screen.getByText('Wallet disconnected. Reconnect to continue.')).toBeInTheDocument();
+    expect(
+      screen.getAllByText('Wallet disconnected. Reconnect to continue.'),
+    ).toHaveLength(2);
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Wallet disconnected. Reconnect to continue.',
+    );
     expect(mockOnSendMessage).not.toHaveBeenCalled();
   });
 
@@ -85,7 +90,9 @@ describe('ChatInput - Wallet Disconnect Handling', () => {
     fireEvent.change(textarea, { target: { value: 'Test message' } });
     fireEvent.keyDown(textarea, { key: 'Enter', code: 'Enter', ctrlKey: true });
 
-    expect(screen.getByText('Wallet disconnected. Reconnect to continue.')).toBeInTheDocument();
+    expect(
+      screen.getAllByText('Wallet disconnected. Reconnect to continue.'),
+    ).toHaveLength(2);
 
     // Simulate wallet reconnection
     mockWalletContext.connection = {
@@ -97,7 +104,12 @@ describe('ChatInput - Wallet Disconnect Handling', () => {
     rerender(<ChatInput {...defaultProps} />);
 
     await waitFor(() => {
-      expect(screen.queryByText('Wallet disconnected. Reconnect to continue.')).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('Wallet disconnected. Reconnect to continue.'),
+      ).not.toBeInTheDocument();
     });
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Wallet reconnected. You can send messages.',
+    );
   });
 });

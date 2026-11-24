@@ -24,6 +24,9 @@ export enum ChatState {
   READY_FOR_TRANSACTION = 'READY_FOR_TRANSACTION',
   TRANSACTION_TRIGGERED = 'TRANSACTION_TRIGGERED',
 
+  // Skeleton / loading placeholder shown while session data is being fetched
+  SKELETON_LOADING = 'SKELETON_LOADING',
+
   // Terminal States
   CANCELLED = 'CANCELLED',
   ERROR = 'ERROR',
@@ -69,7 +72,6 @@ export interface ChatMachineContext {
   previousState: ChatState | null;
 }
 
-
 /**
  * Guards for conditional transitions
  */
@@ -89,7 +91,9 @@ class ChatGuards {
   /**
    * Has reached sufficient message count for auto-triggering
    */
-  static hasReachedMessageThreshold = (context: ChatMachineContext): boolean => {
+  static hasReachedMessageThreshold = (
+    context: ChatMachineContext,
+  ): boolean => {
     return context.messageCount >= 3;
   };
 
@@ -137,22 +141,37 @@ function getInitialContext(): ChatMachineContext {
 /**
  * Create and configure the chat state machine
  */
-export function createChatStateMachine(): StateMachine<ChatState, ChatEvent, ChatMachineContext> {
+export function createChatStateMachine(): StateMachine<
+  ChatState,
+  ChatEvent,
+  ChatMachineContext
+> {
   const config: StateMachineConfig<ChatState, ChatEvent, ChatMachineContext> = {
     initial: ChatState.UNINITIALIZED,
     context: getInitialContext(),
     states: {
       [ChatState.UNINITIALIZED]: {
         [ChatEvent.INITIALIZE_SESSION]: {
-          target: ChatState.INITIALIZED,
+          target: ChatState.SKELETON_LOADING,
           action: (context) => {
             context.messageCount = 0;
             context.hasUserCancelled = false;
             context.pendingTransactionData = null;
             context.needsClarification = false;
+            context.clarificationQuestion = null;
             context.errorMessage = null;
           },
         },
+      },
+
+      [ChatState.SKELETON_LOADING]: {
+        [ChatEvent.LOAD_SESSION]: {
+          target: ChatState.INITIALIZED,
+          action: (context) => {
+            context.previousState = ChatState.SKELETON_LOADING;
+          },
+        },
+        [ChatEvent.ENCOUNTER_ERROR]: ChatState.ERROR,
       },
 
       [ChatState.INITIALIZED]: {
@@ -165,6 +184,7 @@ export function createChatStateMachine(): StateMachine<ChatState, ChatEvent, Cha
             context.hasUserCancelled = false;
             context.pendingTransactionData = null;
             context.needsClarification = false;
+            context.clarificationQuestion = null;
             context.errorMessage = null;
           },
         },
@@ -323,7 +343,9 @@ export async function copyChatStateSnapshot(
     return false;
   }
   try {
-    await navigator.clipboard.writeText(formatChatStateSnapshot(state, context));
+    await navigator.clipboard.writeText(
+      formatChatStateSnapshot(state, context),
+    );
     return true;
   } catch {
     return false;
@@ -389,10 +411,13 @@ export function createDebouncedDispatcher(
     dispatch(event: ChatEvent): void {
       pendingEvent = event;
       clearTimer();
-      timer = setTimeout(() => {
-        timer = null;
-        applyPending();
-      }, Math.max(0, delayMs));
+      timer = setTimeout(
+        () => {
+          timer = null;
+          applyPending();
+        },
+        Math.max(0, delayMs),
+      );
     },
     flush(): boolean {
       clearTimer();

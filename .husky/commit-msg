@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# Strip AI-assistant Co-Authored-By trailers from commit messages.
+# Human co-authors are left untouched.
+grep -viE '^[[:space:]]*co-authored-by:.*(claude|anthropic\.com)' "$1" > "$1.tmp" || true
+mv "$1.tmp" "$1"

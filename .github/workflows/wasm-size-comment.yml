@@ -1,0 +1,68 @@
+name: WASM Size Comment
+
+# Runs in the base repo's context (not the PR head's), so it gets a
+# write-capable GITHUB_TOKEN even for PRs from forks. It never checks out
+# or executes any code from the PR — it only downloads the small JSON
+# artifact produced by the `wasm-size-report` job in contracts.yml and
+# posts/updates a PR comment from it.
+on:
+  workflow_run:
+    workflows: ["Smart Contract CI"]
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  comment:
+    name: Post size comment
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.event == 'pull_request'
+
+    steps:
+      - name: Download size report artifact
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: wasm-size-report
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Post or update comment
+        if: steps.download.outcome == 'success'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = JSON.parse(fs.readFileSync('wasm-size-report.json', 'utf8'));
+
+            const delta = report.head_size - report.base_size;
+            const deltaStr = `${delta > 0 ? '+' : ''}${delta.toLocaleString()} bytes`;
+            const pct = ((report.head_size / report.limit) * 100).toFixed(1);
+            const marker = '<!-- wasm-size-report -->';
+
+            const body = [
+              marker,
+              '### Contract WASM size report',
+              '',
+              '| | Bytes |',
+              '|---|---|',
+              `| Base (\`${report.base_sha.slice(0, 7)}\`) | ${report.base_size.toLocaleString()} |`,
+              `| Head (\`${report.head_sha.slice(0, 7)}\`) | ${report.head_size.toLocaleString()} |`,
+              `| Delta | ${deltaStr} |`,
+              `| Budget used | ${pct}% of ${report.limit.toLocaleString()} bytes |`,
+            ].join('\n');
+
+            const { owner, repo } = context.repo;
+            const issue_number = report.pr_number;
+
+            const comments = await github.rest.issues.listComments({ owner, repo, issue_number });
+            const existing = comments.data.find((c) => c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }

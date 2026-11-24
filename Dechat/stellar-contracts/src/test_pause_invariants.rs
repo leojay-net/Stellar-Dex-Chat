@@ -1,3 +1,23 @@
+//! Invariant tests for [`FiatBridge::pause`] / [`FiatBridge::unpause`].
+//!
+//! Pausing is an emergency circuit-breaker that blocks all state-changing
+//! entry points while leaving read-only view functions and existing on-chain
+//! state untouched. The invariants asserted here are:
+//!
+//! * a paused contract rejects `deposit`, `withdraw`, `request_withdrawal`,
+//!   and `execute_withdrawal` with `Error::ContractPaused`;
+//! * pausing/unpausing is idempotent — repeated calls are harmless;
+//! * pausing preserves all stored accounting (`balance`, `total_deposited`,
+//!   `total_withdrawn`) and never corrupts invariants;
+//! * only the admin can pause/unpause (authorisation gate);
+//! * a full pause → unpause → operate cycle leaves the contract functional
+//!   and maintains the core accounting invariants;
+//! * view functions (`get_total_deposited`, `get_total_withdrawn`) continue
+//!   to work while paused.
+//!
+//! See [`docs/INVARIANT_TESTING.md`](docs/INVARIANT_TESTING.md) for the
+//! invariant-testing strategy and contributor checklist.
+
 #![cfg(test)]
 
 use crate::{Error, FiatBridge, FiatBridgeClient};
@@ -37,7 +57,7 @@ fn setup_bridge(
     let mut signers = Vec::new(env);
     signers.push_back(admin.clone());
 
-    client.init(&admin, &token_address, &1_000_000, &100, &signers, &1);
+    client.init(&admin, &token_address, &1_000_000, &100, &signers, &1, &0);
 
     (
         contract_id,
@@ -413,4 +433,90 @@ fn test_pause_blocks_withdrawal_finalization() {
 
     let total_withdrawn = bridge.get_total_withdrawn().unwrap();
     assert_eq!(total_withdrawn, 0);
+}
+
+// ── Edge case validation tests for pause ────────────────────────────────
+
+#[test]
+fn test_pause_no_panic_on_uninitialized_contract() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(FiatBridge, ());
+    let client = FiatBridgeClient::new(&env, &contract_id);
+
+    // Attempting to pause an uninitialized contract should return NotInitialized error, not panic
+    let result = client.try_pause();
+    assert_eq!(result, Err(Ok(Error::NotInitialized)));
+}
+
+#[test]
+fn test_pause_handles_edge_case_states() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, _, _, _) = setup_bridge(&env);
+
+    // Test that pause handles various edge case states without panicking
+    bridge.pause();
+    
+    // Pause again (idempotent)
+    bridge.pause();
+    
+    // Unpause
+    bridge.unpause();
+    
+    // Pause again after unpause
+    bridge.pause();
+    
+    // Verify contract is still paused
+    let reference = Bytes::from_slice(&env, b"test");
+    let user = Address::generate(&env);
+    let token_addr = Address::generate(&env);
+    let result = bridge.try_deposit(&user, &1_000, &token_addr, &reference, &0, &0, &None);
+    assert_eq!(result, Err(Ok(Error::ContractPaused)));
+}
+
+// ── Edge case validation tests for unpause ──────────────────────────────
+
+#[test]
+fn test_unpause_no_panic_on_uninitialized_contract() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(FiatBridge, ());
+    let client = FiatBridgeClient::new(&env, &contract_id);
+
+    // Attempting to unpause an uninitialized contract should return NotInitialized error, not panic
+    let result = client.try_unpause();
+    assert_eq!(result, Err(Ok(Error::NotInitialized)));
+}
+
+#[test]
+fn test_unpause_handles_edge_case_states() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, bridge, _, token_addr, _, token_admin) = setup_bridge(&env);
+    let user = Address::generate(&env);
+
+    // Test that unpause handles various edge case states without panicking
+    // Unpause without pausing first (idempotent)
+    bridge.unpause();
+    
+    // Pause
+    bridge.pause();
+    
+    // Unpause
+    bridge.unpause();
+    
+    // Unpause again (idempotent)
+    bridge.unpause();
+    
+    // Verify contract is not paused by making a successful deposit
+    token_admin.mint(&user, &5_000);
+    let reference = Bytes::from_slice(&env, b"test");
+    let result = bridge.try_deposit(&user, &1_000, &token_addr, &reference, &0, &0, &None);
+    // Should succeed (not return ContractPaused error)
+    assert_ne!(result, Err(Ok(Error::ContractPaused)));
 }

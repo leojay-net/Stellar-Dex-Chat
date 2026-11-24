@@ -1,5 +1,11 @@
 import '@testing-library/jest-dom';
-import { vi } from 'vitest';
+import { afterEach, vi } from 'vitest';
+import { resetNetworkQueueForTests } from '@/lib/networkQueue';
+
+// `server-only` throws when imported outside a Next.js server bundle. Unit
+// tests exercise server modules directly, so neutralise it globally instead of
+// mocking it in every test file.
+vi.mock('server-only', () => ({}));
 
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
@@ -47,6 +53,17 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
 Element.prototype.scrollIntoView = vi.fn();
 window.scrollTo = vi.fn();
 
+// Mock fetch by default
+if (!global.fetch) {
+  global.fetch = vi
+    .fn()
+    .mockImplementation(() => Promise.resolve(new Response()));
+} else {
+  vi.spyOn(global, 'fetch').mockImplementation(() =>
+    Promise.resolve(new Response()),
+  );
+}
+
 const originalError = console.error;
 console.error = (...args: unknown[]) => {
   if (
@@ -57,3 +74,7 @@ console.error = (...args: unknown[]) => {
   }
   originalError.apply(console, args);
 };
+
+afterEach(() => {
+  resetNetworkQueueForTests();
+});
