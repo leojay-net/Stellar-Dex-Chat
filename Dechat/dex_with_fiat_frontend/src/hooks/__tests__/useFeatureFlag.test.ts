@@ -91,18 +91,30 @@ describe('useFeatureFlag', () => {
 });
 
 describe('useClipboardCopy', () => {
+  const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  const writeText = vi.fn<(text: string) => Promise<void>>();
+
   beforeEach(() => {
     vi.useFakeTimers();
+    writeText.mockReset().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
     vi.useRealTimers();
+    if (originalClipboard) {
+      Object.defineProperty(navigator, 'clipboard', originalClipboard);
+    } else {
+      Reflect.deleteProperty(navigator, 'clipboard');
+    }
   });
 
   it('copies text to clipboard and sets isCopied to true', async () => {
-    const writeTextSpy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
-
     const { result } = renderHook(() => useClipboardCopy());
 
     expect(result.current.isCopied).toBe(false);
@@ -111,13 +123,11 @@ describe('useClipboardCopy', () => {
       await result.current.copyToClipboard('test text');
     });
 
-    expect(writeTextSpy).toHaveBeenCalledWith('test text');
+    expect(writeText).toHaveBeenCalledWith('test text');
     expect(result.current.isCopied).toBe(true);
   });
 
   it('resets isCopied after the specified duration', async () => {
-    vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
-
     const { result } = renderHook(() => useClipboardCopy(1000));
 
     await act(async () => {
@@ -134,8 +144,6 @@ describe('useClipboardCopy', () => {
   });
 
   it('uses default duration of 2000ms when not specified', async () => {
-    vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
-
     const { result } = renderHook(() => useClipboardCopy());
 
     await act(async () => {
@@ -158,7 +166,7 @@ describe('useClipboardCopy', () => {
   });
 
   it('handles clipboard errors gracefully', async () => {
-    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('Clipboard error'));
+    writeText.mockRejectedValue(new Error('Clipboard error'));
 
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -175,18 +183,15 @@ describe('useClipboardCopy', () => {
   });
 
   it('does nothing when window is undefined (SSR)', async () => {
-    const originalWindow = global.window;
-    // @ts-expect-error - simulating SSR environment
-    delete global.window;
-
     const { result } = renderHook(() => useClipboardCopy());
 
-    await act(async () => {
+    vi.stubGlobal('window', undefined);
+    try {
       await result.current.copyToClipboard('test text');
-    });
-
-    expect(result.current.isCopied).toBe(false);
-
-    global.window = originalWindow;
+      expect(writeText).not.toHaveBeenCalled();
+      expect(result.current.isCopied).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

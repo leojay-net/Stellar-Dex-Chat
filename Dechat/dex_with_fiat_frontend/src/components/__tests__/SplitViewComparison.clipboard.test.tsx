@@ -117,7 +117,7 @@ describe('SplitViewComparison - Clipboard Copy', () => {
     fireEvent.click(firstCopyButton);
 
     await waitFor(() => {
-      const checkIcon = firstCopyButton.querySelector('svg');
+      const checkIcon = firstCopyButton.querySelector('svg.lucide-check');
       expect(checkIcon).toBeInTheDocument();
     });
   });
@@ -140,7 +140,14 @@ describe('SplitViewComparison - Clipboard Copy', () => {
       vi.advanceTimersByTime(1000);
     });
 
-    expect(secondCopyButton.querySelector('[data-lucide="check"]')).toBeInTheDocument();
+    expect(firstCopyButton.querySelector('svg.lucide-copy')).toBeInTheDocument();
+    expect(secondCopyButton.querySelector('svg.lucide-check')).toBeInTheDocument();
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(secondCopyButton.querySelector('svg.lucide-copy')).toBeInTheDocument();
   });
 
   it('does not trigger message selection when copy button is clicked', async () => {

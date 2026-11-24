@@ -66,6 +66,7 @@ function failedMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
       retryAttempts: 0,
     },
     originalPayload: { content: 'Convert 100 XLM to USD' },
+    metadata: { status: 'failed' },
     ...overrides,
   };
 }

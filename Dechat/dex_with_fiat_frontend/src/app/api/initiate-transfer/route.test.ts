@@ -44,12 +44,14 @@ vi.mock('@/lib/apiSchemas', () => ({
 
 const { POST } = await import('./route');
 
-function makeRequest(body: unknown) {
+function makeRequest(body: unknown, withIdempotencyKey = true) {
+  const headers = new Headers({ 'content-type': 'application/json' });
+  if (withIdempotencyKey) headers.set('x-idempotency-key', crypto.randomUUID());
   return new NextRequest(
     new Request('http://localhost/api/initiate-transfer', {
       method: 'POST',
       body: JSON.stringify(body),
-      headers: { 'content-type': 'application/json' },
+      headers,
     }),
   );
 }
@@ -59,12 +61,25 @@ describe('POST /api/initiate-transfer', () => {
     vi.clearAllMocks();
   });
 
+  it('returns 400 when the idempotency key is missing', async () => {
+    const res = await POST(makeRequest({}, false));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      success: false,
+      message: 'X-Idempotency-Key header is required',
+    });
+  });
+
   it('returns 400 for malformed JSON body', async () => {
     const badReq = new NextRequest(
       new Request('http://localhost/api/initiate-transfer', {
         method: 'POST',
         body: 'not json{{{',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          'x-idempotency-key': crypto.randomUUID(),
+        },
       }),
     );
 
@@ -77,12 +92,19 @@ describe('POST /api/initiate-transfer', () => {
   });
 
   it('returns 400 for validation failures', async () => {
-    const req = makeRequest({ source: '', reason: '', amount: '', recipient: '' });
+    const req = makeRequest({
+      source: '',
+      reason: '',
+      amount: '',
+      recipient: '',
+    });
     const res = await POST(req);
     const body = await res.json();
 
     expect(res.status).toBe(400);
     expect(body.success).toBe(false);
+    expect(body.message).toBe('Validation failed');
+    expect(body.errors[0].path).toEqual(['source']);
   });
 
   it('returns 200 for valid request', async () => {

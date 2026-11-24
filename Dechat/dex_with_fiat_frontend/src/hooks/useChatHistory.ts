@@ -23,9 +23,8 @@ export const useChatHistory = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<ChatSession[]>([]);
 
-  // Stable per-tab ID so we can ignore our own BroadcastChannel echoes via the
-  // storage-event fallback path (BroadcastChannel itself never delivers to the
-  // sender, but the storage event fires in every tab including the writer).
+  // A short-lived channel posts writes separately from this tab's listener,
+  // so messages carry a tab ID that lets the listener ignore local writes.
   const tabIdRef = useRef<string>(
     typeof crypto !== 'undefined' ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
   );
@@ -96,23 +95,12 @@ export const useChatHistory = () => {
       }
     }
 
-    // Always wire the storage event as a fallback for environments without
-    // BroadcastChannel (or when the channel open failed above).
+    // The browser delivers storage events only to other documents.
     const onStorage = (event: StorageEvent) => {
-      if (event.key !== CHAT_HISTORY_KEY) return;
-      // The storage event fires in every tab *except* the writer on modern
-      // browsers, but we guard with a sender tag stored in sessionStorage to
-      // be safe in environments that deviate from the spec.
-      const writerId = sessionStorage.getItem('__chat_history_writer__');
-      if (writerId && writerId === tabIdRef.current) return;
-      reload();
+      if (event.key === CHAT_HISTORY_KEY) reload();
     };
 
-    if (!channel) {
-      // Stamp our tabId so the storage handler on this tab can skip replays.
-      try { sessionStorage.setItem('__chat_history_writer__', tabIdRef.current); } catch { /* ignore */ }
-      window.addEventListener('storage', onStorage);
-    }
+    if (!channel) window.addEventListener('storage', onStorage);
 
     return () => {
       channel?.close();

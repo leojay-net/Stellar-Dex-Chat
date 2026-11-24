@@ -525,7 +525,7 @@ describe('CCIPBridgeModal', () => {
         />,
       );
 
-      const closeButton = screen.getByLabelText('Close');
+      const closeButton = screen.getByRole('button', { name: 'Close CCIP bridge dialog' });
       fireEvent.click(closeButton);
 
       expect(onClose).toHaveBeenCalledTimes(1);
@@ -538,9 +538,11 @@ describe('CCIPBridgeModal', () => {
         />,
       );
 
-      const dialog = screen.getByRole('dialog');
+      const dialog = screen.getByRole('dialog', { name: 'CCIP Bridge' });
       expect(dialog).toHaveAttribute('aria-modal', 'true');
-      expect(dialog).toHaveAttribute('aria-label', 'CCIP bridge transfer');
+      expect(dialog).toHaveAccessibleDescription(
+        'Start a CCIP transfer and monitor its confirmation state.',
+      );
       expect(dialog).toHaveAttribute('tabIndex', '-1');
     });
   });
@@ -753,7 +755,7 @@ describe('CCIPBridgeModal', () => {
       fireEvent.click(screen.getByText('Start CCIP Transfer'));
 
       expect(
-        await screen.findByText('Transaction: 0xabc123def456'),
+        await screen.findByText('0xabc123def456'),
       ).toBeInTheDocument();
     });
 
@@ -774,7 +776,7 @@ describe('CCIPBridgeModal', () => {
 
       await screen.findByText('CCIP transfer confirmed');
       expect(
-        screen.getByText('Transaction: 0xxyz789'),
+        screen.getByText('0xxyz789'),
       ).toBeInTheDocument();
     });
 
@@ -800,7 +802,7 @@ describe('CCIPBridgeModal', () => {
 
       await screen.findByText('CCIP transfer error');
       expect(
-        screen.getByText('Transaction: 0xerror123'),
+        screen.getByText('0xerror123'),
       ).toBeInTheDocument();
     });
   });

@@ -157,17 +157,20 @@ export default function useBridgeStats(): BridgeStats {
   // Mirrors `fetchCount` so telemetry emitted from callbacks and from the
   // unmount cleanup reads the current value rather than a stale closure.
   const fetchCountRef = useRef(0);
-  const mountedAtRef = useRef(0);
 
   useEffect(() => {
     isMountedRef.current = true;
-    mountedAtRef.current = Date.now();
+    const mountedAt = Date.now();
     dispatchTelemetry('bridge_stats_mounted');
     return () => {
       isMountedRef.current = false;
       // Invalidate any request which was started by this mounted instance.
       // This also covers Strict Mode's mount/cleanup/remount cycle.
       fetchIdRef.current += 1;
+      dispatchTelemetry('bridge_stats_unmounted', {
+        fetchCount: fetchCountRef.current,
+        lifetimeMs: Date.now() - mountedAt,
+      });
     };
   }, []);
 
