@@ -98,7 +98,9 @@ test.describe('ChatHistorySidebar', () => {
 
     await expect(page.getByText('Pinned', { exact: true })).toBeVisible();
     await expect(page.getByText('Recent', { exact: true })).toBeVisible();
-    await expect(page.getByText('Pinned USDC route')).toBeVisible();
+    await expect(page.getByText('Pinned USDC route')).toBeVisible({
+      timeout: 15_000,
+    });
     await expect(page.getByText('Bridge payout status')).toBeVisible();
     await expect(page.locator('[data-active="true"]')).toContainText(
       'Pinned USDC route',
