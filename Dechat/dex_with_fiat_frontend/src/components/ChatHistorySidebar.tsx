@@ -260,8 +260,8 @@ export default function ChatHistorySidebar({
       }
     };
 
-    fetchEvents();
-    const interval = setInterval(fetchEvents, 60000); // Refresh every minute
+    void fetchEvents();
+    const interval = setInterval(() => void fetchEvents(), 60000); // Refresh every minute
     return () => clearInterval(interval);
   }, []);
 
@@ -522,6 +522,24 @@ export default function ChatHistorySidebar({
       URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Failed to export session as TXT:', error);
+    }
+  };
+
+  const handleCancelPayout = async (id: string, reference?: string) => {
+    if (!reference) return;
+    try {
+      const res = await fetch(`/api/transfer-status/${reference}`, {
+        method: 'POST',
+      });
+      const json = await res.json();
+      if (json.success) {
+        updateEntry(id, {
+          status: 'cancelled',
+          message: 'Payout cancelled.',
+        });
+      }
+    } catch (err) {
+      console.error('Cancel error:', err);
     }
   };
 
@@ -911,7 +929,7 @@ export default function ChatHistorySidebar({
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
-                    onClick={handleExportTransactions}
+                    onClick={() => void handleExportTransactions()}
                     className="theme-text-muted hover:bg-[var(--color-surface-muted)] p-1.5 rounded-md transition-colors"
                     title="Export transaction history"
                   >
@@ -988,23 +1006,9 @@ export default function ChatHistorySidebar({
                       2 * 60 * 1000 && (
                         <button
                           type="button"
-                          onClick={async () => {
-                            try {
-                              const res = await fetch(
-                                `/api/transfer-status/${entry.reference}`,
-                                { method: 'POST' },
-                              );
-                              const json = await res.json();
-                              if (json.success) {
-                                updateEntry(entry.id, {
-                                  status: 'cancelled',
-                                  message: 'Payout cancelled.',
-                                });
-                              }
-                            } catch (err) {
-                              console.error('Cancel error:', err);
-                            }
-                          }}
+                          onClick={() =>
+                            void handleCancelPayout(entry.id, entry.reference)
+                          }
                           className="mt-2 w-full flex items-center justify-center gap-1 theme-soft-danger hover:opacity-80 py-1.5 rounded text-xs font-medium transition-colors"
                         >
                           <X className="w-3.5 h-3.5" /> Cancel Payout

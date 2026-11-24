@@ -25,6 +25,23 @@ const eslintConfig = [
     },
   },
   {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: [
+      "**/*.{test,spec}.{ts,tsx}",
+      "**/{__tests__,tests,e2e}/**",
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: "./tsconfig.json",
+        tsconfigRootDir: __dirname,
+      },
+    },
+    rules: {
+      "@typescript-eslint/no-floating-promises": "error",
+      "@typescript-eslint/no-misused-promises": "error",
+    },
+  },
+  {
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-require-imports": "off",

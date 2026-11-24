@@ -191,7 +191,7 @@ export default function AdminGuard({ children }: AdminGuardProps) {
       }
     }
 
-    checkAdmin();
+    void checkAdmin();
 
     return () => {
       cancelled = true;

@@ -109,7 +109,7 @@ export default function CopyButton({
   return (
     <button
       type="button"
-      onClick={handleCopy}
+      onClick={() => void handleCopy()}
       aria-label={ariaLabel}
       title={ariaLabel}
       className={`relative inline-flex items-center justify-center rounded p-1 text-gray-400 transition-colors hover:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-transparent ${className}`}

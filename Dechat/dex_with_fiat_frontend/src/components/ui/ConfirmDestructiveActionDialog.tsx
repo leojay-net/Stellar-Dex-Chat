@@ -73,7 +73,7 @@ export default function ConfirmDestructiveActionDialog({
     if (!canConfirm || isConfirming) {
       return;
     }
-    onConfirm();
+    void onConfirm();
   };
 
   const titleId = `${baseId}-title`;

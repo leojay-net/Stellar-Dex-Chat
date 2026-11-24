@@ -535,14 +535,14 @@ export default function AuditTable({}: AuditTableProps) {
             Reset Filters
           </button>
           <button
-            onClick={fetchAuditEntries}
+            onClick={() => void fetchAuditEntries()}
             disabled={loading}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 font-medium"
           >
             {loading ? 'Loading...' : 'Refresh'}
           </button>
           <button
-            onClick={handleExportCSV}
+            onClick={() => void handleExportCSV()}
             disabled={isExporting || loading}
             className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 font-medium"
             aria-label="Export filtered audit entries as CSV"

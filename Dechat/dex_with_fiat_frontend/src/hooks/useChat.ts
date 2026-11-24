@@ -180,7 +180,7 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
 
     const startPolling = () => {
       stopPolling();
-      pollIntervalRef.current = setInterval(async () => {
+      const pollPaymentStatus = async () => {
         const reference =
           machineRef.current.getState().context.pendingTransactionData?.transactionId;
         if (!reference) return;
@@ -197,7 +197,11 @@ What would you like to do today? I'm here to make your XLM-to-fiat journey smoot
         } catch {
           // network failure during polling — retry on next tick
         }
-      }, POLL_INTERVAL_MS);
+      };
+      pollIntervalRef.current = setInterval(
+        () => void pollPaymentStatus(),
+        POLL_INTERVAL_MS,
+      );
     };
 
     if (typeof EventSource === 'undefined') {

@@ -1,19 +1,12 @@
-// Crypto price service for real-time price data
-// Using CoinGecko free API for demonstration
+import {
+  SUPPORTED_CURRENCIES,
+  type CryptoPrice,
+  type CryptoPriceResult,
+  type PriceSource,
+} from './priceTypes';
 
-export interface CryptoPrice {
-  [key: string]: {
-    [currency: string]: number;
-  };
-}
-
-export type PriceSource = 'live' | 'cache' | 'fallback';
-
-export interface CryptoPriceResult {
-  prices: CryptoPrice;
-  stale: boolean;
-  source: PriceSource;
-}
+export { SUPPORTED_CURRENCIES } from './priceTypes';
+export type { CryptoPrice, CryptoPriceResult, PriceSource } from './priceTypes';
 
 export interface TokenPriceQuote {
   price: number;
@@ -40,70 +33,44 @@ export interface TickerData {
   [symbol: string]: TokenPriceWithChange;
 }
 
-// Token ID mapping for CoinGecko API
-const TOKEN_IDS: Record<string, string> = {
-  XLM: 'stellar',
-  ETH: 'ethereum',
-  BTC: 'bitcoin',
-  USDC: 'usd-coin',
-  USDT: 'tether',
-};
-
-// Supported fiat currencies — exported so UI can reference the same list
-export const SUPPORTED_CURRENCIES = [
-  'usd',
-  'eur',
-  'gbp',
-  'ngn',
-  'cad',
-  'aud',
-  'jpy',
-];
-
 // Cache for prices to avoid excessive API calls
 const priceCache: Map<string, TokenPriceData> = new Map();
 const inflightRequests: Map<string, Promise<TokenPriceQuote>> = new Map();
 const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
 
-async function fetchCoinGeckoPrices(
+async function fetchServerPrices(
   tokenSymbols: string[],
   vsCurrencies: string[],
-): Promise<CryptoPrice> {
-  const tokenIds = tokenSymbols
-    .map((symbol) => TOKEN_IDS[symbol.toUpperCase()])
-    .filter(Boolean);
-  const validCurrencies = vsCurrencies
-    .map((currency) => currency.toLowerCase())
-    .filter((currency) => SUPPORTED_CURRENCIES.includes(currency));
-
-  if (tokenIds.length === 0 || validCurrencies.length === 0) {
-    throw new Error('No supported token and currency pairs requested');
+): Promise<CryptoPriceResult> {
+  const response = await fetch('/api/prices');
+  if (!response.ok) {
+    throw new Error(`Price API error: ${response.status}`);
   }
 
-  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${tokenIds.join(',')}&vs_currencies=${validCurrencies.join(',')}&include_24hr_change=true`;
-  const response = await fetch(url, {
-    headers: { Accept: 'application/json' },
-  });
+  const result = (await response.json()) as CryptoPriceResult;
+  const prices: CryptoPrice = {};
+  for (const symbol of tokenSymbols) {
+    const token = symbol.toUpperCase();
+    const tokenPrices = result.prices[token];
+    for (const currency of vsCurrencies) {
+      const code = currency.toLowerCase();
+      if (!SUPPORTED_CURRENCIES.includes(code)) continue;
+      const price = tokenPrices?.[code];
+      if (price === undefined) continue;
+      prices[token] ??= {};
+      prices[token][code] = price;
+      const changeKey = `${code}_24h_change`;
+      const change = tokenPrices[changeKey];
+      if (change !== undefined) prices[token][changeKey] = change;
+    }
+  }
 
-  if (!response.ok) {
+  if (Object.keys(prices).length === 0) {
     throw new Error(
-      `CoinGecko API error: ${response.status} ${response.statusText}`,
+      'No prices available for the requested tokens and currencies',
     );
   }
-
-  const data = (await response.json()) as Record<
-    string,
-    Record<string, number>
-  >;
-  const prices: CryptoPrice = {};
-  Object.entries(data).forEach(([coinId, coinPrices]) => {
-    const tokenSymbol = Object.entries(TOKEN_IDS).find(
-      ([, id]) => id === coinId,
-    )?.[0];
-    if (tokenSymbol) prices[tokenSymbol] = coinPrices;
-  });
-
-  return prices;
+  return { ...result, prices };
 }
 
 /** Fetch live prices, or return the last good cache and flagged fallbacks. */
@@ -112,7 +79,9 @@ export async function fetchCryptoPrices(
   vsCurrencies: string[] = ['usd', 'eur', 'gbp', 'ngn'],
 ): Promise<CryptoPriceResult> {
   try {
-    const prices = await fetchCoinGeckoPrices(tokenSymbols, vsCurrencies);
+    const result = await fetchServerPrices(tokenSymbols, vsCurrencies);
+    if (result.stale) return result;
+    const { prices } = result;
     const lastUpdated = Date.now();
     Object.entries(prices).forEach(([symbol, currencies]) => {
       Object.entries(currencies).forEach(([currency, price]) => {
@@ -125,7 +94,7 @@ export async function fetchCryptoPrices(
         }
       });
     });
-    return { prices, stale: false, source: 'live' };
+    return result;
   } catch (error) {
     console.error('Error fetching crypto prices:', error);
     const fallbackPrices = getFallbackPrices(tokenSymbols, vsCurrencies);
@@ -137,9 +106,8 @@ export async function fetchCryptoPrices(
       const tokenSymbol = symbol.toUpperCase();
       vsCurrencies.forEach((currency) => {
         const currencyLower = currency.toLowerCase();
-        const cachedPrice = priceCache.get(
-          `${tokenSymbol}_${currencyLower}`,
-        )?.prices[currencyLower];
+        const cachedPrice = priceCache.get(`${tokenSymbol}_${currencyLower}`)
+          ?.prices[currencyLower];
         const fallbackPrice = fallbackPrices[tokenSymbol]?.[currencyLower];
         const price = cachedPrice ?? fallbackPrice;
         if (cachedPrice !== undefined) usedCache = true;
@@ -356,7 +324,7 @@ export async function fetchTickerData(
       throw new Error(`Unsupported currency: ${vsCurrency}`);
     }
 
-    const prices = await fetchCoinGeckoPrices(tokenSymbols, [currencyLower]);
+    const { prices } = await fetchServerPrices(tokenSymbols, [currencyLower]);
     const tickerData: TickerData = {};
     Object.entries(prices).forEach(([tokenSymbol, priceRecord]) => {
       if (tokenSymbol && priceRecord[currencyLower] !== undefined) {

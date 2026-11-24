@@ -333,7 +333,7 @@ export default function BankDetailsModal({
       return;
     }
 
-    const pollInterval = setInterval(async () => {
+    const pollTransfer = async () => {
       try {
         const res = await fetch(`/api/transfer-status/${transferReference}`);
         if (res.ok) {
@@ -366,7 +366,8 @@ export default function BankDetailsModal({
       } catch (err) {
         console.error('Error polling transfer status:', err);
       }
-    }, 5000);
+    };
+    const pollInterval = setInterval(() => void pollTransfer(), 5000);
 
     return () => clearInterval(pollInterval);
   }, [step, transferReference, transferStatus]);
@@ -698,6 +699,28 @@ export default function BankDetailsModal({
 
   useAccessibleModal(isOpen, modalRef, handleClose);
 
+  const handleCancelPayout = async () => {
+    try {
+      const res = await fetch(
+        `/api/transfer-status/${transferReference}`,
+        { method: 'POST' },
+      );
+      const json = await res.json();
+      if (json.success) {
+        pushStatusEvent(
+          'cancelled',
+          'Transfer cancelled',
+        );
+        addNotification(
+          'payout_cancelled',
+          'Payout was cancelled successfully.',
+        );
+      }
+    } catch (err) {
+      console.error('Cancel error:', err);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -991,7 +1014,7 @@ export default function BankDetailsModal({
                       setVerifiedAccount(null);
                       setVerifyError('');
                     }}
-                    onBlur={handleVerifyAccount}
+                    onBlur={() => void handleVerifyAccount()}
                     maxLength={10}
                     placeholder="0000000000"
                     className="w-full theme-input border theme-input-border rounded-lg px-4 py-3 placeholder-gray-500 focus:outline-none focus:border-blue-500"
@@ -1344,7 +1367,7 @@ export default function BankDetailsModal({
                   </button>
                   <button
                     type="button"
-                    onClick={handleConfirmPayout}
+                    onClick={() => void handleConfirmPayout()}
                     disabled={
                       payoutLoading ||
                       isPayoutProcessing ||
@@ -1492,27 +1515,7 @@ export default function BankDetailsModal({
                     <div className="mb-6">
                       <button
                         type="button"
-                        onClick={async () => {
-                          try {
-                            const res = await fetch(
-                              `/api/transfer-status/${transferReference}`,
-                              { method: 'POST' },
-                            );
-                            const json = await res.json();
-                            if (json.success) {
-                              pushStatusEvent(
-                                'cancelled',
-                                'Transfer cancelled',
-                              );
-                              addNotification(
-                                'payout_cancelled',
-                                'Payout was cancelled successfully.',
-                              );
-                            }
-                          } catch (err) {
-                            console.error('Cancel error:', err);
-                          }
-                        }}
+                        onClick={() => void handleCancelPayout()}
                         className="w-full flex items-center justify-center gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 py-3 rounded-lg font-medium transition-colors border border-red-500/20"
                       >
                         <X className="w-4 h-4" /> Cancel Payout

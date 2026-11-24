@@ -16,7 +16,7 @@ export default function ReconciliationDashboard() {
   const [showReauthPrompt, setShowReauthPrompt] = useState(false);
 
   useEffect(() => {
-    fetchReconciliationData();
+    void fetchReconciliationData();
   }, []);
 
   const fetchReconciliationData = async () => {

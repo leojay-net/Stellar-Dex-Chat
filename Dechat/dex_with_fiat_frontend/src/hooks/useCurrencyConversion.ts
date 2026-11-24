@@ -135,7 +135,7 @@ export function useCurrencyConversion(
   }, [amount, tokenSymbol, fiatCurrency]);
 
   useEffect(() => {
-    convertAmount();
+    void convertAmount();
   }, [convertAmount]);
 
   const forceRefresh = useCallback(() => convertAmount(true), [convertAmount]);

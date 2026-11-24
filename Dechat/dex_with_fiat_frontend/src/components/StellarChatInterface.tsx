@@ -244,8 +244,11 @@ function StellarChatInterfaceContent() {
   }, []);
 
   useEffect(() => {
-    pollHealth();
-    healthIntervalRef.current = setInterval(pollHealth, HEALTH_POLL_INTERVAL_MS);
+    void pollHealth();
+    healthIntervalRef.current = setInterval(
+      () => void pollHealth(),
+      HEALTH_POLL_INTERVAL_MS,
+    );
     return () => {
       if (healthIntervalRef.current) clearInterval(healthIntervalRef.current);
     };
@@ -274,7 +277,7 @@ function StellarChatInterfaceContent() {
         setIsAdmin(false);
       }
     };
-    checkAdmin();
+    void checkAdmin();
   }, [connection.isConnected, connection.address]);
 
   useEffect(() => {
@@ -422,7 +425,7 @@ function StellarChatInterfaceContent() {
     (actionId: string, actionType: string, data?: Record<string, unknown>) => {
       switch (actionType) {
         case 'connect_wallet':
-          connect();
+          void connect();
           break;
         case 'confirm_fiat':
           if (isNetworkMismatch) break;
@@ -431,22 +434,22 @@ function StellarChatInterfaceContent() {
           break;
         case 'query':
           if (data?.query) {
-            sendMessage(data.query as string);
+            void sendMessage(data.query as string);
           }
           break;
         case 'check_portfolio':
-          sendMessage('Show me my XLM portfolio and balance');
+          void sendMessage('Show me my XLM portfolio and balance');
           break;
         case 'market_rates':
-          sendMessage(
+          void sendMessage(
             'What are the current XLM market rates and conversion estimates?',
           );
           break;
         case 'learn_more':
-          sendMessage('How does the Stellar FiatBridge work?');
+          void sendMessage('How does the Stellar FiatBridge work?');
           break;
         case 'cancel':
-          sendMessage('Cancel the current transaction');
+          void sendMessage('Cancel the current transaction');
           break;
         default:
           break;
@@ -724,9 +727,12 @@ function StellarChatInterfaceContent() {
                             className={`flex items-center gap-1 px-1.5 py-1 ${idx === selectedAccountIndex ? (isDarkMode ? 'bg-blue-900/50 text-blue-400' : 'bg-blue-50 text-blue-600') : ''}`}
                           >
                             <button
-                              onClick={async () => {
-                                await selectAccount(idx);
-                                setShowAccountDropdown(false);
+                              onClick={() => {
+                                void selectAccount(idx)
+                                  .then(() => setShowAccountDropdown(false))
+                                  .catch((error: unknown) => {
+                                    console.error('Could not select wallet account:', error);
+                                  });
                               }}
                               className={`flex-1 flex items-center gap-2 px-1.5 py-1 text-xs rounded transition-colors ${idx === selectedAccountIndex ? '' : isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-50'}`}
                             >
@@ -763,7 +769,7 @@ function StellarChatInterfaceContent() {
                 </div>
               ) : (
                 <button
-                  onClick={connect}
+                  onClick={() => void connect()}
                   className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-sm font-medium rounded-lg transition-all"
                 >
                   <Wallet className="w-4 h-4" />
@@ -1002,7 +1008,7 @@ function StellarChatInterfaceContent() {
                 isNetworkMismatch={isNetworkMismatch}
                 isConnecting={false}
                 contextMode={isAdmin ? 'advanced' : 'simple'}
-                onRetry={connect}
+                onRetry={() => void connect()}
               />
             </div>
           </div>
@@ -1124,7 +1130,7 @@ function StellarChatInterfaceContent() {
               <button
                 onClick={() => {
                   clearSessionExpired();
-                  connect();
+                  void connect();
                 }}
                 className="flex-shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg bg-yellow-500 hover:bg-yellow-600 text-white transition-colors"
               >

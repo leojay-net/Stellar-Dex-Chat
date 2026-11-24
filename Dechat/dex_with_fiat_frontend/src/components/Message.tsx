@@ -166,7 +166,9 @@ export default function Message({ message, onActionClick, onRetry, shouldAnimate
       (e.currentTarget as HTMLElement).blur();
     } else if (e.key === 'c' && !e.ctrlKey && !e.metaKey) {
       if (message.metadata?.transactionData?.txHash) {
-        navigator.clipboard.writeText(message.metadata.transactionData.txHash);
+        void navigator.clipboard
+          .writeText(message.metadata.transactionData.txHash)
+          .catch((error: unknown) => console.error('Could not copy transaction hash:', error));
       }
     }
   };

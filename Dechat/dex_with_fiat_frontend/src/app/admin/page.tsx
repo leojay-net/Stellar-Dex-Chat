@@ -117,8 +117,8 @@ export default function AdminDashboard() {
   }, [reconciliationRecords]);
 
   useEffect(() => {
-    fetchMetrics();
-    const interval = setInterval(fetchMetrics, 30000);
+    void fetchMetrics();
+    const interval = setInterval(() => void fetchMetrics(), 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -184,7 +184,7 @@ export default function AdminDashboard() {
   );
 
   useEffect(() => {
-    fetchAuditLogs(auditPage, actionFilter);
+    void fetchAuditLogs(auditPage, actionFilter);
   }, [fetchAuditLogs, auditPage, actionFilter]);
 
   const fetchMetrics = async () => {
@@ -292,14 +292,14 @@ export default function AdminDashboard() {
   const handlePageChange = (newPage: number) => {
     // Optimistic UI: update page immediately
     setAuditPage(newPage);
-    fetchAuditLogs(newPage, actionFilter, true);
+    void fetchAuditLogs(newPage, actionFilter, true);
   };
 
   const handleFilterChange = (newFilter: string) => {
     // Optimistic UI: update filter and reset to page 1 immediately
     setActionFilter(newFilter);
     setAuditPage(1);
-    fetchAuditLogs(1, newFilter, true);
+    void fetchAuditLogs(1, newFilter, true);
   };
 
   const _handleClearAuditLogs = async () => {
@@ -583,7 +583,7 @@ export default function AdminDashboard() {
 
                     <button
                       type="button"
-                      onClick={exportAuditToCSV}
+                      onClick={() => void exportAuditToCSV()}
                       disabled={
                         exportingCsv || auditLoading || auditTotal === 0
                       }
