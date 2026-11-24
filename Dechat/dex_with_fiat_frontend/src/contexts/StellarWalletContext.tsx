@@ -17,10 +17,8 @@ import {
   requestAccess,
   setAllowed,
 } from '@stellar/freighter-api';
+import { Networks } from '@stellar/stellar-sdk';
 import { fetchXlmBalance } from '@/lib/stellarContract';
-
-/** Canonical Stellar testnet passphrase — avoids importing the full SDK at module scope. */
-const TESTNET_PASSPHRASE = 'Test SDF Network ; September 2015';
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const STORAGE_KEY_ADDRESS = 'stellar_address';
@@ -75,7 +73,7 @@ interface StellarWalletContextType {
   accounts: WalletAccount[];
   selectedAccountIndex: number;
   xlmBalance: string;
-  selectAccount: (index: number) => Promise<void>;
+  selectAccount: (index: number) => void;
   connect: () => Promise<void>;
   disconnect: () => void;
   signTx: (xdr: string) => Promise<string>;
@@ -97,9 +95,23 @@ const defaultConnection: StellarWalletConnection = {
   networkPassphrase: '',
 };
 
-export const StellarWalletContext = createContext<
-  StellarWalletContextType | undefined
->(undefined);
+const StellarWalletContext = createContext<StellarWalletContextType>({
+  connection: defaultConnection,
+  accounts: [],
+  selectedAccountIndex: 0,
+  xlmBalance: '',
+  selectAccount: () => {},
+  connect: async () => {},
+  disconnect: () => {},
+  signTx: async () => '',
+  isFreighterInstalled: false,
+  isLoading: false,
+  error: null,
+  sessionExpired: false,
+  clearSessionExpired: () => {},
+  mockConnect: () => {},
+  isNetworkMismatch: false,
+});
 
 export function StellarWalletProvider({ children }: { children: ReactNode }) {
   const mockWalletEnabled =
@@ -516,7 +528,25 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <StellarWalletContext.Provider value={contextValue}>
+    <StellarWalletContext.Provider
+      value={{
+        connection,
+        accounts,
+        selectedAccountIndex,
+        xlmBalance,
+        selectAccount,
+        connect,
+        disconnect,
+        signTx,
+        isFreighterInstalled,
+        isLoading,
+        error,
+        sessionExpired,
+        clearSessionExpired,
+        mockConnect,
+        isNetworkMismatch,
+      }}
+    >
       {children}
     </StellarWalletContext.Provider>
   );

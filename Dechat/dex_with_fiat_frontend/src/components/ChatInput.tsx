@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Send, Loader2, AlertTriangle, Smile, Copy, Check } from 'lucide-react';
+import { Send, Loader2, AlertTriangle, Smile } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from '@/contexts/TranslationContext';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
@@ -34,6 +34,8 @@ const COMMON_EMOJIS = [
   '⭐',
   '🎉',
 ];
+
+const COMMON_EMOJIS = ['😊', '😂', '🙏', '👍', '❤️', '🔥', '✅', '🚀', '💰', '📊', '⭐', '🎉'];
 
 export default function ChatInput({
   onSendMessage,
@@ -95,11 +97,10 @@ export default function ChatInput({
     setShowEmojiPicker(false);
   };
 
-  const { execute: executeSubmit, isProcessing: isSubmitting } =
-    useIdempotentAction({
-      cooldownMs: 1000,
-      logSuppressed: true,
-    });
+  const { execute: executeSubmit, isProcessing: isSubmitting } = useIdempotentAction({
+    cooldownMs: 1000,
+    logSuppressed: true,
+  });
 
   const commands = [
     {

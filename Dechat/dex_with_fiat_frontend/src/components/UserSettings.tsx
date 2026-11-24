@@ -39,21 +39,9 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
     twoFactorEnabled,
     setTwoFactorEnabled,
   } = useUserPreferences();
-  const { consented: telemetryConsented, setConsent: setTelemetryConsent } =
-    useChatTelemetry();
-  const {
-    beneficiaries,
-    isLoaded,
-    addBeneficiary,
-    deleteBeneficiary,
-    renameBeneficiary,
-  } = useBeneficiaries();
-  const {
-    watchlist,
-    isLoaded: watchlistLoaded,
-    addAddress,
-    removeAddress,
-  } = useWatchlist();
+  const { consented: telemetryConsented, setConsent: setTelemetryConsent } = useChatTelemetry();
+  const { beneficiaries, isLoaded, addBeneficiary, deleteBeneficiary, renameBeneficiary } = useBeneficiaries();
+  const { watchlist, isLoaded: watchlistLoaded, addAddress, removeAddress } = useWatchlist();
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Watchlist states
@@ -372,22 +360,15 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                 <Plus className="w-4 h-4" />
               </button>
             </div>
-            <p
-              className={`text-xs mb-4 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-            >
-              Receive a toast and browser notification when a watched wallet
-              receives funds.
+            <p className={`text-xs mb-4 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+              Receive a toast and browser notification when a watched wallet receives funds.
             </p>
 
             {showAddWatch && (
-              <div
-                className={`p-3 rounded-lg mb-3 border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}
-              >
+              <div className={`p-3 rounded-lg mb-3 border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
                 <div className="space-y-3">
                   <div>
-                    <label
-                      className={`text-xs font-medium block mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
-                    >
+                    <label className={`text-xs font-medium block mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                       Stellar Address
                     </label>
                     <input
@@ -404,9 +385,7 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                     />
                   </div>
                   <div>
-                    <label
-                      className={`text-xs font-medium block mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
-                    >
+                    <label className={`text-xs font-medium block mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                       Label (optional)
                     </label>
                     <input
@@ -454,9 +433,7 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
 
             {watchlistLoaded ? (
               watchlist.length === 0 ? (
-                <p
-                  className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                >
+                <p className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                   No addresses being watched.
                 </p>
               ) : (
@@ -471,14 +448,10 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                       }`}
                     >
                       <div className="min-w-0 flex-1">
-                        <p
-                          className={`text-xs font-medium truncate ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-                        >
+                        <p className={`text-xs font-medium truncate ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>
                           {entry.label || entry.address.slice(0, 8)}
                         </p>
-                        <p
-                          className={`text-[10px] font-mono truncate ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}
-                        >
+                        <p className={`text-[10px] font-mono truncate ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
                           {entry.address.slice(0, 6)}…{entry.address.slice(-4)}
                         </p>
                       </div>
@@ -498,9 +471,7 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                 </div>
               )
             ) : (
-              <p
-                className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-              >
+              <p className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                 Loading…
               </p>
             )}

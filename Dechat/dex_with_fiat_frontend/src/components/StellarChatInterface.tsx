@@ -41,6 +41,10 @@ import ChatHistorySidebar from './ChatHistorySidebar';
 import ChatInput from './ChatInput';
 import ChatMessages from './ChatMessages';
 import ErrorBoundary from './ErrorBoundary';
+import NetworkStatusModal from './NetworkStatusModal';
+import NotificationsCenter from './NotificationsCenter';
+import StellarFiatModal from './StellarFiatModal';
+import UserSettings from './UserSettings';
 import WalletConnectionTimeline from './WalletConnectionTimeline';
 import { useTranslation } from '@/contexts/TranslationContext';
 import ReceiptDrawer from './ReceiptDrawerWrapper';
@@ -565,6 +569,38 @@ function StellarChatInterfaceContent() {
                   {t('header.subtitle')}
                 </p>
               </div>
+              {/* ─────────────────────────────────────────────────────────────── */}
+
+              {/* ── Stellar connection status indicator (issue #1030) ─────────── */}
+              {(() => {
+                const connDot = !connection.isConnected
+                  ? 'bg-red-500'
+                  : isNetworkMismatch
+                    ? 'bg-amber-400'
+                    : 'bg-green-400';
+                const connTitle = !connection.isConnected
+                  ? 'Stellar: Disconnected'
+                  : isNetworkMismatch
+                    ? `Stellar: Network mismatch (${connection.network})`
+                    : `Stellar: Connected (${connection.network})`;
+                return (
+                  <button
+                    type="button"
+                    title={connTitle}
+                    aria-label={connTitle}
+                    onClick={() => setShowNetworkStatusModal(true)}
+                    className={`hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium transition-colors ${
+                      isDarkMode
+                        ? 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${connDot}`} />
+                    Stellar
+                  </button>
+                );
+              })()}
+              {/* ─────────────────────────────────────────────────────────────── */}
             </div>
 
             {/* ── Health badge ─────────────────────────────────────────────── */}
@@ -866,24 +902,47 @@ function StellarChatInterfaceContent() {
                       : 'text-blue-700'
                 }`}
               >
-                {connection.network || t('common.unknown')}
-              </span>
-              {isNetworkMismatch && (
-                <span className="font-semibold">
-                  ({t('common.expected')} {EXPECTED_NETWORK})
-                </span>
-              )}
-              {!isNetworkMismatch && (
-                <>
-                  {' · '}
-                  {isAdmin && (
-                    <>
-                      <button
-                        onClick={() => {
-                          setIsAdminMode(true);
-                          setShowModal(true);
-                        }}
-                        className="inline-flex items-center gap-2 text-blue-400 hover:text-blue-300 underline"
+                {isDarkMode ? (
+                  <Sun className="w-5 h-5" />
+                ) : (
+                  <Moon className="w-5 h-5" />
+                )}
+              </button>
+
+              {connection.isConnected ? (
+                <div className="flex items-center gap-2">
+                  <div ref={accountDropdownRef} className="relative flex items-center gap-1">
+                    <button
+                      onClick={() =>
+                        accounts.length > 1 &&
+                        setShowAccountDropdown(!showAccountDropdown)
+                      }
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${isDarkMode ? 'bg-gray-800 text-gray-200 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'} ${accounts.length > 1 ? 'cursor-pointer' : 'cursor-default'}`}
+                    >
+                      <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />
+                      <span className="font-mono">
+                        {connection.address.slice(0, 6)}…
+                        {connection.address.slice(-4)}
+                      </span>
+                      {xlmBalance && (
+                        <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          — {xlmBalance} XLM
+                        </span>
+                      )}
+                      {accounts.length > 1 && (
+                        <ChevronDown
+                          className={`w-3 h-3 transition-transform ${showAccountDropdown ? 'rotate-180' : ''}`}
+                        />
+                      )}
+                    </button>
+                    <CopyButton
+                      value={connection.address}
+                      iconClassName="w-3 h-3"
+                      className="p-0.5"
+                    />
+                    {showAccountDropdown && accounts.length > 1 && (
+                      <div
+                        className={`absolute right-0 top-full mt-1 w-56 rounded-lg shadow-lg border z-50 ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}
                       >
                         {t('common.withdraw_xlm')}
                         <span
@@ -1055,78 +1114,76 @@ function StellarChatInterfaceContent() {
               onClose={closeSheet}
             />
           </div>
-        </>
-      )}
+        )}
 
-      {/* Split-view comparison overlay */}
-      <SplitViewComparisonWrapper splitView={splitView} sessions={sessions} />
+        {/* Deposit / Withdraw Modal */}
+        <StellarFiatModal
+          isOpen={showModal}
+          onClose={() => {
+            setShowModal(false);
+            setDefaultAmount('');
+            setIsAdminMode(false);
+          }}
+          isAdminMode={isAdminMode}
+          defaultAmount={defaultAmount}
+          fiatCurrency={fiatCurrency}
+          onDepositSuccess={handleDepositSuccess}
+          messages={messages}
+        />
 
-      {/* Search panel — slide-over on the right */}
-      {showSearch && (
-        <div className="fixed inset-y-0 right-0 z-40 w-80 shadow-2xl flex flex-col">
-          <ChatSearchPanelWrapper
-            sessions={sessions}
-            onSelectResult={(sessionId: string) => {
-              loadChatSession(sessionId);
-              setShowSearch(false);
-            }}
-            onClose={() => setShowSearch(false)}
-          />
-        </div>
-      )}
+        {/* Bank details & fiat payout modal */}
+        <BankDetailsModal
+          isOpen={showBankDetails}
+          onClose={() => setShowBankDetails(false)}
+          xlmAmount={bankDetailsXlmAmount}
+        />
 
-      {/* Deposit / Withdraw Modal */}
-      <StellarFiatModalWrapper
-        isOpen={showModal}
-        onClose={() => {
-          setShowModal(false);
-          setDefaultAmount('');
-          setIsAdminMode(false);
-        }}
-        isAdminMode={isAdminMode}
-        defaultAmount={defaultAmount}
-        fiatCurrency={fiatCurrency}
-        onDepositSuccess={handleDepositSuccess}
-        messages={messages}
-      />
+        {/* Settings panel */}
+        <UserSettings
+          isOpen={showSettings}
+          onClose={() => setShowSettings(false)}
+        />
 
-      {/* Bank details & fiat payout modal */}
-      <BankDetailsModalWrapper
-        isOpen={showBankDetails}
-        onClose={() => setShowBankDetails(false)}
-        xlmAmount={bankDetailsXlmAmount}
-      />
+        {/* Network status modal (issue #1030) */}
+        <NetworkStatusModal
+          isOpen={showNetworkStatusModal}
+          onClose={() => setShowNetworkStatusModal(false)}
+        />
 
-      {/* Settings panel */}
-      <UserSettingsWrapper
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
-      />
+        {/* Receipt Drawer */}
+        <ReceiptDrawer
+          isOpen={isReceiptDrawerOpen}
+          onClose={() => setIsReceiptDrawerOpen(false)}
+          transactions={txHistory}
+          onClearHistory={clearTxHistory}
+        />
 
-      {/* Network status modal (issue #1030) */}
-      <NetworkStatusModalWrapper
-        isOpen={showNetworkStatusModal}
-        onClose={() => setShowNetworkStatusModal(false)}
-      />
-
-      {/* Receipt Drawer */}
-      <ReceiptDrawer
-        isOpen={isReceiptDrawerOpen}
-        onClose={() => setIsReceiptDrawerOpen(false)}
-        transactions={txHistory}
-        onClearHistory={clearTxHistory}
-      />
-
-      {/* Session expired banner */}
-      {sessionExpired && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-md w-full px-4">
-          <div
-            className={`flex items-center gap-3 p-4 rounded-lg shadow-lg border ${isDarkMode ? 'bg-gray-800 border-yellow-600/50' : 'bg-white border-yellow-500'}`}
-          >
-            <AlertCircle className="w-5 h-5 text-yellow-500 flex-shrink-0" />
-            <div className="flex-1">
-              <p
-                className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+        {/* Session expired banner */}
+        {sessionExpired && (
+          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-md w-full px-4">
+            <div
+              className={`flex items-center gap-3 p-4 rounded-lg shadow-lg border ${isDarkMode ? 'bg-gray-800 border-yellow-600/50' : 'bg-white border-yellow-500'}`}
+            >
+              <AlertCircle className="w-5 h-5 text-yellow-500 flex-shrink-0" />
+              <div className="flex-1">
+                <p
+                  className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                >
+                  Wallet Session Expired
+                </p>
+                <p
+                  className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+                >
+                  Your wallet session has expired after 24 hours. Please reconnect
+                  to continue.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  clearSessionExpired();
+                  connect();
+                }}
+                className="flex-shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg bg-yellow-500 hover:bg-yellow-600 text-white transition-colors"
               >
                 Wallet Session Expired
               </p>

@@ -39,11 +39,7 @@ export function useWatchlist() {
       if (prev.some((w) => w.address === address)) return prev;
       const next = [
         ...prev,
-        {
-          id: crypto.randomUUID(),
-          address: address.trim(),
-          label: label.trim() || address.slice(0, 8),
-        },
+        { id: crypto.randomUUID(), address: address.trim(), label: label.trim() || address.slice(0, 8) },
       ];
       saveToStorage(next);
       return next;

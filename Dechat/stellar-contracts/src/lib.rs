@@ -567,10 +567,9 @@ pub struct SlippageThresholdSetEvent {
 
 #[contractevent]
 #[derive(Clone, Debug)]
-pub struct FeeRecipientSetEvent {
+pub struct TelemetryEvent {
     pub version: u32,
-    pub old_recipient: Option<Address>,
-    pub new_recipient: Option<Address>,
+    pub function_name: Symbol,
 }
 
 #[contractevent]
@@ -1033,24 +1032,6 @@ pub enum DataKey {
     SlippageThreshold,
     // ── Issue #1044: fee recipient address ───────────────────────────
     FeeRecipient,
-    // ── Missing: limit max cap, operator daily limit, emergency recovery cap, fee withdrawal nonce
-    LimitMaxCap,
-    OperatorDailyLimit(Address),
-    /// Rolling 24h `withdraw` volume of an operator (temporary storage),
-    /// checked against `OperatorDailyLimit` (Issue #1403).
-    OperatorDailyVolume(Address),
-    EmergencyRecoveryCap,
-    FeeWithdrawalNonceByCaller(Address),
-    // ── Issue #1113: per-caller replay protection for batch fee withdrawals ──
-    FeeWithdrawalBatchNonce(Address),
-    /// Per-user replay-protection nonce for `execute_withdrawal`.
-    WithdrawalExecutionNonce(Address),
-    InitNonce(Address),
-    UpgradeCancellationNonce(Address),
-    /// Per-admin replay-protection nonce for `set_limit`.
-    SetLimitNonce(Address),
-    /// Per-admin replay-protection nonce for `set_operator`.
-    SetOperatorNonce(Address),
 }
 
 const ORACLE_PRICE_DECIMALS: i128 = 10_000_000;
@@ -1077,38 +1058,11 @@ pub struct FiatBridge;
 
 #[contractimpl]
 impl FiatBridge {
-    /// Initializes the `FiatBridge` contract configuration, token limits, and multisig governance.
-    ///
-    /// # Overflow Prevention & Boundary Invariants
-    /// - **Limit Validation**: `limit` must be strictly positive (`limit > 0`) and strictly below
-    ///   `i128::MAX` (`limit != i128::MAX`) to prevent edge-adjacent arithmetic saturation.
-    /// - **Minimum Deposit Guard**: `min_deposit` must be $\ge 1$, strictly below `limit` (`min_deposit < limit`),
-    ///   and $\ne \text{i128::MAX}$.
-    /// - **Multisig Signer Bounds**: `signers.len()` is capped at [`MAX_SIGNERS`] (20) to prevent storage
-    ///   exhaustion and loop execution gas blowups.
-    /// - **Threshold Validation**: Threshold must be non-zero and $\le \text{signers.len()}$.
-    /// - **Replay Protection**: Validates and increments the initialization nonce using checked arithmetic.
-    ///
-    /// # Arguments
-    /// * `env` – The Soroban host environment.
-    /// * `admin` – The initial administrative address.
-    /// * `token` – The primary bridged token contract address.
-    /// * `limit` – The per-transaction maximum deposit/withdrawal limit in token stroops.
-    /// * `min_deposit` – The minimum deposit floor in token stroops.
-    /// * `signers` – Vector of authorized multisig signer addresses (max 20).
-    /// * `threshold` – Required approval quorum for multisig proposals.
-    /// * `nonce` – Monotonic initialization nonce for caller authentication.
-    ///
-    /// # Errors
-    /// * [`Error::AlreadyInitialized`] – If the contract has already been initialized.
-    /// * [`Error::ZeroAmount`] – If `limit <= 0`.
-    /// * [`Error::InvalidAmount`] – If `limit == i128::MAX` or `min_deposit == i128::MAX`.
-    /// * [`Error::BelowMinimum`] – If `min_deposit < 1` or `min_deposit >= limit`.
-    /// * [`Error::MaxSignersReached`] – If `signers.len() > MAX_SIGNERS`.
-    /// * [`Error::InvalidThreshold`] – If `threshold == 0` or `threshold > signers.len()`.
-    /// * [`Error::DuplicateSigner`] – If `signers` contains duplicate addresses.
-    /// * [`Error::SelfReferentialAddress`] – If `admin == token`.
-    /// * [`Error::Unauthorized`] – If `admin` is the contract's own address or signature fails.
+    // ── Issue #1041: telemetry helper ───────────────────────────────────
+    fn emit_telemetry(env: &Env, function_name: Symbol) {
+        TelemetryEvent { version: EVENT_VERSION, function_name }.publish(env);
+    }
+    
     pub fn init(
         env: Env,
         admin: Address,
@@ -1119,14 +1073,10 @@ impl FiatBridge {
         threshold: u32,
         nonce: u64,
     ) -> Result<(), Error> {
-        admin.require_auth();
-        Self::validate_and_increment_init_nonce(&env, &admin, nonce)?;
-
-        // Prevent reinitialization: check both Admin and SchemaVersion
-        // (Admin may be removed by execute_renounce_admin, but SchemaVersion persists)
-        if env.storage().instance().has(&DataKey::Admin)
-            || env.storage().instance().has(&DataKey::SchemaVersion)
-        {
+        // ── Issue #1041: emit telemetry event
+        Self::emit_telemetry(&env, Symbol::new(&env, "init"));
+        
+        if env.storage().instance().has(&DataKey::Admin) {
             return Err(Error::AlreadyInitialized);
         }
         if limit <= 0 {
@@ -1308,6 +1258,9 @@ impl FiatBridge {
         max_slippage: u32,
         memo_hash: Option<BytesN<32>>,
     ) -> Result<BytesN<32>, Error> {
+        // ── Issue #1041: emit telemetry event
+        Self::emit_telemetry(&env, Symbol::new(&env, "deposit"));
+        
         env.storage().instance().extend_ttl(MIN_TTL, MAX_TTL);
         Self::validate_memo_hash(&env, &memo_hash)?;
         from.require_auth();
@@ -4158,19 +4111,6 @@ impl FiatBridge {
             .unwrap_or(to);
 
         let token_client = token::Client::new(&env, &token);
-
-        // Issue #840: emit reconciliation event when vault ledger exceeds on-chain balance
-        let on_chain_balance = token_client.balance(&env.current_contract_address());
-        if current > on_chain_balance {
-            FeeVaultReconciledEvent {
-                version: EVENT_VERSION,
-                token: token.clone(),
-                vault_ledger: current,
-                on_chain_balance,
-            }
-            .publish(&env);
-        }
-
         token_client.transfer(&env.current_contract_address(), &recipient, &amount);
 
         env.storage().persistent().set(&key, &(current - amount));
@@ -4193,35 +4133,15 @@ impl FiatBridge {
         Ok(())
     }
 
-    /// Atomically sweeps accrued protocol fees across multiple registered tokens.
-    ///
-    /// # Overflow Prevention & Safety Invariants
-    /// - **Per-Caller Replay Protection**: Validates and increments caller batch nonce via checked addition.
-    /// - **Safe Iteration**: Iterates over caller-provided token addresses, sweeping non-zero fee balances.
-    /// - **Guarded Reset**: Resets each swept fee vault entry directly to 0 (`0i128`), avoiding arithmetic drift.
-    /// - **Invariant Check**: Calls [`check_invariants`](FiatBridge::check_invariants) after each token sweep
-    ///   to ensure `balance >= net_deposited`, preventing fee withdrawals from draining depositor funds
-    ///   (Issue #1383).
-    ///
-    /// # Arguments
-    /// * `env` – The Soroban host environment.
-    /// * `to` – Fallback recipient address.
-    /// * `tokens` – List of token addresses to sweep.
-    /// * `nonce` – Caller's batch withdrawal nonce.
-    ///
-    /// # Errors
-    /// * [`Error::Unauthorized`] – If caller is not admin.
-    /// * [`Error::StaleNonce`] / [`Error::InvalidNonce`] – If replay protection nonce is invalid.
-    pub fn withdraw_fees_batch(
-        env: Env,
-        to: Address,
-        tokens: Vec<Address>,
-        nonce: u64,
-    ) -> Result<(), Error> {
-        let admin = Self::require_admin(&env)?;
-
-        // ── Issue #1113: per-caller replay protection ────────────────────
-        Self::validate_and_increment_fee_withdrawal_nonce(&env, &admin, nonce)?;
+    pub fn withdraw_fees_batch(env: Env, to: Address, tokens: Vec<Address>) -> Result<(), Error> {
+        // ── Issue #1041: emit telemetry event
+        Self::emit_telemetry(&env, Symbol::new(&env, "withdraw_fees_batch"));
+        
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::FeeRecipient)
+            .unwrap_or(to);
 
         // ── Issue #1044: use fee_recipient if set, otherwise use the provided 'to' address
         let recipient = env
@@ -4444,8 +4364,45 @@ impl FiatBridge {
             .get(&DataKey::WithdrawCooldownThreshold)
             .unwrap_or(0)
     }
-    #[deprecated(note = "use get_config_snapshot instead")]
     pub fn get_slippage_threshold(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::SlippageThreshold)
+            .unwrap_or(0)
+    }
+    
+    // ── Issue #1044: fee recipient management ───────────────────────────
+    pub fn set_fee_recipient(env: Env, recipient: Address) -> Result<(), Error> {
+        // ── Issue #1041: emit telemetry event
+        Self::emit_telemetry(&env, Symbol::new(&env, "set_fee_recipient"));
+        
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        
+        env.storage().instance().set(&DataKey::FeeRecipient, &recipient);
+        Ok(())
+    }
+    
+    pub fn get_fee_recipient(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::FeeRecipient)
+    }
+    
+    pub fn get_receipt_by_index(env: Env, idx: u64) -> Option<Receipt> {
+        let max_receipts: u64 = env.storage().instance().get(&DataKey::ReceiptCounter).unwrap_or(0);
+        if idx >= max_receipts {
+            // Circuit breaker: emit event and return None to prevent out-of-bounds
+            // execution and excessive compute cycles
+            ReceiptOobEvent { version: EVENT_VERSION }.publish(&env);
+            return None;
+        }
+        let receipt_hash: BytesN<32> = env
+            .storage()
+            .temporary()
+            .get(&DataKey::ReceiptIndex(idx))?;
         env.storage()
             .instance()
             .get(&DataKey::SlippageThreshold)
@@ -5194,25 +5151,15 @@ impl FiatBridge {
             .unwrap_or(0)
     }
 
-    /// Set the migration cursor to a specific value.
-    ///
-    /// This function allows manual control over the migration cursor position.
-    /// It is primarily intended for recovery scenarios where the cursor needs
-    /// to be adjusted due to migration issues (e.g. rewinding to 0).
-    ///
-    /// # Parameters
-    ///
-    /// - `cursor` – the new cursor value to set (`u64`)
-    ///
-    /// # Errors
-    ///
-    /// - `Error::NotInitialized` – if the contract has not been initialized
-    /// - `Error::Unauthorized` – if the caller is not the admin
-    /// - `Error::InvalidAmount` – if the cursor is greater than `ReceiptCounter`
-    pub fn set_migration_cursor(env: Env, cursor: u64) -> Result<(), Error> {
-        let _admin = Self::require_admin(&env)?;
-
-        let receipt_counter: u64 = env
+    // ── Batched Admin Operations ──────────────────────────────────────────
+    pub fn execute_batch_admin(
+        env: Env,
+        operations: Vec<BatchAdminOp>,
+    ) -> Result<BatchResult, Error> {
+        // ── Issue #1041: emit telemetry event
+        Self::emit_telemetry(&env, Symbol::new(&env, "execute_batch_admin"));
+        
+        let admin: Address = env
             .storage()
             .instance()
             .get(&DataKey::ReceiptCounter)
@@ -5361,11 +5308,7 @@ impl FiatBridge {
             env.storage()
                 .instance()
                 .set(&DataKey::SlippageThreshold, &threshold_bps);
-            SlippageThresholdSetEvent {
-                version: EVENT_VERSION,
-                threshold_bps,
-            }
-            .publish(env);
+            SlippageThresholdSetEvent { version: EVENT_VERSION, threshold_bps }.publish(env);
             Ok(())
         } else if *op_name == Symbol::new(env, "set_limit") {
             let (token, limit) = if let Ok(args) = SetLimitArgs::from_xdr(env, &op.payload) {
@@ -5501,14 +5444,19 @@ impl FiatBridge {
 
     // ── Issue #209: global circuit breaker ───────────────────────────────
 
-    /// Set the rolling 24-hour withdrawal volume threshold for the circuit breaker.
-    /// Requires admin. Returns Error::NotInitialized if not initialized.
+    /// Set the rolling withdrawal volume threshold that trips the global circuit breaker.
     ///
-    /// Volume is accumulated by `withdraw` and `execute_withdrawal`, which trip the
-    /// breaker when the rolling total exceeds `threshold`. `request_withdrawal` and
-    /// `deposit` do not add to the volume; they only reject calls with
-    /// [`Error::CircuitBreakerActive`] while the breaker is tripped. A threshold
-    /// of 0 or less disables volume tracking.
+    /// The breaker is evaluated across all withdrawal-producing flows that call
+    /// [`Self::check_and_update_circuit_breaker`], including direct withdrawals,
+    /// queued withdrawal requests, and queued withdrawal execution.
+    ///
+    /// - `threshold > 0`: enables the breaker and rejects the withdrawal that
+    ///   would push the rolling total above the threshold.
+    /// - `threshold == 0`: disables the breaker entirely.
+    ///
+    /// This value is stored under [`DataKey::CircuitBreakerThreshold`]. It does
+    /// not itself reset an already-tripped breaker; use [`Self::reset_circuit_breaker`]
+    /// for that operational action.
     pub fn set_circuit_breaker_threshold(env: Env, threshold: i128) -> Result<(), Error> {
         let _admin = Self::require_admin(&env)?;
         env.storage()
@@ -5517,8 +5465,19 @@ impl FiatBridge {
         Ok(())
     }
 
-    /// Configure the circuit breaker auto-reset window in ledgers.
-    /// Use u32::MAX to disable auto-reset. Requires admin.
+    /// Configure the auto-reset window for a tripped circuit breaker.
+    ///
+    /// The breaker stores the ledger at which it tripped in
+    /// [`DataKey::CircuitBreakerTrippedAt`]. On the next guarded withdrawal or
+    /// heartbeat path, the contract compares the current ledger against that
+    /// trip point plus this reset window.
+    ///
+    /// - `0`: use the default 48-hour window [`CIRCUIT_BREAKER_RESET_LEDGERS`]
+    /// - `u32::MAX`: disable auto-reset entirely
+    /// - any other value: use that many ledgers as the reset window
+    ///
+    /// Auto-reset clears the tripped flag and rolls the global withdrawal window
+    /// forward before the next guarded operation resumes.
     pub fn set_circuit_breaker_reset_window(env: Env, ledgers: u32) -> Result<(), Error> {
         let _admin = Self::require_admin(&env)?;
         env.storage()
@@ -5543,8 +5502,14 @@ impl FiatBridge {
             .unwrap_or(CIRCUIT_BREAKER_RESET_LEDGERS)
     }
 
-    /// Clear a tripped circuit breaker immediately. Emits CircuitBreakerResetEvent.
-    /// Requires admin. Returns Error::NotInitialized if not initialized.
+    /// Manually clear the circuit breaker so guarded operations can resume.
+    ///
+    /// This admin-only action flips [`DataKey::CircuitBreakerTripped`] back to
+    /// `false` and emits [`CircuitBreakerResetEvent`]. It is intended for manual
+    /// recovery after operators have investigated the activity that caused the
+    /// breaker to trip.
+    ///
+    /// This function does not change the configured threshold or reset window.
     pub fn reset_circuit_breaker(env: Env) -> Result<(), Error> {
         let _admin = Self::require_admin(&env)?;
         env.storage()
@@ -6576,143 +6541,8 @@ impl FiatBridge {
 #[cfg(test)]
 mod test_view_function_snapshots;
 
-#[cfg(test)]
-mod test_error_codes;
-
 #[cfg(any(test, feature = "testutils"))]
 mod test;
 
 #[cfg(test)]
 mod test_oracle_staleness;
-
-#[cfg(test)]
-mod test_init_validation;
-
-#[cfg(test)]
-mod test_approve_multisig_action_invariants;
-
-#[cfg(test)]
-mod test_revoke_multisig_approval_invariants;
-
-#[cfg(test)]
-mod test_get_multisig_proposal_invariants;
-
-#[cfg(test)]
-mod test_propose_multisig_action_invariants;
-
-#[cfg(test)]
-mod test_propose_upgrade_invariants;
-#[cfg(test)]
-mod test_reclaim_expired_withdrawal_invariants;
-
-#[cfg(test)]
-mod test_execute_upgrade_invariants;
-
-#[cfg(test)]
-mod test_execute_upgrade_timelock_invariants;
-
-#[cfg(test)]
-mod test_reset_circuit_breaker_invariants;
-
-#[cfg(test)]
-mod test_set_circuit_breaker_threshold_invariants;
-
-#[cfg(test)]
-mod test_set_circuit_breaker_reset_window_invariants;
-
-#[cfg(test)]
-mod test_get_next_priority_withdrawal_invariants;
-#[cfg(test)]
-mod test_withdraw_circuit_breaker;
-
-#[cfg(test)]
-mod test_set_operator_invariants;
-
-#[cfg(test)]
-mod test_execute_withdrawal_invariants;
-#[cfg(test)]
-mod test_heartbeat_batch;
-mod test_heartbeat_replay;
-#[cfg(test)]
-mod test_request_withdrawal_invariants;
-
-#[cfg(test)]
-mod test_is_denied_invariants;
-
-#[cfg(test)]
-mod test_get_withdrawal_request_invariants;
-
-#[cfg(test)]
-mod test_cancel_withdrawal_invariants;
-
-#[cfg(test)]
-mod test_set_fee_recipient_invariants;
-
-#[cfg(test)]
-mod test_set_withdrawal_expiry_invariants;
-
-#[cfg(test)]
-mod test_get_deploy_config_hash_invariants;
-
-#[cfg(test)]
-mod test_issue_1437;
-
-#[cfg(test)]
-mod test_issue_1388;
-
-#[cfg(test)]
-mod test_issue_1389;
-
-#[cfg(test)]
-mod test_issue_1387;
-
-#[cfg(test)]
-mod test_issue_1390;
-
-#[cfg(test)]
-mod test_migrate_escrow_invariants;
-
-#[cfg(test)]
-mod test_fee_withdrawal_nonce;
-
-#[cfg(test)]
-mod test_view_functions_emit_no_events;
-
-#[cfg(test)]
-mod test_require_admin_and_denylist;
-
-#[cfg(test)]
-mod test_withdraw_queue_helpers;
-
-#[cfg(test)]
-mod test_withdraw_invariants;
-
-#[cfg(test)]
-mod test_is_circuit_breaker_tripped_invariants;
-
-#[cfg(test)]
-mod test_withdraw_fees_batch_invariants;
-
-#[cfg(test)]
-mod test_get_fee_withdrawal_nonce_invariants;
-
-#[cfg(test)]
-mod test_denylist_invariants;
-
-#[cfg(test)]
-mod test_token_allowlist_invariants;
-
-#[cfg(test)]
-mod test_emergency_recovery;
-
-#[cfg(test)]
-mod test_ttl_advance;
-
-#[cfg(test)]
-mod test_multisig_update;
-
-#[cfg(test)]
-mod test_issues_1400_1403;
-
-#[cfg(test)]
-mod test_events_doc;

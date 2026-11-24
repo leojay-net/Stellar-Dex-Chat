@@ -24,6 +24,28 @@ async function verifyConnectivity(
 }
 
 /**
+ * Verify actual internet connectivity by pinging a reliable endpoint.
+ * Detects captive portals and other cases where navigator.onLine is misleading.
+ */
+async function verifyConnectivity(): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    const response = await fetch('https://www.cloudflare.com/cdn-cgi/trace', {
+      method: 'HEAD',
+      mode: 'no-cors',
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Hook to track network online/offline status
  * Provides isOnline state and watchers for online/offline events
  *
@@ -54,10 +76,6 @@ export function useOnlineStatus() {
       if (activeProbe !== controller) return;
       activeProbe = undefined;
       setIsOnline(hasConnectivity);
-      chatTelemetry.networkStatus({
-        status: hasConnectivity ? 'online' : 'offline',
-        source: 'connectivity-check',
-      });
       if (hasConnectivity) {
         setWasOffline(true);
       }

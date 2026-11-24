@@ -36,7 +36,10 @@ class RequestDeduplicator {
    * Get or create a promise for the given key.
    * If a request is already in-flight, return the existing promise.
    */
-  async fetch<T>(key: string, fetchFn: () => Promise<T>): Promise<T> {
+  async fetch<T>(
+    key: string,
+    fetchFn: () => Promise<T>,
+  ): Promise<T> {
     // Check if a request is already in-flight
     if (this.inFlightRequests.has(key)) {
       return this.inFlightRequests.get(key) as Promise<T>;
@@ -73,9 +76,7 @@ async function fetchBeneficiariesWithDedup(
 ): Promise<Beneficiary[]> {
   return deduplicator.fetch(`beneficiaries:${userId}`, async () => {
     try {
-      const response = await fetch(
-        `/api/beneficiaries?userId=${encodeURIComponent(userId)}`,
-      );
+      const response = await fetch(`/api/beneficiaries?userId=${encodeURIComponent(userId)}`);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -89,10 +90,7 @@ async function fetchBeneficiariesWithDedup(
   });
 }
 
-export function useBeneficiaries(options?: {
-  fetchFromApi?: boolean;
-  userId?: string;
-}) {
+export function useBeneficiaries(options?: { fetchFromApi?: boolean; userId?: string }) {
   const { fetchFromApi = false, userId = 'current' } = options || {};
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -108,20 +106,20 @@ export function useBeneficiaries(options?: {
 
   // Fetch from API with deduplication if enabled
   useEffect(() => {
-    if (!fetchFromApi || typeof window === 'undefined') return;
+    if (!isMounted || !fetchFromApi || typeof window === 'undefined') return;
 
     let cancelled = false;
 
     void (async () => {
       try {
         const data = await fetchBeneficiariesWithDedup(userId);
-        if (!cancelled && isMountedRef.current) {
+        if (!cancelled) {
           setBeneficiaries(Array.isArray(data) ? data : []);
           setIsLoaded(true);
         }
       } catch (error) {
         console.error('Error loading beneficiaries:', error);
-        if (!cancelled && isMountedRef.current) {
+        if (!cancelled) {
           setIsLoaded(true);
         }
       }
@@ -130,11 +128,11 @@ export function useBeneficiaries(options?: {
     return () => {
       cancelled = true;
     };
-  }, [fetchFromApi, userId]);
+  }, [isMounted, fetchFromApi, userId]);
 
   // Load from localStorage if not fetching from API
   useEffect(() => {
-    if (fetchFromApi || typeof window === 'undefined') return;
+    if (!isMounted || fetchFromApi || typeof window === 'undefined') return;
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
@@ -145,7 +143,7 @@ export function useBeneficiaries(options?: {
       setBeneficiaries([]);
     }
     setIsLoaded(true);
-  }, [fetchFromApi]);
+  }, [isMounted, fetchFromApi]);
 
   useEffect(() => {
     if (!isLoaded || typeof window === 'undefined') return;
