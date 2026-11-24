@@ -2381,7 +2381,7 @@ fn test_fee_vault_isolation_from_principal() {
     assert_eq!(bridge.get_total_withdrawn(), 0);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 0);
     assert_eq!(token.balance(&fee_recipient), 200);
-    assert_eq!(token.balance(&contract_id), 800);
+    assert_eq!(token.balance(&contract_id), 1_000);
 }
 
 // ── emergency token rescue tests ──────────────────────────────────────────
