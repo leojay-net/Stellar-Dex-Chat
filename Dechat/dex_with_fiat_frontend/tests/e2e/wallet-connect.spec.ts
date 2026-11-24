@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test';
 import {
-  connectMockWallet,
   gotoChatConnected,
   MOCK_WALLET_ADDRESS,
 } from './helpers';

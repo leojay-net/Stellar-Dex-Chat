@@ -71,7 +71,7 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
           // @ts-expect-error – BarcodeDetector not yet in TS lib
           const supported: string[] = await window.BarcodeDetector.getSupportedFormats();
           if (supported.includes('qr_code')) {
-            // @ts-expect-error
+            // @ts-expect-error – BarcodeDetector is not yet in TypeScript's DOM library.
             detector = new window.BarcodeDetector({ formats: ['qr_code'] });
           }
         } catch {
@@ -82,9 +82,7 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
       // JS fallback: dynamic import keeps bundle size low
       if (!detector) {
         try {
-          const mod = await import('jsqr' as never /* avoids TS import warning */);
-          // @ts-expect-error – dynamic import
-          jsQR = mod.default ?? mod;
+          jsQR = (await import('jsqr')).default;
           canvas = document.createElement('canvas');
           ctx = canvas.getContext('2d');
         } catch {

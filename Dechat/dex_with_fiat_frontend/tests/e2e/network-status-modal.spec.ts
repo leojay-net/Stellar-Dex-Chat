@@ -1,5 +1,4 @@
-import { test, expect, Page } from '@playwright/test';
-import { mockSorobanRpc } from './helpers';
+import { test, expect } from '@playwright/test';
 
 /**
  * E2E tests for NetworkStatusModal component
@@ -14,14 +13,6 @@ const CONNECTED_ADDRESS = 'GBEFLW6RT4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 const EXPECTED_NETWORK = 'testnet';
 
 test.describe('NetworkStatusModal E2E Coverage', () => {
-  // Helper to setup and mount the test page
-  async function setupTestPage(page: Page) {
-    // Add a test fixture endpoint that mounts the modal
-    await page.route('**/api/**', async (route) => {
-      await route.abort();
-    });
-  }
-
   test.describe('Connected State', () => {
     test('should display connected status in Chromium with correct elements', async ({ browser }) => {
       const context = await browser.newContext();
@@ -287,7 +278,7 @@ test.describe('NetworkStatusModal E2E Coverage', () => {
 
       await page.goto('/test-network-modal-connected');
       
-      let modal = page.getByRole('dialog', { name: /network status/i });
+      const modal = page.getByRole('dialog', { name: /network status/i });
       await expect(modal).toBeVisible();
 
       // Click close button

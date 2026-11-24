@@ -22,14 +22,11 @@ async function mockChatApi(page: Page): Promise<void> {
   });
 }
 
-test.describe('Offline reconnect queue', () => {
+test.describe('Offline reconnect queue', { tag: '@chromium-only' }, () => {
   test('@slow connect -> offline send -> reconnect replays queued message', async ({
     page,
     context,
-    browserName,
   }) => {
-    test.skip(browserName !== 'chromium', 'CDP network emulation requires Chromium.');
-
     await mockChatApi(page);
     await gotoChatConnected(page);
 

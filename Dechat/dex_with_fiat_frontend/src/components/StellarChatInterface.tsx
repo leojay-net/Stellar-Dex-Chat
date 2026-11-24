@@ -58,6 +58,7 @@ import StellarFiatModalWrapper from './StellarFiatModalWrapper';
 import UserSettingsWrapper from './UserSettingsWrapper';
 import NetworkStatusModalWrapper from './NetworkStatusModalWrapper';
 import NotificationsCenterWrapper from './NotificationsCenterWrapper';
+import ShortcutsHelp from './ShortcutsHelp';
 
 /** Possible states for the API health badge */
 type HealthStatus = 'checking' | 'ok' | 'degraded';
@@ -619,6 +620,7 @@ function StellarChatInterfaceContent() {
               </button>
 
               <NotificationsCenterWrapper />
+              <ShortcutsHelp />
 
               {/* Search history */}
               <button

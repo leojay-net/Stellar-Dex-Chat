@@ -97,7 +97,7 @@ describe('useMasking', () => {
       renderHook(() =>
         useMasking(text, {
           enabled: true,
-          customTerms: customManager as unknown as typeof SensitiveTermsManager,
+          customTerms: customManager,
         }),
       );
 
@@ -226,7 +226,7 @@ describe('useMasking', () => {
         {
           initialProps: {
             text: 'Hello',
-            options: { enabled: true, customTerms: manager1 as unknown as typeof SensitiveTermsManager },
+            options: { enabled: true, customTerms: manager1 },
           },
         },
       );
@@ -237,7 +237,7 @@ describe('useMasking', () => {
       // Change manager
       rerender({
         text: 'Hello',
-        options: { enabled: true, customTerms: manager2 as unknown as typeof SensitiveTermsManager },
+        options: { enabled: true, customTerms: manager2 },
       });
 
       const secondCall = vi.mocked(textMaskingLib.maskText).mock.calls[1];
@@ -298,14 +298,14 @@ describe('useMasking', () => {
         {
           initialProps: {
             text: 'Hello',
-            options: { enabled: true, customTerms: manager1 as unknown as typeof SensitiveTermsManager },
+            options: { enabled: true, customTerms: manager1 },
           },
         },
       );
 
       rerender({
         text: 'World',
-        options: { enabled: true, customTerms: manager2 as unknown as typeof SensitiveTermsManager },
+        options: { enabled: true, customTerms: manager2 },
       });
 
       // Should not raise any errors on cleanup
@@ -364,7 +364,7 @@ describe('useMasking', () => {
       renderHook(() =>
         useMasking('test', {
           enabled: true,
-          customTerms: customManager as unknown as typeof SensitiveTermsManager,
+          customTerms: customManager,
         }),
       );
 
@@ -385,28 +385,16 @@ describe('useMasking', () => {
       expect(callArgs[1]).toBeInstanceOf(SensitiveTermsManager);
     });
 
-    it('should verify memos optimize re-renders', () => {
+    it('reuses the masked text when a fresh options object has identical values', () => {
       const { rerender } = renderHook(
-        ({ options }) => {
-          const maskedText = useMasking('Hello', options);
-          return { maskedText, optionsRef: options };
-        },
-        {
-          initialProps: {
-            options: { enabled: true, style: 'asterisk' as const },
-          },
-        },
+        (options: UseMaskingOptions) => useMasking('Hello', options),
+        { initialProps: { enabled: true, style: 'asterisk' } },
       );
+      expect(textMaskingLib.maskText).toHaveBeenCalledTimes(1);
 
-      const callCount1 = vi.mocked(textMaskingLib.maskText).mock.calls.length;
+      rerender({ enabled: true, style: 'asterisk' });
 
-      // Rerender with same object reference (new object with same values)
-      rerender({
-        options: { enabled: true, style: 'asterisk' as const },
-      });
-
-      // Should have called maskText again because options is a new object
-      expect(vi.mocked(textMaskingLib.maskText).mock.calls.length).toBeGreaterThan(callCount1);
+      expect(textMaskingLib.maskText).toHaveBeenCalledTimes(1);
     });
   });
 

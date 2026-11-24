@@ -233,16 +233,10 @@ test.describe('ChatSearchPanel', () => {
     test('ArrowDown and ArrowUp move the active result', async ({ page }) => {
       await gotoHarness(page);
 
-      await searchInput(page).fill('');
-      // Use a term that matches both fixture sessions
       await searchInput(page).fill('e'); // matches 'DEX' and 'bridge'
 
-      const results = page.locator('[role="option"]');
-      const count = await results.count();
-      if (count < 2) {
-        test.skip();
-        return;
-      }
+      const results = page.getByRole('option');
+      await expect(results).toHaveCount(2);
 
       // First result should be active (index 0)
       await expect(results.first()).toHaveAttribute('aria-selected', 'true');

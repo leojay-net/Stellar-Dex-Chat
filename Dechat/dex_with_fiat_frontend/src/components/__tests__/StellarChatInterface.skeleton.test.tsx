@@ -40,7 +40,8 @@ vi.mock('@/contexts/TranslationContext', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('@/contexts/UserPreferencesContext', () => ({
+vi.mock('@/contexts/UserPreferencesContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/contexts/UserPreferencesContext')>()),
   useUserPreferences: () => ({ fiatCurrency: 'NGN' }),
 }));
 

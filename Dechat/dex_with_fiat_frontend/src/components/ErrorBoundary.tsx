@@ -1,6 +1,8 @@
 'use client';
 
 import React from 'react';
+import { UserPreferencesContext } from '@/contexts/UserPreferencesContext';
+import { isEditableShortcutTarget } from '@/lib/keyboardShortcuts';
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -27,6 +29,9 @@ export default class ErrorBoundary extends React.Component<
   ErrorBoundaryProps,
   ErrorBoundaryState
 > {
+  static contextType = UserPreferencesContext;
+  declare context: React.ContextType<typeof UserPreferencesContext>;
+
   public constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false };
@@ -44,12 +49,14 @@ export default class ErrorBoundary extends React.Component<
     if (!this.state.hasError) {
       return;
     }
-    const target = event.target as HTMLElement | null;
-    const tag = target?.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) {
-      return;
-    }
-    if (event.key === 'Enter' || event.key === 'r' || event.key === 'R') {
+    if (isEditableShortcutTarget(event.target)) return;
+    const retryKey =
+      this.context?.singleKeyShortcutsEnabled !== false &&
+      !event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      event.key.toLowerCase() === 'r';
+    if (event.key === 'Enter' || retryKey) {
       event.preventDefault();
       this.retry();
     }

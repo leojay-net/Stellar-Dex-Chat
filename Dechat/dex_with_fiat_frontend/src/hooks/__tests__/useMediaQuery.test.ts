@@ -1,9 +1,10 @@
+import { createElement } from 'react';
+import { renderToString } from 'react-dom/server';
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { renderHook, cleanup, waitFor } from '@testing-library/react';
 import { useMediaQuery } from '../useMediaQuery';
 
 describe('useMediaQuery', () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let matchMediaMock: Mock<(query: string) => MediaQueryList>;
   let listeners: Array<(event: MediaQueryListEvent) => void>;
 
@@ -58,15 +59,24 @@ describe('useMediaQuery', () => {
     expect(result.current).toBe(true);
   });
 
-  it.skip('returns false during SSR (window is undefined)', () => {
-    const originalWindow = global.window;
-    // @ts-expect-error Testing SSR scenario
-    delete global.window;
+  it('returns false during SSR (window is undefined)', () => {
+    function ServerProbe() {
+      return createElement(
+        'span',
+        null,
+        String(useMediaQuery('(min-width: 768px)')),
+      );
+    }
 
-    const { result } = renderHook(() => useMediaQuery('(min-width: 768px)'));
-    expect(result.current).toBe(false);
-
-    global.window = originalWindow;
+    vi.stubGlobal('window', undefined);
+    try {
+      expect(renderToString(createElement(ServerProbe))).toBe(
+        '<span>false</span>',
+      );
+      expect(matchMediaMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   // ── Updates ────────────────────────────────────────────────────────────

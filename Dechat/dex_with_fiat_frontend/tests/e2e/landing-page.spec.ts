@@ -1,4 +1,4 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 
 /**
  * E2E tests for LandingPage component
@@ -286,12 +286,7 @@ test.describe('LandingPage E2E Coverage', () => {
       const themeBtn = page.getByRole('button', {
         name: /Switch to |mode/i,
       });
-      const initialAriaLabel = await themeBtn.getAttribute('aria-label');
       await themeBtn.click();
-
-      // Get initial theme
-      const bodyAfterClick = page.locator('body');
-      const classAfterClick = await bodyAfterClick.getAttribute('class');
 
       // Click Get Started (navigation)
       const getStartedBtn = page.getByRole('button', {
@@ -376,7 +371,7 @@ test.describe('LandingPage E2E Coverage', () => {
       await page.goto('/', { waitUntil: 'load' });
 
       // Get initial focused element
-      let focusedElement = await page.evaluate(() =>
+      const focusedElement = await page.evaluate(() =>
         document.activeElement?.tagName,
       );
 
@@ -405,11 +400,6 @@ test.describe('LandingPage E2E Coverage', () => {
       for (let i = 0; i < 5; i++) {
         await page.keyboard.press('Tab');
       }
-
-      // Find which element is focused
-      const focused = await page.evaluate(() =>
-        (document.activeElement as HTMLElement)?.getAttribute('aria-label'),
-      );
 
       // We should be able to reach theme toggle
       const themeBtn = page.getByRole('button', {
@@ -545,37 +535,8 @@ test.describe('LandingPage E2E Coverage', () => {
       const context = await browser.newContext();
       const page = await context.newPage();
 
-      const networkRequests: string[] = [];
-      page.on('request', (request) => {
-        const url = request.url();
-        networkRequests.push(url);
-      });
-
       await page.goto('/', { waitUntil: 'load' });
-
       await page.waitForTimeout(2000);
-
-      // Check if any external API calls were made (excluding localhost)
-      const externalCalls = networkRequests.filter(
-        (url) =>
-          !url.includes('localhost') &&
-          !url.includes('127.0.0.1') &&
-          !url.includes('_next') &&
-          !url.includes('chrome-extension') &&
-          (url.includes('coingecko') ||
-            url.includes('stellar.expert') ||
-            url.includes('horizon') ||
-            url.includes('ticker')),
-      );
-
-      // Price calls should not reach external APIs (they should be mocked/aborted)
-      const priceApiCalls = externalCalls.filter(
-        (url) =>
-          url.includes('ticker') || url.includes('coingecko') || url.includes('price'),
-      );
-
-      // All external calls should be handled (not completed to real APIs)
-      // This is ensured by route.abort() in beforeEach
 
       await context.close();
     });
