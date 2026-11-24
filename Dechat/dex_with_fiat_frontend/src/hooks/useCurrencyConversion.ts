@@ -138,7 +138,7 @@ export function useCurrencyConversion(
   );
 
   useEffect(() => {
-    convertAmount();
+    void convertAmount();
   }, [convertAmount]);
 
   const forceRefresh = useCallback(() => convertAmount(true), [convertAmount]);

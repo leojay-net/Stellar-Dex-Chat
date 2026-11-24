@@ -112,7 +112,7 @@ export function useBeneficiaries(options?: {
 
     let cancelled = false;
 
-    (async () => {
+    void (async () => {
       try {
         const data = await fetchBeneficiariesWithDedup(userId);
         if (!cancelled && isMountedRef.current) {

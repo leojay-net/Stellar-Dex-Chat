@@ -106,12 +106,12 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
         }
       }
 
-      tick();
+      void tick();
     }
 
     async function tick() {
       if (!active || !videoRef.current || videoRef.current.readyState < 2) {
-        rafRef.current = requestAnimationFrame(tick);
+        rafRef.current = requestAnimationFrame(() => void tick());
         return;
       }
 
@@ -144,10 +144,10 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
         // detector errors are transient; keep scanning
       }
 
-      rafRef.current = requestAnimationFrame(tick);
+      rafRef.current = requestAnimationFrame(() => void tick());
     }
 
-    init();
+    void init();
     return () => {
       active = false;
       cancelAnimationFrame(rafRef.current);
@@ -155,7 +155,7 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
   }, [scanning, onScan, stopCamera]);
 
   useEffect(() => {
-    startCamera();
+    void startCamera();
     return stopCamera;
   }, [startCamera, stopCamera]);
 
@@ -178,7 +178,7 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
             <CameraOff className="w-10 h-10 text-red-400" />
             <p className="text-sm text-white/80">{error}</p>
             <button
-              onClick={startCamera}
+              onClick={() => void startCamera()}
               className="mt-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500"
             >
               Retry

@@ -259,7 +259,7 @@ export default function StellarFiatModal({
     const abortController = new AbortController();
     setIsLoadingFee(true);
 
-    const timer = setTimeout(async () => {
+    const updateFeeEstimate = async () => {
       try {
         let estimate: FeeEstimate | null = null;
         if (isAdminMode) {
@@ -289,7 +289,8 @@ export default function StellarFiatModal({
           setIsLoadingFee(false);
         }
       }
-    }, 300);
+    };
+    const timer = setTimeout(() => void updateFeeEstimate(), 300);
 
     return () => {
       cancelled = true;
@@ -427,6 +428,26 @@ export default function StellarFiatModal({
   ]);
 
   if (!isOpen) return null;
+
+  const handleDownloadReceipt = async () => {
+    setIsDownloadingReceipt(true);
+    try {
+      await downloadReceipt({
+        txHash,
+        amount: stroopsToDisplay(stroopsAmount ?? BigInt(0)),
+        wallet: connection.publicKey,
+        network: connection.network || 'TESTNET',
+        timestamp: new Date().toLocaleString(),
+        type: isAdminMode ? 'Withdrawal' : 'Deposit',
+        note: note.trim() || undefined,
+        messages,
+      });
+    } catch (error) {
+      console.error('Could not download receipt:', error);
+    } finally {
+      setIsDownloadingReceipt(false);
+    }
+  };
 
   const handleAction = async () => {
     if (!connection.isConnected) return;
@@ -656,23 +677,7 @@ export default function StellarFiatModal({
             <button
               type="button"
               data-testid="download-receipt-button"
-              onClick={async () => {
-                setIsDownloadingReceipt(true);
-                try {
-                  await downloadReceipt({
-                    txHash,
-                    amount: stroopsToDisplay(stroopsAmount ?? BigInt(0)),
-                    wallet: connection.publicKey,
-                    network: connection.network || 'TESTNET',
-                    timestamp: new Date().toLocaleString(),
-                    type: isAdminMode ? 'Withdrawal' : 'Deposit',
-                    note: note.trim() || undefined,
-                    messages,
-                  });
-                } finally {
-                  setIsDownloadingReceipt(false);
-                }
-              }}
+              onClick={() => void handleDownloadReceipt()}
               disabled={isDownloadingReceipt}
               className="mt-4 w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border border-blue-500/30 text-blue-400 hover:bg-blue-500/10 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -1074,7 +1079,7 @@ export default function StellarFiatModal({
 
             <div className="flex flex-col gap-2">
               <button
-                onClick={handleAction}
+                onClick={() => void handleAction()}
                 disabled={isSubmitDisabled || isTxProcessing}
                 className="theme-primary-button w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 rounded-lg font-semibold transition-all"
               >
@@ -1154,7 +1159,7 @@ export default function StellarFiatModal({
                 Cancel
               </button>
               <button
-                onClick={handleAction}
+                onClick={() => void handleAction()}
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 Confirm

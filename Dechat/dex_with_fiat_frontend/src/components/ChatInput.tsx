@@ -10,7 +10,7 @@ import { useIdempotentAction } from '@/hooks/useIdempotentAction';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 interface ChatInputProps {
-  onSendMessage: (message: string) => void;
+  onSendMessage: (message: string) => void | Promise<void>;
   onCancelRequest?: () => void;
   onNewChat?: () => void;
   onOpenHistory?: () => void;
@@ -160,14 +160,17 @@ export default function ChatInput({
     setWalletWarning(false);
     if (!isSubmitDisabled) {
       const messageToSend = message.trim();
-      executeSubmit(async () => {
-        onSendMessage(messageToSend);
+      void executeSubmit(async () => {
+        const sending = onSendMessage(messageToSend);
         setMessage('');
         if (sessionId) clearDraft(sessionId);
         setShowCommands(false);
         setLiveAnnouncement('Message sent.');
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, 'chat_message_submit');
+        await sending;
+      }, 'chat_message_submit').catch((error: unknown) => {
+        console.error('Could not submit chat message:', error);
+      });
     }
   };
 
@@ -516,7 +519,7 @@ export default function ChatInput({
 
         <button
           type="button"
-          onClick={copyMessage}
+          onClick={() => void copyMessage()}
           disabled={!message.trim()}
           title="Copy message"
           aria-label="Copy message"

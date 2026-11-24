@@ -124,7 +124,7 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
         setIsFreighterInstalled(false);
       }
     };
-    check();
+    void check();
   }, []);
 
   useEffect(() => {
@@ -172,9 +172,6 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
               network: netResult.network || 'TESTNET',
               networkPassphrase: netResult.networkPassphrase || '',
             });
-            import('@/lib/stellarContract').then(({ fetchXlmBalance }) =>
-              fetchXlmBalance(addrResult.address),
-            );
             fetchXlmBalance(addrResult.address)
               .then(setXlmBalance)
               .catch(() => {});
@@ -235,9 +232,6 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
         network: netResult.network || 'TESTNET',
         networkPassphrase: passphrase,
       });
-      import('@/lib/stellarContract').then(({ fetchXlmBalance }) =>
-        fetchXlmBalance(addr),
-      );
       fetchXlmBalance(addr)
         .then(setXlmBalance)
         .catch(() => {});
@@ -428,9 +422,6 @@ export function StellarWalletProvider({ children }: { children: ReactNode }) {
         }));
         localStorage.setItem(STORAGE_KEY_ADDRESS, selectedAccount.address);
         localStorage.setItem(STORAGE_KEY_TIMESTAMP, String(Date.now()));
-        import('@/lib/stellarContract').then(({ fetchXlmBalance }) =>
-          fetchXlmBalance(selectedAccount.address),
-        );
         fetchXlmBalance(selectedAccount.address)
           .then(setXlmBalance)
           .catch(() => {});

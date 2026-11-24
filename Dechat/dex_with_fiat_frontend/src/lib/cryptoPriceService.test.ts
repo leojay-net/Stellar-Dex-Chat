@@ -18,7 +18,11 @@ describe('cryptoPriceService', () => {
       mockFetch.mockResolvedValue({
         ok: true,
         json: () =>
-          Promise.resolve({ stellar: { usd: 0.12, usd_24h_change: 1.5 } }),
+          Promise.resolve({
+            prices: { XLM: { usd: 0.12, usd_24h_change: 1.5 } },
+            stale: false,
+            source: 'live',
+          }),
       });
 
       // Fire 3 concurrent requests for the same key
@@ -39,7 +43,11 @@ describe('cryptoPriceService', () => {
       mockFetch.mockResolvedValue({
         ok: true,
         json: () =>
-          Promise.resolve({ stellar: { usd: 0.15, usd_24h_change: 2.0 } }),
+          Promise.resolve({
+            prices: { XLM: { usd: 0.15, usd_24h_change: 2.0 } },
+            stale: false,
+            source: 'live',
+          }),
       });
 
       // First call fetches
@@ -67,12 +75,19 @@ describe('cryptoPriceService', () => {
         ok: true,
         json: () =>
           Promise.resolve({
-            stellar: { usd: 0.11, eur: 0.1 },
-            ethereum: { usd: 4000, eur: 3700 },
+            prices: {
+              XLM: { usd: 0.11, eur: 0.1, gbp: 0.09 },
+              ETH: { usd: 4000, eur: 3700 },
+              BTC: { usd: 65000 },
+            },
+            stale: false,
+            source: 'live',
           }),
       });
 
-      const result = await fetchCryptoPrices(['XLM', 'ETH'], ['usd', 'eur']);
+      const result = await fetchCryptoPrices(['xlm', 'ETH'], ['USD', 'eur']);
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/prices');
 
       expect(result).toEqual({
         prices: {
@@ -82,6 +97,23 @@ describe('cryptoPriceService', () => {
         stale: false,
         source: 'live',
       });
+    });
+
+    it('preserves server staleness across repeated quotes', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            prices: { XLM: { usd: 0.13 } },
+            stale: true,
+            source: 'cache',
+          }),
+      });
+
+      const expected = { price: 0.13, stale: true, source: 'cache' };
+      expect(await getTokenPriceWithStatus('XLM')).toEqual(expected);
+      expect(await getTokenPriceWithStatus('XLM')).toEqual(expected);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
     });
 
     it('returns fallback when API returns error', async () => {
@@ -102,7 +134,12 @@ describe('cryptoPriceService', () => {
     it('prefers the last successful cached price when the API fails', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ stellar: { usd: 0.14 } }),
+        json: () =>
+          Promise.resolve({
+            prices: { XLM: { usd: 0.14 } },
+            stale: false,
+            source: 'live',
+          }),
       });
       expect(await getTokenPrice('XLM', 'usd')).toBe(0.14);
 
@@ -135,7 +172,9 @@ describe('cryptoPriceService', () => {
         ok: true,
         json: () =>
           Promise.resolve({
-            stellar: { usd: 0.12, usd_24h_change: 3.5 },
+            prices: { XLM: { usd: 0.12, usd_24h_change: 3.5 } },
+            stale: true,
+            source: 'cache',
           }),
       });
 
