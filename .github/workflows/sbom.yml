@@ -1,0 +1,85 @@
+name: Software Bill of Materials (SBOM)
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sbom:
+    name: Generate & Store SBOM
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable
+        with:
+          toolchain: stable
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+          cache-dependency-path: Dechat/dex_with_fiat_frontend/pnpm-lock.yaml
+
+      - name: Prepare SBOM directory
+        run: mkdir -p sbom
+
+      - name: Generate Contracts SBOM (cargo-cyclonedx / cdxgen)
+        run: |
+          set -euo pipefail
+          echo "Generating Cargo CycloneDX SBOM..."
+          if cargo install --locked cargo-cyclonedx 2>/dev/null; then
+            (cd Dechat/stellar-contracts && cargo cyclonedx --format json --output-pattern "$GITHUB_WORKSPACE/sbom/contracts.cdx.json" || true)
+          fi
+          if [ ! -f "sbom/contracts.cdx.json" ]; then
+            echo "Falling back to cdxgen for Rust contract SBOM..."
+            npx --yes @cyclonedx/cdxgen -t rust -o sbom/contracts.cdx.json Dechat/stellar-contracts
+          fi
+
+      - name: Generate Frontend & Tooling SBOM (cdxgen / pnpm)
+        run: |
+          set -euo pipefail
+          echo "Generating frontend and root CycloneDX SBOM..."
+          npx --yes @cyclonedx/cdxgen -t javascript -o sbom/frontend.cdx.json Dechat/dex_with_fiat_frontend
+          npx --yes @cyclonedx/cdxgen -o sbom/root.cdx.json .
+
+      - name: Validate generated SBOM files
+        run: |
+          set -euo pipefail
+          ls -la sbom/
+          for file in sbom/*.cdx.json; do
+            if [ -f "$file" ]; then
+              echo "Validating JSON format for $file..."
+              node -e "JSON.parse(require('fs').readFileSync('$file', 'utf8'))"
+              echo "✅ $file is valid JSON"
+            fi
+          done
+
+      - name: Upload SBOM CI Artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sbom
+          path: sbom/*.cdx.json
+          retention-days: 14
+
+      - name: Attach SBOM to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
+        uses: softprops/action-gh-release@c95fe1489396fe8a9ec8723d33963d3db24306bc # v2.2.1
+        with:
+          files: sbom/*.cdx.json
