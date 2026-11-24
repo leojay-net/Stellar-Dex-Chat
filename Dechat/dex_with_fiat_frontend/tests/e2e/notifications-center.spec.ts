@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { fullKeyboardTabKey } from './helpers';
 
 test.describe('NotificationsCenter E2E', () => {
   test.beforeEach(async ({ page }) => {
@@ -181,31 +182,43 @@ test.describe('NotificationsCenter E2E', () => {
       ).not.toBeVisible();
     });
 
-    test('navigates to mark all as read with Tab key', async ({ page }) => {
+    test('navigates to mark all as read with Tab key', async ({
+      page,
+      browserName,
+    }) => {
+      const tabKey = fullKeyboardTabKey(browserName);
       const bellButton = page.locator('button[aria-label="Notifications"]');
       await bellButton.click();
-      await page.keyboard.press('Tab');
+      await page.keyboard.press(tabKey);
       await expect(
         page.getByRole('button', { name: /mark all as read/i }),
       ).toBeFocused();
     });
 
-    test('navigates to clear all with Tab key', async ({ page }) => {
+    test('navigates to clear all with Tab key', async ({
+      page,
+      browserName,
+    }) => {
+      const tabKey = fullKeyboardTabKey(browserName);
       const bellButton = page.locator('button[aria-label="Notifications"]');
       await bellButton.click();
-      await page.keyboard.press('Tab');
-      await page.keyboard.press('Tab');
+      await page.keyboard.press(tabKey);
+      await page.keyboard.press(tabKey);
       await expect(
         page.getByRole('button', { name: /clear all/i }),
       ).toBeFocused();
     });
 
-    test('navigates to close button with Tab key', async ({ page }) => {
+    test('navigates to close button with Tab key', async ({
+      page,
+      browserName,
+    }) => {
+      const tabKey = fullKeyboardTabKey(browserName);
       const bellButton = page.locator('button[aria-label="Notifications"]');
       await bellButton.click();
-      await page.keyboard.press('Tab');
-      await page.keyboard.press('Tab');
-      await page.keyboard.press('Tab');
+      await page.keyboard.press(tabKey);
+      await page.keyboard.press(tabKey);
+      await page.keyboard.press(tabKey);
       const closeButton = page
         .locator('button[aria-label="Notifications"]')
         .locator('..')

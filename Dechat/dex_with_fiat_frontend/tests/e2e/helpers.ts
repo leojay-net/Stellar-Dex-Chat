@@ -392,3 +392,10 @@ export async function openWithdrawModalFromChat(page: Page): Promise<void> {
     timeout: 10_000,
   });
 }
+
+export function fullKeyboardTabKey(browserName: string): string {
+  // macOS WebKit uses Option+Tab to include controls in keyboard navigation.
+  return browserName === 'webkit' && process.platform === 'darwin'
+    ? 'Alt+Tab'
+    : 'Tab';
+}

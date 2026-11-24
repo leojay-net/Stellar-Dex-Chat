@@ -130,13 +130,12 @@ test.describe('ChatHistorySidebar', () => {
     await stubContractEvents(page);
     await openExpandedHistory(page);
 
-    const pinnedRow = page.getByRole('group').filter({
-      has: page.getByRole('heading', {
-        name: 'Pinned USDC route',
-        exact: true,
-      }),
+    const title = page.getByRole('heading', {
+      name: 'Pinned USDC route',
+      exact: true,
     });
-    await pinnedRow.hover();
+    const pinnedRow = page.getByRole('group').filter({ has: title });
+    await title.hover();
 
     await expect(pinnedRow.getByTitle('Unpin conversation')).toBeVisible();
     await expect(pinnedRow.getByTitle('Export conversation')).toBeVisible();
