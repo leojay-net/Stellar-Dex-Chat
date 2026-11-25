@@ -11,6 +11,7 @@ import { aggregatePayoutMetrics } from '@/lib/adminMetrics';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { useChartColors } from '@/hooks/useChartColors';
 import AuditTable from '@/components/AuditTable';
+import AdminUpgradePanel from '@/components/AdminUpgradePanel';
 import useBridgeStats from '@/hooks/useBridgeStats';
 import AdminGuard from '@/components/AdminGuard';
 import ErrorBoundary from '@/components/ErrorBoundary';
@@ -426,6 +427,10 @@ export default function AdminDashboard() {
                   {payoutMetrics.failedPayouts}
                 </div>
               </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+              <AdminUpgradePanel />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-8">
