@@ -12,18 +12,34 @@ function originOf(url: string | undefined): string | null {
   }
 }
 
+// #1807: export the raw list so the unit test can assert all required origins
+// without parsing the final CSP string.
+export const REQUIRED_CONNECT_ORIGINS = [
+  "'self'",
+  'https://*.sentry.io',
+  // Stellar network endpoints (defaults plus any configured override).
+  'https://horizon.stellar.org',
+  'https://horizon-testnet.stellar.org',
+  'https://soroban-testnet.stellar.org',
+  // Soroban RPC — may be overridden by environment variable.
+  'https://rpc-futurenet.stellar.org',
+  'https://rpc-mainnet.stellar.org',
+  // CoinGecko price API (called from /api/prices server route via fetch, but
+  // some SDK builds call it client-side when the route is unreachable).
+  'https://api.coingecko.com',
+  // Cloudflare connectivity probe used by useOnlineStatus to detect captive
+  // portals (see src/hooks/useOnlineStatus.ts).
+  'https://cloudflare.com',
+  'https://1.1.1.1',
+  'wss://*.freighter.app',
+] as const;
+
 const connectSrc = Array.from(
   new Set(
     [
-      "'self'",
-      'https://*.sentry.io',
-      // Stellar network endpoints (defaults plus any configured override).
-      'https://horizon.stellar.org',
-      'https://horizon-testnet.stellar.org',
-      'https://soroban-testnet.stellar.org',
+      ...REQUIRED_CONNECT_ORIGINS,
       originOf(process.env.NEXT_PUBLIC_STELLAR_RPC_URL),
       originOf(process.env.NEXT_PUBLIC_STELLAR_HORIZON_URL),
-      'wss://*.freighter.app',
     ].filter((v): v is string => Boolean(v)),
   ),
 );

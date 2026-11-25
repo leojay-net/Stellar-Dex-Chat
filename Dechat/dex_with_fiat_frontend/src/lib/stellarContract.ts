@@ -468,3 +468,110 @@ export async function fetchXlmBalance(publicKey: string): Promise<string> {
     return '';
   }
 }
+
+// ---------------------------------------------------------------------------
+// #1815 — Contract version and deploy-config hash
+// ---------------------------------------------------------------------------
+
+export interface ContractVersionInfo {
+  version: string;
+  deployConfigHash: string;
+}
+
+/** Expected contract version the frontend was built against. */
+export const EXPECTED_CONTRACT_VERSION =
+  process.env.NEXT_PUBLIC_EXPECTED_CONTRACT_VERSION ?? null;
+
+/** Fetches `get_contract_version` from the contract. Returns the version string. */
+export async function getContractVersion(): Promise<string> {
+  return viewCall<string>('get_contract_version');
+}
+
+/** Fetches `get_deploy_config_hash` from the contract. Returns the hash as a string. */
+export async function getDeployConfigHash(): Promise<string> {
+  return viewCall<string>('get_deploy_config_hash');
+}
+
+/**
+ * Fetches both version fields in parallel and returns them together.
+ * Also returns `versionMismatch: true` when EXPECTED_CONTRACT_VERSION is set
+ * and the on-chain version differs, so the UI can warn the user.
+ */
+export async function getContractVersionInfo(): Promise<
+  ContractVersionInfo & { versionMismatch: boolean }
+> {
+  const [version, deployConfigHash] = await Promise.all([
+    getContractVersion(),
+    getDeployConfigHash(),
+  ]);
+  const versionMismatch =
+    EXPECTED_CONTRACT_VERSION !== null && version !== EXPECTED_CONTRACT_VERSION;
+  return { version, deployConfigHash, versionMismatch };
+}
+
+// ---------------------------------------------------------------------------
+// #1814 — Registered tokens and allowlist state
+// ---------------------------------------------------------------------------
+
+export interface RegisteredToken {
+  address: string;
+  /** true when the token is on the allowlist for deposits. */
+  isAllowlisted: boolean;
+}
+
+/**
+ * Returns the list of registered token addresses from `get_registered_tokens`.
+ * Falls back to an empty array when the entry-point is not yet deployed.
+ */
+export async function getRegisteredTokens(): Promise<string[]> {
+  try {
+    const result = await viewCall<string[]>('get_registered_tokens');
+    return Array.isArray(result) ? result : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Returns the allowlist state for a single token from `is_token_allowlisted`.
+ * Returns false on any error so callers can render a "not allowlisted" state
+ * rather than crashing.
+ */
+export async function isTokenAllowlisted(tokenAddress: string): Promise<boolean> {
+  try {
+    const contract = new Contract(CONTRACT_ID);
+    let account;
+    try {
+      account = await server.getAccount(DUMMY_SOURCE);
+    } catch {
+      const { Account } = await import('@stellar/stellar-sdk');
+      account = new Account(DUMMY_SOURCE, '0');
+    }
+    const tx = new TransactionBuilder(account, {
+      fee: BASE_FEE,
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(
+        contract.call('is_token_allowlisted', new Address(tokenAddress).toScVal()),
+      )
+      .setTimeout(30)
+      .build();
+    const sim = await server.simulateTransaction(tx);
+    if (rpc.Api.isSimulationError(sim)) return false;
+    const retval = (sim as rpc.Api.SimulateTransactionSuccessResponse).result?.retval;
+    if (!retval) return false;
+    return scValToNative(retval) as boolean;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Returns every registered token together with its allowlist state.
+ * Allowlist checks are issued in parallel to minimise latency.
+ */
+export async function getRegisteredTokensWithAllowlist(): Promise<RegisteredToken[]> {
+  const addresses = await getRegisteredTokens();
+  const states = await Promise.all(addresses.map((a) => isTokenAllowlisted(a)));
+  return addresses.map((address, i) => ({ address, isAllowlisted: states[i] }));
+}
