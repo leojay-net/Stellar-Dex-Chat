@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, X, Calendar, Wallet, ChevronRight } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useTranslation } from '@/hooks/useTranslation';
 import { ChatSession } from '@/types';
 import {
   SearchFilters,
@@ -81,6 +82,7 @@ export default function ChatSearchPanel({
   onClose,
 }: ChatSearchPanelProps) {
   const { isDarkMode } = useTheme();
+  const { t, locale } = useTranslation();
   const [filters, setFilters] = useState<SearchFilters>(EMPTY_FILTERS);
   const [results, setResults] = useState<MessageMatch[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -164,26 +166,19 @@ export default function ChatSearchPanel({
         <input
           ref={inputRef}
           type="text"
-          placeholder="Search messages…"
+          placeholder={t('chatSearch.placeholder')}
           value={filters.keyword}
           onChange={(e) =>
             setFilters((f) => ({ ...f, keyword: e.target.value }))
           }
           className={`flex-1 bg-transparent text-sm outline-none placeholder:${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-          aria-label="Search keyword"
+          aria-label={t('chatSearch.keywordAria')}
         />
         {hasAnyFilter && (
           <button
-            onClick={() =>
-              setFilters({
-                keyword: '',
-                walletAddress: '',
-                dateFrom: '',
-                dateTo: '',
-              })
-            }
+            onClick={() => setFilters(EMPTY_FILTERS)}
             className={`p-1 rounded transition-colors ${isDarkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
-            title="Clear filters"
+            title={t('chatSearch.clearFilters')}
           >
             <X className="w-4 h-4" />
           </button>
@@ -191,8 +186,8 @@ export default function ChatSearchPanel({
         <button
           onClick={handleClose}
           className={`p-1 rounded transition-colors ${isDarkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
-          title="Close search"
-          aria-label="Close search"
+          title={t('chatSearch.close')}
+          aria-label={t('chatSearch.close')}
         >
           <X className="w-4 h-4" />
         </button>
@@ -209,7 +204,7 @@ export default function ChatSearchPanel({
           <ChevronRight
             className={`w-3.5 h-3.5 transition-transform ${showAdvanced ? 'rotate-90' : ''}`}
           />
-          Advanced filters
+          {t('chatSearch.advancedFilters')}
         </button>
 
         {showAdvanced && (
@@ -220,17 +215,17 @@ export default function ChatSearchPanel({
                 className={`text-xs font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
               >
                 <Wallet className="inline w-3 h-3 mr-1" />
-                Wallet address
+                {t('chatSearch.walletAddress')}
               </span>
               <input
                 type="text"
-                placeholder="e.g. GABCD…"
+                placeholder={t('chatSearch.walletPlaceholder')}
                 value={filters.walletAddress}
                 onChange={(e) =>
                   setFilters((f) => ({ ...f, walletAddress: e.target.value }))
                 }
                 className={`text-xs px-2 py-1.5 rounded border outline-none focus:ring-1 focus:ring-blue-500 ${isDarkMode ? 'bg-gray-800 border-gray-700 text-gray-200' : 'bg-gray-50 border-gray-200 text-gray-800'}`}
-                aria-label="Filter by wallet address"
+                aria-label={t('chatSearch.walletAria')}
               />
             </label>
 
@@ -241,7 +236,7 @@ export default function ChatSearchPanel({
                   className={`text-xs font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
                 >
                   <Calendar className="inline w-3 h-3 mr-1" />
-                  From
+                  {t('chatSearch.from')}
                 </span>
                 <input
                   type="date"
@@ -250,14 +245,14 @@ export default function ChatSearchPanel({
                     setFilters((f) => ({ ...f, dateFrom: e.target.value }))
                   }
                   className={`text-xs px-2 py-1.5 rounded border outline-none focus:ring-1 focus:ring-blue-500 ${isDarkMode ? 'bg-gray-800 border-gray-700 text-gray-200' : 'bg-gray-50 border-gray-200 text-gray-800'}`}
-                  aria-label="Date from"
+                  aria-label={t('chatSearch.dateFromAria')}
                 />
               </label>
               <label className="flex flex-col gap-1 flex-1">
                 <span
                   className={`text-xs font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
                 >
-                  To
+                  {t('chatSearch.to')}
                 </span>
                 <input
                   type="date"
@@ -266,7 +261,7 @@ export default function ChatSearchPanel({
                     setFilters((f) => ({ ...f, dateTo: e.target.value }))
                   }
                   className={`text-xs px-2 py-1.5 rounded border outline-none focus:ring-1 focus:ring-blue-500 ${isDarkMode ? 'bg-gray-800 border-gray-700 text-gray-200' : 'bg-gray-50 border-gray-200 text-gray-800'}`}
-                  aria-label="Date to"
+                  aria-label={t('chatSearch.dateToAria')}
                 />
               </label>
             </div>
@@ -281,16 +276,20 @@ export default function ChatSearchPanel({
             className={`flex flex-col items-center justify-center h-full gap-2 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
           >
             <Search className="w-8 h-8 opacity-40" />
-            <p className="text-sm">Type to search messages</p>
+            <p className="text-sm">{t('chatSearch.typeToSearch')}</p>
           </div>
         ) : results.length === 0 ? (
           <div
             className={`flex flex-col items-center justify-center h-full gap-2 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
           >
-            <p className="text-sm">No messages found</p>
+            <p className="text-sm">{t('chatSearch.noResults')}</p>
           </div>
         ) : (
-          <ul className="divide-y" role="listbox" aria-label="Search results">
+          <ul
+            className="divide-y"
+            role="listbox"
+            aria-label={t('chatSearch.resultsAria')}
+          >
             {results.map((match, index) => (
               <li
                 key={`${match.sessionId}-${match.message.id}`}
@@ -320,12 +319,18 @@ export default function ChatSearchPanel({
                   <p
                     className={`text-[11px] mt-0.5 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
                   >
-                    {match.message.role === 'user' ? 'You' : 'Assistant'} ·{' '}
-                    {new Date(match.message.timestamp).toLocaleDateString([], {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
+                    {match.message.role === 'user'
+                      ? t('chatSearch.you')
+                      : t('chatSearch.assistant')}{' '}
+                    ·{' '}
+                    {new Date(match.message.timestamp).toLocaleDateString(
+                      locale,
+                      {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      },
+                    )}
                   </p>
                   <HighlightedSnippet match={match} isDarkMode={isDarkMode} />
                 </button>
@@ -340,7 +345,12 @@ export default function ChatSearchPanel({
         <div
           className={`px-4 py-2 border-t text-xs ${isDarkMode ? 'border-gray-800 text-gray-500' : 'border-gray-100 text-gray-400'}`}
         >
-          {results.length} result{results.length !== 1 ? 's' : ''}
+          {t(
+            results.length === 1
+              ? 'chatSearch.resultCountOne'
+              : 'chatSearch.resultCountOther',
+            { count: results.length },
+          )}
         </div>
       )}
     </div>
