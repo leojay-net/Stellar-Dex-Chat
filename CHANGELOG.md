@@ -960,6 +960,13 @@ Repo Avatar
 - **ci:** Resolve PR merge check failures
 - **frontend:** Resolve duplicate payment validator merge
 - **ci:** Repair release action pin and offline queue test
+- Repair existing CI failures
+- Restore fee batch nonce and snapshot tests
+- Complete missing contract storage keys
+- **contract:** Resolve CI test failures #1759
+- **contract:** Correct follow-up CI diagnostics
+- **ci:** Correct Lighthouse metrics and WASM paths
+- **ci:** Align WASM size limit with artifact
 
 ### Changed
 
@@ -1339,6 +1346,14 @@ Closes #1724, #1725, #1726, #1728
 - **changelog:** Update changelog [skip ci]
 - **changelog:** Update changelog [skip ci]
 - **changelog:** Update changelog [skip ci]
+- **changelog:** Update changelog [skip ci]
+- Add unused dependency checks #1759
+- Add unused dependency checks #1759
+- **frontend:** Fix reported CI formatting
+- **contract:** Preserve principal after fee withdrawal
+- **contracts:** Install stellar CLI system dependencies
+- Fix WASM dependencies and Lighthouse reports
+- **frontend:** Regression tests for AdminGuard cancelling stale admin checks
 
 ### Deprecated
 
