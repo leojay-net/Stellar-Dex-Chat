@@ -474,7 +474,7 @@ export async function fetchXlmBalance(publicKey: string): Promise<string> {
 // ---------------------------------------------------------------------------
 
 export interface ContractVersionInfo {
-  version: string;
+  version: number;
   deployConfigHash: string;
 }
 
@@ -482,9 +482,9 @@ export interface ContractVersionInfo {
 export const EXPECTED_CONTRACT_VERSION =
   process.env.NEXT_PUBLIC_EXPECTED_CONTRACT_VERSION ?? null;
 
-/** Fetches `get_contract_version` from the contract. Returns the version string. */
-export async function getContractVersion(): Promise<string> {
-  return viewCall<string>('get_contract_version');
+/** Fetches `get_contract_version` from the contract. Returns the version number. */
+export async function getContractVersion(): Promise<number> {
+  return viewCall<number>('get_contract_version');
 }
 
 /** Fetches `get_deploy_config_hash` from the contract. Returns the hash as a string. */
@@ -505,7 +505,8 @@ export async function getContractVersionInfo(): Promise<
     getDeployConfigHash(),
   ]);
   const versionMismatch =
-    EXPECTED_CONTRACT_VERSION !== null && version !== EXPECTED_CONTRACT_VERSION;
+    EXPECTED_CONTRACT_VERSION !== null &&
+    String(version) !== EXPECTED_CONTRACT_VERSION;
   return { version, deployConfigHash, versionMismatch };
 }
 
@@ -574,4 +575,154 @@ export async function getRegisteredTokensWithAllowlist(): Promise<RegisteredToke
   const addresses = await getRegisteredTokens();
   const states = await Promise.all(addresses.map((a) => isTokenAllowlisted(a)));
   return addresses.map((address, i) => ({ address, isAllowlisted: states[i] }));
+}
+
+// ---------------------------------------------------------------------------
+// #1811 — Upgrade proposals, timelock countdown, and ledger helpers
+// ---------------------------------------------------------------------------
+
+/** Nominal Stellar ledger close time used for ledger→time estimates. */
+export const LEDGER_CLOSE_TIME_SECONDS = 5;
+
+/**
+ * Normalized view of an on-chain `UpgradeProposal`.
+ * `wasmHash` is the lowercase hex encoding of the 32-byte WASM hash.
+ */
+export interface UpgradeProposalInfo {
+  wasmHash: string;
+  executableAfterLedger: number;
+  newVersion: number;
+}
+
+/** Normalized view of `UpgradeProposalTiming` storage metadata. */
+export interface UpgradeProposalTimingInfo {
+  wasmHash: string;
+  proposedAtLedger: number;
+  delayLedgers: number;
+  executableAfterLedger: number;
+}
+
+/** Converts a byte container (`Uint8Array`, `number[]`, or hex string) to lowercase hex. */
+export function bytesToHex(value: Uint8Array | number[] | string): string {
+  if (typeof value === 'string') return value.toLowerCase();
+  const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+interface RawUpgradeProposal {
+  wasm_hash?: Uint8Array | number[] | string;
+  executable_after?: number | bigint;
+  new_version?: number | bigint;
+}
+
+interface RawUpgradeProposalTiming {
+  wasm_hash?: Uint8Array | number[] | string;
+  proposed_at?: number | bigint;
+  delay?: number | bigint;
+  executable_after?: number | bigint;
+}
+
+function toLedgerNumber(value: number | bigint | undefined): number {
+  return value === undefined ? 0 : Number(value);
+}
+
+/** Normalizes the raw `get_upgrade_proposal` result; returns null when absent. */
+export function normalizeUpgradeProposal(
+  raw: unknown,
+): UpgradeProposalInfo | null {
+  if (raw === null || raw === undefined) return null;
+  const proposal = raw as RawUpgradeProposal;
+  if (proposal.wasm_hash === undefined || proposal.executable_after === undefined) {
+    return null;
+  }
+  return {
+    wasmHash: bytesToHex(proposal.wasm_hash),
+    executableAfterLedger: toLedgerNumber(proposal.executable_after),
+    newVersion: toLedgerNumber(proposal.new_version),
+  };
+}
+
+/** Normalizes the raw `get_upgrade_proposal_timing` result; returns null when absent. */
+export function normalizeUpgradeProposalTiming(
+  raw: unknown,
+): UpgradeProposalTimingInfo | null {
+  if (raw === null || raw === undefined) return null;
+  const timing = raw as RawUpgradeProposalTiming;
+  if (
+    timing.wasm_hash === undefined ||
+    timing.proposed_at === undefined ||
+    timing.delay === undefined ||
+    timing.executable_after === undefined
+  ) {
+    return null;
+  }
+  return {
+    wasmHash: bytesToHex(timing.wasm_hash),
+    proposedAtLedger: toLedgerNumber(timing.proposed_at),
+    delayLedgers: toLedgerNumber(timing.delay),
+    executableAfterLedger: toLedgerNumber(timing.executable_after),
+  };
+}
+
+/**
+ * Fetches the pending upgrade proposal from `get_upgrade_proposal`.
+ * Returns `null` when no proposal is pending. Throws when the entrypoint is
+ * not deployed or the simulation fails — callers should handle that case.
+ */
+export async function getUpgradeProposal(): Promise<UpgradeProposalInfo | null> {
+  const raw = await viewCall<unknown>('get_upgrade_proposal');
+  return normalizeUpgradeProposal(raw);
+}
+
+/**
+ * Fetches upgrade timing metadata from `get_upgrade_proposal_timing`.
+ * Returns `null` when no proposal timing is stored.
+ */
+export async function getUpgradeProposalTiming(): Promise<UpgradeProposalTimingInfo | null> {
+  const raw = await viewCall<unknown>('get_upgrade_proposal_timing');
+  return normalizeUpgradeProposalTiming(raw);
+}
+
+/** Returns the sequence number of the most recently closed ledger. */
+export async function getLatestLedgerSequence(): Promise<number> {
+  const ledger = await server.getLatestLedger();
+  return ledger.sequence;
+}
+
+export interface LedgerCountdown {
+  /** Ledgers remaining until the target; 0 when already reached. */
+  remainingLedgers: number;
+  /** Estimated seconds remaining, derived from the nominal ledger close time. */
+  remainingSeconds: number;
+  /** True once the target ledger has been reached or passed. */
+  executable: boolean;
+}
+
+/**
+ * Computes a timelock countdown between `targetLedger` and `currentLedger`.
+ * Negative/zero headroom is reported as `executable: true`.
+ */
+export function computeLedgerCountdown(
+  targetLedger: number,
+  currentLedger: number,
+): LedgerCountdown {
+  const remainingLedgers = Math.max(0, targetLedger - currentLedger);
+  return {
+    remainingLedgers,
+    remainingSeconds: remainingLedgers * LEDGER_CLOSE_TIME_SECONDS,
+    executable: targetLedger <= currentLedger,
+  };
+}
+
+/** Formats a duration in seconds as a compact human-readable label. */
+export function formatDurationSeconds(totalSeconds: number): string {
+  if (totalSeconds <= 0) return '0s';
+  const seconds = Math.round(totalSeconds);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ${minutes % 60}m`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ${hours % 24}h`;
 }
