@@ -1360,6 +1360,7 @@ Closes #1724, #1725, #1726, #1728
 - Add secret scanning with gitleaks
 - **changelog:** Update changelog [skip ci]
 - **changelog:** Update changelog [skip ci]
+- **changelog:** Update changelog [skip ci]
 
 ### Deprecated
 
