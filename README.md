@@ -1,5 +1,7 @@
 # Stellar-Dex-Chat
 
+
+
 A decentralized exchange (DEX) interface prioritizing seamless asset-to-bank conversions leveraging AI-assisted conversations and automated Soroban smart contracts on the Stellar network.
 
 ## Quick Start
