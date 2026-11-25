@@ -1,6 +1,12 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, render, screen, fireEvent, cleanup } from '@testing-library/react';
+import {
+  act,
+  render,
+  screen,
+  fireEvent,
+  cleanup,
+} from '@testing-library/react';
 import { useNotifications } from '@/hooks/useNotifications';
 import '@testing-library/jest-dom';
 import NotificationsCenter from '../NotificationsCenter';
@@ -10,7 +16,8 @@ const mockClearNotifications = vi.fn();
 const mockMarkAsRead = vi.fn();
 const mockAddNotification = vi.fn();
 const mockSetNotifications = vi.fn();
-const emptyNotifications: ReturnType<typeof useNotifications>['notifications'] = [];
+const emptyNotifications: ReturnType<typeof useNotifications>['notifications'] =
+  [];
 
 function resetNotificationsMock() {
   vi.mocked(useNotifications).mockImplementation(() => ({
@@ -73,7 +80,9 @@ describe('NotificationsCenter – rendering', () => {
 
   it('renders the bell button', () => {
     render(<NotificationsCenter />);
-    expect(screen.getByRole('button', { name: /notifications/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /notifications/i }),
+    ).toBeInTheDocument();
   });
 
   it('does not show the dropdown initially', () => {
@@ -130,7 +139,9 @@ describe('NotificationsCenter – dynamic theme tokens (#816)', () => {
 
   it('styles the dropdown panel with theme tokens instead of static light/dark classes', async () => {
     await openNotificationsPanel();
-    const panel = screen.getByText('Notifications').closest('div[class*="absolute"]');
+    const panel = screen
+      .getByText('Notifications')
+      .closest('div[class*="absolute"]');
     expect(panel).toHaveClass('bg-[var(--color-surface)]');
     expect(panel).toHaveClass('border-[var(--color-border)]');
     // No hardcoded gray/white palette classes should remain on the panel.
@@ -146,14 +157,16 @@ describe('NotificationsCenter – dynamic theme tokens (#816)', () => {
 
   it('renders identically regardless of the OS/user color-scheme preference, since theming is driven by CSS tokens, not component state', async () => {
     await openNotificationsPanel();
-    const panelBefore = screen.getByText('Notifications').closest('div[class*="absolute"]')
-      ?.className;
+    const panelBefore = screen
+      .getByText('Notifications')
+      .closest('div[class*="absolute"]')?.className;
     cleanup();
     resetNotificationsMock();
 
     await openNotificationsPanel();
-    const panelAfter = screen.getByText('Notifications').closest('div[class*="absolute"]')
-      ?.className;
+    const panelAfter = screen
+      .getByText('Notifications')
+      .closest('div[class*="absolute"]')?.className;
 
     expect(panelBefore).toBe(panelAfter);
   });
@@ -178,7 +191,9 @@ describe('NotificationsCenter – dynamic theme tokens (#816)', () => {
     });
 
     await openNotificationsPanel();
-    const row = screen.getByText('Transaction confirmed').closest('div[class*="flex gap-3"]');
+    const row = screen
+      .getByText('Transaction confirmed')
+      .closest('div[class*="flex gap-3"]');
     expect(row).toHaveClass('bg-[var(--color-primary-soft)]');
   });
 });
@@ -301,7 +316,7 @@ describe('NotificationsCenter – keyboard shortcuts', () => {
       <>
         <NotificationsCenter />
         <input data-testid="text-input" />
-      </>
+      </>,
     );
     fireEvent.click(screen.getByRole('button', { name: /notifications/i }));
 
@@ -316,7 +331,10 @@ describe('NotificationsCenter – keyboard shortcuts', () => {
     const removeEventListenerSpy = vi.spyOn(document, 'removeEventListener');
     const { unmount } = render(<NotificationsCenter />);
     unmount();
-    expect(removeEventListenerSpy).toHaveBeenCalledWith('keydown', expect.any(Function));
+    expect(removeEventListenerSpy).toHaveBeenCalledWith(
+      'keydown',
+      expect.any(Function),
+    );
     removeEventListenerSpy.mockRestore();
   });
 });
@@ -337,7 +355,7 @@ describe('NotificationsCenter – click-outside', () => {
       <div>
         <NotificationsCenter />
         <div data-testid="outside">outside</div>
-      </div>
+      </div>,
     );
 
     fireEvent.click(screen.getByRole('button', { name: /notifications/i }));

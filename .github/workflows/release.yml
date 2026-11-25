@@ -1,0 +1,118 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - "cliff.toml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Publish Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Install git-cliff
+        env:
+          GIT_CLIFF_VERSION: "2.13.1"
+        run: |
+          set -euo pipefail
+          TARBALL="git-cliff-${GIT_CLIFF_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -sSfL --retry 3 \
+            "https://github.com/orhun/git-cliff/releases/download/v${GIT_CLIFF_VERSION}/${TARBALL}" \
+            -o "$TARBALL"
+          curl -sSfL --retry 3 \
+            "https://github.com/orhun/git-cliff/releases/download/v${GIT_CLIFF_VERSION}/${TARBALL}.sha512" \
+            -o "${TARBALL}.sha512"
+          sha512sum -c "${TARBALL}.sha512"
+          tar -xzf "$TARBALL"
+          sudo install -m755 "git-cliff-${GIT_CLIFF_VERSION}/git-cliff" /usr/local/bin/git-cliff
+          git-cliff --version
+
+      - name: Generate release notes
+        env:
+          TARGET_TAG: ${{ github.ref_name }}
+          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          set -euo pipefail
+          if [ "$IS_TAG" = "true" ]; then
+            echo "Generating release notes for tag $TARGET_TAG..."
+            git-cliff --tag "$TARGET_TAG" --strip header --output RELEASE_NOTES.md
+          else
+            echo "Running git-cliff in PR preview/dry-run mode..."
+            git-cliff --unreleased --strip header --output RELEASE_NOTES.md || true
+            if [ ! -s RELEASE_NOTES.md ]; then
+              echo "Automated preview release notes for CI" > RELEASE_NOTES.md
+            fi
+          fi
+          cat RELEASE_NOTES.md
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable
+        with:
+          toolchain: stable
+          targets: wasm32v1-none
+
+      - name: Install Stellar CLI system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libdbus-1-dev libudev-dev pkg-config
+
+      - name: Install Stellar CLI
+        run: cargo install --locked stellar-cli --version 28.0.0
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+        with:
+          workspaces: Dechat/stellar-contracts -> target
+
+      - name: Build optimised WASM contract
+        working-directory: Dechat/stellar-contracts
+        run: |
+          set -euo pipefail
+          stellar contract build
+
+      - name: Generate SHA-256 hash of optimised WASM
+        working-directory: Dechat/stellar-contracts
+        run: |
+          set -euo pipefail
+          ARTIFACT="target/wasm32v1-none/release/stellar_contracts.wasm"
+          if [ ! -f "$ARTIFACT" ]; then
+            echo "Error: $ARTIFACT not found"
+            exit 1
+          fi
+          sha256sum "$ARTIFACT" > "${ARTIFACT}.sha256"
+          cat "${ARTIFACT}.sha256"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-contract-wasm
+          path: |
+            Dechat/stellar-contracts/target/wasm32v1-none/release/stellar_contracts.wasm
+            Dechat/stellar-contracts/target/wasm32v1-none/release/stellar_contracts.wasm.sha256
+            RELEASE_NOTES.md
+          retention-days: 7
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
+        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2.2.1
+        with:
+          body_path: RELEASE_NOTES.md
+          files: |
+            Dechat/stellar-contracts/target/wasm32v1-none/release/stellar_contracts.wasm
+            Dechat/stellar-contracts/target/wasm32v1-none/release/stellar_contracts.wasm.sha256
+          draft: false
+          prerelease: false

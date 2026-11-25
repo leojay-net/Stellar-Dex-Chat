@@ -14,6 +14,10 @@ function extractStellarAddress(raw: string): string | null {
   return null;
 }
 
+interface NativeQrDetector {
+  detect(source: HTMLVideoElement): Promise<Array<{ rawValue: string }>>;
+}
+
 interface QrScannerProps {
   onScan: (address: string) => void;
   onClose: () => void;
@@ -47,7 +51,9 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
     } catch (err) {
       const e = err as DOMException;
       if (e.name === 'NotAllowedError') {
-        setError('Camera permission denied. Please allow camera access and try again.');
+        setError(
+          'Camera permission denied. Please allow camera access and try again.',
+        );
       } else {
         setError('Unable to access camera: ' + e.message);
       }
@@ -58,21 +64,30 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
   useEffect(() => {
     if (!scanning) return;
 
-    let detector: { detect: (src: HTMLVideoElement) => Promise<Array<{ rawValue: string }>> } | null = null;
-    let jsQR: ((data: Uint8ClampedArray, w: number, h: number) => { data: string } | null) | null = null;
+    let detector: NativeQrDetector | null = null;
+    let jsQR:
+      | ((
+          data: Uint8ClampedArray,
+          w: number,
+          h: number,
+        ) => { data: string } | null)
+      | null = null;
     let canvas: HTMLCanvasElement | null = null;
     let ctx: CanvasRenderingContext2D | null = null;
     let active = true;
 
     async function init() {
-      // Prefer native BarcodeDetector
-      if ('BarcodeDetector' in window) {
+      const { BarcodeDetector } = window as Window & {
+        BarcodeDetector?: {
+          new (options: { formats: string[] }): NativeQrDetector;
+          getSupportedFormats(): Promise<string[]>;
+        };
+      };
+      if (BarcodeDetector) {
         try {
-          // @ts-expect-error – BarcodeDetector not yet in TS lib
-          const supported: string[] = await window.BarcodeDetector.getSupportedFormats();
+          const supported = await BarcodeDetector.getSupportedFormats();
           if (supported.includes('qr_code')) {
-            // @ts-expect-error
-            detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+            detector = new BarcodeDetector({ formats: ['qr_code'] });
           }
         } catch {
           // fall through to jsQR
@@ -82,9 +97,7 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
       // JS fallback: dynamic import keeps bundle size low
       if (!detector) {
         try {
-          const mod = await import('jsqr' as never /* avoids TS import warning */);
-          // @ts-expect-error – dynamic import
-          jsQR = mod.default ?? mod;
+          jsQR = (await import('jsqr')).default;
           canvas = document.createElement('canvas');
           ctx = canvas.getContext('2d');
         } catch {
@@ -93,12 +106,12 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
         }
       }
 
-      tick();
+      void tick();
     }
 
     async function tick() {
       if (!active || !videoRef.current || videoRef.current.readyState < 2) {
-        rafRef.current = requestAnimationFrame(tick);
+        rafRef.current = requestAnimationFrame(() => void tick());
         return;
       }
 
@@ -131,10 +144,10 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
         // detector errors are transient; keep scanning
       }
 
-      rafRef.current = requestAnimationFrame(tick);
+      rafRef.current = requestAnimationFrame(() => void tick());
     }
 
-    init();
+    void init();
     return () => {
       active = false;
       cancelAnimationFrame(rafRef.current);
@@ -142,7 +155,7 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
   }, [scanning, onScan, stopCamera]);
 
   useEffect(() => {
-    startCamera();
+    void startCamera();
     return stopCamera;
   }, [startCamera, stopCamera]);
 
@@ -150,7 +163,10 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
       <div className="relative bg-black rounded-2xl overflow-hidden w-80 max-w-[90vw]">
         <button
-          onClick={() => { stopCamera(); onClose(); }}
+          onClick={() => {
+            stopCamera();
+            onClose();
+          }}
           aria-label="Close QR scanner"
           className="absolute top-3 right-3 z-10 text-white/80 hover:text-white"
         >
@@ -162,7 +178,7 @@ export default function QrScanner({ onScan, onClose }: QrScannerProps) {
             <CameraOff className="w-10 h-10 text-red-400" />
             <p className="text-sm text-white/80">{error}</p>
             <button
-              onClick={startCamera}
+              onClick={() => void startCamera()}
               className="mt-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500"
             >
               Retry

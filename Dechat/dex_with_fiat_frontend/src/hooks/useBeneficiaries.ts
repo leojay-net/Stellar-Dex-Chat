@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 const KEYBOARD_SHORTCUTS = {
   ADD_BENEFICIARY: 'Ctrl+B',
@@ -36,10 +36,7 @@ class RequestDeduplicator {
    * Get or create a promise for the given key.
    * If a request is already in-flight, return the existing promise.
    */
-  async fetch<T>(
-    key: string,
-    fetchFn: () => Promise<T>,
-  ): Promise<T> {
+  async fetch<T>(key: string, fetchFn: () => Promise<T>): Promise<T> {
     // Check if a request is already in-flight
     if (this.inFlightRequests.has(key)) {
       return this.inFlightRequests.get(key) as Promise<T>;
@@ -76,7 +73,9 @@ async function fetchBeneficiariesWithDedup(
 ): Promise<Beneficiary[]> {
   return deduplicator.fetch(`beneficiaries:${userId}`, async () => {
     try {
-      const response = await fetch(`/api/beneficiaries?userId=${encodeURIComponent(userId)}`);
+      const response = await fetch(
+        `/api/beneficiaries?userId=${encodeURIComponent(userId)}`,
+      );
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -90,36 +89,36 @@ async function fetchBeneficiariesWithDedup(
   });
 }
 
-export function useBeneficiaries(options?: { fetchFromApi?: boolean; userId?: string }) {
+export function useBeneficiaries(options?: {
+  fetchFromApi?: boolean;
+  userId?: string;
+}) {
   const { fetchFromApi = false, userId = 'current' } = options || {};
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
-  const isMountedRef = useRef(false);
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-    };
+    setIsMounted(true);
   }, []);
 
   // Fetch from API with deduplication if enabled
   useEffect(() => {
-    if (!fetchFromApi || typeof window === 'undefined') return;
+    if (!isMounted || !fetchFromApi || typeof window === 'undefined') return;
 
     let cancelled = false;
 
-    (async () => {
+    void (async () => {
       try {
         const data = await fetchBeneficiariesWithDedup(userId);
-        if (!cancelled && isMountedRef.current) {
+        if (!cancelled) {
           setBeneficiaries(Array.isArray(data) ? data : []);
           setIsLoaded(true);
         }
       } catch (error) {
         console.error('Error loading beneficiaries:', error);
-        if (!cancelled && isMountedRef.current) {
+        if (!cancelled) {
           setIsLoaded(true);
         }
       }
@@ -128,11 +127,11 @@ export function useBeneficiaries(options?: { fetchFromApi?: boolean; userId?: st
     return () => {
       cancelled = true;
     };
-  }, [fetchFromApi, userId]);
+  }, [isMounted, fetchFromApi, userId]);
 
   // Load from localStorage if not fetching from API
   useEffect(() => {
-    if (fetchFromApi || typeof window === 'undefined') return;
+    if (!isMounted || fetchFromApi || typeof window === 'undefined') return;
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
@@ -143,7 +142,7 @@ export function useBeneficiaries(options?: { fetchFromApi?: boolean; userId?: st
       setBeneficiaries([]);
     }
     setIsLoaded(true);
-  }, [fetchFromApi]);
+  }, [isMounted, fetchFromApi]);
 
   useEffect(() => {
     if (!isLoaded || typeof window === 'undefined') return;
@@ -207,54 +206,57 @@ export function useBeneficiaries(options?: { fetchFromApi?: boolean; userId?: st
   );
 
   // Keyboard shortcuts handling
-  const handleKeyboardShortcut = useCallback((event: KeyboardEvent) => {
-    const { ctrlKey, shiftKey, key } = event;
+  const handleKeyboardShortcut = useCallback(
+    (event: KeyboardEvent) => {
+      const { ctrlKey, shiftKey, key } = event;
 
-    // Add beneficiary: Ctrl+B
-    if (ctrlKey && !shiftKey && key === 'b') {
-      event.preventDefault();
-      // This would typically trigger a UI action to add beneficiary
-      // For now, we'll just log or provide a callback
-      return 'add';
-    }
-
-    // Focus beneficiaries: Ctrl+Shift+B
-    if (ctrlKey && shiftKey && key === 'B') {
-      event.preventDefault();
-      return 'focus';
-    }
-
-    // Navigation: ArrowUp/ArrowDown when beneficiaries are focused
-    if (key === 'ArrowUp' && selectedIndex > 0) {
-      event.preventDefault();
-      setSelectedIndex(selectedIndex - 1);
-      return 'navigate-up';
-    }
-
-    if (key === 'ArrowDown' && selectedIndex < beneficiaries.length - 1) {
-      event.preventDefault();
-      setSelectedIndex(selectedIndex + 1);
-      return 'navigate-down';
-    }
-
-    // Select: Enter
-    if (key === 'Enter' && selectedIndex >= 0) {
-      event.preventDefault();
-      return 'select';
-    }
-
-    // Delete: Delete key
-    if (key === 'Delete' && selectedIndex >= 0) {
-      event.preventDefault();
-      const beneficiaryToDelete = beneficiaries[selectedIndex];
-      if (beneficiaryToDelete) {
-        deleteBeneficiary(beneficiaryToDelete.id);
+      // Add beneficiary: Ctrl+B
+      if (ctrlKey && !shiftKey && key === 'b') {
+        event.preventDefault();
+        // This would typically trigger a UI action to add beneficiary
+        // For now, we'll just log or provide a callback
+        return 'add';
       }
-      return 'delete';
-    }
 
-    return null;
-  }, [selectedIndex, beneficiaries, deleteBeneficiary]);
+      // Focus beneficiaries: Ctrl+Shift+B
+      if (ctrlKey && shiftKey && key === 'B') {
+        event.preventDefault();
+        return 'focus';
+      }
+
+      // Navigation: ArrowUp/ArrowDown when beneficiaries are focused
+      if (key === 'ArrowUp' && selectedIndex > 0) {
+        event.preventDefault();
+        setSelectedIndex(selectedIndex - 1);
+        return 'navigate-up';
+      }
+
+      if (key === 'ArrowDown' && selectedIndex < beneficiaries.length - 1) {
+        event.preventDefault();
+        setSelectedIndex(selectedIndex + 1);
+        return 'navigate-down';
+      }
+
+      // Select: Enter
+      if (key === 'Enter' && selectedIndex >= 0) {
+        event.preventDefault();
+        return 'select';
+      }
+
+      // Delete: Delete key
+      if (key === 'Delete' && selectedIndex >= 0) {
+        event.preventDefault();
+        const beneficiaryToDelete = beneficiaries[selectedIndex];
+        if (beneficiaryToDelete) {
+          deleteBeneficiary(beneficiaryToDelete.id);
+        }
+        return 'delete';
+      }
+
+      return null;
+    },
+    [selectedIndex, beneficiaries, deleteBeneficiary],
+  );
 
   useEffect(() => {
     if (typeof window === 'undefined') return;

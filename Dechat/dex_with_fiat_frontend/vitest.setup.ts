@@ -55,9 +55,13 @@ window.scrollTo = vi.fn();
 
 // Mock fetch by default
 if (!global.fetch) {
-  global.fetch = vi.fn().mockImplementation(() => Promise.resolve(new Response()));
+  global.fetch = vi
+    .fn()
+    .mockImplementation(() => Promise.resolve(new Response()));
 } else {
-  vi.spyOn(global, 'fetch').mockImplementation(() => Promise.resolve(new Response()));
+  vi.spyOn(global, 'fetch').mockImplementation(() =>
+    Promise.resolve(new Response()),
+  );
 }
 
 const originalError = console.error;

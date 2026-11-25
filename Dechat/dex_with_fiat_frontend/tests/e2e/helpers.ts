@@ -50,11 +50,8 @@ function scvalXdrForSimulateFunction(functionName: string | null): string {
 
 export const MOCK_WALLET_ADDRESS = MOCK_ADMIN_ADDRESS;
 
-/** Locator for the admin reconciliation page title (WebKit-tolerant). */
 export function adminReconciliationHeading(page: Page) {
-  return page
-    .getByRole('heading', { name: /Admin Reconciliation Dashboard/i })
-    .or(page.getByText(/Admin Reconciliation Dashboard/i));
+  return page.getByRole('heading', { name: /Admin Reconciliation Dashboard/i });
 }
 
 /**
@@ -65,8 +62,9 @@ export async function installMockWalletBridge(page: Page): Promise<void> {
   await page.addInitScript(() => {
     if (typeof window.mockStellarConnect !== 'function') {
       window.mockStellarConnect = (addr: string) => {
-        (window as Window & { __MOCK_CONNECTED_ADDRESS__?: string }).__MOCK_CONNECTED_ADDRESS__ =
-          addr;
+        (
+          window as Window & { __MOCK_CONNECTED_ADDRESS__?: string }
+        ).__MOCK_CONNECTED_ADDRESS__ = addr;
         window.dispatchEvent(
           new CustomEvent('mockStellarConnect', { detail: addr }),
         );
@@ -119,18 +117,21 @@ export async function mockSorobanRpc(
 ): Promise<void> {
   const adminAddress = options.adminAddress ?? MOCK_WALLET_ADDRESS;
 
-  await page.route('**/horizon-testnet.stellar.org/accounts/**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        id: adminAddress,
-        account_id: adminAddress,
-        sequence: '123456789',
-        balances: [{ balance: '1000.0000000', asset_type: 'native' }],
-      }),
-    });
-  });
+  await page.route(
+    '**/horizon-testnet.stellar.org/accounts/**',
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: adminAddress,
+          account_id: adminAddress,
+          sequence: '123456789',
+          balances: [{ balance: '1000.0000000', asset_type: 'native' }],
+        }),
+      });
+    },
+  );
 
   await page.route('**/soroban-testnet.stellar.org/**', async (route) => {
     if (route.request().method() !== 'POST') {
@@ -309,11 +310,56 @@ export async function mockReconciliationApi(page: Page): Promise<void> {
   });
 }
 
+/** Mock the extension and server boundary while exercising AdminGuard in the browser. */
+export async function mockAdminAuthentication(page: Page): Promise<void> {
+  await mockSorobanRpc(page);
+  await installMockWalletBridge(page);
+  await page.addInitScript((address) => {
+    window.addEventListener('message', (event) => {
+      const request = event.data;
+      if (
+        event.source !== window ||
+        request?.source !== 'FREIGHTER_EXTERNAL_MSG_REQUEST' ||
+        request.type !== 'SUBMIT_TRANSACTION' ||
+        request.accountToSign !== address
+      ) {
+        return;
+      }
+
+      window.postMessage(
+        {
+          source: 'FREIGHTER_EXTERNAL_MSG_RESPONSE',
+          messagedId: request.messageId,
+          signerAddress: address,
+          signedTransaction: request.transactionXdr,
+        },
+        window.location.origin,
+      );
+    });
+  }, MOCK_ADMIN_ADDRESS);
+
+  const nonce = Buffer.alloc(32, 1).toString('base64');
+  await page.route('**/api/admin/auth/nonce', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: { nonce, expires: Date.now() + 60_000 } });
+      return;
+    }
+
+    const request = route.request().postDataJSON();
+    expect(request).toMatchObject({ nonce, address: MOCK_ADMIN_ADDRESS });
+    const envelope = xdr.TransactionEnvelope.fromXDR(
+      request.signature,
+      'base64',
+    );
+    expect(envelope.v1().tx().memo().hash().toString('base64')).toBe(nonce);
+    await route.fulfill({ json: { success: true } });
+  });
+}
+
 /** Open /admin/reconciliation as a mocked contract admin with fixture data. */
 export async function gotoAdminReconciliation(page: Page): Promise<void> {
-  await mockSorobanRpc(page, { adminAddress: MOCK_ADMIN_ADDRESS });
+  await mockAdminAuthentication(page);
   await mockReconciliationApi(page);
-  await installMockWalletBridge(page);
   await page.goto('/admin/reconciliation');
   await page.waitForLoadState('domcontentloaded');
   await connectMockWallet(page, MOCK_ADMIN_ADDRESS);
@@ -345,4 +391,11 @@ export async function openWithdrawModalFromChat(page: Page): Promise<void> {
     state: 'visible',
     timeout: 10_000,
   });
+}
+
+export function fullKeyboardTabKey(browserName: string): string {
+  // macOS WebKit uses Option+Tab to include controls in keyboard navigation.
+  return browserName === 'webkit' && process.platform === 'darwin'
+    ? 'Alt+Tab'
+    : 'Tab';
 }

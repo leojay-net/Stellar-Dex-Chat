@@ -3,26 +3,23 @@
 import { useEffect, useState, useCallback } from 'react';
 import { chatTelemetry } from '@/lib/chatTelemetry';
 
-/**
- * Verify actual internet connectivity by pinging a reliable endpoint.
- * Detects captive portals and other cases where navigator.onLine is misleading.
- */
-async function verifyConnectivity(): Promise<boolean> {
+// Probe the app to confirm that a browser online event restored connectivity.
+async function verifyConnectivity(
+  controller: AbortController,
+): Promise<boolean> {
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-    const response = await fetch('https://www.cloudflare.com/cdn-cgi/trace', {
+    const response = await fetch('/api/health', {
       method: 'HEAD',
-      mode: 'no-cors',
+      cache: 'no-store',
+      redirect: 'error',
       signal: controller.signal,
     });
-    void response;
-
-    clearTimeout(timeoutId);
-    return true;
+    return response.ok;
   } catch {
     return false;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -47,22 +44,38 @@ export function useOnlineStatus() {
       });
     }
 
-    const handleOnline = async () => {
-      const hasConnectivity = await verifyConnectivity();
+    let activeProbe: AbortController | undefined;
+
+    const checkOnline = async () => {
+      activeProbe?.abort();
+      const controller = new AbortController();
+      activeProbe = controller;
+      const hasConnectivity = await verifyConnectivity(controller);
+      if (activeProbe !== controller) return;
+      activeProbe = undefined;
       setIsOnline(hasConnectivity);
-      chatTelemetry.networkStatus({
-        status: hasConnectivity ? 'online' : 'offline',
-        source: 'connectivity-check',
-      });
       if (hasConnectivity) {
         setWasOffline(true);
       }
     };
 
+    const handleOnline = () => {
+      void checkOnline();
+    };
+
+    const cancelProbe = () => {
+      activeProbe?.abort();
+      activeProbe = undefined;
+    };
+
     const handleOffline = () => {
+      cancelProbe();
       setIsOnline(false);
       setWasOffline(true);
-      chatTelemetry.networkStatus({ status: 'offline', source: 'browser-event' });
+      chatTelemetry.networkStatus({
+        status: 'offline',
+        source: 'browser-event',
+      });
     };
 
     if (typeof window !== 'undefined') {
@@ -70,6 +83,7 @@ export function useOnlineStatus() {
       window.addEventListener('offline', handleOffline);
 
       return () => {
+        cancelProbe();
         window.removeEventListener('online', handleOnline);
         window.removeEventListener('offline', handleOffline);
       };

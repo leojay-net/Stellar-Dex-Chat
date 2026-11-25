@@ -68,11 +68,11 @@ stellar keys add deployer --secret-key "$ADMIN_SECRET_KEY" 2>/dev/null || true
 echo "📦 Building optimized WASM contract..."
 stellar contract build
 
-WASM_FILE="./target/wasm32v1-none/release/stellar_contracts.optimized.wasm"
+WASM_FILE="./target/wasm32v1-none/release/stellar_contracts.wasm"
 
 if [ ! -f "$WASM_FILE" ]; then
     echo "❌ Error: Optimized WASM file not found at $WASM_FILE"
-    echo "   stellar contract build should produce .optimized.wasm"
+    echo "   stellar contract build should produce stellar_contracts.wasm"
     exit 1
 fi
 

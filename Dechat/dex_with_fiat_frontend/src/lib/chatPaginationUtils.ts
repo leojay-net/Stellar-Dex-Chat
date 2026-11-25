@@ -41,17 +41,7 @@ export const hasMoreMessages = (
 };
 
 /**
- * Calculates the next visible item count for pagination, strictly bounded by total available items.
- *
- * ### Boundary Clamping
- * Evaluates `Math.min(currentVisibleCount + pageSize, totalCount)` to guarantee the visible
- * count never overflows the total available collection size.
- *
- * @template T - Type of items in collection.
- * @param allItems - Total item array or numeric item count.
- * @param currentVisibleCount - Number of items currently visible.
- * @param pageSize - Incremental page size to append (defaults to {@link DEFAULT_PAGE_SIZE}).
- * @returns The next clamped count of items to render.
+ * Calculates the next count of visible items (generic version)
  */
 export const getNextMessageCount = <T>(
   allItems: T[] | number,
@@ -62,4 +52,3 @@ export const getNextMessageCount = <T>(
   const nextCount = currentVisibleCount + pageSize;
   return Math.min(nextCount, totalCount);
 };
-

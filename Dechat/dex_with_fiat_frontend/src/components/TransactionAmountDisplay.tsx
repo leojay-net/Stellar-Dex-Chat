@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useRef } from 'react';
 import { useCurrencyConversion } from '@/hooks/useCurrencyConversion';
-import { transactionAmountSchema, type TransactionAmountProps } from '@/lib/transactionSchema';
+import {
+  transactionAmountSchema,
+  type TransactionAmountProps,
+} from '@/lib/transactionSchema';
 import { motion } from 'framer-motion';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
 import SkeletonTransactionAmount from '@/components/ui/skeleton/SkeletonTransactionAmount';
@@ -29,14 +32,14 @@ export function TransactionAmountDisplay(props: TransactionAmountProps) {
   // the parse fails so useCurrencyConversion still receives valid arguments.
   const parsed = result.success ? result.data : null;
   const numericAmount = parsed
-    ? (typeof parsed.amount === 'string' ? parseFloat(parsed.amount) : parsed.amount)
+    ? typeof parsed.amount === 'string'
+      ? parseFloat(parsed.amount)
+      : parsed.amount
     : 0;
   const normalizedAsset = parsed?.asset || 'XLM';
 
-  const { displayText, isLoading, hasError, fiatAmount } = useCurrencyConversion(
-    numericAmount,
-    normalizedAsset,
-  );
+  const { displayText, isLoading, hasError, fiatAmount } =
+    useCurrencyConversion(numericAmount, normalizedAsset);
 
   const lastRateRef = useRef<number | null>(null);
   const lastConfirmedTextRef = useRef<string>('');
@@ -64,7 +67,12 @@ export function TransactionAmountDisplay(props: TransactionAmountProps) {
   }, [fiatCurrency]);
 
   const optimisticDisplayText = useMemo(() => {
-    if (!isLoading || !parsed || lastRateRef.current == null || numericAmount <= 0) {
+    if (
+      !isLoading ||
+      !parsed ||
+      lastRateRef.current == null ||
+      numericAmount <= 0
+    ) {
       return null;
     }
     const estimatedFiat = numericAmount * lastRateRef.current;
@@ -72,11 +80,19 @@ export function TransactionAmountDisplay(props: TransactionAmountProps) {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
-    const formattedAmount = normalizedAsset === 'XLM' && numericAmount < 0.001
-      ? numericAmount.toFixed(7)
-      : String(numericAmount);
+    const formattedAmount =
+      normalizedAsset === 'XLM' && numericAmount < 0.001
+        ? numericAmount.toFixed(7)
+        : String(numericAmount);
     return `${formattedAmount} ${normalizedAsset} ≈ ${currencySymbol}${formattedFiat} ${fiatCurrency.toUpperCase()}`;
-  }, [isLoading, parsed, numericAmount, normalizedAsset, currencySymbol, fiatCurrency]);
+  }, [
+    isLoading,
+    parsed,
+    numericAmount,
+    normalizedAsset,
+    currencySymbol,
+    fiatCurrency,
+  ]);
 
   const formattedHookText = useMemo(() => {
     if (!displayText || normalizedAsset !== 'XLM' || numericAmount >= 0.001) {
@@ -95,12 +111,19 @@ export function TransactionAmountDisplay(props: TransactionAmountProps) {
   // Auto-scroll: keep the latest amount visible whenever displayText updates.
   const containerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    containerRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+    });
   }, [renderedText]);
 
   if (!result.success) {
-    const errorMessage = result.error.issues[0]?.message || 'Invalid Amount Data';
-    console.error('TransactionAmountDisplay: Invalid props', result.error.format());
+    const errorMessage =
+      result.error.issues[0]?.message || 'Invalid Amount Data';
+    console.error(
+      'TransactionAmountDisplay: Invalid props',
+      result.error.format(),
+    );
     return (
       <motion.span
         className="theme-soft-danger inline-flex items-center rounded-md border px-2 py-1 text-xs italic"
@@ -113,7 +136,8 @@ export function TransactionAmountDisplay(props: TransactionAmountProps) {
     );
   }
 
-  const { fiatAmount: storedFiatAmount, fiatCurrency: storedFiatCurrency } = result.data;
+  const { fiatAmount: storedFiatAmount, fiatCurrency: storedFiatCurrency } =
+    result.data;
 
   // Show skeleton when loading with no fallback text
   if (isLoading && !renderedText) {
@@ -160,7 +184,9 @@ export function TransactionAmountDisplay(props: TransactionAmountProps) {
  * surrounding page down. The fallback renders the raw `amount asset` string so
  * the user always sees a value.
  */
-export function TransactionAmountDisplayWithBoundary(props: TransactionAmountProps) {
+export function TransactionAmountDisplayWithBoundary(
+  props: TransactionAmountProps,
+) {
   const fallback = (
     <span data-testid="transaction-amount-fallback">
       {props.amount} {props.asset}

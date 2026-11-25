@@ -1,12 +1,26 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { ArrowLeftRight, X, ChevronDown, Copy, Check, Columns2 } from 'lucide-react';
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  useMemo,
+  useCallback,
+} from 'react';
+import {
+  ArrowLeftRight,
+  X,
+  ChevronDown,
+  Copy,
+  Check,
+  Columns2,
+} from 'lucide-react';
 import { ChatSession, ChatMessage } from '@/types';
 import { UseSplitViewReturn } from '@/hooks/useSplitView';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useToast } from '@/hooks/useToast';
 import { useEffectiveDarkMode } from '@/hooks/useEffectiveDarkMode';
+import { useTranslation } from '@/hooks/useTranslation';
 import EmptyState from '@/components/ui/EmptyState';
 import Skeleton from '@/components/ui/skeleton/Skeleton';
 
@@ -22,25 +36,31 @@ interface SplitViewComparisonProps {
 
 interface ThreadPaneProps {
   session: ChatSession | null;
-  label: string;
+  /**
+   * Stable, non-translated identifier used for DOM ids and test ids.
+   * The visible (translated) label is derived from it.
+   */
+  paneKey: 'left' | 'right';
   selectedMessageId: string | null;
   allSessions: ChatSession[];
   onSelectSession: (id: string) => void;
   onSelectMessage: (id: string | null) => void;
-  onCopyMessage: (content: string) => void;
+  onCopyMessage: (content: string) => Promise<void>;
 }
 
 function ThreadPane({
   session,
-  label,
+  paneKey,
   selectedMessageId,
   allSessions,
   onSelectSession,
   onSelectMessage,
   onCopyMessage,
 }: ThreadPaneProps) {
+  const { t, locale } = useTranslation();
+  const label = t(paneKey === 'left' ? 'splitView.left' : 'splitView.right');
   const scrollRef = useRef<HTMLDivElement>(null);
-  const paneId = `split-pane-${label.toLowerCase()}-region`;
+  const paneId = `split-pane-${paneKey}-region`;
   const [mounted, setMounted] = React.useState(false);
   const [copiedMessageId, setCopiedMessageId] = React.useState<string | null>(
     null,
@@ -93,7 +113,7 @@ function ThreadPane({
 
   const formatTimestamp = (timestamp: number | Date) => {
     if (!mounted) return ''; // Avoid hydration mismatch by not rendering on server
-    return new Date(timestamp).toLocaleString([], {
+    return new Date(timestamp).toLocaleString(locale, {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
@@ -105,9 +125,9 @@ function ThreadPane({
     <div
       id={paneId}
       role="region"
-      aria-label={`${label} thread comparison pane`}
+      aria-label={t('splitView.paneAria', { label })}
       className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden border-r border-[var(--color-border)] last:border-r-0"
-      data-testid={`split-pane-${label.toLowerCase()}`}
+      data-testid={`split-pane-${paneKey}`}
     >
       {/* Pane header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--color-border)] bg-[var(--color-surface-muted)] flex-shrink-0">
@@ -121,12 +141,12 @@ function ThreadPane({
             value={session?.id ?? ''}
             onChange={(e) => onSelectSession(e.target.value)}
             className="w-full text-xs pl-2 pr-6 py-1 rounded border border-[var(--color-border)] appearance-none outline-none focus:ring-2 focus:ring-[var(--color-primary)] truncate bg-[var(--color-surface)] text-[var(--color-text-primary)]"
-            aria-label={`Select ${label} thread`}
+            aria-label={t('splitView.selectThreadAria', { label })}
           >
-            <option value="">— choose a thread —</option>
+            <option value="">{t('splitView.chooseThread')}</option>
             {allSessions.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.title || 'Untitled'}
+                {s.title || t('splitView.untitled')}
               </option>
             ))}
           </select>
@@ -142,16 +162,16 @@ function ThreadPane({
         ref={scrollRef}
         role="log"
         aria-relevant="additions"
-        aria-label={`${label} thread messages`}
+        aria-label={t('splitView.messagesAria', { label })}
         className="flex-1 overflow-y-auto px-3 py-3 space-y-2"
       >
         {!session ? (
           <div className="flex items-center justify-center h-full text-sm text-[var(--color-text-muted)]">
-            Select a thread above
+            {t('splitView.selectThreadAbove')}
           </div>
         ) : session.messages.filter((m) => m.role !== 'system').length === 0 ? (
           <div className="flex items-center justify-center h-full text-sm text-[var(--color-text-muted)]">
-            No messages in this thread
+            {t('splitView.noMessages')}
           </div>
         ) : (
           session.messages
@@ -174,7 +194,11 @@ function ThreadPane({
                     onClick={() => handleMessageClick(msg)}
                     className="w-full text-left"
                     aria-pressed={isSelected}
-                    aria-label={`${isUser ? 'User' : 'Assistant'} message`}
+                    aria-label={t(
+                      isUser
+                        ? 'splitView.userMessageAria'
+                        : 'splitView.assistantMessageAria',
+                    )}
                   >
                     <span
                       className={`font-semibold ${
@@ -183,7 +207,7 @@ function ThreadPane({
                           : 'text-[var(--color-success)]'
                       }`}
                     >
-                      {isUser ? 'You' : 'Assistant'}
+                      {isUser ? t('splitView.you') : t('splitView.assistant')}
                     </span>
                     <p className="mt-1 line-clamp-3 leading-relaxed text-[var(--color-text-secondary)]">
                       {msg.content}
@@ -198,10 +222,12 @@ function ThreadPane({
 
                   {/* Copy button */}
                   <button
-                    onClick={(e) => handleCopyMessage(e, msg.content, msg.id)}
+                    onClick={(e) =>
+                      void handleCopyMessage(e, msg.content, msg.id)
+                    }
                     className="absolute top-2 right-2 p-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity bg-[var(--color-surface)] hover:bg-[var(--color-surface-elevated)] border border-[var(--color-border)]"
-                    aria-label="Copy message to clipboard"
-                    title="Copy message"
+                    aria-label={t('splitView.copyAria')}
+                    title={t('splitView.copyTitle')}
                     data-testid="copy-message-btn"
                   >
                     {isCopied ? (
@@ -243,6 +269,7 @@ export default function SplitViewComparison({
     selectMessage,
   } = splitView;
 
+  const { t } = useTranslation();
   const { isOnline, wasOffline, resetWasOffline } = useOnlineStatus();
   const { addToast } = useToast();
   const isDarkMode = useEffectiveDarkMode();
@@ -334,13 +361,13 @@ export default function SplitViewComparison({
     try {
       await navigator.clipboard.writeText(content);
       addToast({
-        message: 'Message copied to clipboard',
+        message: t('splitView.copied'),
         severity: 'success',
         durationMs: 2000,
       });
     } catch {
       addToast({
-        message: 'Failed to copy message',
+        message: t('splitView.copyFailed'),
         severity: 'error',
         durationMs: 3000,
       });
@@ -359,15 +386,13 @@ export default function SplitViewComparison({
 
     if (prevOnline && !isOnline) {
       addToast({
-        message:
-          "You're offline. Thread comparison won't update until you reconnect.",
+        message: t('splitView.offline'),
         severity: 'warning',
         durationMs: 4500,
       });
     } else if (!prevOnline && isOnline && wasOffline) {
       addToast({
-        message:
-          'Back online. Comparison panes will use the latest thread data.',
+        message: t('splitView.backOnline'),
         severity: 'success',
         durationMs: 3000,
       });
@@ -376,7 +401,7 @@ export default function SplitViewComparison({
 
     // Update ref AFTER the conditional logic to avoid stale-closure issues.
     wasOnlineRef.current = isOnline;
-  }, [isOnline, wasOffline, addToast, resetWasOffline]);
+  }, [isOnline, wasOffline, addToast, resetWasOffline, t]);
 
   if (!state.isOpen) return null;
 
@@ -397,40 +422,40 @@ export default function SplitViewComparison({
       {/* Toolbar */}
       <div
         role="toolbar"
-        aria-label="Comparison actions"
+        aria-label={t('splitView.toolbarAria')}
         className="flex items-center justify-between px-4 py-2 border-b border-[var(--color-border)] bg-[var(--color-surface-muted)] flex-shrink-0"
       >
         <h2
           id={dialogTitleId}
           className="text-sm font-semibold text-[var(--color-text-primary)]"
         >
-          Compare Threads
+          {t('splitView.title')}
         </h2>
 
         <div className="flex items-center gap-2">
           {effectiveSelectedMessageId && (
             <span className="text-xs px-2 py-0.5 rounded bg-[var(--color-primary-soft)] text-[var(--color-primary)]">
-              Message selected
+              {t('splitView.messageSelected')}
             </span>
           )}
 
           {/* Swap button */}
           <button
             onClick={handleSwapSessions}
-            title="Swap threads"
-            aria-label="Swap left and right threads"
+            title={t('splitView.swapTitle')}
+            aria-label={t('splitView.swapAria')}
             className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-[var(--color-surface)] hover:bg-[var(--color-surface-elevated)] text-[var(--color-text-primary)] border border-[var(--color-border)]"
             data-testid="swap-threads-btn"
           >
             <ArrowLeftRight className="w-3.5 h-3.5" aria-hidden />
-            Swap
+            {t('splitView.swap')}
           </button>
 
           {/* Close button */}
           <button
             onClick={close}
-            title="Close comparison"
-            aria-label="Close split-view"
+            title={t('splitView.closeTitle')}
+            aria-label={t('splitView.closeAria')}
             className="p-1.5 rounded-lg transition-colors hover:bg-[var(--color-surface-elevated)] text-[var(--color-text-muted)]"
             data-testid="close-split-view-btn"
           >
@@ -444,7 +469,11 @@ export default function SplitViewComparison({
         {isLoading ? (
           <div className="flex flex-1 min-h-0 overflow-hidden flex-col md:flex-row gap-4 p-4">
             {[1, 2].map((index) => (
-              <div key={index} className="flex-1 space-y-4" data-testid="split-view-skeleton">
+              <div
+                key={index}
+                className="flex-1 space-y-4"
+                data-testid="split-view-skeleton"
+              >
                 <Skeleton className="h-10 w-3/4 bg-slate-200 dark:bg-slate-700" />
                 <div className="space-y-3">
                   <Skeleton className="h-16 bg-slate-200 dark:bg-slate-700" />
@@ -457,14 +486,14 @@ export default function SplitViewComparison({
         ) : bothEmpty ? (
           <EmptyState
             icon={Columns2}
-            title="No threads to compare"
-            description="Select threads from each side to start comparing."
+            title={t('splitView.emptyTitle')}
+            description={t('splitView.emptyDescription')}
           />
         ) : (
           <>
             <ThreadPane
               session={effectiveLeftSession}
-              label="Left"
+              paneKey="left"
               selectedMessageId={effectiveSelectedMessageId}
               allSessions={sessions}
               onSelectSession={handleSelectLeftSession}
@@ -473,7 +502,7 @@ export default function SplitViewComparison({
             />
             <ThreadPane
               session={effectiveRightSession}
-              label="Right"
+              paneKey="right"
               selectedMessageId={effectiveSelectedMessageId}
               allSessions={sessions}
               onSelectSession={handleSelectRightSession}

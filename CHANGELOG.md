@@ -445,6 +445,16 @@ Repo Avatar
 - **schema:** Accept M... addresses in admin recipient; reject where contract needs G...
 - **chatHistory:** Export channel name and sync message type
 - **useChatHistory:** Sync history across tabs with BroadcastChannel
+- **frontend:** Add a first-run onboarding tour
+- **frontend:** Add more wallets than Freighter (Albedo, xBull, Rabet) behind a wallet adapter
+- **frontend:** Add a PWA manifest and installable app shell
+- **frontend:** Add a PWA manifest and installable app shell
+- **frontend:** Emoji refocus, connection indicator, and wallet watchlist (#1020 #1030 #1032)
+- **contract:** Add slippage threshold assertion for execute_batch_admin
+- Add copy button visibility improvements, online status fix, E2E tests, and snapshot tests
+- Show XLM balance in chat header and add frontend build CI workflow
+- **ci:** Implement sbom, release workflow, editorconfig, and docker dependabot (issues 1-4)
+- **frontend:** Add shortcut help and strengthen test CI
 
 ### Fixed
 
@@ -944,6 +954,19 @@ Repo Avatar
 - **contract:** Gate test_issues_1400_1403 behind cfg(test) and ignore RUSTSEC-2026-0387
 - **frontend:** Repair merge damage, sync lockfile and clear lint/type errors
 - **frontend:** Allow the Soroban RPC, price API and connectivity probe in CSP connect-src
+- **frontend:** Restore unit tests and configure the E2E build
+- **frontend:** Repair browser fixtures and preserve sent chat messages
+- **frontend:** Type the native QR detector without suppressions
+- **ci:** Resolve PR merge check failures
+- **frontend:** Resolve duplicate payment validator merge
+- **ci:** Repair release action pin and offline queue test
+- Repair existing CI failures
+- Restore fee batch nonce and snapshot tests
+- Complete missing contract storage keys
+- **contract:** Resolve CI test failures #1759
+- **contract:** Correct follow-up CI diagnostics
+- **ci:** Correct Lighthouse metrics and WASM paths
+- **ci:** Align WASM size limit with artifact
 
 ### Changed
 
@@ -1301,6 +1324,36 @@ Repo Avatar
 - **changelog:** Update changelog [skip ci]
 - Docs: reconcile duplicated architecture content in README.md and Dechat/README.md
 Closes #1724, #1725, #1726, #1728
+- **changelog:** Update changelog [skip ci]
+- Improve circuit breaker documentation
+- Improve circuit breaker inline docs
+- Fix circuit breaker guide spacing
+- Ignore temporary PR description files
+- **changelog:** Update changelog [skip ci]
+- **frontend:** Update changelog for maintenance batch
+- **changelog:** Update changelog [skip ci]
+- **frontend:** Apply the existing Prettier rules
+- **frontend:** Finish browser test formatting and stabilize offline input
+- **frontend:** Pin Playwright to Ubuntu 24.04
+- **changelog:** Update changelog [skip ci]
+- **changelog:** Update changelog [skip ci]
+- **frontend:** Add Lighthouse CI for landing and chat #1756
+- **frontend:** Extend flaky CI timeouts #1756
+- **e2e:** Account for browser keyboard focus behavior
+- **changelog:** Update changelog [skip ci]
+- Format frontend and workflow baseline
+- **contracts:** Apply cargo fmt
+- **changelog:** Update changelog [skip ci]
+- **changelog:** Update changelog [skip ci]
+- **changelog:** Update changelog [skip ci]
+- **changelog:** Update changelog [skip ci]
+- Add unused dependency checks #1759
+- Add unused dependency checks #1759
+- **frontend:** Fix reported CI formatting
+- **contract:** Preserve principal after fee withdrawal
+- **contracts:** Install stellar CLI system dependencies
+- Fix WASM dependencies and Lighthouse reports
+- **frontend:** Regression tests for AdminGuard cancelling stale admin checks
 
 ### Deprecated
 
@@ -1821,6 +1874,7 @@ Removed assertions related to executed proposals and added a new test for uninit
 - Merge pull request #1825 from Maxwell316/main
 
 docs(frontend): remove or relocate the eight status notes in the frontend package root  #1703
+- Resolve issues #586 #1005 #1019 #1022
 
 ### Security
 

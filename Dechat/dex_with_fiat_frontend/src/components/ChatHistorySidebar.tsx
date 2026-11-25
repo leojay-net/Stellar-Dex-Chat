@@ -31,7 +31,10 @@ import { ChatSession } from '@/types';
 import { ContractEvent } from '@/types/events';
 import { stroopsToXlmOrNull } from '@/lib/stroops';
 import { useSessionPagination } from '@/hooks/useSessionPagination';
-import { formatDateTime, formatRelativeHistoryDate } from '@/lib/dateFormatters';
+import {
+  formatDateTime,
+  formatRelativeHistoryDate,
+} from '@/lib/dateFormatters';
 
 /**
  * Renders a contract-event amount for the activity feed.
@@ -76,10 +79,11 @@ function SessionRow({
   return (
     <div
       data-active={isActive ? 'true' : 'false'}
-      className={`group relative p-3 mb-2 rounded-lg cursor-pointer transition-all duration-200 border ${isActive
+      className={`group relative p-3 mb-2 rounded-lg cursor-pointer transition-all duration-200 border ${
+        isActive
           ? 'bg-[var(--color-primary-soft)] border-[var(--color-primary)] shadow-md'
           : 'border-transparent hover:border-[var(--color-border)] hover:bg-[var(--color-surface-muted)]'
-        }`}
+      }`}
       onClick={() => onLoad(session.id)}
     >
       <div className="flex min-w-0 items-start justify-between">
@@ -119,17 +123,19 @@ function SessionRow({
           >
             {session.pinned ? (
               <PinOff
-                className={`w-3 h-3${recentlyToggledPinId === session.id
+                className={`w-3 h-3${
+                  recentlyToggledPinId === session.id
                     ? ' animate-bounce-once'
                     : ''
-                  }`}
+                }`}
               />
             ) : (
               <Pin
-                className={`w-3 h-3${recentlyToggledPinId === session.id
+                className={`w-3 h-3${
+                  recentlyToggledPinId === session.id
                     ? ' animate-bounce-once'
                     : ''
-                  }`}
+                }`}
               />
             )}
           </button>
@@ -260,8 +266,8 @@ export default function ChatHistorySidebar({
       }
     };
 
-    fetchEvents();
-    const interval = setInterval(fetchEvents, 60000); // Refresh every minute
+    void fetchEvents();
+    const interval = setInterval(() => void fetchEvents(), 60000); // Refresh every minute
     return () => clearInterval(interval);
   }, []);
 
@@ -292,7 +298,9 @@ export default function ChatHistorySidebar({
   const filteredSessionIds = filteredSessions.map((s) => s.id).join(',');
   const historyListRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const scrollSnapshotRef = useRef<{ top: number; height: number } | null>(null);
+  const scrollSnapshotRef = useRef<{ top: number; height: number } | null>(
+    null,
+  );
   const draggedIdRef = useRef<string | null>(null);
   const dragOverIdRef = useRef<string | null>(null);
 
@@ -301,7 +309,7 @@ export default function ChatHistorySidebar({
     e.dataTransfer.effectAllowed = 'move';
     try {
       e.dataTransfer.setData('text/plain', id);
-    } catch { }
+    } catch {}
   }, []);
 
   const onDragOver = useCallback((e: React.DragEvent, id: string) => {
@@ -331,17 +339,20 @@ export default function ChatHistorySidebar({
     dragOverIdRef.current = null;
   }, [filteredPinned, reorderPinned]);
 
-  const movePinned = useCallback((id: string, direction: 'up' | 'down') => {
-    const pinnedIds = filteredPinned.map((s) => s.id);
-    const idx = pinnedIds.indexOf(id);
-    if (idx === -1) return;
-    const target = direction === 'up' ? idx - 1 : idx + 1;
-    if (target < 0 || target >= pinnedIds.length) return;
-    const reordered = [...pinnedIds];
-    const [item] = reordered.splice(idx, 1);
-    reordered.splice(target, 0, item);
-    reorderPinned(reordered);
-  }, [filteredPinned, reorderPinned]);
+  const movePinned = useCallback(
+    (id: string, direction: 'up' | 'down') => {
+      const pinnedIds = filteredPinned.map((s) => s.id);
+      const idx = pinnedIds.indexOf(id);
+      if (idx === -1) return;
+      const target = direction === 'up' ? idx - 1 : idx + 1;
+      if (target < 0 || target >= pinnedIds.length) return;
+      const reordered = [...pinnedIds];
+      const [item] = reordered.splice(idx, 1);
+      reordered.splice(target, 0, item);
+      reorderPinned(reordered);
+    },
+    [filteredPinned, reorderPinned],
+  );
 
   // Windowed rendering for unpinned sessions
   const {
@@ -373,7 +384,12 @@ export default function ChatHistorySidebar({
     if (neededVisible > visibleUnpinned.length) {
       setUnpinnedVisibleCount(Math.min(filteredUnpinned.length, neededVisible));
     }
-  }, [currentSessionId, filteredUnpinned, visibleUnpinned.length, setUnpinnedVisibleCount]);
+  }, [
+    currentSessionId,
+    filteredUnpinned,
+    visibleUnpinned.length,
+    setUnpinnedVisibleCount,
+  ]);
 
   const handleScroll = useCallback(() => {
     const el = scrollContainerRef.current;
@@ -381,7 +397,10 @@ export default function ChatHistorySidebar({
 
     if (el.scrollTop < 160 && unpinnedHasMore && !unpinnedIsLoadingMore) {
       // take a snapshot so we can preserve visual position after loading
-      scrollSnapshotRef.current = { top: el.scrollTop, height: el.scrollHeight };
+      scrollSnapshotRef.current = {
+        top: el.scrollTop,
+        height: el.scrollHeight,
+      };
       loadMoreUnpinned();
     }
   }, [unpinnedHasMore, unpinnedIsLoadingMore, loadMoreUnpinned]);
@@ -402,7 +421,9 @@ export default function ChatHistorySidebar({
     if (isCollapsed || isLoading || !searchQuery) return;
 
     const resultLabel =
-      filteredSessions.length === 1 ? '1 conversation found' : `${filteredSessions.length} conversations found`;
+      filteredSessions.length === 1
+        ? '1 conversation found'
+        : `${filteredSessions.length} conversations found`;
     setLiveAnnouncement(resultLabel);
   }, [filteredSessions.length, isCollapsed, isLoading, searchQuery]);
 
@@ -411,7 +432,9 @@ export default function ChatHistorySidebar({
     (sessionId: string) => {
       setShowDeleteConfirm(null);
       setPendingDeleteId(sessionId);
-      setLiveAnnouncement('Conversation deleted. Undo available for 5 seconds.');
+      setLiveAnnouncement(
+        'Conversation deleted. Undo available for 5 seconds.',
+      );
 
       // Clear any previous delete timer
       if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
@@ -437,9 +460,7 @@ export default function ChatHistorySidebar({
       togglePin(sessionId);
       setRecentlyToggledPinId(sessionId);
       setLiveAnnouncement(
-        session?.pinned
-          ? 'Conversation unpinned.'
-          : 'Conversation pinned.',
+        session?.pinned ? 'Conversation unpinned.' : 'Conversation pinned.',
       );
 
       if (pinAnimTimerRef.current) clearTimeout(pinAnimTimerRef.current);
@@ -525,6 +546,24 @@ export default function ChatHistorySidebar({
     }
   };
 
+  const handleCancelPayout = async (id: string, reference?: string) => {
+    if (!reference) return;
+    try {
+      const res = await fetch(`/api/transfer-status/${reference}`, {
+        method: 'POST',
+      });
+      const json = await res.json();
+      if (json.success) {
+        updateEntry(id, {
+          status: 'cancelled',
+          message: 'Payout cancelled.',
+        });
+      }
+    } catch (err) {
+      console.error('Cancel error:', err);
+    }
+  };
+
   const handleExportTransactions = async () => {
     const { jsPDF } = await import('jspdf');
     const doc = new jsPDF();
@@ -604,8 +643,9 @@ export default function ChatHistorySidebar({
       retryLabel="Reload sidebar"
     >
       <div
-        className={`theme-surface theme-border h-full min-w-0 overflow-x-hidden flex flex-col transition-all duration-300 border-r ${isCollapsed ? 'w-20' : 'w-full'
-          } transition-colors duration-300`}
+        className={`theme-surface theme-border h-full min-w-0 overflow-x-hidden flex flex-col transition-all duration-300 border-r ${
+          isCollapsed ? 'w-20' : 'w-full'
+        } transition-colors duration-300`}
       >
         <p
           data-testid="chat-history-live-region"
@@ -617,12 +657,14 @@ export default function ChatHistorySidebar({
           {liveAnnouncement}
         </p>
         <div
-          className={`theme-border border-b transition-colors duration-300 ${isCollapsed ? 'p-4 flex flex-col items-center' : 'p-4'
-            }`}
+          className={`theme-border border-b transition-colors duration-300 ${
+            isCollapsed ? 'p-4 flex flex-col items-center' : 'p-4'
+          }`}
         >
           <div
-            className={`flex items-center justify-between mb-4 w-full ${isCollapsed ? 'flex-col gap-4' : ''
-              }`}
+            className={`flex items-center justify-between mb-4 w-full ${
+              isCollapsed ? 'flex-col gap-4' : ''
+            }`}
           >
             {!isCollapsed && (
               <h2 className="theme-text-primary text-lg font-semibold">
@@ -630,8 +672,9 @@ export default function ChatHistorySidebar({
               </h2>
             )}
             <div
-              className={`flex items-center gap-1 ${isCollapsed ? 'flex-col' : ''
-                }`}
+              className={`flex items-center gap-1 ${
+                isCollapsed ? 'flex-col' : ''
+              }`}
             >
               <button
                 onClick={handleClearAll}
@@ -675,7 +718,11 @@ export default function ChatHistorySidebar({
           )}
         </div>
 
-        <div ref={scrollContainerRef} onScroll={handleScroll} className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto"
+        >
           {isLoading ? (
             <SkeletonSidebar />
           ) : (
@@ -911,7 +958,7 @@ export default function ChatHistorySidebar({
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
-                    onClick={handleExportTransactions}
+                    onClick={() => void handleExportTransactions()}
                     className="theme-text-muted hover:bg-[var(--color-surface-muted)] p-1.5 rounded-md transition-colors"
                     title="Export transaction history"
                   >
@@ -985,26 +1032,12 @@ export default function ChatHistorySidebar({
                       entry.status !== 'cancelled' &&
                       entry.reference &&
                       Date.now() - new Date(entry.createdAt).getTime() <
-                      2 * 60 * 1000 && (
+                        2 * 60 * 1000 && (
                         <button
                           type="button"
-                          onClick={async () => {
-                            try {
-                              const res = await fetch(
-                                `/api/transfer-status/${entry.reference}`,
-                                { method: 'POST' },
-                              );
-                              const json = await res.json();
-                              if (json.success) {
-                                updateEntry(entry.id, {
-                                  status: 'cancelled',
-                                  message: 'Payout cancelled.',
-                                });
-                              }
-                            } catch (err) {
-                              console.error('Cancel error:', err);
-                            }
-                          }}
+                          onClick={() =>
+                            void handleCancelPayout(entry.id, entry.reference)
+                          }
                           className="mt-2 w-full flex items-center justify-center gap-1 theme-soft-danger hover:opacity-80 py-1.5 rounded text-xs font-medium transition-colors"
                         >
                           <X className="w-3.5 h-3.5" /> Cancel Payout

@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+import { test } from './fixtures';
 
 /**
  * E2E tests for ErrorBoundary component.
@@ -29,7 +30,9 @@ test.describe('ErrorBoundary', () => {
     test('child content renders when no error is thrown', async ({ page }) => {
       await gotoHarness(page);
 
-      await expect(page.getByTestId('child-content')).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByTestId('child-content')).toBeVisible({
+        timeout: 5_000,
+      });
       await expect(page.getByTestId('child-content')).toContainText(
         'Child rendered successfully.',
       );
@@ -46,7 +49,9 @@ test.describe('ErrorBoundary', () => {
       await gotoHarness(page);
       await triggerError(page);
 
-      await expect(page.getByRole('heading', { name: 'Something went wrong.' })).toBeVisible({
+      await expect(
+        page.getByRole('heading', { name: 'Something went wrong.' }),
+      ).toBeVisible({
         timeout: 5_000,
       });
     });
@@ -68,11 +73,15 @@ test.describe('ErrorBoundary', () => {
       await expect(retryBtn).toBeVisible({ timeout: 5_000 });
     });
 
-    test('child content is hidden while fallback is showing', async ({ page }) => {
+    test('child content is hidden while fallback is showing', async ({
+      page,
+    }) => {
       await gotoHarness(page);
       await triggerError(page);
 
-      await expect(page.getByTestId('child-content')).toBeHidden({ timeout: 5_000 });
+      await expect(page.getByTestId('child-content')).toBeHidden({
+        timeout: 5_000,
+      });
     });
 
     test('keyboard hint text is visible in fallback', async ({ page }) => {
@@ -82,7 +91,9 @@ test.describe('ErrorBoundary', () => {
       await expect(page.getByText('to retry')).toBeVisible({ timeout: 5_000 });
     });
 
-    test('Enter kbd and R kbd shortcuts are listed in the hint', async ({ page }) => {
+    test('Enter kbd and R kbd shortcuts are listed in the hint', async ({
+      page,
+    }) => {
       await gotoHarness(page);
       await triggerError(page);
 
@@ -100,26 +111,36 @@ test.describe('ErrorBoundary', () => {
       await gotoHarness(page);
       await triggerError(page);
 
-      await expect(page.getByRole('heading', { name: 'Something went wrong.' })).toBeVisible({
+      await expect(
+        page.getByRole('heading', { name: 'Something went wrong.' }),
+      ).toBeVisible({
         timeout: 5_000,
       });
 
       await page.getByRole('button', { name: 'Try Again' }).click();
 
       // onRetry resets shouldThrow → child content comes back
-      await expect(page.getByTestId('child-content')).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByTestId('child-content')).toBeVisible({
+        timeout: 5_000,
+      });
     });
 
-    test('onRetry callback increments retry counter in harness', async ({ page }) => {
+    test('onRetry callback increments retry counter in harness', async ({
+      page,
+    }) => {
       await gotoHarness(page);
       await triggerError(page);
 
       await page.getByRole('button', { name: 'Try Again' }).click();
 
-      await expect(page.getByTestId('retry-count')).toContainText('Retry triggered 1 time');
+      await expect(page.getByTestId('retry-count')).toContainText(
+        'Retry triggered 1 time',
+      );
     });
 
-    test('boundary can be triggered and retried multiple times', async ({ page }) => {
+    test('boundary can be triggered and retried multiple times', async ({
+      page,
+    }) => {
       await gotoHarness(page);
 
       for (let i = 1; i <= 3; i++) {
@@ -129,10 +150,14 @@ test.describe('ErrorBoundary', () => {
         ).toBeVisible({ timeout: 5_000 });
 
         await page.getByRole('button', { name: 'Try Again' }).click();
-        await expect(page.getByTestId('child-content')).toBeVisible({ timeout: 5_000 });
+        await expect(page.getByTestId('child-content')).toBeVisible({
+          timeout: 5_000,
+        });
       }
 
-      await expect(page.getByTestId('retry-count')).toContainText('Retry triggered 3 times');
+      await expect(page.getByTestId('retry-count')).toContainText(
+        'Retry triggered 3 times',
+      );
     });
   });
 
@@ -146,7 +171,9 @@ test.describe('ErrorBoundary', () => {
       await expect(retryBtn).toBeFocused();
     });
 
-    test('Enter key on focused Retry button triggers retry', async ({ page }) => {
+    test('Enter key on focused Retry button triggers retry', async ({
+      page,
+    }) => {
       await gotoHarness(page);
       await triggerError(page);
 
@@ -154,10 +181,14 @@ test.describe('ErrorBoundary', () => {
       await retryBtn.focus();
       await page.keyboard.press('Enter');
 
-      await expect(page.getByTestId('child-content')).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByTestId('child-content')).toBeVisible({
+        timeout: 5_000,
+      });
     });
 
-    test('global "r" key shortcut triggers retry when fallback is shown', async ({ page }) => {
+    test('global "r" key shortcut triggers retry when fallback is shown', async ({
+      page,
+    }) => {
       await gotoHarness(page);
       await triggerError(page);
 
@@ -166,10 +197,14 @@ test.describe('ErrorBoundary', () => {
       ).toBeVisible({ timeout: 5_000 });
 
       // Click somewhere neutral to defocus buttons, then press 'r'
-      await page.locator('h1').click();
+      await page
+        .getByRole('heading', { name: 'ErrorBoundary Test Harness' })
+        .click();
       await page.keyboard.press('r');
 
-      await expect(page.getByTestId('child-content')).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByTestId('child-content')).toBeVisible({
+        timeout: 5_000,
+      });
     });
 
     test('global "R" (capital) shortcut triggers retry', async ({ page }) => {
@@ -180,10 +215,14 @@ test.describe('ErrorBoundary', () => {
         page.getByRole('heading', { name: 'Something went wrong.' }),
       ).toBeVisible({ timeout: 5_000 });
 
-      await page.locator('h1').click();
+      await page
+        .getByRole('heading', { name: 'ErrorBoundary Test Harness' })
+        .click();
       await page.keyboard.press('R');
 
-      await expect(page.getByTestId('child-content')).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByTestId('child-content')).toBeVisible({
+        timeout: 5_000,
+      });
     });
 
     test('global Enter key shortcut triggers retry', async ({ page }) => {
@@ -195,10 +234,14 @@ test.describe('ErrorBoundary', () => {
       ).toBeVisible({ timeout: 5_000 });
 
       // Defocus any button before pressing Enter (otherwise it clicks the focused button)
-      await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
+      await page.evaluate(() =>
+        (document.activeElement as HTMLElement)?.blur(),
+      );
       await page.keyboard.press('Enter');
 
-      await expect(page.getByTestId('child-content')).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByTestId('child-content')).toBeVisible({
+        timeout: 5_000,
+      });
     });
 
     test('"r" shortcut does NOT trigger retry when no error has occurred', async ({
@@ -209,7 +252,9 @@ test.describe('ErrorBoundary', () => {
       // No error thrown — child content visible
       await expect(page.getByTestId('child-content')).toBeVisible();
 
-      await page.locator('h1').click();
+      await page
+        .getByRole('heading', { name: 'ErrorBoundary Test Harness' })
+        .click();
       await page.keyboard.press('r');
 
       // Child should still be visible (shortcut is a no-op)
@@ -221,7 +266,10 @@ test.describe('ErrorBoundary', () => {
     test('fallback renders without any API requests', async ({ page }) => {
       const networkRequests: string[] = [];
       page.on('request', (req) => {
-        if (!req.url().includes('localhost') && !req.url().includes('127.0.0.1')) {
+        if (
+          !req.url().includes('localhost') &&
+          !req.url().includes('127.0.0.1')
+        ) {
           networkRequests.push(req.url());
         }
       });
@@ -234,7 +282,10 @@ test.describe('ErrorBoundary', () => {
       ).toBeVisible({ timeout: 5_000 });
 
       const apiRequests = networkRequests.filter(
-        (url) => !url.includes('_next') && !url.includes('fonts.') && !url.includes('cdn.'),
+        (url) =>
+          !url.includes('_next') &&
+          !url.includes('fonts.') &&
+          !url.includes('cdn.'),
       );
       expect(apiRequests.length).toBe(0);
     });

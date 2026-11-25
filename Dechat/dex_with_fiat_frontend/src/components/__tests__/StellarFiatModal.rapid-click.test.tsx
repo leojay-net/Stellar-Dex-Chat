@@ -119,10 +119,9 @@ const defaultProps = {
 };
 
 async function getSubmitButton() {
-  return waitFor(
-    () => screen.getByRole('button', { name: /deposit/i }),
-    { timeout: 2000 },
-  );
+  return waitFor(() => screen.getByRole('button', { name: /deposit/i }), {
+    timeout: 2000,
+  });
 }
 
 describe('StellarFiatModal - rapid click protection', () => {

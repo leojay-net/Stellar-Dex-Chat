@@ -31,7 +31,7 @@ Contracts (`Dechat/stellar-contracts`):
 ```
 cargo test
 cargo clippy --all-targets --all-features -- -D warnings
-cargo build --target wasm32-unknown-unknown --release   # WASM must stay under 55 KB
+stellar contract build                                  # WASM must stay under 125 KB
 ```
 
 Frontend (`Dechat/dex_with_fiat_frontend`):

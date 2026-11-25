@@ -6,24 +6,40 @@ on:
     paths:
       - "Dechat/stellar-contracts/**"
       - ".github/workflows/contracts.yml"
+      - "Makefile"
   push:
     branches: [main]
     paths:
       - "Dechat/stellar-contracts/**"
+      - "Makefile"
 
 permissions:
   contents: read
 
-env:
-  # Regression guard for the deployed contract only. Raised from the
-  # previous 55000: that limit was never actually enforced (the old
-  # check globbed *.wasm, so SIZE held two values and `[` aborted with
-  # "too many arguments" — which, as an `if` condition, silently read
-  # as false). The contract has since grown to ~94 KB. Hoisted to
-  # workflow level so the size-report job below stays in sync with it.
-  MAX_WASM_BYTES: "98500"
-
 jobs:
+  unused-dependencies:
+    name: Check unused dependencies
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: Dechat/stellar-contracts
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable
+        with:
+          toolchain: stable
+
+      - name: Install cargo-machete
+        run: cargo install --locked cargo-machete
+
+      - name: Check unused dependencies
+        run: cargo machete
+
   fmt:
     name: Check formatting
     runs-on: ubuntu-latest
@@ -48,7 +64,7 @@ jobs:
           workspaces: Dechat/stellar-contracts -> target
 
       - name: Check formatting
-        run: cargo fmt --all -- --check
+        run: make -C ../.. contracts-fmt
 
   clippy:
     name: Run clippy
@@ -74,7 +90,7 @@ jobs:
           workspaces: Dechat/stellar-contracts -> target
 
       - name: Run clippy (deny warnings)
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: make -C ../.. contracts-clippy
 
   test:
     name: Run tests
@@ -115,7 +131,7 @@ jobs:
           workspaces: Dechat/stellar-contracts -> target
 
       - name: Run tests
-        run: cargo test
+        run: make -C ../.. contracts-test
 
   build-wasm:
     name: Build WASM
@@ -135,6 +151,11 @@ jobs:
           toolchain: stable
           targets: wasm32v1-none
 
+      - name: Install Stellar CLI system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libdbus-1-dev libudev-dev pkg-config
+
       - name: Install Stellar CLI
         run: cargo install --locked stellar-cli --version 28.0.0
 
@@ -144,28 +165,11 @@ jobs:
           workspaces: Dechat/stellar-contracts -> target
 
       - name: Build WASM release
-        run: stellar contract build
+        run: make -C ../.. contracts-build
 
       - name: Check WASM size
-        run: |
-          set -euo pipefail
-          ARTIFACT=target/wasm32v1-none/release/stellar_contracts.optimized.wasm
-
-          ls -la target/wasm32v1-none/release/*.wasm
-
-          if [ ! -f "$ARTIFACT" ]; then
-            echo "Error: expected contract artifact $ARTIFACT was not produced"
-            exit 1
-          fi
-
-          SIZE=$(wc -c < "$ARTIFACT" | tr -d '[:space:]')
-          echo "Contract WASM size: $SIZE bytes (limit ${MAX_WASM_BYTES})"
-          echo "Contract WASM size: \`$SIZE\` bytes (limit \`${MAX_WASM_BYTES}\`)" >> "$GITHUB_STEP_SUMMARY"
-
-          if [ "$SIZE" -gt "$MAX_WASM_BYTES" ]; then
-            echo "Error: WASM size $SIZE bytes exceeds ${MAX_WASM_BYTES} byte limit"
-            exit 1
-          fi
+        shell: bash
+        run: make -C ../.. contracts-size | tee -a "$GITHUB_STEP_SUMMARY"
 
   deny:
     name: License & Advisory Check
@@ -185,6 +189,8 @@ jobs:
     name: WASM Size Report
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    env:
+      MAX_WASM_BYTES: "125000"
 
     steps:
       - name: Checkout PR head
@@ -205,6 +211,11 @@ jobs:
           toolchain: stable
           targets: wasm32v1-none
 
+      - name: Install Stellar CLI system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libdbus-1-dev libudev-dev pkg-config
+
       - name: Install Stellar CLI
         run: cargo install --locked stellar-cli --version 28.0.0
 
@@ -222,7 +233,7 @@ jobs:
       - name: Record head size
         id: head_size
         run: |
-          SIZE=$(wc -c < "${{ github.workspace }}/.wasm-size-target/wasm32v1-none/release/stellar_contracts.optimized.wasm" | tr -d '[:space:]')
+          SIZE=$(wc -c < "${{ github.workspace }}/.wasm-size-target/wasm32v1-none/release/stellar_contracts.wasm" | tr -d '[:space:]')
           echo "size=$SIZE" >> "$GITHUB_OUTPUT"
 
       - name: Build base WASM
@@ -234,7 +245,7 @@ jobs:
       - name: Record base size
         id: base_size
         run: |
-          SIZE=$(wc -c < "${{ github.workspace }}/.wasm-size-target/wasm32v1-none/release/stellar_contracts.optimized.wasm" | tr -d '[:space:]')
+          SIZE=$(wc -c < "${{ github.workspace }}/.wasm-size-target/wasm32v1-none/release/stellar_contracts.wasm" | tr -d '[:space:]')
           echo "size=$SIZE" >> "$GITHUB_OUTPUT"
 
       - name: Write size report

@@ -1,10 +1,18 @@
-import { test, expect } from '@playwright/test';
-import { mockSorobanRpc, MOCK_WALLET_ADDRESS } from './helpers';
+import { expect } from '@playwright/test';
+import { test } from './fixtures';
+import {
+  connectMockWallet,
+  installMockWalletBridge,
+  mockSorobanRpc,
+  MOCK_WALLET_ADDRESS,
+} from './helpers';
 
 test.describe('StellarFiatModal E2E Tests', () => {
   test.beforeEach(async ({ page }) => {
     await mockSorobanRpc(page);
+    await installMockWalletBridge(page);
     await page.goto('/test-stellar-fiat-modal');
+    await connectMockWallet(page);
     const dialog = page.getByRole('dialog', { name: /deposit to bridge/i });
     await dialog.waitFor({ state: 'visible' });
     await expect(dialog.locator('input[type="number"]').first()).toBeVisible({
@@ -20,7 +28,9 @@ test.describe('StellarFiatModal E2E Tests', () => {
       ).toBeVisible();
     });
 
-    test('should close modal when close button is clicked', async ({ page }) => {
+    test('should close modal when close button is clicked', async ({
+      page,
+    }) => {
       await page.getByRole('button', { name: 'Close' }).click();
       await expect(page.getByRole('dialog')).not.toBeVisible();
     });
@@ -35,18 +45,24 @@ test.describe('StellarFiatModal E2E Tests', () => {
 
     test('should disable submit for invalid amount', async ({ page }) => {
       await page.locator('input[type="number"]').first().fill('-5');
-      await expect(page.getByRole('button', { name: /^deposit$/i })).toBeDisabled();
+      await expect(
+        page.getByRole('button', { name: /^deposit$/i }),
+      ).toBeDisabled();
     });
 
     test('should disable submit for zero amount', async ({ page }) => {
       await page.locator('input[type="number"]').first().fill('0');
-      await expect(page.getByRole('button', { name: /^deposit$/i })).toBeDisabled();
+      await expect(
+        page.getByRole('button', { name: /^deposit$/i }),
+      ).toBeDisabled();
     });
 
     test('should update amount with preset buttons', async ({ page }) => {
       const dialog = page.getByRole('dialog', { name: /deposit to bridge/i });
       await dialog.getByRole('button', { name: '5', exact: true }).click();
-      await expect(dialog.locator('input[type="number"]').first()).toHaveValue('5');
+      await expect(dialog.locator('input[type="number"]').first()).toHaveValue(
+        '5',
+      );
     });
   });
 
@@ -66,7 +82,10 @@ test.describe('StellarFiatModal E2E Tests', () => {
       await expect(
         page.getByRole('heading', { name: /withdraw from bridge/i }),
       ).toBeVisible();
-      await expect(page.getByText(/recipient address/i)).toBeVisible();
+      const dialog = page.getByRole('dialog', {
+        name: /withdraw from bridge/i,
+      });
+      await expect(dialog.getByPlaceholder('G...')).toBeVisible();
     });
   });
 });

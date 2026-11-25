@@ -6,7 +6,9 @@ vi.mock('server-only', () => ({}));
 const applyRateLimitMock = vi.fn<(...args: unknown[]) => null>(() => null);
 
 vi.mock('@/lib/rateLimit', () => ({
-  applyRateLimit: (...args: Parameters<typeof import('@/lib/rateLimit').applyRateLimit>) => applyRateLimitMock(...args),
+  applyRateLimit: (
+    ...args: Parameters<typeof import('@/lib/rateLimit').applyRateLimit>
+  ) => applyRateLimitMock(...args),
   getClientIp: vi.fn(() => '127.0.0.1'),
 }));
 

@@ -29,7 +29,10 @@ import { useTheme } from '../contexts/ThemeContext';
 import { fetchTickerData } from '../lib/cryptoPriceService';
 import CopyButton from '@/components/ui/CopyButton';
 import OfflineStatusBanner from '@/components/OfflineStatusBanner';
+import ShortcutsHelp from '@/components/ShortcutsHelp';
 import { CONTRACT_ID } from '@/lib/stellarContract';
+import { useSingleKeyShortcuts } from '@/contexts/UserPreferencesContext';
+import { isEditableShortcutTarget } from '@/lib/keyboardShortcuts';
 
 interface FeatureCardProps {
   icon: React.ElementType;
@@ -109,16 +112,12 @@ const Step: React.FC<StepProps> = ({ number, title, description, delay }) => {
 export default function LandingPage() {
   const router = useRouter();
   const { isDarkMode, toggleDarkMode } = useTheme();
-  const [heroVisible, setHeroVisible] = useState(false);
+  const singleKeyShortcuts = useSingleKeyShortcuts();
   const [xlmPrice, setXlmPrice] = useState<number | null>(null);
   const [xlmChange, setXlmChange] = useState<number | null>(null);
   const [priceLoading, setPriceLoading] = useState(true);
 
   const contractAddress = CONTRACT_ID;
-
-  useEffect(() => {
-    setHeroVisible(true);
-  }, []);
 
   // Fetch XLM price data every 60 seconds
   useEffect(() => {
@@ -139,8 +138,8 @@ export default function LandingPage() {
       }
     };
 
-    fetchPrice();
-    const interval = setInterval(fetchPrice, 60000); // Refresh every 60 seconds
+    void fetchPrice();
+    const interval = setInterval(() => void fetchPrice(), 60000); // Refresh every 60 seconds
 
     return () => {
       isActive = false;
@@ -156,15 +155,20 @@ export default function LandingPage() {
   // the theme. Ignored while focus is in the email field (or any other
   // form control) so typing "g"/"d" there isn't hijacked.
   useEffect(() => {
+    if (!singleKeyShortcuts) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const tag = target?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) {
+      if (
+        event.defaultPrevented ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        isEditableShortcutTarget(event.target)
+      ) {
         return;
       }
       if (event.key === 'g' || event.key === 'G') {
         event.preventDefault();
-        handleGetStarted();
+        router.push('/chat');
       } else if (event.key === 'd' || event.key === 'D') {
         event.preventDefault();
         toggleDarkMode();
@@ -173,8 +177,7 @@ export default function LandingPage() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router]);
+  }, [router, singleKeyShortcuts, toggleDarkMode]);
 
   const features = [
     {
@@ -257,8 +260,8 @@ export default function LandingPage() {
       {/* Offline Status Banner */}
       <OfflineStatusBanner />
 
-      {/* Theme Toggle Button */}
-      <div className="fixed top-6 right-6 z-50">
+      <div className="fixed top-6 right-6 z-50 flex items-center gap-2">
+        <ShortcutsHelp />
         <button
           onClick={toggleDarkMode}
           className="p-3 rounded-full bg-[var(--color-surface-elevated)] border border-[var(--color-border)] text-[var(--color-text-primary)] hover:bg-[var(--color-surface)] transition-all duration-300 shadow-lg hover:shadow-blue-500/20 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -286,9 +289,7 @@ export default function LandingPage() {
             <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-blue-600/5 rounded-full blur-3xl animate-pulse delay-1000"></div>
           </div>
 
-          <div
-            className={`relative z-10 text-center max-w-5xl mx-auto transform transition-all duration-1000 ${heroVisible ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'}`}
-          >
+          <div className="relative z-10 text-center max-w-5xl mx-auto">
             <h1
               id="landing-hero-heading"
               className="text-5xl md:text-7xl font-bold mb-6 leading-tight"
@@ -550,7 +551,10 @@ export default function LandingPage() {
             <div className="grid md:grid-cols-2 gap-12">
               <div>
                 <h3 className="text-2xl font-semibold mb-6 flex items-center text-[var(--color-text-primary)]">
-                  <Network className="w-6 h-6 mr-3 text-blue-500" aria-hidden="true" />
+                  <Network
+                    className="w-6 h-6 mr-3 text-blue-500"
+                    aria-hidden="true"
+                  />
                   Stellar Assets
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -581,7 +585,10 @@ export default function LandingPage() {
 
               <div>
                 <h3 className="text-2xl font-semibold mb-6 flex items-center text-[var(--color-text-primary)]">
-                  <Globe className="w-6 h-6 mr-3 text-green-500" aria-hidden="true" />
+                  <Globe
+                    className="w-6 h-6 mr-3 text-green-500"
+                    aria-hidden="true"
+                  />
                   Fiat Currencies
                 </h3>
                 <div className="grid grid-cols-2 gap-4">

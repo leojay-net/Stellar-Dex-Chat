@@ -1,12 +1,11 @@
-import { test, expect } from '@playwright/test';
-import {
-  connectMockWallet,
-  gotoChatConnected,
-  MOCK_WALLET_ADDRESS,
-} from './helpers';
+import { expect } from '@playwright/test';
+import { test } from './fixtures';
+import { gotoChatConnected, MOCK_WALLET_ADDRESS } from './helpers';
 
 test.describe('Wallet Connect UI Path', () => {
-  test('should display start bridging button on landing page', async ({ page }) => {
+  test('should display start bridging button on landing page', async ({
+    page,
+  }) => {
     await page.goto('/');
     await expect(
       page.getByRole('button', { name: /start bridging/i }),
@@ -26,7 +25,9 @@ test.describe('Wallet Connect UI Path', () => {
     ).toBeVisible();
   });
 
-  test('should connect wallet via E2E hook and show address', async ({ page }) => {
+  test('should connect wallet via E2E hook and show address', async ({
+    page,
+  }) => {
     await gotoChatConnected(page);
     await expect(
       page.getByText(new RegExp(MOCK_WALLET_ADDRESS.slice(0, 6), 'i')),

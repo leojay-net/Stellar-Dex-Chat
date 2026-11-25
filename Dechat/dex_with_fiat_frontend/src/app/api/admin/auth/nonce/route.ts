@@ -58,10 +58,7 @@ export async function POST(request: NextRequest) {
 
     if (nonceData.expires < Date.now()) {
       nonces.delete(nonce);
-      return NextResponse.json(
-        { error: 'Nonce expired' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'Nonce expired' }, { status: 400 });
     }
 
     // Verify the signed transaction
@@ -85,7 +82,7 @@ export async function POST(request: NextRequest) {
     // Create session cookie
     const cookieStore = await cookies();
     const sessionToken = crypto.randomUUID();
-    
+
     // Store session data using shared session store
     setAdminSession(sessionToken, address, ADMIN_SESSION_TTL_MS);
 

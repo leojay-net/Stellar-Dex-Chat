@@ -277,9 +277,7 @@ describe('useAccessibleModal', () => {
 
     it('does not intercept Tab when the container ref is null', () => {
       const onError = vi.fn();
-      render(
-        <Modal isOpen onClose={() => {}} onError={onError} />
-      );
+      render(<Modal isOpen onClose={() => {}} onError={onError} />);
 
       // Manually null the ref to simulate a detached container.
       const dialog = document.querySelector('[role="dialog"]');
@@ -360,7 +358,12 @@ describe('useAccessibleModal', () => {
     it('calls the onError callback when the container never mounts', async () => {
       const onError = vi.fn();
       render(
-        <Modal isOpen onClose={() => {}} renderContainer={false} onError={onError} />,
+        <Modal
+          isOpen
+          onClose={() => {}}
+          renderContainer={false}
+          onError={onError}
+        />,
       );
 
       await waitFor(() => {

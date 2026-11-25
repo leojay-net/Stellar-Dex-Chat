@@ -1,6 +1,13 @@
-# FiatBridge Futurenet Deployment Guide
+# FiatBridge Deployment Guide
 
-This document describes how to deploy the FiatBridge smart contract to Stellar's Futurenet test network.
+This document describes how to deploy the FiatBridge smart contract to
+Stellar's **Futurenet**, **Testnet**, and **Mainnet** networks.
+
+| Script | Network | Confirmation required |
+|--------|---------|----------------------|
+| `scripts/deploy_fiat_bridge_futurenet.sh` | Futurenet | none |
+| `scripts/deploy_fiat_bridge_testnet.sh`   | Testnet   | none |
+| `scripts/deploy_fiat_bridge_mainnet.sh`   | Mainnet   | type `deploy mainnet` |
 
 ## Overview
 
@@ -299,6 +306,56 @@ The FiatBridge contract is vulnerable to initialization front-running. The `init
 2. If the admin is not your address, the contract is compromised
 3. Deploy a new instance (the compromised one cannot be re-initialized)
 4. Investigate how the attacker obtained deployment information
+
+
+
+## Testnet Deployment
+
+Use `scripts/deploy_fiat_bridge_testnet.sh` to deploy to Testnet.
+All variables follow the same pattern as Futurenet but are prefixed `TESTNET_`.
+
+```bash
+export TESTNET_ADMIN_SECRET_KEY=S...
+export TESTNET_ADMIN_ADDRESS=G...
+export TESTNET_TOKEN_ADDRESS=C...
+export TESTNET_MULTISIG_SIGNERS="G1...,G2..."
+
+# Validate inputs without submitting a transaction
+./scripts/deploy_fiat_bridge_testnet.sh --dry-run
+
+# Deploy
+./scripts/deploy_fiat_bridge_testnet.sh
+```
+
+A deployment record is written to `./deployments/testnet_<timestamp>.txt`.
+
+## Mainnet Deployment
+
+Use `scripts/deploy_fiat_bridge_mainnet.sh`.
+Variables are prefixed `MAINNET_`.
+
+```bash
+export MAINNET_ADMIN_SECRET_KEY=S...
+export MAINNET_ADMIN_ADDRESS=G...
+export MAINNET_TOKEN_ADDRESS=C...
+export MAINNET_MULTISIG_SIGNERS="G1...,G2..."
+
+# Validate inputs without submitting a transaction
+./scripts/deploy_fiat_bridge_mainnet.sh --dry-run
+
+# Deploy (you will be prompted to type "deploy mainnet" to confirm)
+./scripts/deploy_fiat_bridge_mainnet.sh
+```
+
+The script:
+1. Validates all required env vars and the WASM file.
+2. Prints a summary of all deployment parameters.
+3. **Requires you to type `deploy mainnet`** before submitting any transaction.
+4. Verifies the on-chain admin after deployment.
+5. Writes a deployment record to `./deployments/mainnet_<timestamp>.txt`.
+
+> **Non-interactive CI**: set `MAINNET_SKIP_CONFIRM=1` only after a human has
+> reviewed and approved the run via a protected environment gate.
 
 ## Additional Resources
 

@@ -1,4 +1,6 @@
-import { test, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from './fixtures';
+import { Keypair } from '@stellar/stellar-sdk';
 import {
   gotoAdminReconciliation,
   mockSorobanRpc,
@@ -10,8 +12,9 @@ import {
 } from './helpers';
 
 /** Non-admin wallet address (valid 56-char Stellar key). */
-const NON_ADMIN_ADDRESS =
-  'G9876543210987654321098765432109876543210987654321098765';
+const NON_ADMIN_ADDRESS = Keypair.fromRawEd25519Seed(
+  Buffer.alloc(32, 2),
+).publicKey();
 
 test.describe('Admin Reconciliation E2E', () => {
   test.beforeEach(async ({ page }) => {
@@ -19,7 +22,9 @@ test.describe('Admin Reconciliation E2E', () => {
   });
 
   test.describe('Page load', () => {
-    test('loads the reconciliation dashboard for admin users', async ({ page }) => {
+    test('loads the reconciliation dashboard for admin users', async ({
+      page,
+    }) => {
       await expect(adminReconciliationHeading(page)).toBeVisible({
         timeout: 20_000,
       });
@@ -49,10 +54,8 @@ test.describe('Admin Reconciliation E2E', () => {
       await statusSelect.selectOption('matched');
 
       const rows = page.locator('tbody tr');
-      const count = await rows.count();
-      for (let i = 0; i < count; i++) {
-        await expect(rows.nth(i).getByText('matched')).toBeVisible();
-      }
+      await expect(rows).toHaveCount(2);
+      await expect(rows.getByText('matched', { exact: true })).toHaveCount(2);
     });
 
     test('shows "No records found" when filter matches nothing', async ({
@@ -79,9 +82,7 @@ test.describe('Admin Reconciliation E2E', () => {
       await statusSelect.selectOption('matched');
       await statusSelect.selectOption('all');
 
-      const rows = page.locator('tbody tr');
-      const count = await rows.count();
-      expect(count).toBeGreaterThan(0);
+      await expect(page.locator('tbody tr')).toHaveCount(4);
     });
   });
 
@@ -93,7 +94,9 @@ test.describe('Admin Reconciliation E2E', () => {
     });
 
     test('triggers CSV download on click', async ({ page }) => {
-      const downloadPromise = page.waitForEvent('download', { timeout: 20_000 });
+      const downloadPromise = page.waitForEvent('download', {
+        timeout: 20_000,
+      });
       const exportBtn = page.getByRole('button', { name: /Export CSV/i });
       await exportBtn.click();
       const download = await downloadPromise;
@@ -103,7 +106,7 @@ test.describe('Admin Reconciliation E2E', () => {
 });
 
 test.describe('Admin Reconciliation E2E — access control', () => {
-  test('non-admin users are redirected away from reconciliation page', async ({
+  test('non-admin users cannot see the reconciliation dashboard', async ({
     page,
   }) => {
     await mockSorobanRpc(page, { adminAddress: MOCK_ADMIN_ADDRESS });
@@ -111,11 +114,8 @@ test.describe('Admin Reconciliation E2E — access control', () => {
     await installMockWalletBridge(page);
     await page.goto('/admin/reconciliation');
     await page.waitForLoadState('domcontentloaded');
-    await page.evaluate(() => window.clearBridgeCache?.());
     await connectMockWallet(page, NON_ADMIN_ADDRESS);
-    await expect(page.getByText(/Verifying admin access/i)).toBeHidden({
-      timeout: 30_000,
-    });
+    await expect(page.getByTestId('admin-guard-error')).toBeHidden();
 
     await expect(adminReconciliationHeading(page)).toBeHidden({
       timeout: 20_000,

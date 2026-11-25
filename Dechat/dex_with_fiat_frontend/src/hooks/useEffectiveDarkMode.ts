@@ -29,7 +29,10 @@ export function useEffectiveDarkMode(): boolean {
 
   // Observe prefers-color-scheme changes
   useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    if (
+      typeof window === 'undefined' ||
+      typeof window.matchMedia !== 'function'
+    ) {
       return;
     }
 

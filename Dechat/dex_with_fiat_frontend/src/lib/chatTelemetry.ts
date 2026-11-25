@@ -96,13 +96,18 @@ export interface NetworkStatusTelemetryPayload {
 }
 
 export interface SplitViewTelemetryPayload {
-  action: 'open' | 'close' | 'set_left_session' | 'set_right_session' | 'swap_sessions' | 'select_message';
+  action:
+    | 'open'
+    | 'close'
+    | 'set_left_session'
+    | 'set_right_session'
+    | 'swap_sessions'
+    | 'select_message';
   leftSessionId?: string | null;
   rightSessionId?: string | null;
 }
 
-export interface AccessibleAvatarColorTelemetryPayload
-  extends AvatarColorTelemetryPayload {
+export interface AccessibleAvatarColorTelemetryPayload extends AvatarColorTelemetryPayload {
   avatarTextColor: string;
   avatarContrastRatio: number;
   avatarContrastCompliant: boolean;
@@ -177,7 +182,10 @@ export function telemetryEventMotionIntent(
  * Returns false on the server or when matchMedia is unavailable/throws.
  */
 export function prefersReducedMotion(): boolean {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+  if (
+    typeof window === 'undefined' ||
+    typeof window.matchMedia !== 'function'
+  ) {
     return false;
   }
   try {
@@ -231,7 +239,10 @@ const FALLBACK_LIGHT_TEXT = '#FFFFFF';
 const FALLBACK_DARK_TEXT = '#111827';
 
 export function prefersDarkMode(): boolean {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+  if (
+    typeof window === 'undefined' ||
+    typeof window.matchMedia !== 'function'
+  ) {
     return false;
   }
 
@@ -269,9 +280,7 @@ function getRelativeLuminance(color: string): number | null {
     const hex = normalizedColor.slice(1);
     const channels = [0, 2, 4].map((offset) => {
       const sRGB = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
-      return sRGB <= 0.03928
-        ? sRGB / 12.92
-        : ((sRGB + 0.055) / 1.055) ** 2.4;
+      return sRGB <= 0.03928 ? sRGB / 12.92 : ((sRGB + 0.055) / 1.055) ** 2.4;
     });
 
     return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
@@ -288,10 +297,7 @@ export function calculateContrastRatio(
     const foregroundLuminance = getRelativeLuminance(foregroundColor);
     const backgroundLuminance = getRelativeLuminance(backgroundColor);
 
-    if (
-      foregroundLuminance === null ||
-      backgroundLuminance === null
-    ) {
+    if (foregroundLuminance === null || backgroundLuminance === null) {
       return null;
     }
 
@@ -307,7 +313,9 @@ export function calculateContrastRatio(
 
 export function getAccessibleAvatarTextColor(
   backgroundColor: string,
-  preferredTextColor = prefersDarkMode() ? FALLBACK_LIGHT_TEXT : FALLBACK_DARK_TEXT,
+  preferredTextColor = prefersDarkMode()
+    ? FALLBACK_LIGHT_TEXT
+    : FALLBACK_DARK_TEXT,
 ): string {
   try {
     const normalizedBackgroundColor = normalizeHexColor(backgroundColor);
@@ -338,15 +346,17 @@ export function getAccessibleAvatarTextColor(
       }
     }
 
-    return bestRatio >= MIN_CONTRAST_RATIO ? bestColor : normalizedPreferredTextColor;
+    return bestRatio >= MIN_CONTRAST_RATIO
+      ? bestColor
+      : normalizedPreferredTextColor;
   } catch {
     return FALLBACK_LIGHT_TEXT;
   }
 }
 
-export function withAccessibleAvatarContrast<
-  P extends object,
->(payload: P): P | (P & AccessibleAvatarColorTelemetryPayload) {
+export function withAccessibleAvatarContrast<P extends object>(
+  payload: P,
+): P | (P & AccessibleAvatarColorTelemetryPayload) {
   try {
     const avatarPayload = payload as Partial<AvatarColorTelemetryPayload>;
     const backgroundColor =
@@ -406,7 +416,9 @@ export const darkModeTelemetryDefaults = {
  * current colour scheme. Falls back to `darkModeTelemetryDefaults` on the
  * server or when `matchMedia` is unavailable.
  */
-export function getTelemetryChipColors(intent: TelemetryMotionIntent = 'info'): {
+export function getTelemetryChipColors(
+  intent: TelemetryMotionIntent = 'info',
+): {
   background: string;
   text: string;
   accent: string;
@@ -422,13 +434,14 @@ export function getTelemetryChipColors(intent: TelemetryMotionIntent = 'info'): 
   return {
     background: '#FFFFFF',
     text: '#111827',
-    accent: intent === 'error'
-      ? '#DC2626'
-      : intent === 'warning'
-        ? '#D97706'
-        : intent === 'success'
-          ? '#059669'
-          : '#2563EB',
+    accent:
+      intent === 'error'
+        ? '#DC2626'
+        : intent === 'warning'
+          ? '#D97706'
+          : intent === 'success'
+            ? '#059669'
+            : '#2563EB',
   };
 }
 
@@ -467,10 +480,7 @@ export function setTelemetryConsent(enabled: boolean): void {
  * Fix for rendering overflow: Uses requestAnimationFrame to defer event
  * dispatch and prevent blocking the main render cycle.
  */
-function emit<P extends object>(
-  name: ChatEventName,
-  payload: P,
-): void {
+function emit<P extends object>(name: ChatEventName, payload: P): void {
   try {
     // Early-exit on the synchronous path to avoid building the event object
     // when consent is clearly absent at call time.
@@ -508,7 +518,7 @@ function emit<P extends object>(
     // Error boundary: silently ignore any errors during event emission
     // to prevent telemetry failures from affecting the app
   }
-}   
+}
 
 // ── Public API ────────────────────────────────────────────────────────────
 

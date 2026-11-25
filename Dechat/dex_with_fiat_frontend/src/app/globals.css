@@ -482,7 +482,9 @@ select:focus {
 
 /* High-contrast mode: ensure all buttons have visible borders */
 @media (forced-colors: active) {
-  button, .btn, [role="button"] {
+  button,
+  .btn,
+  [role='button'] {
     forced-color-adjust: none;
     border: 1px solid ButtonText;
   }
@@ -496,7 +498,9 @@ select:focus {
     outline: 3px solid Highlight;
     outline-offset: 2px;
   }
-  button:focus-visible, .btn:focus-visible, [role="button"]:focus-visible {
+  button:focus-visible,
+  .btn:focus-visible,
+  [role='button']:focus-visible {
     outline: 2px solid Highlight;
     outline-offset: 2px;
   }

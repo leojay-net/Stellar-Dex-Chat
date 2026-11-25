@@ -1,0 +1,78 @@
+name: Lighthouse CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "Dechat/dex_with_fiat_frontend/**"
+      - ".github/workflows/lighthouse.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  lighthouse:
+    name: Lighthouse audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    defaults:
+      run:
+        working-directory: Dechat/dex_with_fiat_frontend
+
+    env:
+      NEXT_PUBLIC_STELLAR_CONTRACT_ID: PLACEHOLDER
+      NEXT_PUBLIC_XLM_SAC_ID: PLACEHOLDER
+      NEXT_PUBLIC_STELLAR_RPC_URL: https://soroban-testnet.stellar.org
+      NEXT_PUBLIC_STELLAR_NETWORK: TESTNET
+      GEMINI_API_KEY: PLACEHOLDER
+      PAYSTACK_SECRET_KEY: PLACEHOLDER
+      PAYOUT_PROVIDER: paystack
+
+    steps:
+      - name: Check out pull request
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/head
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: 9.15.9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: Dechat/dex_with_fiat_frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build production app
+        run: pnpm build
+
+      - name: Run Lighthouse CI
+        run: pnpm dlx @lhci/cli@0.15.1 autorun --config=lighthouserc.json
+
+      - name: Save pull request number
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p .lighthouseci
+          printf '{"pr_number":%s}\n' "$PR_NUMBER" > .lighthouseci/pr-number.json
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+
+      - name: Upload Lighthouse reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: lighthouse-reports
+          path: Dechat/dex_with_fiat_frontend/.lighthouseci/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 1

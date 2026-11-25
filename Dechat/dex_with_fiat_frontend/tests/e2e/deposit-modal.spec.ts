@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from './fixtures';
 import { mockSorobanRpc, MOCK_WALLET_ADDRESS } from './helpers';
 
 test.describe('Deposit Modal Validation and Success State', () => {
@@ -25,12 +26,16 @@ test.describe('Deposit Modal Validation and Success State', () => {
 
   test('should disable submit for negative amount', async ({ page }) => {
     await page.locator('input[type="number"]').fill('-1');
-    await expect(page.getByRole('button', { name: /^deposit$/i })).toBeDisabled();
+    await expect(
+      page.getByRole('button', { name: /^deposit$/i }),
+    ).toBeDisabled();
   });
 
   test('should disable submit for zero amount', async ({ page }) => {
     await page.locator('input[type="number"]').fill('0');
-    await expect(page.getByRole('button', { name: /^deposit$/i })).toBeDisabled();
+    await expect(
+      page.getByRole('button', { name: /^deposit$/i }),
+    ).toBeDisabled();
   });
 
   test('should accept valid amount input', async ({ page }) => {
@@ -72,7 +77,9 @@ test.describe('Deposit Modal — disconnected wallet', () => {
   test('should disable submit button when wallet is not connected', async ({
     page,
   }) => {
-    await expect(page.getByRole('button', { name: /^deposit$/i })).toBeDisabled();
+    await expect(
+      page.getByRole('button', { name: /^deposit$/i }),
+    ).toBeDisabled();
     await expect(
       page.getByText(/connect your freighter wallet to continue/i),
     ).toBeVisible();

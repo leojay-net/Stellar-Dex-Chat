@@ -84,9 +84,9 @@ export default function AdminDashboard() {
   }, [reconciliationRecords]);
 
   useEffect(() => {
-    fetchMetrics();
+    void fetchMetrics();
     // Refresh payouts every 30s to match bridge stats
-    const interval = setInterval(fetchMetrics, 30000);
+    const interval = setInterval(() => void fetchMetrics(), 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -126,7 +126,7 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => {
-    fetchAuditLogs(auditPage, actionFilter);
+    void fetchAuditLogs(auditPage, actionFilter);
   }, [fetchAuditLogs, auditPage, actionFilter]);
 
   const fetchMetrics = async () => {
@@ -435,7 +435,7 @@ export default function AdminDashboard() {
 
                   <button
                     type="button"
-                    onClick={exportAuditToCSV}
+                    onClick={() => void exportAuditToCSV()}
                     disabled={exportingCsv || auditLoading || auditTotal === 0}
                     className="h-10 mt-0 sm:mt-5 px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:bg-emerald-300 disabled:cursor-not-allowed"
                   >

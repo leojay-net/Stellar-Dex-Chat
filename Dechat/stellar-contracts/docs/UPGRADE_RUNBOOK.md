@@ -66,7 +66,7 @@ Complete **every** item before proposing an upgrade.
 stellar contract build
 
 # Compute the SHA-256 hash of the optimised WASM
-WASM_FILE=target/wasm32v1-none/release/stellar_contracts.optimized.wasm
+WASM_FILE=target/wasm32v1-none/release/stellar_contracts.wasm
 sha256sum "$WASM_FILE"
 ```
 
@@ -342,7 +342,7 @@ If the new WASM is already live and must be reverted:
    ```bash
    git checkout <previous-release-tag>
    stellar contract build
-  WASM_FILE=target/wasm32v1-none/release/stellar_contracts.optimized.wasm
+  WASM_FILE=target/wasm32v1-none/release/stellar_contracts.wasm
   sha256sum "$WASM_FILE"
    ```
 

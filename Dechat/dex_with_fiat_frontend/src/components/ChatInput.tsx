@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Send, Loader2, AlertTriangle, Smile, Copy, Check } from 'lucide-react';
+import { Send, Loader2, AlertTriangle, Smile, Check, Copy } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from '@/contexts/TranslationContext';
 import { useStellarWallet } from '@/contexts/StellarWalletContext';
@@ -10,7 +10,7 @@ import { useIdempotentAction } from '@/hooks/useIdempotentAction';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 interface ChatInputProps {
-  onSendMessage: (message: string) => void;
+  onSendMessage: (message: string) => void | Promise<void>;
   onCancelRequest?: () => void;
   onNewChat?: () => void;
   onOpenHistory?: () => void;
@@ -20,9 +20,20 @@ interface ChatInputProps {
   sessionId?: string | null;
 }
 
-
-
-const COMMON_EMOJIS = ['😊', '😂', '🙏', '👍', '❤️', '🔥', '✅', '🚀', '💰', '📊', '⭐', '🎉'];
+const COMMON_EMOJIS = [
+  '😊',
+  '😂',
+  '🙏',
+  '👍',
+  '❤️',
+  '🔥',
+  '✅',
+  '🚀',
+  '💰',
+  '📊',
+  '⭐',
+  '🎉',
+];
 
 export default function ChatInput({
   onSendMessage,
@@ -59,7 +70,7 @@ export default function ChatInput({
   const [showPalette, setShowPalette] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
   const [paletteIndex, setPaletteIndex] = useState(0);
-  
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -84,16 +95,29 @@ export default function ChatInput({
     setShowEmojiPicker(false);
   };
 
-  const { execute: executeSubmit, isProcessing: isSubmitting } = useIdempotentAction({
-    cooldownMs: 1000,
-    logSuppressed: true,
-  });
+  const { execute: executeSubmit, isProcessing: isSubmitting } =
+    useIdempotentAction({
+      cooldownMs: 1000,
+      logSuppressed: true,
+    });
 
   const commands = [
-    { cmd: '/deposit', desc: t('common.deposit_desc') || 'Add funds to your Stellar account' },
-    { cmd: '/rates', desc: t('common.rates_desc') || 'Check current market conversion rates' },
-    { cmd: '/portfolio', desc: t('common.portfolio_desc') || 'View your asset balance and value' },
-    { cmd: '/help', desc: t('common.help_desc') || 'Get assistance with platform features' },
+    {
+      cmd: '/deposit',
+      desc: t('common.deposit_desc') || 'Add funds to your Stellar account',
+    },
+    {
+      cmd: '/rates',
+      desc: t('common.rates_desc') || 'Check current market conversion rates',
+    },
+    {
+      cmd: '/portfolio',
+      desc: t('common.portfolio_desc') || 'View your asset balance and value',
+    },
+    {
+      cmd: '/help',
+      desc: t('common.help_desc') || 'Get assistance with platform features',
+    },
   ];
 
   const handleInputChange = (val: string) => {
@@ -117,7 +141,8 @@ export default function ChatInput({
 
   const copyMessage = async () => {
     const value = message.trim();
-    if (!value || typeof navigator === 'undefined' || !navigator.clipboard) return;
+    if (!value || typeof navigator === 'undefined' || !navigator.clipboard)
+      return;
     try {
       await navigator.clipboard.writeText(value);
       setIsCopied(true);
@@ -135,14 +160,17 @@ export default function ChatInput({
     setWalletWarning(false);
     if (!isSubmitDisabled) {
       const messageToSend = message.trim();
-      executeSubmit(async () => {
-        onSendMessage(messageToSend);
+      void executeSubmit(async () => {
+        const sending = onSendMessage(messageToSend);
         setMessage('');
         if (sessionId) clearDraft(sessionId);
         setShowCommands(false);
         setLiveAnnouncement('Message sent.');
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, 'chat_message_submit');
+        await sending;
+      }, 'chat_message_submit').catch((error: unknown) => {
+        console.error('Could not submit chat message:', error);
+      });
     }
   };
 
@@ -240,7 +268,11 @@ export default function ChatInput({
         event.preventDefault();
         setShowPalette((prev: boolean) => !prev);
       }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'n' && !event.shiftKey) {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === 'n' &&
+        !event.shiftKey
+      ) {
         event.preventDefault();
         onNewChat?.();
       }
@@ -252,7 +284,11 @@ export default function ChatInput({
         event.preventDefault();
         onOpenBridgeModal?.();
       }
-      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'c') {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.shiftKey &&
+        event.key.toLowerCase() === 'c'
+      ) {
         event.preventDefault();
         onCancelRequest?.();
       }
@@ -372,7 +408,9 @@ export default function ChatInput({
                 type="button"
                 onClick={() => executePaletteCommand(i)}
                 className={`w-full text-left px-3 py-2 text-sm ${
-                  i === paletteIndex ? 'bg-blue-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                  i === paletteIndex
+                    ? 'bg-blue-600 text-white'
+                    : 'hover:bg-gray-100 dark:hover:bg-gray-800'
                 }`}
               >
                 {cmd.label}
@@ -418,7 +456,9 @@ export default function ChatInput({
 
       <div
         data-testid="chat-input-controls"
-        className={isMobile ? 'flex flex-col gap-2' : 'flex items-end space-x-3'}
+        className={
+          isMobile ? 'flex flex-col gap-2' : 'flex items-end space-x-3'
+        }
       >
         <div className="flex-1 relative min-w-0">
           {showEmojiPicker && (
@@ -444,7 +484,9 @@ export default function ChatInput({
             ref={textareaRef}
             data-testid="chat-input-textarea"
             value={message}
-            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleInputChange(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+              handleInputChange(e.target.value)
+            }
             onKeyDown={handleKeyDown}
             placeholder={activePlaceholder}
             disabled={isLoading}
@@ -457,7 +499,9 @@ export default function ChatInput({
             className={`theme-input w-full resize-none border rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed ${
               isMobile ? 'px-3 py-2.5 text-base' : 'px-4 py-3'
             } ${
-              walletWarning ? 'theme-input-border-invalid' : 'theme-input-border'
+              walletWarning
+                ? 'theme-input-border-invalid'
+                : 'theme-input-border'
             }`}
             rows={1}
             style={{
@@ -475,13 +519,17 @@ export default function ChatInput({
 
         <button
           type="button"
-          onClick={copyMessage}
+          onClick={() => void copyMessage()}
           disabled={!message.trim()}
           title="Copy message"
           aria-label="Copy message"
           className="flex items-center justify-center text-gray-400 hover:text-gray-600 disabled:opacity-40 rounded-lg transition-colors h-10 w-10"
         >
-          {isCopied ? <Check className="w-5 h-5 text-green-500" /> : <Copy className="w-5 h-5" />}
+          {isCopied ? (
+            <Check className="w-5 h-5 text-green-500" />
+          ) : (
+            <Copy className="w-5 h-5" />
+          )}
         </button>
         <button
           type="button"
@@ -515,7 +563,8 @@ export default function ChatInput({
       </div>
 
       <p id="chat-submit-shortcut" className="sr-only">
-        Send message with {submitShortcutLabel}. The send button stays disabled while a request is pending.
+        Send message with {submitShortcutLabel}. The send button stays disabled
+        while a request is pending.
       </p>
       <p
         id="chat-input-status"

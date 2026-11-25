@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { X, Check, Plus, Trash2, Edit2 } from 'lucide-react';
+import { X, Check, Plus, Trash2, Edit2, RotateCcw } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useTranslation, SupportedLocale } from '@/contexts/TranslationContext';
 import {
@@ -21,9 +21,14 @@ import { useWatchlist } from '@/hooks/useWatchlist';
 interface UserSettingsProps {
   isOpen: boolean;
   onClose: () => void;
+  onResetOnboarding?: () => void;
 }
 
-export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
+export default function UserSettings({
+  isOpen,
+  onClose,
+  onResetOnboarding,
+}: UserSettingsProps) {
   const { isDarkMode } = useTheme();
   const { locale, setLocale } = useTranslation();
   const enableConversionReminders = useFeatureFlag('enableConversionReminders');
@@ -39,9 +44,21 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
     twoFactorEnabled,
     setTwoFactorEnabled,
   } = useUserPreferences();
-  const { consented: telemetryConsented, setConsent: setTelemetryConsent } = useChatTelemetry();
-  const { beneficiaries, isLoaded, addBeneficiary, deleteBeneficiary, renameBeneficiary } = useBeneficiaries();
-  const { watchlist, isLoaded: watchlistLoaded, addAddress, removeAddress } = useWatchlist();
+  const { consented: telemetryConsented, setConsent: setTelemetryConsent } =
+    useChatTelemetry();
+  const {
+    beneficiaries,
+    isLoaded,
+    addBeneficiary,
+    deleteBeneficiary,
+    renameBeneficiary,
+  } = useBeneficiaries();
+  const {
+    watchlist,
+    isLoaded: watchlistLoaded,
+    addAddress,
+    removeAddress,
+  } = useWatchlist();
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Watchlist states
@@ -51,10 +68,11 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
 
   // Beneficiary management states
   const [showAddBeneficiary, setShowAddBeneficiary] = useState(false);
-  const [editingBeneficiary, setEditingBeneficiary] = useState<Beneficiary | null>(null);
+  const [editingBeneficiary, setEditingBeneficiary] =
+    useState<Beneficiary | null>(null);
   const [newBeneficiaryName, setNewBeneficiaryName] = useState('');
   const [newBeneficiaryAddress, setNewBeneficiaryAddress] = useState('');
-  
+
   useAccessibleModal(isOpen, panelRef, onClose);
 
   if (!isOpen) return null;
@@ -70,7 +88,14 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
         renameBeneficiary(editingBeneficiary.id, newBeneficiaryName);
         setEditingBeneficiary(null);
       } else {
-        addBeneficiary(0, 'Unknown Bank', '000', newBeneficiaryAddress, newBeneficiaryAddress, newBeneficiaryName);
+        addBeneficiary(
+          0,
+          'Unknown Bank',
+          '000',
+          newBeneficiaryAddress,
+          newBeneficiaryAddress,
+          newBeneficiaryName,
+        );
       }
       setNewBeneficiaryName('');
       setNewBeneficiaryAddress('');
@@ -175,7 +200,9 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
             </p>
 
             {showAddBeneficiary && (
-              <div className={`p-3 rounded-lg mb-3 border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+              <div
+                className={`p-3 rounded-lg mb-3 border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}
+              >
                 <div className="space-y-3">
                   <div>
                     <label
@@ -272,10 +299,14 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                       }`}
                     >
                       <div className="min-w-0 flex-1">
-                        <p className={`text-xs font-medium truncate ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>
+                        <p
+                          className={`text-xs font-medium truncate ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+                        >
                           {beneficiary.name}
                         </p>
-                        <p className={`text-[10px] truncate ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                        <p
+                          className={`text-[10px] truncate ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}
+                        >
                           {beneficiary.accountName}
                         </p>
                       </div>
@@ -292,7 +323,9 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                           <Edit2 className="w-3 h-3" />
                         </button>
                         <button
-                          onClick={() => handleDeleteBeneficiary(beneficiary.id)}
+                          onClick={() =>
+                            handleDeleteBeneficiary(beneficiary.id)
+                          }
                           aria-label={`Delete ${beneficiary.name}`}
                           className={`p-1.5 rounded transition-colors ${
                             isDarkMode
@@ -344,15 +377,22 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                 <Plus className="w-4 h-4" />
               </button>
             </div>
-            <p className={`text-xs mb-4 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-              Receive a toast and browser notification when a watched wallet receives funds.
+            <p
+              className={`text-xs mb-4 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+            >
+              Receive a toast and browser notification when a watched wallet
+              receives funds.
             </p>
 
             {showAddWatch && (
-              <div className={`p-3 rounded-lg mb-3 border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+              <div
+                className={`p-3 rounded-lg mb-3 border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}
+              >
                 <div className="space-y-3">
                   <div>
-                    <label className={`text-xs font-medium block mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                    <label
+                      className={`text-xs font-medium block mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
+                    >
                       Stellar Address
                     </label>
                     <input
@@ -369,7 +409,9 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                     />
                   </div>
                   <div>
-                    <label className={`text-xs font-medium block mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                    <label
+                      className={`text-xs font-medium block mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
+                    >
                       Label (optional)
                     </label>
                     <input
@@ -417,7 +459,9 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
 
             {watchlistLoaded ? (
               watchlist.length === 0 ? (
-                <p className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                <p
+                  className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                >
                   No addresses being watched.
                 </p>
               ) : (
@@ -432,10 +476,14 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                       }`}
                     >
                       <div className="min-w-0 flex-1">
-                        <p className={`text-xs font-medium truncate ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>
+                        <p
+                          className={`text-xs font-medium truncate ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+                        >
                           {entry.label || entry.address.slice(0, 8)}
                         </p>
-                        <p className={`text-[10px] font-mono truncate ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                        <p
+                          className={`text-[10px] font-mono truncate ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}
+                        >
                           {entry.address.slice(0, 6)}…{entry.address.slice(-4)}
                         </p>
                       </div>
@@ -455,7 +503,9 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                 </div>
               )
             ) : (
-              <p className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+              <p
+                className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+              >
                 Loading…
               </p>
             )}
@@ -554,11 +604,16 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
               aria-label="Select language"
               className="space-y-1"
             >
-              {([
-                { code: 'en', label: 'English' },
-                { code: 'fr', label: 'Français' },
-                { code: 'es', label: 'Español' },
-              ] as const satisfies ReadonlyArray<{ code: SupportedLocale; label: string }>).map(({ code, label }) => {
+              {(
+                [
+                  { code: 'en', label: 'English' },
+                  { code: 'fr', label: 'Français' },
+                  { code: 'es', label: 'Español' },
+                ] as const satisfies ReadonlyArray<{
+                  code: SupportedLocale;
+                  label: string;
+                }>
+              ).map(({ code, label }) => {
                 const isSelected = locale === code;
                 return (
                   <li key={code}>
@@ -589,6 +644,39 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                 );
               })}
             </ul>
+          </section>
+
+          {/* Onboarding section */}
+          <section
+            className={`pt-6 border-t ${featureFlagSectionDividerBorderClass(isDarkMode)}`}
+          >
+            <h3
+              className={`text-xs font-semibold uppercase tracking-wider mb-3 ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-500'
+              }`}
+            >
+              Help
+            </h3>
+            <p
+              className={`text-xs mb-4 ${
+                isDarkMode ? 'text-gray-500' : 'text-gray-400'
+              }`}
+            >
+              Learn how to use the application features
+            </p>
+            {onResetOnboarding && (
+              <button
+                onClick={onResetOnboarding}
+                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  isDarkMode
+                    ? 'bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200'
+                }`}
+              >
+                <RotateCcw className="w-4 h-4" />
+                Replay onboarding tour
+              </button>
+            )}
           </section>
 
           {/* High-Value Transfer Security section */}
@@ -662,8 +750,11 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                     }`}
                     aria-label="High-value transfer threshold in XLM"
                   />
-                  <p className={`text-[10px] ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                    Transfers above this amount will require additional confirmation
+                  <p
+                    className={`text-[10px] ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                  >
+                    Transfers above this amount will require additional
+                    confirmation
                   </p>
                 </div>
               )}

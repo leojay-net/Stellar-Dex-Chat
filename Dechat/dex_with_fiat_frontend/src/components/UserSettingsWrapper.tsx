@@ -10,6 +10,7 @@ const UserSettings = dynamic(() => import('./UserSettings'), {
 interface UserSettingsWrapperProps {
   isOpen: boolean;
   onClose: () => void;
+  onResetOnboarding?: () => void;
 }
 
 export default function UserSettingsWrapper(props: UserSettingsWrapperProps) {
