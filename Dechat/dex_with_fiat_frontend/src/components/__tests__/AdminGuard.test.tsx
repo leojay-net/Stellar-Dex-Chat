@@ -185,4 +185,76 @@ describe('AdminGuard', () => {
     expect(await screen.findByText('RPC failure')).toBeInTheDocument();
     expect(screen.queryByTestId('protected-content')).not.toBeInTheDocument();
   });
+
+  it('does not update state after unmount (cancelled flag prevents stale setState)', async () => {
+    const validAddr = StrKey.encodeEd25519PublicKey(Buffer.alloc(32, 1));
+
+    // getAdmin resolves only after a manual trigger so we can unmount first
+    let resolveAdmin!: (v: string) => void;
+    const adminPromise = new Promise<string>((res) => { resolveAdmin = res; });
+    vi.mocked(getAdmin).mockReturnValue(adminPromise);
+
+    vi.mocked(useStellarWallet).mockReturnValue({
+      connection: { address: validAddr },
+    } as any);
+
+    const { unmount } = render(
+      <AdminGuard>
+        <div data-testid="protected-content">Secret content</div>
+      </AdminGuard>,
+    );
+
+    // Unmount before the async check completes
+    unmount();
+
+    // Now resolve getAdmin — this must not cause a React setState-after-unmount warning
+    const originalError = console.error;
+    const errors: unknown[] = [];
+    console.error = (...args: unknown[]) => { errors.push(args); };
+
+    resolveAdmin(validAddr);
+    // Flush microtasks
+    await new Promise((r) => setTimeout(r, 50));
+
+    console.error = originalError;
+    const stateWarning = errors.some(
+      (e) => typeof e === 'string' && e.includes('unmounted component'),
+    );
+    expect(stateWarning).toBe(false);
+  });
+
+  it('cancels a pending check when the connected address changes', async () => {
+    const validAddr = StrKey.encodeEd25519PublicKey(Buffer.alloc(32, 1));
+    const secondAddr = StrKey.encodeEd25519PublicKey(Buffer.alloc(32, 2));
+
+    // First check never resolves during the test
+    vi.mocked(getAdmin).mockReturnValue(new Promise(() => {}));
+
+    vi.mocked(useStellarWallet).mockReturnValue({
+      connection: { address: validAddr },
+    } as any);
+
+    const { rerender } = render(
+      <AdminGuard>
+        <div data-testid="protected-content">Secret content</div>
+      </AdminGuard>,
+    );
+
+    // Change address — this triggers a re-render, which should cancel the
+    // first effect and start a fresh check for the new address.
+    vi.mocked(getAdmin).mockResolvedValue(secondAddr);
+    vi.mocked(useStellarWallet).mockReturnValue({
+      connection: { address: secondAddr },
+    } as any);
+
+    rerender(
+      <AdminGuard>
+        <div data-testid="protected-content">Secret content</div>
+      </AdminGuard>,
+    );
+
+    // With second address not matching any mock admin, guard shows landing page
+    expect(await screen.findByTestId('landing-page')).toBeInTheDocument();
+    expect(screen.queryByTestId('protected-content')).not.toBeInTheDocument();
+  });
 });
