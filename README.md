@@ -4,7 +4,7 @@ A decentralized exchange (DEX) interface prioritizing seamless asset-to-bank con
 
 ## Quick Start
 
-For detailed installation instructions, architecture overview, and development setup, see the main documentation in [Dechat/README.md](Dechat/README.md).
+For detailed installation instructions, architecture overview, and development setup, see the main documentation in [Dechat/README.md](Dechat/README.md)
 
 ### Fastest Start (Docker)
 
