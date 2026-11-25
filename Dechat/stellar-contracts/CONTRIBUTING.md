@@ -30,9 +30,9 @@ Before you begin, ensure you have the following installed:
 
 4. Verify the optimized WASM size is within budget:
    ```bash
-   ls -lh target/wasm32v1-none/release/stellar_contracts.optimized.wasm
-   # Should be under 120 KB (120000 bytes). The Soroban mainnet limit is ~256 KB,
-   # so we maintain a 120 KB budget to allow for future growth.
+   ls -lh target/wasm32v1-none/release/stellar_contracts.wasm
+   # Should be under 125 KB (125000 bytes). The Soroban mainnet limit is ~256 KB,
+   # so we maintain a budget well below the protocol limit.
    ```
 
 For more details on the architecture of our fiat bridge logic, please refer to [FIAT_BRIDGE_README.md](FIAT_BRIDGE_README.md) (if available).

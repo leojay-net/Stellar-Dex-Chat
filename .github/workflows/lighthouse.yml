@@ -73,5 +73,6 @@ jobs:
         with:
           name: lighthouse-reports
           path: Dechat/dex_with_fiat_frontend/.lighthouseci/
+          include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 1

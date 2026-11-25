@@ -192,9 +192,13 @@ export default function Message({
       return;
     }
     if (e.key === 'r' && hasError) {
-      retry.retryNow();
+      void retry.retryNow();
     } else if (e.key === 'c' && message.metadata?.transactionData?.txHash) {
-      navigator.clipboard.writeText(message.metadata.transactionData.txHash);
+      void navigator.clipboard
+        .writeText(message.metadata.transactionData.txHash)
+        .catch((error: unknown) => {
+          console.error('Failed to copy transaction hash:', error);
+        });
     }
   };
 

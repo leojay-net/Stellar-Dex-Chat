@@ -31,7 +31,11 @@ export class FreighterAdapter implements WalletAdapter {
     }
   }
 
-  async connect(): Promise<{ address: string; network: string; networkPassphrase: string }> {
+  async connect(): Promise<{
+    address: string;
+    network: string;
+    networkPassphrase: string;
+  }> {
     const accessResult = await requestAccess();
     if (accessResult.error) {
       throw new Error(String(accessResult.error));
@@ -39,7 +43,9 @@ export class FreighterAdapter implements WalletAdapter {
 
     const addrResult = await getAddress();
     if (addrResult.error || !addrResult.address) {
-      throw new Error(addrResult.error ? String(addrResult.error) : 'No address returned');
+      throw new Error(
+        addrResult.error ? String(addrResult.error) : 'No address returned',
+      );
     }
 
     const netResult = await getNetwork();
@@ -72,7 +78,10 @@ export class FreighterAdapter implements WalletAdapter {
     }
   }
 
-  async signTransaction(xdr: string, options?: { address?: string; networkPassphrase?: string }): Promise<string> {
+  async signTransaction(
+    xdr: string,
+    options?: { address?: string; networkPassphrase?: string },
+  ): Promise<string> {
     const [addressResult, networkResult] = await Promise.all([
       getAddress(),
       getNetwork(),
@@ -83,7 +92,8 @@ export class FreighterAdapter implements WalletAdapter {
     }
 
     const result = await signTransaction(xdr, {
-      networkPassphrase: networkResult.networkPassphrase || options?.networkPassphrase || '',
+      networkPassphrase:
+        networkResult.networkPassphrase || options?.networkPassphrase || '',
       address: options?.address || addressResult.address,
     });
 

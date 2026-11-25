@@ -44,6 +44,10 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm exec playwright install --with-deps chromium firefox webkit
+      - name: Install Stellar CLI system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libdbus-1-dev libudev-dev pkg-config
       - name: Install contract tooling
         run: |
           cargo install --locked stellar-cli --version 28.0.0

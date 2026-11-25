@@ -2,10 +2,7 @@ import { WalletAdapter, WalletInfo } from './types';
 import { FreighterAdapter } from './freighter';
 import { XBullAdapter } from './xbull';
 
-const adapters: WalletAdapter[] = [
-  new FreighterAdapter(),
-  new XBullAdapter(),
-];
+const adapters: WalletAdapter[] = [new FreighterAdapter(), new XBullAdapter()];
 
 const STORAGE_KEY_SELECTED_WALLET = 'stellar_selected_wallet';
 
@@ -25,7 +22,7 @@ export async function getAvailableWallets(): Promise<WalletInfo[]> {
       icon: adapter.icon,
       isInstalled: await adapter.isInstalled(),
       isConnected: false, // Will be updated by context
-    }))
+    })),
   );
   return wallets;
 }

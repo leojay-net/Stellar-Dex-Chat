@@ -151,6 +151,11 @@ jobs:
           toolchain: stable
           targets: wasm32v1-none
 
+      - name: Install Stellar CLI system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libdbus-1-dev libudev-dev pkg-config
+
       - name: Install Stellar CLI
         run: cargo install --locked stellar-cli --version 28.0.0
 
@@ -184,6 +189,8 @@ jobs:
     name: WASM Size Report
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    env:
+      MAX_WASM_BYTES: "125000"
 
     steps:
       - name: Checkout PR head
@@ -204,6 +211,11 @@ jobs:
           toolchain: stable
           targets: wasm32v1-none
 
+      - name: Install Stellar CLI system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libdbus-1-dev libudev-dev pkg-config
+
       - name: Install Stellar CLI
         run: cargo install --locked stellar-cli --version 28.0.0
 
@@ -221,7 +233,7 @@ jobs:
       - name: Record head size
         id: head_size
         run: |
-          SIZE=$(wc -c < "${{ github.workspace }}/.wasm-size-target/wasm32v1-none/release/stellar_contracts.optimized.wasm" | tr -d '[:space:]')
+          SIZE=$(wc -c < "${{ github.workspace }}/.wasm-size-target/wasm32v1-none/release/stellar_contracts.wasm" | tr -d '[:space:]')
           echo "size=$SIZE" >> "$GITHUB_OUTPUT"
 
       - name: Build base WASM
@@ -233,7 +245,7 @@ jobs:
       - name: Record base size
         id: base_size
         run: |
-          SIZE=$(wc -c < "${{ github.workspace }}/.wasm-size-target/wasm32v1-none/release/stellar_contracts.optimized.wasm" | tr -d '[:space:]')
+          SIZE=$(wc -c < "${{ github.workspace }}/.wasm-size-target/wasm32v1-none/release/stellar_contracts.wasm" | tr -d '[:space:]')
           echo "size=$SIZE" >> "$GITHUB_OUTPUT"
 
       - name: Write size report

@@ -33,7 +33,7 @@ describe('StellarWalletContext', () => {
     localStorage.clear();
     delete (window as { freighter?: unknown }).freighter;
     vi.clearAllMocks();
-    freighter.isConnected.mockResolvedValue({ isConnected: false });
+    freighter.isConnected.mockResolvedValue({ isConnected: true });
     freighter.getAddress.mockResolvedValue({ address: ADDRESS });
     freighter.getNetwork.mockResolvedValue({
       network: 'TESTNET',
@@ -51,6 +51,7 @@ describe('StellarWalletContext', () => {
   });
 
   it('defaults to a disconnected state when Freighter is not installed', async () => {
+    freighter.isConnected.mockResolvedValue({ isConnected: false });
     const { result } = renderHook(() => useStellarWallet(), { wrapper });
 
     await waitFor(() =>
@@ -134,6 +135,9 @@ describe('StellarWalletContext', () => {
       getAccounts: vi
         .fn()
         .mockResolvedValue({ accounts: [ADDRESS, SECOND_ADDRESS] }),
+      setAllowedBack: vi.fn(async (address: string) => {
+        freighter.getAddress.mockResolvedValue({ address });
+      }),
     };
     const { result } = renderHook(() => useStellarWallet(), { wrapper });
 
@@ -294,6 +298,7 @@ describe('StellarWalletContext', () => {
   it('does not expose the mock wallet bridge in production when E2E is disabled', async () => {
     vi.stubEnv('NEXT_PUBLIC_E2E', 'false');
     vi.stubEnv('NODE_ENV', 'production');
+    freighter.isConnected.mockResolvedValue({ isConnected: false });
     delete window.mockStellarConnect;
 
     const { result } = renderHook(() => useStellarWallet(), { wrapper });

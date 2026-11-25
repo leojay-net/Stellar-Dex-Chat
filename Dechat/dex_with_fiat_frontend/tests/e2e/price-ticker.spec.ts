@@ -1,6 +1,5 @@
 import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures';
-import { test, expect, type Page } from '@playwright/test';
 import { fullKeyboardTabKey } from './helpers';
 
 const COINGECKO_OK_FIXTURE = {

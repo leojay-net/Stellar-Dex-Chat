@@ -1,6 +1,5 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
-import { test, expect } from '@playwright/test';
 import { fullKeyboardTabKey } from './helpers';
 
 test.describe('NotificationsCenter E2E', () => {

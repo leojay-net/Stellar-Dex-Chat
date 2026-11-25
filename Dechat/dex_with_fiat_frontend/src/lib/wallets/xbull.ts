@@ -4,10 +4,20 @@ declare global {
   interface Window {
     xBull?: {
       isInstalled?: () => boolean;
-      connect?: () => Promise<{ address: string; network: string; networkPassphrase: string }>;
+      connect?: () => Promise<{
+        address: string;
+        network: string;
+        networkPassphrase: string;
+      }>;
       getAddress?: () => Promise<string>;
-      getNetwork?: () => Promise<{ network: string; networkPassphrase: string }>;
-      signTransaction?: (xdr: string, options?: { address?: string; networkPassphrase?: string }) => Promise<string>;
+      getNetwork?: () => Promise<{
+        network: string;
+        networkPassphrase: string;
+      }>;
+      signTransaction?: (
+        xdr: string,
+        options?: { address?: string; networkPassphrase?: string },
+      ) => Promise<string>;
       disconnect?: () => Promise<void>;
       getAccounts?: () => Promise<string[]>;
       switchAccount?: (address: string) => Promise<void>;
@@ -25,7 +35,11 @@ export class XBullAdapter implements WalletAdapter {
     return !!window.xBull?.isInstalled?.();
   }
 
-  async connect(): Promise<{ address: string; network: string; networkPassphrase: string }> {
+  async connect(): Promise<{
+    address: string;
+    network: string;
+    networkPassphrase: string;
+  }> {
     if (!window.xBull?.connect) {
       throw new Error('xBull wallet not available');
     }
@@ -52,7 +66,10 @@ export class XBullAdapter implements WalletAdapter {
     }
   }
 
-  async signTransaction(xdr: string, options?: { address?: string; networkPassphrase?: string }): Promise<string> {
+  async signTransaction(
+    xdr: string,
+    options?: { address?: string; networkPassphrase?: string },
+  ): Promise<string> {
     if (!window.xBull?.signTransaction) {
       throw new Error('xBull signTransaction not available');
     }

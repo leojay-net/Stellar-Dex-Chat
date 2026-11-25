@@ -1444,7 +1444,7 @@ fn test_operator_cap_recovers_after_deactivation() {
     bridge.set_max_operators(&1);
     bridge.set_operator(&op1, &true, &0);
     bridge.set_operator(&op1, &false, &1);
-    bridge.set_operator(&op2, &true, &0);
+    bridge.set_operator(&op2, &true, &2);
 
     assert!(!bridge.is_operator(&op1));
     assert!(bridge.is_operator(&op2));
@@ -1463,8 +1463,8 @@ fn test_set_max_operators_boundary_check_rejects_reduction_below_current_count()
     // Set max to 3 and add 3 operators
     bridge.set_max_operators(&3);
     bridge.set_operator(&op1, &true, &0);
-    bridge.set_operator(&op2, &true, &0);
-    bridge.set_operator(&op3, &true, &0);
+    bridge.set_operator(&op2, &true, &1);
+    bridge.set_operator(&op3, &true, &2);
 
     assert!(bridge.is_operator(&op1));
     assert!(bridge.is_operator(&op2));
@@ -1492,7 +1492,7 @@ fn test_set_max_operators_allows_increase_above_current_count() {
     // Set max to 2 and add 2 operators
     bridge.set_max_operators(&2);
     bridge.set_operator(&op1, &true, &0);
-    bridge.set_operator(&op2, &true, &0);
+    bridge.set_operator(&op2, &true, &1);
 
     // Increasing max should succeed
     bridge.set_max_operators(&5);
@@ -1514,7 +1514,7 @@ fn test_set_max_operators_allows_exact_match_with_current_count() {
     // Set max to 2 and add 2 operators
     bridge.set_max_operators(&2);
     bridge.set_operator(&op1, &true, &0);
-    bridge.set_operator(&op2, &true, &0);
+    bridge.set_operator(&op2, &true, &1);
 
     // Setting max to exact current count should succeed
     bridge.set_max_operators(&2);
@@ -1537,8 +1537,8 @@ fn test_set_max_operators_zero_remains_unlimited() {
     // Set max to 0 (unlimited) with multiple operators should always work
     bridge.set_max_operators(&0);
     bridge.set_operator(&op1, &true, &0);
-    bridge.set_operator(&op2, &true, &0);
-    bridge.set_operator(&op3, &true, &0);
+    bridge.set_operator(&op2, &true, &1);
+    bridge.set_operator(&op3, &true, &2);
 
     // Setting max to 0 again should always succeed (unlimited is always valid)
     bridge.set_max_operators(&0);
@@ -1558,7 +1558,7 @@ fn test_prune_inactive_operators_keeps_active_operator() {
     let active = Address::generate(&env);
 
     bridge.set_operator(&inactive, &true, &0);
-    bridge.set_operator(&active, &true, &0);
+    bridge.set_operator(&active, &true, &1);
     bridge.heartbeat(&inactive, &1);
 
     env.ledger().with_mut(|li| {
@@ -1588,7 +1588,7 @@ fn test_set_operator_prunes_inactive_on_next_admin_action() {
         li.sequence_number = DEFAULT_INACTIVITY_THRESHOLD + 5;
     });
 
-    bridge.set_operator(&newcomer, &true, &0);
+    bridge.set_operator(&newcomer, &true, &1);
 
     assert!(!bridge.is_operator(&stale));
     assert!(bridge.is_operator(&newcomer));
@@ -2230,13 +2230,14 @@ fn test_withdraw_fees_success() {
 
     // Accrue fees
     bridge.accrue_fee(&token_addr, &200);
+    token_sac.mint(&contract_id, &200);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 200);
 
     // Withdraw fees
     bridge.withdraw_fees(&recipient, &token_addr, &100, &0);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 100);
     assert_eq!(token.balance(&recipient), 100);
-    assert_eq!(token.balance(&contract_id), 900);
+    assert_eq!(token.balance(&contract_id), 1_100);
 }
 
 #[test]
@@ -2335,6 +2336,7 @@ fn test_withdraw_fees_exact_balance_succeeds() {
 
     bridge.deposit(&user, &1_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
     bridge.accrue_fee(&token_addr, &100);
+    token_sac.mint(&contract_id, &100);
 
     // Withdraw exactly the accrued amount — boundary condition must succeed
     bridge.withdraw_fees(&recipient, &token_addr, &100, &0);
@@ -2370,6 +2372,7 @@ fn test_fee_vault_isolation_from_principal() {
 
     // Accrue 200 in fees — this is separate accounting
     bridge.accrue_fee(&token_addr, &200);
+    token_sac.mint(&contract_id, &200);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 200);
 
     // Withdraw fees does NOT affect total_deposited or total_withdrawn
@@ -2378,7 +2381,7 @@ fn test_fee_vault_isolation_from_principal() {
     assert_eq!(bridge.get_total_withdrawn(), 0);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 0);
     assert_eq!(token.balance(&fee_recipient), 200);
-    assert_eq!(token.balance(&contract_id), 800);
+    assert_eq!(token.balance(&contract_id), 1_000);
 }
 
 // ── emergency token rescue tests ──────────────────────────────────────────
@@ -2520,7 +2523,7 @@ fn test_rescue_to_contract_address_rejected() {
 // ── nonce-based replay protection tests ───────────────────────────────────
 
 #[test]
-fn test_operator_nonce_starts_at_zero() {
+fn test_operator_nonce_starts_at_one() {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -2627,7 +2630,7 @@ fn test_nonce_is_per_operator() {
     let operator_b = Address::generate(&env);
 
     bridge.set_operator(&operator_a, &true, &0);
-    bridge.set_operator(&operator_b, &true, &0);
+    bridge.set_operator(&operator_b, &true, &1);
 
     // Both start at nonce 1 (set_operator incremented)
     assert_eq!(bridge.get_operator_nonce(&operator_a), 1);
@@ -2702,21 +2705,19 @@ fn test_nonce_persists_across_operator_deactivation() {
     bridge.heartbeat(&operator, &2);
     assert_eq!(bridge.get_operator_nonce(&operator), 3);
 
-    // Deactivate operator
-    bridge.set_operator(&operator, &false, &3);
-
-    // Nonce should still be 4
-    assert_eq!(bridge.get_operator_nonce(&operator), 4);
+    // Deactivate operator using the next admin nonce; the heartbeat nonce is unchanged.
+    bridge.set_operator(&operator, &false, &1);
+    assert_eq!(bridge.get_operator_nonce(&operator), 3);
 
     // Reactivate operator
-    bridge.set_operator(&operator, &true, &4);
+    bridge.set_operator(&operator, &true, &2);
 
-    // Must use nonce 5, not 0
+    // Must continue from nonce 3, not restart at 0.
     let result = bridge.try_heartbeat(&operator, &0);
     assert_eq!(result, Err(Ok(Error::StaleNonce)));
 
-    bridge.heartbeat(&operator, &5);
-    assert_eq!(bridge.get_operator_nonce(&operator), 6);
+    bridge.heartbeat(&operator, &3);
+    assert_eq!(bridge.get_operator_nonce(&operator), 4);
 }
 
 #[test]
@@ -2830,8 +2831,8 @@ fn test_concurrent_operators_independent_nonces() {
     let op3 = Address::generate(&env);
 
     bridge.set_operator(&op1, &true, &0);
-    bridge.set_operator(&op2, &true, &0);
-    bridge.set_operator(&op3, &true, &0);
+    bridge.set_operator(&op2, &true, &1);
+    bridge.set_operator(&op3, &true, &2);
 
     // Interleaved operations (all start at nonce 1 after set_operator)
     bridge.heartbeat(&op1, &1);
@@ -5268,14 +5269,14 @@ fn test_set_operator_invariant_operator_list_consistency() {
     let op3 = Address::generate(&env);
 
     bridge.set_operator(&op1, &true, &0);
-    bridge.set_operator(&op2, &true, &0);
-    bridge.set_operator(&op3, &true, &0);
+    bridge.set_operator(&op2, &true, &1);
+    bridge.set_operator(&op3, &true, &2);
 
     assert!(bridge.is_operator(&op1));
     assert!(bridge.is_operator(&op2));
     assert!(bridge.is_operator(&op3));
 
-    bridge.set_operator(&op2, &false, &1);
+    bridge.set_operator(&op2, &false, &3);
 
     assert!(bridge.is_operator(&op1));
     assert!(!bridge.is_operator(&op2));
@@ -5350,10 +5351,10 @@ fn test_set_operator_invariant_respects_max_cap() {
     let op3 = Address::generate(&env);
 
     bridge.set_operator(&op1, &true, &0);
-    bridge.set_operator(&op2, &true, &0);
+    bridge.set_operator(&op2, &true, &1);
 
     // Third operator should fail due to cap
-    let result = bridge.try_set_operator(&op3, &true, &0);
+    let result = bridge.try_set_operator(&op3, &true, &2);
     assert_eq!(result, Err(Ok(Error::OperatorCapReached)));
 
     assert!(bridge.is_operator(&op1));
@@ -5397,6 +5398,7 @@ fn test_withdraw_fees_edge_case_exact_amount() {
 
     bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
     bridge.accrue_fee(&token_addr, &100);
+    token_sac.mint(&contract_id, &100);
 
     // Withdraw exactly the accrued amount
     bridge.withdraw_fees(&recipient, &token_addr, &100, &0);
@@ -5444,6 +5446,7 @@ fn test_withdraw_fees_edge_case_multiple_withdrawals() {
 
     bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
     bridge.accrue_fee(&token_addr, &300);
+    token_sac.mint(&contract_id, &300);
 
     bridge.withdraw_fees(&recipient, &token_addr, &100, &0);
     assert_eq!(bridge.get_accrued_fees(&token_addr), 200);
@@ -5460,13 +5463,14 @@ fn test_withdraw_fees_edge_case_stale_nonce() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1000);
+    let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 1000);
     let user = Address::generate(&env);
     let recipient = Address::generate(&env);
     token_sac.mint(&user, &1000);
 
     bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
     bridge.accrue_fee(&token_addr, &100);
+    token_sac.mint(&contract_id, &100);
 
     bridge.withdraw_fees(&recipient, &token_addr, &100, &0);
 
@@ -5487,6 +5491,7 @@ fn test_withdraw_fees_edge_case_emits_event() {
 
     bridge.deposit(&user, &500, &token_addr, &Bytes::new(&env), &0, &0, &None);
     bridge.accrue_fee(&token_addr, &100);
+    token_sac.mint(&contract_id, &100);
 
     bridge.withdraw_fees(&recipient, &token_addr, &50, &0);
 
@@ -5517,6 +5522,7 @@ fn test_withdraw_fees_event_schema_fields_are_correct() {
 
     bridge.deposit(&user, &2_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
     bridge.accrue_fee(&token_addr, &400);
+    token_sac.mint(&contract_id, &400);
 
     // Withdraw 150 of 400 accrued; remaining_fees should become 250.
     assert_bridge_events_have_version(&env, &contract_id, || {
@@ -5661,13 +5667,14 @@ fn test_withdraw_fees_event_remaining_fees_reflects_vault_balance() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
+    let (contract_id, bridge, _, token_addr, _, token_sac) = setup_bridge(&env, 10_000);
     let user = Address::generate(&env);
     let recipient = Address::generate(&env);
     token_sac.mint(&user, &5_000);
 
     bridge.deposit(&user, &3_000, &token_addr, &Bytes::new(&env), &0, &0, &None);
     bridge.accrue_fee(&token_addr, &600);
+    token_sac.mint(&contract_id, &600);
 
     // First partial withdrawal: 200 out of 600
     bridge.withdraw_fees(&recipient, &token_addr, &200, &0);

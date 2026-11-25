@@ -43,7 +43,7 @@ export const hasMoreMessages = (
 /**
  * Calculates the next count of visible items (generic version)
  */
-export const getNextMessageCount = <T,>(
+export const getNextMessageCount = <T>(
   allItems: T[] | number,
   currentVisibleCount: number,
   pageSize: number = DEFAULT_PAGE_SIZE,

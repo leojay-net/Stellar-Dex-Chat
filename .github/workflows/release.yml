@@ -65,6 +65,11 @@ jobs:
           toolchain: stable
           targets: wasm32v1-none
 
+      - name: Install Stellar CLI system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libdbus-1-dev libudev-dev pkg-config
+
       - name: Install Stellar CLI
         run: cargo install --locked stellar-cli --version 28.0.0
 
@@ -83,7 +88,7 @@ jobs:
         working-directory: Dechat/stellar-contracts
         run: |
           set -euo pipefail
-          ARTIFACT="target/wasm32v1-none/release/stellar_contracts.optimized.wasm"
+          ARTIFACT="target/wasm32v1-none/release/stellar_contracts.wasm"
           if [ ! -f "$ARTIFACT" ]; then
             echo "Error: $ARTIFACT not found"
             exit 1
@@ -96,8 +101,8 @@ jobs:
         with:
           name: release-contract-wasm
           path: |
-            Dechat/stellar-contracts/target/wasm32v1-none/release/stellar_contracts.optimized.wasm
-            Dechat/stellar-contracts/target/wasm32v1-none/release/stellar_contracts.optimized.wasm.sha256
+            Dechat/stellar-contracts/target/wasm32v1-none/release/stellar_contracts.wasm
+            Dechat/stellar-contracts/target/wasm32v1-none/release/stellar_contracts.wasm.sha256
             RELEASE_NOTES.md
           retention-days: 7
 
@@ -107,7 +112,7 @@ jobs:
         with:
           body_path: RELEASE_NOTES.md
           files: |
-            Dechat/stellar-contracts/target/wasm32v1-none/release/stellar_contracts.optimized.wasm
-            Dechat/stellar-contracts/target/wasm32v1-none/release/stellar_contracts.optimized.wasm.sha256
+            Dechat/stellar-contracts/target/wasm32v1-none/release/stellar_contracts.wasm
+            Dechat/stellar-contracts/target/wasm32v1-none/release/stellar_contracts.wasm.sha256
           draft: false
           prerelease: false
