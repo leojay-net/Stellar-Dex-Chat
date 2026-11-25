@@ -65,6 +65,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Check unused dependencies
+        run: pnpm check:dependencies
+
       - name: Lint
         run: make -C ../.. frontend-lint
 
