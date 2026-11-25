@@ -1358,6 +1358,7 @@ Closes #1724, #1725, #1726, #1728
 - **frontend:** Regression tests for AdminGuard cancelling stale admin checks
 - **changelog:** Update changelog [skip ci]
 - Add secret scanning with gitleaks
+- **changelog:** Update changelog [skip ci]
 
 ### Deprecated
 
