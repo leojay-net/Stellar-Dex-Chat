@@ -455,6 +455,7 @@ Repo Avatar
 - Show XLM balance in chat header and add frontend build CI workflow
 - **ci:** Implement sbom, release workflow, editorconfig, and docker dependabot (issues 1-4)
 - **frontend:** Add shortcut help and strengthen test CI
+- Contract version/token registry, CSP origins+test, tools docs
 
 ### Fixed
 
@@ -967,6 +968,7 @@ Repo Avatar
 - **contract:** Correct follow-up CI diagnostics
 - **ci:** Correct Lighthouse metrics and WASM paths
 - **ci:** Align WASM size limit with artifact
+- Regenerate pnpm-lock.yaml to match package.json
 
 ### Changed
 
@@ -1354,6 +1356,8 @@ Closes #1724, #1725, #1726, #1728
 - **contracts:** Install stellar CLI system dependencies
 - Fix WASM dependencies and Lighthouse reports
 - **frontend:** Regression tests for AdminGuard cancelling stale admin checks
+- **changelog:** Update changelog [skip ci]
+- Add secret scanning with gitleaks
 
 ### Deprecated
 
