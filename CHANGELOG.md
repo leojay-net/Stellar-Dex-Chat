@@ -1338,6 +1338,7 @@ Closes #1724, #1725, #1726, #1728
 - **contracts:** Apply cargo fmt
 - **changelog:** Update changelog [skip ci]
 - **changelog:** Update changelog [skip ci]
+- **changelog:** Update changelog [skip ci]
 
 ### Deprecated
 
